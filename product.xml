@@ -1,0 +1,33 @@
+<TaskWingApp>
+  <Title>TaskWing.app</Title>
+  <Subtitle>AI-Powered Task Management for Developers</Subtitle>
+  <AlternativeSubtitle>Intelligent Task Generation</AlternativeSubtitle>
+  <Overview>
+    TaskWing.app is an open-source, AI-assisted task manager built for modern development workflows. Designed for engineers, indie hackers, and teams, it automates project planning, task breakdown, prioritization, and workflow clarity—so you can focus on building, not managing.
+  </Overview>
+  <KeyFeatures>
+    <Feature>AI-Driven Task Generation: Create tasks, subtasks, and priorities directly from natural language or your project spec/PRD. Let the AI handle the structure.</Feature>
+    <Feature>Smart Task Expansion: Use AI to break down complex requirements into granular, actionable steps with correct dependencies.</Feature>
+    <Feature>Priority Intelligence: Suggests optimal task priority, grouping, and ordering based on project goals.</Feature>
+    <Feature>Developer-Centric UX: Fast, distraction-free interface, seamless CLI and editor (MCP) integrations.</Feature>
+    <Feature>Model-Agnostic: Plug in your API keys for OpenAI, Claude, Gemini, and more—choose your preferred AI model.</Feature>
+    <Feature>Conflict-Free Collaboration: Intelligent merge resolution and refactoring for team environments.</Feature>
+    <Feature>Aviation-Inspired Design: Flight motif and frosted glass UI—clarity, movement, and elegance built-in.</Feature>
+    <Feature>Secure &amp; Open: All configs are local, API keys never leave your machine. MIT + Commons Clause licensed.</Feature>
+  </KeyFeatures>
+  <UseCases>
+    <UseCase>Solo indie devs planning side projects with AI assistance.</UseCase>
+    <UseCase>Product teams breaking down PRDs or RFCs into structured sprints.</UseCase>
+    <UseCase>Open-source maintainers managing issues and PRs with automated clarity.</UseCase>
+    <UseCase>Anyone who wants to “fly above” project chaos.</UseCase>
+  </UseCases>
+  <Tags>
+    <Tag>AI</Tag>
+    <Tag>devtools</Tag>
+    <Tag>golang</Tag>
+    <Tag>taskmanager</Tag>
+    <Tag>open-source</Tag>
+    <Tag>CLI</Tag>
+    <Tag>editor-integration</Tag>
+  </Tags>
+</TaskWingApp>
