@@ -26,3 +26,15 @@ func (p *GoogleProvider) GenerateTasks(prdContent string, modelName string, apiK
 
 	return nil, fmt.Errorf("Google Cloud (Vertex AI) GenerateTasks not yet implemented. APIKey: %t, ProjectID: %s", apiKey != "", projectID)
 }
+
+// EstimateTaskParameters for GoogleProvider (placeholder).
+// TODO: Implement the actual API call to Google Vertex AI for estimation.
+func (p *GoogleProvider) EstimateTaskParameters(prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error) {
+	return EstimationOutput{}, fmt.Errorf("Google Cloud (Vertex AI) EstimateTaskParameters not yet implemented. APIKey: %t, ProjectID: %s, MaxTokensEst: %d, TempEst: %.1f", apiKey != "", projectID, maxTokensForEstimation, temperatureForEstimation)
+}
+
+// ImprovePRD for GoogleProvider (placeholder).
+// TODO: Implement the actual API call to Google Vertex AI for PRD improvement.
+func (p *GoogleProvider) ImprovePRD(prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error) {
+	return "", fmt.Errorf("Google Cloud (Vertex AI) ImprovePRD not yet implemented. APIKey: %t, ProjectID: %s, ModelName: %s", apiKey != "", projectID, modelName)
+}

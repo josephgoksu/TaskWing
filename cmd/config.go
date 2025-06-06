@@ -33,12 +33,16 @@ type ModelConfig struct {
 
 // LLMConfig holds configuration for Large Language Model interactions.
 type LLMConfig struct {
-	Provider        string  `mapstructure:"provider" validate:"omitempty,oneof=openai google"`
-	ModelName       string  `mapstructure:"modelName" validate:"omitempty,min=1"`
-	APIKey          string  `mapstructure:"apiKey" validate:"omitempty,min=1"`    // Sensitive, primarily for ENV var loading
-	ProjectID       string  `mapstructure:"projectId" validate:"omitempty,min=1"` // For Google Cloud
-	MaxOutputTokens int     `mapstructure:"maxOutputTokens" validate:"omitempty,min=1"`
-	Temperature     float64 `mapstructure:"temperature" validate:"omitempty,min=0,max=2"`
+	Provider                   string  `mapstructure:"provider" validate:"omitempty,oneof=openai google"`
+	ModelName                  string  `mapstructure:"modelName" validate:"omitempty,min=1"`
+	APIKey                     string  `mapstructure:"apiKey" validate:"omitempty,min=1"`    // Sensitive, primarily for ENV var loading
+	ProjectID                  string  `mapstructure:"projectId" validate:"omitempty,min=1"` // For Google Cloud
+	MaxOutputTokens            int     `mapstructure:"maxOutputTokens" validate:"omitempty,min=1"`
+	Temperature                float64 `mapstructure:"temperature" validate:"omitempty,min=0,max=2"`
+	EstimationTemperature      float64 `mapstructure:"estimationTemperature" validate:"omitempty,min=0,max=2"`
+	EstimationMaxOutputTokens  int     `mapstructure:"estimationMaxOutputTokens" validate:"omitempty,min=1"`
+	ImprovementTemperature     float64 `mapstructure:"improvementTemperature" validate:"omitempty,min=0,max=2"`
+	ImprovementMaxOutputTokens int     `mapstructure:"improvementMaxOutputTokens" validate:"omitempty,min=1"`
 }
 
 // ProjectConfig holds project path related configuration
@@ -152,7 +156,7 @@ func initConfig() {
 	}
 
 	// Set default values
-	viper.SetDefault("greeting", "Hello from TaskWing (default)!")
+	viper.SetDefault("greeting", "Hello from TaskWing!")
 	// API and Model defaults can be minimal if they are truly optional examples now
 	viper.SetDefault("api.url", "")
 	viper.SetDefault("model.name", "")
@@ -167,12 +171,16 @@ func initConfig() {
 	viper.SetDefault("data.format", "json")
 
 	// Defaults for LLMConfig
-	viper.SetDefault("llm.provider", "openai")              // Default provider
-	viper.SetDefault("llm.modelName", "o4-mini-2025-04-16") // Changed from gpt-4o-mini
-	viper.SetDefault("llm.apiKey", "")                      // API Key MUST be set by user (ENV var recommended)
-	viper.SetDefault("llm.projectId", "")                   // Project ID for Google Cloud (set by user if google provider)
-	viper.SetDefault("llm.maxOutputTokens", 2048)
+	viper.SetDefault("llm.provider", "openai")
+	viper.SetDefault("llm.modelName", "o4-mini-2025-04-16")
+	viper.SetDefault("llm.apiKey", "")
+	viper.SetDefault("llm.projectId", "")
+	viper.SetDefault("llm.maxOutputTokens", 8192)
 	viper.SetDefault("llm.temperature", 0.7)
+	viper.SetDefault("llm.estimationTemperature", 0.2)
+	viper.SetDefault("llm.estimationMaxOutputTokens", 1024)
+	viper.SetDefault("llm.improvementTemperature", 0.2)
+	viper.SetDefault("llm.improvementMaxOutputTokens", 8192)
 
 	// After all sources are configured, unmarshal into GlobalAppConfig
 	if err := viper.Unmarshal(&GlobalAppConfig); err != nil {

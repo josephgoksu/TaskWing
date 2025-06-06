@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/josephgoksu/taskwing.app/prompts"
 )
 
 // OpenAIProvider implements the Provider interface for OpenAI LLMs.
@@ -21,12 +25,12 @@ func NewOpenAIProvider(apiKey string) *OpenAIProvider {
 
 // OpenAIRequestPayload defines the structure for the OpenAI API request.
 type OpenAIRequestPayload struct {
-	Model       string          `json:"model"`
-	Messages    []OpenAIMessage `json:"messages"`
-	Temperature float64         `json:"temperature"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	// TODO: Add other parameters like TopP, N, Stream if needed
-	ResponseFormat *OpenAIResponseFormat `json:"response_format,omitempty"`
+	Model               string                `json:"model"`
+	Messages            []OpenAIMessage       `json:"messages"`
+	Temperature         float64               `json:"temperature,omitempty"`
+	MaxTokens           int                   `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int                   `json:"max_completion_tokens,omitempty"`
+	ResponseFormat      *OpenAIResponseFormat `json:"response_format,omitempty"`
 }
 
 // OpenAIResponseFormat specifies the output format for OpenAI (e.g., JSON object).
@@ -70,6 +74,13 @@ type OpenAITaskResponseWrapper struct {
 	Tasks []TaskOutput `json:"tasks"`
 }
 
+// openAIEstimationData is used to unmarshal the JSON object returned by OpenAI
+// for the estimation call.
+type openAIEstimationData struct {
+	EstimatedTaskCount  int    `json:"estimatedTaskCount"`
+	EstimatedComplexity string `json:"estimatedComplexity"` // e.g., "low", "medium", "high"
+}
+
 const openAIAPIURL = "https://api.openai.com/v1/chat/completions"
 
 // GenerateTasks for OpenAIProvider.
@@ -82,31 +93,7 @@ func (p *OpenAIProvider) GenerateTasks(prdContent string, modelName string, apiK
 		return nil, fmt.Errorf("OpenAI API key is not set")
 	}
 
-	// 1. Construct the prompt
-	// This is a simplified version; the actual prompt will be more detailed as per Phase 3 plan.
-	systemPrompt := `You are an expert project manager. Analyze the following Product Requirements Document (PRD) and extract all actionable tasks and subtasks. For each task and subtask, provide:
-1. title: A concise title.
-2. description: A detailed description if available, otherwise use the title.
-3. priority: Infer a priority (low, medium, high, urgent) based on keywords and context. Default to medium if unsure.
-4. subtasks: A list of any subtasks that directly belong to this task. Each subtask should have the same fields (title, description, priority, subtasks, dependsOnTitles).
-5. dependsOnTitles: A list of titles of other tasks defined in THIS PRD that this task directly depends on. Only list titles found within this document.
-
-Return your response as a single JSON object. This object must have a key named "tasks", and the value of "tasks" must be an array of task objects. Ensure the overall response is a valid JSON object. Ensure the description field for each task is always populated, even if it's just a copy of the title.
-Example of the expected JSON object structure:
-{
-  "tasks": [
-    {
-      "title": "User Login Feature",
-      "description": "Implement email/password login.",
-      "priority": "high",
-      "subtasks": [
-        {"title": "Login UI", "description": "Design UI mockups for login.", "priority": "medium", "subtasks": [], "dependsOnTitles": []}
-      ],
-      "dependsOnTitles": ["Setup Database"]
-    }
-  ]
-}
-`
+	systemPrompt := prompts.GenerateTasksSystemPrompt
 	userMessage := fmt.Sprintf("PRD Content:\n---\n%s\n---", prdContent)
 
 	requestPayload := OpenAIRequestPayload{
@@ -115,9 +102,23 @@ Example of the expected JSON object structure:
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userMessage},
 		},
-		Temperature:    temperature,
-		MaxTokens:      maxTokens,
-		ResponseFormat: &OpenAIResponseFormat{Type: "json_object"}, // Request JSON output
+		ResponseFormat: &OpenAIResponseFormat{Type: "json_object"},
+	}
+
+	// Model-specific parameter handling
+	// TODO: Consider a more scalable way to manage model-specific capabilities if more models/params are added.
+	if modelName == "o4-mini-2025-04-16" {
+		requestPayload.MaxCompletionTokens = maxTokens
+		// For o4-mini-2025-04-16, only send temperature if it's 1.0 (its required default)
+		// Otherwise, omit it to let the API use its internal default.
+		if temperature == 1.0 {
+			requestPayload.Temperature = temperature
+		}
+		// If temperature is not 1.0, we don't set it, and omitempty will handle it.
+	} else {
+		// Default handling for other models (e.g., gpt-4o-mini)
+		requestPayload.MaxTokens = maxTokens
+		requestPayload.Temperature = temperature
 	}
 
 	payloadBytes, err := json.Marshal(requestPayload)
@@ -140,8 +141,14 @@ Example of the expected JSON object structure:
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// TODO: Parse error response body from OpenAI for better error messages
-		return nil, fmt.Errorf("OpenAI API request failed with status %s", resp.Status)
+		// Read the body for more detailed error information
+		errorBodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			// If reading the body fails, return the original status error
+			return nil, fmt.Errorf("OpenAI API request failed with status %s (and failed to read error body: %v)", resp.Status, readErr)
+		}
+		// Return the status error along with the body content
+		return nil, fmt.Errorf("OpenAI API request failed with status %s: %s", resp.Status, string(errorBodyBytes))
 	}
 
 	var responsePayload OpenAIResponsePayload
@@ -150,21 +157,189 @@ Example of the expected JSON object structure:
 	}
 
 	if len(responsePayload.Choices) == 0 {
+		// It's good practice to log the full response if choices are empty unexpectedly.
+		fullResponseBytes, _ := json.Marshal(responsePayload) // Best effort marshal
+		fmt.Printf("OpenAI response had no choices. Full response: %s\n", string(fullResponseBytes))
 		return nil, fmt.Errorf("OpenAI response contained no choices")
 	}
 
-	// Assuming the actual task list is in the first choice's message content as a JSON string.
-	// This needs to be robustly parsed.
+	// Log the first choice and usage for debugging before accessing its content.
+	fmt.Printf("DEBUG OpenAI Response - First Choice: %+v\n", responsePayload.Choices[0])
+	fmt.Printf("DEBUG OpenAI Response - Usage: %+v\n", responsePayload.Usage)
+
 	content := responsePayload.Choices[0].Message.Content
-	var responseWrapper OpenAITaskResponseWrapper                             // Changed from []TaskOutput
-	if err := json.Unmarshal([]byte(content), &responseWrapper); err != nil { // Changed to &responseWrapper
-		// The LLM might not always return a perfect JSON array string, especially if the content is complex or it hits limits.
-		// It might also return a single JSON object if only one task is found, and the prompt asked for an array.
-		// Or it might return the JSON object directly without being wrapped in a string.
-		// We need to handle this gracefully. For now, simple unmarshal.
-		return nil, fmt.Errorf("failed to unmarshal tasks JSON from OpenAI response content: %w. Content was: %s", err, content)
+	// Also log the raw content string that will be unmarshalled
+	fmt.Printf("DEBUG OpenAI Raw Content to Unmarshal: [%s]\n", content)
+
+	var responseWrapper OpenAITaskResponseWrapper
+	if err := json.Unmarshal([]byte(content), &responseWrapper); err != nil {
+		// The error message already includes the content, but explicit logging before erroring can be useful.
+		// fmt.Printf("Problematic OpenAI content before error: [%s]\n", content) // This would be redundant given the error format below
+		return nil, fmt.Errorf("failed to unmarshal tasks JSON from OpenAI response content: %w. Content was: [%s]", err, content)
 	}
 
-	return responseWrapper.Tasks, nil // Return the Tasks field from the wrapper
+	return responseWrapper.Tasks, nil
 	// return nil, fmt.Errorf("OpenAI GenerateTasks not yet fully implemented")
+}
+
+// EstimateTaskParameters for OpenAIProvider.
+func (p *OpenAIProvider) EstimateTaskParameters(prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error) {
+	if apiKey == "" {
+		apiKey = p.apiKey // Use provider's key if per-call key is not given
+	}
+	if apiKey == "" {
+		return EstimationOutput{}, fmt.Errorf("OpenAI API key is not set for estimation")
+	}
+
+	estimationSystemPrompt := prompts.EstimateTasksSystemPrompt
+	userMessage := fmt.Sprintf("PRD Content:\n---\n%s\n---", prdContent)
+
+	requestPayload := OpenAIRequestPayload{
+		Model: modelName,
+		Messages: []OpenAIMessage{
+			{Role: "system", Content: estimationSystemPrompt},
+			{Role: "user", Content: userMessage},
+		},
+		ResponseFormat: &OpenAIResponseFormat{Type: "json_object"},
+	}
+
+	// Model-specific parameter handling for estimation call
+	if modelName == "o4-mini-2025-04-16" {
+		requestPayload.MaxCompletionTokens = maxTokensForEstimation
+		// For o4-mini-2025-04-16, only send temperature if it's its required default (1.0).
+		// Otherwise, omit it to let the API use its internal default.
+		if temperatureForEstimation == 1.0 {
+			requestPayload.Temperature = temperatureForEstimation
+		} // If not 1.0, Temperature remains 0.0 and omitempty handles it.
+	} else {
+		// For other models, use the provided estimation parameters directly.
+		requestPayload.MaxTokens = maxTokensForEstimation
+		requestPayload.Temperature = temperatureForEstimation
+	}
+
+	payloadBytes, err := json.Marshal(requestPayload)
+	if err != nil {
+		return EstimationOutput{}, fmt.Errorf("failed to marshal OpenAI estimation request payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return EstimationOutput{}, fmt.Errorf("failed to create OpenAI estimation request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 60 * time.Second} // Shorter timeout for estimation
+	resp, err := client.Do(req)
+	if err != nil {
+		return EstimationOutput{}, fmt.Errorf("failed to send estimation request to OpenAI: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errorBodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return EstimationOutput{}, fmt.Errorf("OpenAI estimation API request failed with status %s (and failed to read error body: %v)", resp.Status, readErr)
+		}
+		return EstimationOutput{}, fmt.Errorf("OpenAI estimation API request failed with status %s: %s", resp.Status, string(errorBodyBytes))
+	}
+
+	var responsePayload OpenAIResponsePayload
+	if err := json.NewDecoder(resp.Body).Decode(&responsePayload); err != nil {
+		return EstimationOutput{}, fmt.Errorf("failed to decode OpenAI estimation response: %w", err)
+	}
+
+	if len(responsePayload.Choices) == 0 {
+		fullResponseBytes, _ := json.Marshal(responsePayload)
+		fmt.Printf("OpenAI estimation response had no choices. Full response: %s\n", string(fullResponseBytes))
+		return EstimationOutput{}, fmt.Errorf("OpenAI estimation response contained no choices")
+	}
+
+	fmt.Printf("DEBUG OpenAI Estimation Response - First Choice: %+v\n", responsePayload.Choices[0])
+	fmt.Printf("DEBUG OpenAI Estimation Response - Usage: %+v\n", responsePayload.Usage)
+
+	content := responsePayload.Choices[0].Message.Content
+	fmt.Printf("DEBUG OpenAI Estimation Raw Content to Unmarshal: [%s]\n", content)
+
+	var estimationData openAIEstimationData
+	if err := json.Unmarshal([]byte(content), &estimationData); err != nil {
+		return EstimationOutput{}, fmt.Errorf("failed to unmarshal estimation JSON from OpenAI response content: %w. Content was: [%s]", err, content)
+	}
+
+	return EstimationOutput{
+		EstimatedTaskCount:  estimationData.EstimatedTaskCount,
+		EstimatedComplexity: estimationData.EstimatedComplexity,
+	}, nil
+}
+
+// ImprovePRD sends the PRD content to OpenAI with a prompt to refine and improve it.
+func (p *OpenAIProvider) ImprovePRD(prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error) {
+	if apiKey == "" {
+		apiKey = p.apiKey
+	}
+	if apiKey == "" {
+		return "", fmt.Errorf("OpenAI API key is not set for PRD improvement")
+	}
+
+	systemPrompt := prompts.ImprovePRDSystemPrompt
+	userMessage := fmt.Sprintf("Please improve the following PRD content:\n---\n%s\n---", prdContent)
+
+	requestPayload := OpenAIRequestPayload{
+		Model: modelName, // A powerful model is recommended for this task, e.g., gpt-4o
+		Messages: []OpenAIMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userMessage},
+		},
+	}
+
+	// Model-specific parameter handling
+	if strings.HasPrefix(modelName, "o4-mini") {
+		requestPayload.MaxCompletionTokens = maxTokensForImprovement
+		// For o4-mini models, only send temperature if it's the required default (1.0).
+		if temperatureForImprovement == 1.0 {
+			requestPayload.Temperature = temperatureForImprovement
+		}
+	} else {
+		requestPayload.MaxTokens = maxTokensForImprovement
+		requestPayload.Temperature = temperatureForImprovement
+	}
+
+	payloadBytes, err := json.Marshal(requestPayload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal OpenAI PRD improvement request payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return "", fmt.Errorf("failed to create OpenAI PRD improvement request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 120 * time.Second} // Longer timeout for potentially large rewrites
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send PRD improvement request to OpenAI: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errorBodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return "", fmt.Errorf("OpenAI PRD improvement API request failed with status %s (and failed to read error body: %v)", resp.Status, readErr)
+		}
+		return "", fmt.Errorf("OpenAI PRD improvement API request failed with status %s: %s", resp.Status, string(errorBodyBytes))
+	}
+
+	var responsePayload OpenAIResponsePayload
+	if err := json.NewDecoder(resp.Body).Decode(&responsePayload); err != nil {
+		return "", fmt.Errorf("failed to decode OpenAI PRD improvement response: %w", err)
+	}
+
+	if len(responsePayload.Choices) == 0 {
+		return "", fmt.Errorf("OpenAI PRD improvement response contained no choices")
+	}
+
+	improvedContent := responsePayload.Choices[0].Message.Content
+	return strings.TrimSpace(improvedContent), nil
 }

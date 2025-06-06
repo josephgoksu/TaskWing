@@ -7,11 +7,14 @@ import (
 	"encoding/json" // For pretty printing task output for now
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"                  // For generating final IDs
 	"github.com/josephgoksu/taskwing.app/llm" // Import the new llm package
 	"github.com/josephgoksu/taskwing.app/models"
+	"github.com/josephgoksu/taskwing.app/prompts"
 	"github.com/josephgoksu/taskwing.app/store" // For TaskStore interface
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
@@ -55,7 +58,57 @@ llm:
 			os.Exit(1)
 		}
 
-		// 1. Read PRD file content.
+		// --- PRE-GENERATION CHECKS ---
+		// 1. Check for existing tasks and ask for overwrite confirmation BEFORE any expensive operations.
+		taskStore, storeErr := getStore()
+		if storeErr != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get task store for pre-check: %v\n", storeErr)
+			os.Exit(1)
+		}
+
+		existingTasks, err := taskStore.ListTasks(nil, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to check for existing tasks: %v\n", err)
+			taskStore.Close()
+			os.Exit(1)
+		}
+
+		if len(existingTasks) > 0 {
+			numExisting := len(existingTasks)
+			fmt.Printf("Found %d existing task(s).\n", numExisting)
+			overwritePrompt := promptui.Prompt{
+				Label:     prompts.GenerateTasksOverwriteConfirmation,
+				IsConfirm: true,
+			}
+			_, err := overwritePrompt.Run()
+			if err != nil {
+				if err == promptui.ErrAbort {
+					fmt.Println("Task generation cancelled by user.")
+				} else {
+					fmt.Fprintf(os.Stderr, "Confirmation prompt failed: %v\n", err)
+				}
+				taskStore.Close()
+				return
+			}
+
+			// User confirmed overwrite. Delete existing tasks now.
+			fmt.Println("\nDeleting existing tasks...")
+			if err := taskStore.DeleteAllTasks(); err != nil {
+				fmt.Fprintf(os.Stderr, "Fatal: Error deleting all existing tasks: %v\n", err)
+				taskStore.Close()
+				os.Exit(1)
+			}
+			fmt.Printf("Successfully deleted %d task(s).\n\n", numExisting)
+		}
+
+		// We are done with pre-checks, we can close the store connection for now.
+		// It will be re-opened later for creation. This avoids holding the lock.
+		taskStore.Close()
+
+		// --- LLM TASK GENERATION ---
+		appCfg := GetConfig()
+
+		// 2. Read PRD file content.
 		prdContentBytes, err := os.ReadFile(docPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading document file '%s': %v\n", docPath, err)
@@ -63,18 +116,21 @@ llm:
 		}
 		prdContent := string(prdContentBytes)
 
-		// 2. Load LLM configuration from Viper.
-		appCfg := GetConfig()   // GetConfig() is from cmd/config.go
+		// 3. Load LLM configuration from Viper.
 		cmdLLMCfg := appCfg.LLM // This is cmd.LLMConfig
 
 		// Prepare llm.LLMConfig from cmd.LLMConfig, resolving API keys from ENV if necessary.
 		resolvedLLMConfig := llm.LLMConfig{
-			Provider:        cmdLLMCfg.Provider,
-			ModelName:       cmdLLMCfg.ModelName,
-			APIKey:          cmdLLMCfg.APIKey,    // Viper already handles ENV overlay for this field from cmd.LLMConfig
-			ProjectID:       cmdLLMCfg.ProjectID, // Viper already handles ENV overlay
-			MaxOutputTokens: cmdLLMCfg.MaxOutputTokens,
-			Temperature:     cmdLLMCfg.Temperature,
+			Provider:                   cmdLLMCfg.Provider,
+			ModelName:                  cmdLLMCfg.ModelName,
+			APIKey:                     cmdLLMCfg.APIKey,    // Viper already handles ENV overlay for this field from cmd.LLMConfig
+			ProjectID:                  cmdLLMCfg.ProjectID, // Viper already handles ENV overlay
+			MaxOutputTokens:            cmdLLMCfg.MaxOutputTokens,
+			Temperature:                cmdLLMCfg.Temperature,
+			EstimationTemperature:      cmdLLMCfg.EstimationTemperature,
+			EstimationMaxOutputTokens:  cmdLLMCfg.EstimationMaxOutputTokens,
+			ImprovementTemperature:     cmdLLMCfg.ImprovementTemperature,     // Added
+			ImprovementMaxOutputTokens: cmdLLMCfg.ImprovementMaxOutputTokens, // Added
 		}
 
 		// Explicitly check/resolve APIKey from specific ENV vars if still empty after Viper's load
@@ -117,17 +173,102 @@ llm:
 			os.Exit(1)
 		}
 
-		// 3. Instantiate LLM Provider.
+		// 4. Instantiate LLM Provider.
 		provider, err := llm.NewProvider(&resolvedLLMConfig)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error instantiating LLM provider: %v\n", err)
 			os.Exit(1)
 		}
 
-		fmt.Printf("Generating tasks from '%s' using %s provider and model %s...\n", docPath, resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
+		// --- OPTIONAL PRD IMPROVEMENT ---
+		improvePrompt := promptui.Prompt{
+			Label:     prompts.GenerateTasksImprovementConfirmation,
+			IsConfirm: true,
+			Default:   "y",
+		}
+		_, err = improvePrompt.Run()
+		if err != nil && err != promptui.ErrAbort {
+			fmt.Fprintf(os.Stderr, "Improvement prompt failed: %v\n", err)
+			return // Exit if prompt fails for a reason other than user cancellation
+		}
 
-		// 4. Call LLM service.
-		llmTaskOutputs, err := provider.GenerateTasks(prdContent, resolvedLLMConfig.ModelName, resolvedLLMConfig.APIKey, resolvedLLMConfig.ProjectID, resolvedLLMConfig.MaxOutputTokens, resolvedLLMConfig.Temperature)
+		if err == nil { // User confirmed "yes"
+			fmt.Println("\nImproving PRD with LLM... (This may take a moment)")
+			improvedContent, improveErr := provider.ImprovePRD(
+				prdContent,
+				resolvedLLMConfig.ModelName,
+				resolvedLLMConfig.APIKey,
+				resolvedLLMConfig.ProjectID,
+				resolvedLLMConfig.ImprovementMaxOutputTokens,
+				resolvedLLMConfig.ImprovementTemperature,
+			)
+			if improveErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to improve PRD: %v. Proceeding with original content.\n", improveErr)
+			} else {
+				prdContent = improvedContent // Use the improved content for subsequent steps
+
+				// Save the improved PRD for auditing
+				generatedPRDDir := filepath.Join(appCfg.Project.RootDir, "generated_prds")
+				if err := os.MkdirAll(generatedPRDDir, 0755); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: Could not create directory for improved PRD at '%s': %v\n", generatedPRDDir, err)
+				} else {
+					baseName := strings.TrimSuffix(filepath.Base(docPath), filepath.Ext(docPath))
+					improvedPRDPath := filepath.Join(generatedPRDDir, fmt.Sprintf("%s-improved-%s.md", baseName, time.Now().Format("20060102-150405")))
+					if err := os.WriteFile(improvedPRDPath, []byte(prdContent), 0644); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: Failed to save improved PRD to '%s': %v\n", improvedPRDPath, err)
+					} else {
+						fmt.Printf("Improved PRD saved for review at: %s\n", improvedPRDPath)
+					}
+				}
+			}
+		} else {
+			fmt.Println("Skipping PRD improvement. Proceeding with original content.")
+		}
+
+		// Attempt to estimate task parameters to dynamically set maxOutputTokens
+		fmt.Printf("\nEstimating task parameters from document using %s provider and model %s...\n", resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
+		estimationOutput, estimationErr := provider.EstimateTaskParameters(
+			prdContent,
+			resolvedLLMConfig.ModelName,
+			resolvedLLMConfig.APIKey,
+			resolvedLLMConfig.ProjectID,
+			resolvedLLMConfig.EstimationMaxOutputTokens, // Use configured estimation tokens
+			resolvedLLMConfig.EstimationTemperature,     // Use configured estimation temperature
+		)
+
+		currentMaxOutputTokens := resolvedLLMConfig.MaxOutputTokens // Fallback to configured value
+		const minDynamicTokens = 4096                               // Absolute minimum if we calculate dynamically below this.
+		const maxSensibleDynamicTokens = 32768                      // Cap for dynamically calculated tokens
+
+		if estimationErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to estimate task parameters, will use configured maxOutputTokens (%d). Error: %v\n", currentMaxOutputTokens, estimationErr)
+		} else {
+			fmt.Printf("LLM Estimation - Estimated Task Count: %d, Complexity: %s\n", estimationOutput.EstimatedTaskCount, estimationOutput.EstimatedComplexity)
+			if estimationOutput.EstimatedTaskCount > 0 {
+				calculatedTokens := (estimationOutput.EstimatedTaskCount * 200) + 2048 // Heuristic: 200 tokens/task + 2048 buffer
+
+				// Ensure dynamic tokens are not excessively low or high
+				if calculatedTokens < minDynamicTokens {
+					dynamicMaxOutputTokens := minDynamicTokens
+					fmt.Printf("Calculated dynamic tokens (%d) is below minimum (%d), using minimum.\n", calculatedTokens, minDynamicTokens)
+					currentMaxOutputTokens = dynamicMaxOutputTokens
+				} else if calculatedTokens > maxSensibleDynamicTokens {
+					dynamicMaxOutputTokens := maxSensibleDynamicTokens
+					fmt.Printf("Calculated dynamic tokens (%d) exceeds sensible cap (%d), using cap.\n", calculatedTokens, maxSensibleDynamicTokens)
+					currentMaxOutputTokens = dynamicMaxOutputTokens
+				} else {
+					currentMaxOutputTokens = calculatedTokens
+				}
+				fmt.Printf("Using dynamically determined maxOutputTokens: %d\n", currentMaxOutputTokens)
+			} else {
+				fmt.Printf("LLM estimated 0 tasks. Using configured maxOutputTokens: %d\n", currentMaxOutputTokens)
+			}
+		}
+
+		fmt.Printf("Generating tasks from '%s' (max output tokens: %d) using %s provider and model %s...\n", docPath, currentMaxOutputTokens, resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
+
+		// 5. Call LLM service to generate tasks with the determined maxOutputTokens.
+		llmTaskOutputs, err := provider.GenerateTasks(prdContent, resolvedLLMConfig.ModelName, resolvedLLMConfig.APIKey, resolvedLLMConfig.ProjectID, currentMaxOutputTokens, resolvedLLMConfig.Temperature)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating tasks via LLM: %v\n", err)
 			os.Exit(1)
@@ -140,9 +281,9 @@ llm:
 
 		fmt.Printf("LLM returned %d potential top-level task(s).\n", len(llmTaskOutputs))
 
-		// 5. Parse LLM JSON response (already parsed into llmTaskOutputs by the provider method).
+		// 6. Parse LLM JSON response (already parsed into llmTaskOutputs by the provider method).
 
-		// 6. Resolve parent/child and dependency relationships by title.
+		// 7. Resolve parent/child and dependency relationships by title.
 		fmt.Println("\n--- Raw LLM Task Outputs (for debugging) ---")
 		rawOutputBytes, _ := json.MarshalIndent(llmTaskOutputs, "", "  ")
 		fmt.Println(string(rawOutputBytes))
@@ -159,7 +300,8 @@ llm:
 			return
 		}
 
-		// 7. Display tasks to be created and ask for user confirmation.
+		// --- POST-GENERATION CONFIRMATION ---
+		// 8. Display tasks and ask for final confirmation to create them.
 		fmt.Printf("\n--- Proposed Tasks to Create (%d) ---\n", len(taskCandidates))
 		displayTaskCandidates(taskCandidates, relationshipMap)
 
@@ -167,26 +309,26 @@ llm:
 			Label:     fmt.Sprintf("Do you want to create these %d tasks?", len(taskCandidates)),
 			IsConfirm: true,
 		}
-		_, err = confirmPrompt.Run()
-		if err != nil {
-			if err == promptui.ErrAbort {
+		_, confirmErr := confirmPrompt.Run()
+		if confirmErr != nil {
+			if confirmErr == promptui.ErrAbort {
 				fmt.Println("Task creation cancelled by user.")
 			} else {
-				fmt.Fprintf(os.Stderr, "Confirmation prompt failed: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Confirmation prompt failed: %v\n", confirmErr)
 			}
 			return
 		}
 
-		// 8. If confirmed, create tasks in the store.
+		// 9. If confirmed, get a fresh store connection and create tasks.
 		fmt.Println("\nCreating tasks...")
-		taskStore, storeErr := getStore()
-		if storeErr != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get task store: %v\n", storeErr)
+		finalTaskStore, finalStoreErr := getStore()
+		if finalStoreErr != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get task store for creation: %v\n", finalStoreErr)
 			os.Exit(1)
 		}
-		defer taskStore.Close()
+		defer finalTaskStore.Close()
 
-		createdCount, creationErrors := createTasksInStore(taskStore, taskCandidates, relationshipMap)
+		createdCount, creationErrors := createTasksInStore(finalTaskStore, taskCandidates, relationshipMap)
 		fmt.Printf("Successfully created %d tasks.\n", createdCount)
 		if len(creationErrors) > 0 {
 			fmt.Fprintf(os.Stderr, "Encountered %d errors during task creation:\n", len(creationErrors))

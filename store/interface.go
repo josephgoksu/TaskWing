@@ -31,6 +31,11 @@ type TaskStore interface {
 	// It returns an error if the task is not found or the deletion fails.
 	DeleteTask(id string) error
 
+	// DeleteAllTasks removes all tasks from the store.
+	// This is a destructive operation.
+	// It returns an error if the operation fails.
+	DeleteAllTasks() error
+
 	// MarkTaskDone marks a task as completed.
 	// It sets the task's status to completed and updates relevant timestamps.
 	// It returns the updated task or an error if the task is not found or the operation fails.

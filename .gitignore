@@ -16,3 +16,7 @@
 *.test
 
 .env
+.goose
+.taskwing
+.cursor
+.cursorrules

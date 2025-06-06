@@ -750,6 +750,28 @@ func (s *FileTaskStore) DeleteTask(id string) error {
 	return nil
 }
 
+// DeleteAllTasks removes all tasks from the store.
+// It does this by clearing the in-memory task map and saving an empty state to the data file.
+func (s *FileTaskStore) DeleteAllTasks() error {
+	if err := s.flk.Lock(); err != nil {
+		return fmt.Errorf("failed to acquire write lock for DeleteAllTasks: %w", err)
+	}
+	defer s.flk.Unlock()
+
+	// This is a destructive operation. The command layer should have already confirmed with the user.
+	// Here we just perform the action by clearing the in-memory map.
+	s.tasks = make(map[string]models.Task)
+
+	// Save the now-empty task list to the file, overwriting the previous state.
+	if err := s.saveTasksToFileInternal(); err != nil {
+		// If saving fails, the file on disk is not touched, but the in-memory store is now empty.
+		// Reloading would be necessary to get back to the previous state.
+		// The error signals that the operation was not successful.
+		return fmt.Errorf("failed to clear data file by saving empty task list: %w", err)
+	}
+	return nil
+}
+
 // MarkTaskDone marks a task as completed.
 // Note: This does not currently automatically update statuses of dependent tasks.
 func (s *FileTaskStore) MarkTaskDone(id string) (models.Task, error) {
