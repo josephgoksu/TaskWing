@@ -20,8 +20,9 @@ Analyze the PRD and generate a complete list of tasks and subtasks. For every ta
 1.  **title**: A concise and clear title for the task.
 2.  **description**: A detailed description of the task's requirements. If no specific description is available in the PRD, use the title as the description. This field must always be populated.
 3.  **priority**: Infer the task's priority from the document. Use one of these values: "low", "medium", "high", "urgent". If the priority is ambiguous, default to "medium".
-4.  **subtasks**: A list of nested task objects that are direct children of the current task. If there are no subtasks, provide an empty list ` + "`" + `[]` + "`" + `.
-5.  **dependsOnTitles**: A list of titles of other tasks *from this same PRD* that the current task depends on. If there are no dependencies, provide an empty list ` + "`" + `[]` + "`" + `. Only include titles that you have also generated in your output.
+4.  **tempId**: A unique, sequential integer ID for the task, starting from 1. This ID is used *only* for resolving dependencies within this JSON output.
+5.  **subtasks**: A list of nested task objects that are direct children of the current task. If there are no subtasks, provide an empty list ` + "`" + `[]` + "`" + `.
+6.  **dependsOnIds**: A list of ` + "`" + `tempId` + "`" + `s of other tasks from this same PRD that the current task depends on. If there are no dependencies, provide an empty list ` + "`" + `[]` + "`" + `. Only include ` + "`" + `tempId` + "`" + `s that you have also generated in your output.
 </task>
 
 <rules>
@@ -41,16 +42,26 @@ Return ONLY the following JSON structure. Do not deviate from this format.
       "title": "Example Task Title",
       "description": "A detailed description of what needs to be done for this task.",
       "priority": "high",
+      "tempId": 1,
       "subtasks": [
         {
           "title": "Example Subtask Title",
           "description": "Description for the subtask.",
           "priority": "medium",
+          "tempId": 2,
           "subtasks": [],
-          "dependsOnTitles": []
+          "dependsOnIds": []
         }
       ],
-      "dependsOnTitles": ["Title of Another Task"]
+      "dependsOnIds": [3]
+    },
+    {
+      "title": "Title of Another Task",
+      "description": "This task is a dependency for the first task.",
+      "priority": "medium",
+      "tempId": 3,
+      "subtasks": [],
+      "dependsOnIds": []
     }
   ]
 }

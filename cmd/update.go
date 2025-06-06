@@ -22,8 +22,7 @@ var updateCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := getStore()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get store: %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Could not initialize the task store.", err)
 		}
 		defer taskStore.Close()
 
@@ -33,8 +32,7 @@ var updateCmd = &cobra.Command{
 			taskID := args[0]
 			taskToUpdate, err = taskStore.GetTask(taskID)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to get task %s: %v\n", taskID, err)
-				os.Exit(1)
+				HandleError(fmt.Sprintf("Error: Could not find task with ID '%s'.", taskID), err)
 			}
 		} else {
 			taskToUpdate, err = selectTaskInteractive(taskStore, nil, "Select task to update")
@@ -47,8 +45,7 @@ var updateCmd = &cobra.Command{
 					fmt.Println("No tasks available to update.")
 					return
 				}
-				fmt.Fprintf(os.Stderr, "Task selection failed: %v\n", err)
-				os.Exit(1)
+				HandleError("Error: Could not select a task for updating.", err)
 			}
 		}
 
@@ -67,10 +64,13 @@ var updateCmd = &cobra.Command{
 			},
 		}
 		newTitle, err := titlePrompt.Run()
-		if err != nil && err != promptui.ErrInterrupt {
-			fmt.Fprintf(os.Stderr, "Title prompt failed: %v\n", err)
-			os.Exit(1)
-		} else if err == nil && newTitle != taskToUpdate.Title {
+		if err != nil {
+			if err == promptui.ErrInterrupt {
+				fmt.Println("Update cancelled.")
+				os.Exit(0)
+			}
+			HandleError("Error: Failed to read new title.", err)
+		} else if newTitle != taskToUpdate.Title {
 			updates["title"] = newTitle
 		}
 
@@ -81,9 +81,8 @@ var updateCmd = &cobra.Command{
 		}
 		newDesc, err := descPrompt.Run()
 		if err != nil && err != promptui.ErrInterrupt {
-			fmt.Fprintf(os.Stderr, "Description prompt failed: %v\n", err)
-			os.Exit(1)
-		} else if err == nil && newDesc != taskToUpdate.Description {
+			HandleError("Error: Failed to read new description.", err)
+		} else if newDesc != taskToUpdate.Description {
 			updates["description"] = newDesc
 		}
 
@@ -102,10 +101,13 @@ var updateCmd = &cobra.Command{
 			CursorPos: currentPriorityIndex,
 		}
 		_, newPriorityStr, err := prioSelect.Run()
-		if err != nil && err != promptui.ErrInterrupt {
-			fmt.Fprintf(os.Stderr, "Priority selection failed: %v\n", err)
-			os.Exit(1)
-		} else if err == nil && models.TaskPriority(newPriorityStr) != taskToUpdate.Priority {
+		if err != nil {
+			if err == promptui.ErrInterrupt {
+				fmt.Println("Update cancelled.")
+				os.Exit(0)
+			}
+			HandleError("Error: Could not select a new priority.", err)
+		} else if models.TaskPriority(newPriorityStr) != taskToUpdate.Priority {
 			updates["priority"] = newPriorityStr
 		}
 
@@ -124,10 +126,13 @@ var updateCmd = &cobra.Command{
 			CursorPos: currentStatusIndex,
 		}
 		_, newStatusStr, err := statusSelect.Run()
-		if err != nil && err != promptui.ErrInterrupt {
-			fmt.Fprintf(os.Stderr, "Status selection failed: %v\n", err)
-			os.Exit(1)
-		} else if err == nil && models.TaskStatus(newStatusStr) != taskToUpdate.Status {
+		if err != nil {
+			if err == promptui.ErrInterrupt {
+				fmt.Println("Update cancelled.")
+				os.Exit(0)
+			}
+			HandleError("Error: Could not select a new status.", err)
+		} else if models.TaskStatus(newStatusStr) != taskToUpdate.Status {
 			updates["status"] = newStatusStr
 		}
 
@@ -139,8 +144,7 @@ var updateCmd = &cobra.Command{
 		}
 		_, manageParentChoice, err := manageParentPrompt.Run()
 		if err != nil && err != promptui.ErrInterrupt {
-			fmt.Fprintf(os.Stderr, "Parent task management choice failed: %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Could not read parent management choice.", err)
 		}
 
 		if err == nil && manageParentChoice == "Yes" {
@@ -155,8 +159,7 @@ var updateCmd = &cobra.Command{
 			}
 			newParentIDStr, err := parentIDPrompt.Run()
 			if err != nil && err != promptui.ErrInterrupt {
-				fmt.Fprintf(os.Stderr, "Parent ID prompt failed: %v\n", err)
-				os.Exit(1)
+				HandleError("Error: Could not read new parent ID.", err)
 			} else if err == nil && newParentIDStr != currentParentIDStr {
 				trimmedNewParentID := strings.TrimSpace(newParentIDStr)
 				if strings.ToLower(trimmedNewParentID) == "none" || trimmedNewParentID == "" {
@@ -175,8 +178,7 @@ var updateCmd = &cobra.Command{
 		}
 		_, manageDepsChoice, err := manageDepsPrompt.Run()
 		if err != nil && err != promptui.ErrInterrupt {
-			fmt.Fprintf(os.Stderr, "Dependency management choice failed: %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Could not read dependency management choice.", err)
 		}
 
 		if err == nil && manageDepsChoice == "Yes" {
@@ -187,8 +189,7 @@ var updateCmd = &cobra.Command{
 			}
 			newDepsStr, err := depsPrompt.Run()
 			if err != nil && err != promptui.ErrInterrupt {
-				fmt.Fprintf(os.Stderr, "Dependencies prompt failed: %v\n", err)
-				os.Exit(1)
+				HandleError("Error: Could not read new dependencies.", err)
 			} else if err == nil && newDepsStr != currentDepsStr {
 				if strings.ToLower(newDepsStr) == "none" || strings.TrimSpace(newDepsStr) == "" {
 					updates["dependencies"] = []string{}
@@ -205,8 +206,7 @@ var updateCmd = &cobra.Command{
 
 		updatedTask, err := taskStore.UpdateTask(taskToUpdate.ID, updates)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to update task %s: %v\n", taskToUpdate.ID, err)
-			os.Exit(1)
+			HandleError(fmt.Sprintf("Error: Could not update task '%s'.", taskToUpdate.Title), err)
 		}
 
 		fmt.Printf("Task %s updated successfully! ID: %s\n", updatedTask.Title, updatedTask.ID)

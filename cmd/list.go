@@ -61,8 +61,7 @@ var listCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := getStore()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get store: %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Could not initialize the task store.", err)
 		}
 		defer taskStore.Close()
 
@@ -156,7 +155,8 @@ var listCmd = &cobra.Command{
 
 		// Ensure --top-level and --parent are not used together (this check should be effective).
 		if filterTopLevel && filterByParentID != "" {
-			fmt.Fprintf(os.Stderr, "Error: --top-level and --parent flags cannot be used together.\n")
+			// This is a user input error, not a technical one.
+			fmt.Fprintln(os.Stderr, "Error: --top-level and --parent flags cannot be used together.")
 			os.Exit(1)
 		}
 
@@ -220,8 +220,7 @@ var listCmd = &cobra.Command{
 
 		tasks, err := taskStore.ListTasks(finalFilterFn, finalSortFn)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to list tasks with filters/sorting: %v\n", err)
-			os.Exit(1)
+			HandleError("Failed to list tasks with filters/sorting", err)
 		}
 
 		if len(tasks) == 0 {
@@ -310,8 +309,8 @@ func displayTasksAsTree(allTasks []models.Task, currentTaskID string, store stor
 				rootTask = fetchedRoot
 				found = true
 			} else {
-				fmt.Fprintf(os.Stderr, "Error: Task ID %s specified for tree view not found.\n", currentTaskID)
-				return
+				HandleError(fmt.Sprintf("Error: Task ID %s specified for tree view not found.", currentTaskID), err)
+				return // Unreachable due to HandleError exiting, but good practice.
 			}
 		}
 		if found {

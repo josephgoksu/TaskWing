@@ -53,19 +53,16 @@ the project's root directory.`,
 			// Handles 'no' (promptui.ErrAbort) and actual errors
 			if err == promptui.ErrAbort {
 				fmt.Println("Project reset cancelled.")
-			} else {
-				fmt.Fprintf(os.Stderr, "Confirmation prompt failed: %v\n", err)
+				os.Exit(0)
 			}
-			os.Exit(1) // Exit if not confirmed or prompt fails
-			return
+			HandleError("Error: Could not get confirmation for project reset.", err)
+			return // Unreachable, for clarity
 		}
 
 		fmt.Printf("Deleting project directory '%s'...\n", projectRootDir)
 		err = os.RemoveAll(projectRootDir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to delete project directory '%s': %v\n", projectRootDir, err)
-			fmt.Println("Please check permissions or try deleting it manually.")
-			os.Exit(1)
+			HandleError(fmt.Sprintf("Error: Failed to delete project directory '%s'. Check permissions or delete it manually.", projectRootDir), err)
 		}
 
 		fmt.Printf("TaskWing project at '%s' has been reset successfully.\n", projectRootDir)

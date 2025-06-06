@@ -21,8 +21,7 @@ var addCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := getStore()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get store: %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Could not initialize the task store.", err)
 		}
 		defer taskStore.Close()
 
@@ -37,8 +36,11 @@ var addCmd = &cobra.Command{
 		}
 		title, err := titlePrompt.Run()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Title prompt failed %v\n", err)
-			os.Exit(1)
+			if err == promptui.ErrInterrupt {
+				fmt.Println("Task addition cancelled.")
+				os.Exit(0)
+			}
+			HandleError("Error: Failed to read task title.", err)
 		}
 
 		descriptionPrompt := promptui.Prompt{
@@ -46,8 +48,7 @@ var addCmd = &cobra.Command{
 		}
 		description, err := descriptionPrompt.Run()
 		if err != nil && err != promptui.ErrInterrupt {
-			fmt.Fprintf(os.Stderr, "Description prompt failed %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Failed to read task description.", err)
 		}
 
 		prioritySelect := promptui.Select{
@@ -56,8 +57,11 @@ var addCmd = &cobra.Command{
 		}
 		_, priorityStr, err := prioritySelect.Run()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Priority selection failed %v\n", err)
-			os.Exit(1)
+			if err == promptui.ErrInterrupt {
+				fmt.Println("Task addition cancelled.")
+				os.Exit(0)
+			}
+			HandleError("Error: Failed to select priority.", err)
 		}
 
 		// Prompt for Dependencies
@@ -67,8 +71,7 @@ var addCmd = &cobra.Command{
 		depsStr, err := depsPrompt.Run()
 		var dependencyIDs []string
 		if err != nil && err != promptui.ErrInterrupt {
-			fmt.Fprintf(os.Stderr, "Dependencies prompt failed %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Failed to read dependencies.", err)
 		} else if err == nil && strings.TrimSpace(depsStr) != "" {
 			dependencyIDs = strings.Split(strings.ReplaceAll(depsStr, " ", ""), ",")
 		}
@@ -88,8 +91,7 @@ var addCmd = &cobra.Command{
 		}
 		parentIDStr, err := parentIDPrompt.Run()
 		if err != nil && err != promptui.ErrInterrupt {
-			fmt.Fprintf(os.Stderr, "Parent ID prompt failed %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Failed to read parent task ID.", err)
 		} else if err == nil && strings.TrimSpace(parentIDStr) != "" {
 			cleanParentIDStr := strings.TrimSpace(parentIDStr)
 			parentIDPtr = &cleanParentIDStr
@@ -99,14 +101,14 @@ var addCmd = &cobra.Command{
 			Title:        title,
 			Description:  description,
 			Priority:     models.TaskPriority(priorityStr),
+			Status:       models.StatusPending, // Explicitly set default status
 			Dependencies: dependencyIDs,
 			ParentID:     parentIDPtr,
 		}
 
 		createdTask, err := taskStore.CreateTask(newTask)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create task: %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Could not create the new task.", err)
 		}
 
 		fmt.Printf("Task '%s' added successfully! ID: %s\n", createdTask.Title, createdTask.ID)

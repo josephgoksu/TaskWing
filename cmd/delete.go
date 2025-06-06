@@ -5,10 +5,14 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
+	"github.com/josephgoksu/taskwing.app/store"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
+)
+
+var (
+	recursive bool
 )
 
 // deleteCmd represents the delete command
@@ -18,25 +22,19 @@ var deleteCmd = &cobra.Command{
 	Long:  `Delete a task by its ID. If no ID is provided, an interactive list is shown. A confirmation prompt is always displayed before deletion.`,
 	Args:  cobra.MaximumNArgs(1), // Allow 0 or 1 argument
 	Run: func(cmd *cobra.Command, args []string) {
-		taskStore, err := getStore() // Assumes getStore() is defined (e.g., in add.go or a shared util)
+		recursive, _ = cmd.Flags().GetBool("recursive")
+
+		taskStore, err := getStore()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get store: %v\\n", err)
-			os.Exit(1)
+			HandleError("Error: Could not initialize the task store.", err)
 		}
 		defer taskStore.Close()
 
 		var taskIDToDelete string
-		var taskTitle string // For confirmation message
 
 		if len(args) > 0 {
 			taskIDToDelete = args[0]
-			// Validate if task exists and get title
-			task, err := taskStore.GetTask(taskIDToDelete)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to retrieve task %s for deletion: %v\\n", taskIDToDelete, err)
-				os.Exit(1)
-			}
-			taskTitle = task.Title
+			// Minimal validation, store will confirm existence.
 		} else {
 			selectedTask, err := selectTaskInteractive(taskStore, nil, "Select task to delete")
 			if err != nil {
@@ -48,41 +46,99 @@ var deleteCmd = &cobra.Command{
 					fmt.Println("No tasks available to delete.")
 					return
 				}
-				fmt.Fprintf(os.Stderr, "Task selection failed: %v\n", err)
-				os.Exit(1)
+				HandleError("Error: Could not select a task.", err)
 			}
 			taskIDToDelete = selectedTask.ID
-			taskTitle = selectedTask.Title
 		}
 
-		// Confirmation prompt
-		confirmPrompt := promptui.Prompt{
-			Label:     fmt.Sprintf("Are you sure you want to delete task '%s' (ID: %s)?", taskTitle, taskIDToDelete),
-			IsConfirm: true,
+		if recursive {
+			handleRecursiveDelete(taskStore, taskIDToDelete)
+		} else {
+			handleSingleDelete(taskStore, taskIDToDelete)
 		}
-		_, err = confirmPrompt.Run()
-		if err != nil {
-			// Handles both 'no' (promptui.ErrAbort) and actual errors
-			if err == promptui.ErrAbort {
-				fmt.Println("Deletion cancelled.")
-			} else {
-				fmt.Fprintf(os.Stderr, "Confirmation prompt failed: %v\\n", err)
-			}
-			os.Exit(1)
-		}
-
-		err = taskStore.DeleteTask(taskIDToDelete)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to delete task %s: %v\\n", taskIDToDelete, err)
-			os.Exit(1)
-		}
-
-		fmt.Printf("Task ID %s deleted successfully.\\n", taskIDToDelete)
 	},
+}
+
+func handleSingleDelete(taskStore store.TaskStore, taskID string) {
+	// Get task details for a better confirmation message.
+	task, err := taskStore.GetTask(taskID)
+	if err != nil {
+		HandleError(fmt.Sprintf("Error: Could not find task with ID '%s'.", taskID), err)
+	}
+
+	confirmPrompt := promptui.Prompt{
+		Label:     fmt.Sprintf("Are you sure you want to delete task '%s' (ID: %s)?", task.Title, taskID),
+		IsConfirm: true,
+	}
+	_, err = confirmPrompt.Run()
+	if err != nil {
+		if err == promptui.ErrAbort {
+			fmt.Println("Deletion cancelled.")
+			return
+		}
+		HandleError("Error: Could not get confirmation for deletion.", err)
+	}
+
+	err = taskStore.DeleteTask(taskID)
+	if err != nil {
+		HandleError(fmt.Sprintf("Error: Failed to delete task '%s'.", task.Title), err)
+	}
+
+	fmt.Printf("Task '%s' (ID: %s) deleted successfully.\n", task.Title, taskID)
+}
+
+func handleRecursiveDelete(taskStore store.TaskStore, rootTaskID string) {
+	tasksToDelete, err := taskStore.GetTaskWithDescendants(rootTaskID)
+	if err != nil {
+		HandleError(fmt.Sprintf("Error: Could not find task with ID '%s' to begin recursive delete.", rootTaskID), err)
+	}
+
+	if len(tasksToDelete) <= 1 {
+		// If it's just one task, there are no descendants, so treat as a single delete.
+		fmt.Println("No subtasks found. Proceeding with a single task delete.")
+		handleSingleDelete(taskStore, rootTaskID)
+		return
+	}
+
+	fmt.Printf("You are about to recursively delete the following %d tasks:\n", len(tasksToDelete))
+	for _, t := range tasksToDelete {
+		// Highlight the root of the deletion
+		if t.ID == rootTaskID {
+			fmt.Printf("- %s (ID: %s) [ROOT]\n", t.Title, t.ID)
+		} else {
+			fmt.Printf("- %s (ID: %s)\n", t.Title, t.ID)
+		}
+	}
+
+	confirmPrompt := promptui.Prompt{
+		Label:     "This action is irreversible. Are you sure you want to continue?",
+		IsConfirm: true,
+	}
+	_, err = confirmPrompt.Run()
+	if err != nil {
+		if err == promptui.ErrAbort {
+			fmt.Println("Recursive deletion cancelled.")
+			return
+		}
+		HandleError("Error: Could not get confirmation for recursive deletion.", err)
+	}
+
+	idsToDelete := make([]string, len(tasksToDelete))
+	for i, t := range tasksToDelete {
+		idsToDelete[i] = t.ID
+	}
+
+	deletedCount, err := taskStore.DeleteTasks(idsToDelete)
+	if err != nil {
+		HandleError("Error: Failed to perform the recursive delete operation.", err)
+	}
+
+	fmt.Printf("Successfully deleted %d tasks.\n", deletedCount)
 }
 
 func init() {
 	rootCmd.AddCommand(deleteCmd)
+	deleteCmd.Flags().BoolP("recursive", "r", false, "Recursively delete the task and all its subtasks")
 
 	// Here you will define your flags and configuration settings.
 

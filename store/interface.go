@@ -31,6 +31,12 @@ type TaskStore interface {
 	// It returns an error if the task is not found or the deletion fails.
 	DeleteTask(id string) error
 
+	// DeleteTasks removes a list of tasks from the store by their unique identifiers.
+	// This is intended for batch operations, like recursive deletes.
+	// It should be more performant than calling DeleteTask for each ID.
+	// It returns the number of tasks successfully deleted, or an error.
+	DeleteTasks(ids []string) (int, error)
+
 	// DeleteAllTasks removes all tasks from the store.
 	// This is a destructive operation.
 	// It returns an error if the operation fails.
@@ -47,6 +53,10 @@ type TaskStore interface {
 	// If sortFn is nil, the tasks are returned in their natural order (e.g., as read from the store).
 	// It returns a slice of tasks or an error if the operation fails.
 	ListTasks(filterFn func(models.Task) bool, sortFn func([]models.Task) []models.Task) ([]models.Task, error)
+
+	// GetTaskWithDescendants retrieves a root task and all of its descendants (subtasks, sub-subtasks, etc.).
+	// The returned slice includes the root task itself.
+	GetTaskWithDescendants(rootID string) ([]models.Task, error)
 
 	// Backup creates a backup of the current task data to the specified destination path.
 	// The format and method of backup are implementation-specific.

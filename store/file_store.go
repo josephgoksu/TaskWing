@@ -673,6 +673,73 @@ func (s *FileTaskStore) DeleteTask(id string) error {
 	return nil
 }
 
+// DeleteTasks removes a list of tasks in a single, atomic operation.
+// It also cleans up all relationships related to the deleted tasks.
+func (s *FileTaskStore) DeleteTasks(ids []string) (int, error) {
+	if err := s.flk.Lock(); err != nil {
+		return 0, fmt.Errorf("could not lock file for batch delete: %w", err)
+	}
+	defer s.flk.Unlock()
+
+	if err := s.loadTasksFromFileInternal(); err != nil {
+		return 0, fmt.Errorf("failed to reload tasks before batch delete: %w", err)
+	}
+
+	deleteSet := make(map[string]bool)
+	for _, id := range ids {
+		deleteSet[id] = true
+	}
+
+	deletedCount := 0
+	now := time.Now().UTC()
+
+	// Create a new map for tasks to keep, to avoid modifying while iterating.
+	keptTasks := make(map[string]models.Task)
+	for id, task := range s.tasks {
+		if !deleteSet[id] {
+			keptTasks[id] = task
+		}
+	}
+
+	// Now iterate over the tasks we are keeping and clean up their relationships
+	// to any tasks that were deleted.
+	for id, task := range keptTasks {
+		modified := false
+
+		// Clean up parent link if parent was deleted.
+		if task.ParentID != nil && deleteSet[*task.ParentID] {
+			task.ParentID = nil
+			modified = true
+		}
+
+		// Clean up dependencies list.
+		newDeps := []string{}
+		for _, depID := range task.Dependencies {
+			if !deleteSet[depID] {
+				newDeps = append(newDeps, depID)
+			} else {
+				modified = true
+			}
+		}
+		if modified {
+			task.Dependencies = newDeps
+			task.UpdatedAt = now
+			keptTasks[id] = task
+		}
+	}
+
+	deletedCount = len(s.tasks) - len(keptTasks)
+	s.tasks = keptTasks // Replace the old map with the cleaned one.
+
+	if err := s.saveTasksToFileInternal(); err != nil {
+		// Rollback is complex here; a simple reload is the safest option.
+		_ = s.loadTasksFromFileInternal()
+		return 0, fmt.Errorf("failed to save after batch deleting tasks: %w", err)
+	}
+
+	return deletedCount, nil
+}
+
 // DeleteAllTasks removes all tasks from the store.
 // This is a destructive operation that wipes the entire task map.
 func (s *FileTaskStore) DeleteAllTasks() error {
@@ -825,6 +892,44 @@ func (s *FileTaskStore) Restore(sourcePath string) error {
 	_ = os.Remove(checksumFilePath) // Best effort removal
 
 	return s.loadTasksFromFileInternal()
+}
+
+// GetTaskWithDescendants fetches a task by its ID along with all its children, grandchildren, etc.
+func (s *FileTaskStore) GetTaskWithDescendants(rootID string) ([]models.Task, error) {
+	if err := s.flk.RLock(); err != nil {
+		return nil, fmt.Errorf("could not acquire read lock for GetTaskWithDescendants: %w", err)
+	}
+	defer s.flk.Unlock()
+
+	if _, exists := s.tasks[rootID]; !exists {
+		return nil, fmt.Errorf("task with root ID '%s' not found", rootID)
+	}
+
+	allTasksInTree := make(map[string]models.Task)
+	var findChildren func(taskID string)
+
+	findChildren = func(taskID string) {
+		if task, ok := s.tasks[taskID]; ok {
+			// Add the current task to the map
+			allTasksInTree[task.ID] = task
+			// Recurse for all its children
+			for _, subID := range task.SubtaskIDs {
+				if _, alreadyProcessed := allTasksInTree[subID]; !alreadyProcessed {
+					findChildren(subID)
+				}
+			}
+		}
+	}
+
+	findChildren(rootID)
+
+	// Convert map to slice
+	result := make([]models.Task, 0, len(allTasksInTree))
+	for _, task := range allTasksInTree {
+		result = append(result, task)
+	}
+
+	return result, nil
 }
 
 // Close releases any resources held by the store, such as file locks.

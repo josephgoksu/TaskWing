@@ -36,14 +36,12 @@ and ensuring the task data file (e.g., 'tasks.json') can be initialized.`,
 
 		// Create the project root directory (e.g., .taskwing)
 		if err := os.MkdirAll(projectRootDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating project root directory '%s': %v\n", projectRootDir, err)
-			os.Exit(1)
+			HandleError(fmt.Sprintf("Error: Could not create project directory '%s'.", projectRootDir), err)
 		}
 
 		// Create the tasks directory within the project root (e.g., .taskwing/tasks)
 		if err := os.MkdirAll(absoluteTasksDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating tasks directory '%s': %v\n", absoluteTasksDir, err)
-			os.Exit(1)
+			HandleError(fmt.Sprintf("Error: Could not create tasks directory '%s'.", absoluteTasksDir), err)
 		}
 
 		// Construct the expected full path to the task data file for messaging.
@@ -63,8 +61,7 @@ and ensuring the task data file (e.g., 'tasks.json') can be initialized.`,
 		// Attempt to get the store, which will initialize the data file if it doesn't exist.
 		_, err := getStore()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error initializing task store at '%s': %v\n", fullTaskDataPath, err)
-			os.Exit(1)
+			HandleError(fmt.Sprintf("Error: Could not initialize task store at '%s'.", fullTaskDataPath), err)
 		}
 
 		// Create default config file if it doesn't exist
@@ -174,6 +171,7 @@ data:
 			)
 
 			if errWrite := os.WriteFile(defaultConfigFilePath, []byte(configContentStr), 0644); errWrite != nil {
+				// This is a non-critical warning, not a fatal error.
 				fmt.Fprintf(os.Stderr, "Warning: Failed to create default config file at %s: %v\n", defaultConfigFilePath, errWrite)
 			} else {
 				configCreated = true
@@ -181,6 +179,7 @@ data:
 		} else if statErr == nil {
 			configExisted = true
 		} else {
+			// This is a non-critical warning.
 			fmt.Fprintf(os.Stderr, "Warning: Could not check for existing config file at %s: %v\n", defaultConfigFilePath, statErr)
 		}
 

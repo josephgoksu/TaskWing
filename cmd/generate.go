@@ -53,24 +53,19 @@ llm:
 		docPath, _ := cmd.Flags().GetString("file")
 
 		if docPath == "" {
-			fmt.Fprintln(os.Stderr, "Error: --file flag is required with the path to the document.")
-			cmd.Help()
-			os.Exit(1)
+			HandleError("Error: The --file flag is required with the path to your document.", nil)
 		}
 
 		// --- PRE-GENERATION CHECKS ---
 		// 1. Check for existing tasks and ask for overwrite confirmation BEFORE any expensive operations.
-		taskStore, storeErr := getStore()
-		if storeErr != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get task store for pre-check: %v\n", storeErr)
-			os.Exit(1)
+		taskStore, err := getStore()
+		if err != nil {
+			HandleError("Error: Could not initialize the task store.", err)
 		}
 
 		existingTasks, err := taskStore.ListTasks(nil, nil)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to check for existing tasks: %v\n", err)
-			taskStore.Close()
-			os.Exit(1)
+			HandleError("Error: Could not check for existing tasks.", err)
 		}
 
 		if len(existingTasks) > 0 {
@@ -83,20 +78,19 @@ llm:
 			_, err := overwritePrompt.Run()
 			if err != nil {
 				if err == promptui.ErrAbort {
-					fmt.Println("Task generation cancelled by user.")
-				} else {
-					fmt.Fprintf(os.Stderr, "Confirmation prompt failed: %v\n", err)
+					fmt.Println("Task generation cancelled.")
+					taskStore.Close()
+					return
 				}
 				taskStore.Close()
-				return
+				HandleError("Error: Could not get confirmation for overwriting tasks.", err)
 			}
 
 			// User confirmed overwrite. Delete existing tasks now.
 			fmt.Println("\nDeleting existing tasks...")
 			if err := taskStore.DeleteAllTasks(); err != nil {
-				fmt.Fprintf(os.Stderr, "Fatal: Error deleting all existing tasks: %v\n", err)
 				taskStore.Close()
-				os.Exit(1)
+				HandleError("Error: Could not delete the existing tasks.", err)
 			}
 			fmt.Printf("Successfully deleted %d task(s).\n\n", numExisting)
 		}
@@ -111,8 +105,7 @@ llm:
 		// 2. Read PRD file content.
 		prdContentBytes, err := os.ReadFile(docPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading document file '%s': %v\n", docPath, err)
-			os.Exit(1)
+			HandleError(fmt.Sprintf("Error: Could not read document file '%s'.", docPath), err)
 		}
 		prdContent := string(prdContentBytes)
 
@@ -157,27 +150,22 @@ llm:
 
 		// Validate essential LLM config after attempting ENV var fallbacks
 		if resolvedLLMConfig.Provider == "" {
-			fmt.Fprintln(os.Stderr, "Error: LLM provider is not configured. Set 'llm.provider' in config or use TASKWING_LLM_PROVIDER.")
-			os.Exit(1)
+			HandleError("Error: LLM provider is not configured. Set 'llm.provider' in your config or use the TASKWING_LLM_PROVIDER environment variable.", nil)
 		}
 		if resolvedLLMConfig.ModelName == "" {
-			fmt.Fprintln(os.Stderr, "Error: LLM model name is not configured. Set 'llm.modelName' in config or use TASKWING_LLM_MODELNAME.")
-			os.Exit(1)
+			HandleError("Error: LLM model name is not configured. Set 'llm.modelName' in your config or use the TASKWING_LLM_MODELNAME environment variable.", nil)
 		}
 		if resolvedLLMConfig.Provider == "openai" && resolvedLLMConfig.APIKey == "" {
-			fmt.Fprintln(os.Stderr, "Error: OpenAI API key is not configured. Set 'llm.apiKey' in config or use TASKWING_LLM_APIKEY or OPENAI_API_KEY.")
-			os.Exit(1)
+			HandleError("Error: OpenAI API key is not configured. Set 'llm.apiKey' in your config or use the TASKWING_LLM_APIKEY or OPENAI_API_KEY environment variables.", nil)
 		}
 		if resolvedLLMConfig.Provider == "google" && resolvedLLMConfig.ProjectID == "" {
-			fmt.Fprintln(os.Stderr, "Error: Google Cloud ProjectID is not configured for LLM. Set 'llm.projectId' in config or use TASKWING_LLM_PROJECTID.")
-			os.Exit(1)
+			HandleError("Error: Google Cloud ProjectID is not configured. Set 'llm.projectId' in your config or use the TASKWING_LLM_PROJECTID environment variable.", nil)
 		}
 
 		// 4. Instantiate LLM Provider.
 		provider, err := llm.NewProvider(&resolvedLLMConfig)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error instantiating LLM provider: %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Could not create the LLM provider.", err)
 		}
 
 		// --- OPTIONAL PRD IMPROVEMENT ---
@@ -188,8 +176,8 @@ llm:
 		}
 		_, err = improvePrompt.Run()
 		if err != nil && err != promptui.ErrAbort {
-			fmt.Fprintf(os.Stderr, "Improvement prompt failed: %v\n", err)
-			return // Exit if prompt fails for a reason other than user cancellation
+			HandleError("Error: Could not get confirmation for PRD improvement.", err)
+			return // Unreachable
 		}
 
 		if err == nil { // User confirmed "yes"
@@ -270,8 +258,7 @@ llm:
 		// 5. Call LLM service to generate tasks with the determined maxOutputTokens.
 		llmTaskOutputs, err := provider.GenerateTasks(prdContent, resolvedLLMConfig.ModelName, resolvedLLMConfig.APIKey, resolvedLLMConfig.ProjectID, currentMaxOutputTokens, resolvedLLMConfig.Temperature)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error generating tasks via LLM: %v\n", err)
-			os.Exit(1)
+			HandleError("Error: The AI model failed to generate tasks.", err)
 		}
 
 		if len(llmTaskOutputs) == 0 {
@@ -291,8 +278,7 @@ llm:
 
 		taskCandidates, relationshipMap, err := resolveAndBuildTaskCandidates(llmTaskOutputs)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error processing LLM output into task candidates: %v\n", err)
-			os.Exit(1)
+			HandleError("Error: Could not process the AI model's output.", err)
 		}
 
 		if len(taskCandidates) == 0 {
@@ -312,19 +298,17 @@ llm:
 		_, confirmErr := confirmPrompt.Run()
 		if confirmErr != nil {
 			if confirmErr == promptui.ErrAbort {
-				fmt.Println("Task creation cancelled by user.")
-			} else {
-				fmt.Fprintf(os.Stderr, "Confirmation prompt failed: %v\n", confirmErr)
+				fmt.Println("Task creation cancelled.")
+				return
 			}
-			return
+			HandleError("Error: Could not get confirmation to create tasks.", confirmErr)
 		}
 
 		// 9. If confirmed, get a fresh store connection and create tasks.
 		fmt.Println("\nCreating tasks...")
 		finalTaskStore, finalStoreErr := getStore()
 		if finalStoreErr != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get task store for creation: %v\n", finalStoreErr)
-			os.Exit(1)
+			HandleError("Error: Could not initialize task store for the final step.", finalStoreErr)
 		}
 		defer finalTaskStore.Close()
 
@@ -348,6 +332,7 @@ type taskRelationshipMap struct {
 	tempTaskToDeps       map[string][]string    // tempTaskID -> []tempDependencyID (where dependency is also a tempID)
 	flattenedTasks       map[string]models.Task // tempID -> models.Task (without final ID, ParentID, Dependencies)
 	titleToTempID        map[string]string      // title -> tempID (for resolving deps by title)
+	tempIDToInputID      map[int]string         // input tempId (int) -> internal tempID (string)
 	taskOrder            []string               // tempIDs in a stable order for processing and display
 }
 
@@ -359,7 +344,7 @@ func resolveAndBuildTaskCandidates(llmOutputs []llm.TaskOutput) ([]models.Task, 
 		tempChildToParent:    make(map[string]string),
 		tempTaskToDeps:       make(map[string][]string),
 		flattenedTasks:       make(map[string]models.Task),
-		titleToTempID:        make(map[string]string),
+		tempIDToInputID:      make(map[int]string),
 		taskOrder:            make([]string, 0),
 	}
 	tempIDCounter := 0
@@ -375,15 +360,14 @@ func resolveAndBuildTaskCandidates(llmOutputs []llm.TaskOutput) ([]models.Task, 
 				fmt.Fprintf(os.Stderr, "Warning: LLM returned a task with an empty title. Skipping this task.\n")
 				continue
 			}
-
-			if _, titleExists := relMap.titleToTempID[llmTask.Title]; titleExists {
-				fmt.Fprintf(os.Stderr, "Warning: Duplicate task title '%s' found. Ensure titles are unique in PRD or LLM output for correct dependency mapping. Using first encountered.\n", llmTask.Title)
-				// For now, we're not adding the duplicate title to avoid overwriting. The first one wins.
-				// This means dependencies on later tasks with the same title might fail to resolve.
-				// A more robust strategy is needed for production (e.g., unique suffix or error).
-			} else {
-				relMap.titleToTempID[llmTask.Title] = currentTempID
+			if llmTask.TempID == 0 {
+				return fmt.Errorf("LLM returned a task with a missing or zero tempId: '%s'. Aborting.", llmTask.Title)
 			}
+
+			if _, idExists := relMap.tempIDToInputID[llmTask.TempID]; idExists {
+				return fmt.Errorf("duplicate tempId %d found from LLM output. Each task must have a unique tempId.", llmTask.TempID)
+			}
+			relMap.tempIDToInputID[llmTask.TempID] = currentTempID
 			relMap.taskOrder = append(relMap.taskOrder, currentTempID)
 
 			candidateTask := models.Task{
@@ -399,8 +383,13 @@ func resolveAndBuildTaskCandidates(llmOutputs []llm.TaskOutput) ([]models.Task, 
 				relMap.tempChildToParent[currentTempID] = parentTempID
 			}
 
-			if len(llmTask.DependsOnTitles) > 0 {
-				relMap.tempTaskToDeps[currentTempID] = llmTask.DependsOnTitles
+			// Store dependencies by their given integer tempIDs for later resolution
+			if len(llmTask.DependsOnIDs) > 0 {
+				depStrs := make([]string, len(llmTask.DependsOnIDs))
+				for i, id := range llmTask.DependsOnIDs {
+					depStrs[i] = fmt.Sprintf("%d", id)
+				}
+				relMap.tempTaskToDeps[currentTempID] = depStrs
 			}
 
 			if len(llmTask.Subtasks) > 0 {
@@ -416,17 +405,21 @@ func resolveAndBuildTaskCandidates(llmOutputs []llm.TaskOutput) ([]models.Task, 
 		return nil, relMap, err
 	}
 
-	// Second pass: Resolve DependsOnTitles to tempIDs
-	for taskTempID, depTitles := range relMap.tempTaskToDeps {
+	// Second pass: Resolve DependsOnIDs from integer tempIDs to internal string tempIDs
+	for taskTempID, depIntIDs := range relMap.tempTaskToDeps {
 		var depTempIDs []string
-		for _, depTitle := range depTitles {
-			if depTargetTempID, exists := relMap.titleToTempID[depTitle]; exists {
+		for _, depIntIDStr := range depIntIDs {
+			var depIntID int
+			fmt.Sscanf(depIntIDStr, "%d", &depIntID) // Convert string back to int for lookup
+
+			if depTargetTempID, exists := relMap.tempIDToInputID[depIntID]; exists {
 				if depTargetTempID == taskTempID {
-					return nil, relMap, fmt.Errorf("task '%s' (tempID %s) cannot depend on itself via title '%s'", relMap.flattenedTasks[taskTempID].Title, taskTempID, depTitle)
+					// This check is against the internal string tempID, which is correct
+					return nil, relMap, fmt.Errorf("task '%s' (tempId %d) cannot depend on itself", relMap.flattenedTasks[taskTempID].Title, depIntID)
 				}
 				depTempIDs = append(depTempIDs, depTargetTempID)
 			} else {
-				fmt.Fprintf(os.Stderr, "Warning: Dependency title '%s' for task '%s' not found. Skipping dependency.\n", depTitle, relMap.flattenedTasks[taskTempID].Title)
+				fmt.Fprintf(os.Stderr, "Warning: Dependency tempId '%d' for task '%s' not found. Skipping dependency.\n", depIntID, relMap.flattenedTasks[taskTempID].Title)
 			}
 		}
 		relMap.tempTaskToDeps[taskTempID] = depTempIDs
@@ -480,7 +473,7 @@ func displayTaskCandidates(tasks []models.Task, relMap taskRelationshipMap) {
 			var subtaskRefs []string
 			for _, subTempID := range subtaskTempIDs {
 				if subTask, ok := relMap.flattenedTasks[subTempID]; ok {
-					subtaskRefs = append(subtaskRefs, fmt.Sprintf("%s (Ref: #%d)", subTask.Title, tempIDToDisplayIndex[subTempID]))
+					subtaskRefs = append(subtaskRefs, fmt.Sprintf("%s (#%d)", subTask.Title, tempIDToDisplayIndex[subTempID]))
 				}
 			}
 			if len(subtaskRefs) > 0 {
@@ -491,7 +484,7 @@ func displayTaskCandidates(tasks []models.Task, relMap taskRelationshipMap) {
 			var depRefs []string
 			for _, depTempID := range depTempIDs {
 				if depTask, ok := relMap.flattenedTasks[depTempID]; ok {
-					depRefs = append(depRefs, fmt.Sprintf("%s (Ref: #%d)", depTask.Title, tempIDToDisplayIndex[depTempID]))
+					depRefs = append(depRefs, fmt.Sprintf("%s (#%d)", depTask.Title, tempIDToDisplayIndex[depTempID]))
 				}
 			}
 			if len(depRefs) > 0 {
