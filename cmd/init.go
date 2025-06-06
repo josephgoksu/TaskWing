@@ -81,10 +81,6 @@ and ensuring the task data file (e.g., 'tasks.json') can be initialized.`,
 			projectOutputLogPath := viper.GetString("project.outputLogPath") // Relative default like "logs/taskwing.log"
 			dataFile := viper.GetString("data.file")
 			dataFormat := viper.GetString("data.format")
-			apiUrl := viper.GetString("api.url")
-			modelName := viper.GetString("model.name")
-			modelTemp := viper.GetFloat64("model.temperature")
-			modelTokens := viper.GetInt("model.maxTokens")
 			greeting := viper.GetString("greeting")
 
 			llmProvider := viper.GetString("llm.provider")
@@ -97,7 +93,6 @@ and ensuring the task data file (e.g., 'tasks.json') can be initialized.`,
 
 			// verbose is a flag, not typically a persisted project config default unless explicitly set by user in file
 			// For initial file, we comment it out or show the current flag's effect.
-			// Let's show current viper.GetBool("verbose") which reflects flag or ENV.
 			verboseCurrent := viper.GetBool("verbose")
 
 			configContentStr := fmt.Sprintf(
@@ -134,16 +129,6 @@ data:
 
 # --- Optional configurations ---\n# Uncomment and customize as needed.\n# TaskWing uses built-in defaults if these are not specified.
 
-# api:
-#   url: "%s"
-#   # key: "YOUR_API_KEY" (Store sensitive keys in environment variables or a secure vault)
-#   # secret: "YOUR_API_SECRET" (Store sensitive keys in environment variables or a secure vault)
-
-# model: # This section is for general model configuration, if used outside of LLM task generation.
-#   name: "%s"
-#   temperature: %.1f
-#   maxTokens: %d
-
 # --- LLM Configuration for Task Generation ---
 # Uncomment and configure to use the 'taskwing generate tasks' command.
 # llm:
@@ -176,11 +161,6 @@ data:
 
 				dataFile,
 				dataFormat,
-
-				apiUrl,
-				modelName,   // For general model config
-				modelTemp,   // For general model config
-				modelTokens, // For general model config
 
 				llmProvider,
 				llmModelName,

@@ -6,9 +6,7 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
-	// Assuming models are in this path
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -28,65 +26,38 @@ var deleteCmd = &cobra.Command{
 		defer taskStore.Close()
 
 		var taskIDToDelete string
+		var taskTitle string // For confirmation message
 
 		if len(args) > 0 {
 			taskIDToDelete = args[0]
-			// Validate if task exists (optional, store will handle it too)
-			_, err := taskStore.GetTask(taskIDToDelete)
+			// Validate if task exists and get title
+			task, err := taskStore.GetTask(taskIDToDelete)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to retrieve task %s for deletion: %v\\n", taskIDToDelete, err)
 				os.Exit(1)
 			}
+			taskTitle = task.Title
 		} else {
-			tasks, err := taskStore.ListTasks(nil, nil) // No filter, no sort for selection
+			selectedTask, err := selectTaskInteractive(taskStore, nil, "Select task to delete")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to list tasks for selection: %v\\n", err)
+				if err == promptui.ErrInterrupt {
+					fmt.Println("Deletion cancelled.")
+					return
+				}
+				if err == ErrNoTasksFound {
+					fmt.Println("No tasks available to delete.")
+					return
+				}
+				fmt.Fprintf(os.Stderr, "Task selection failed: %v\n", err)
 				os.Exit(1)
 			}
-			if len(tasks) == 0 {
-				fmt.Println("No tasks available to delete.")
-				return
-			}
-
-			templates := &promptui.SelectTemplates{
-				Label:    "{{ . }}?",
-				Active:   `> {{ .Title | cyan }} ({{ .ID | red }})`,
-				Inactive: `  {{ .Title | faint }} ({{ .ID | faint }})`,
-				Selected: `{{ "✔" | green }} {{ .Title | faint }} (ID: {{ .ID }})`,
-				Details: `
---------- Task Details ----------
-{{ "ID:	" | faint }} {{ .ID }}
-{{ "Title:	" | faint }} {{ .Title }}
-{{ "Status:	" | faint }} {{ .Status }}
-{{ "Priority:	" | faint }} {{ .Priority }}`,
-			}
-
-			searcher := func(input string, index int) bool {
-				task := tasks[index]
-				name := strings.ToLower(task.Title)
-				id := task.ID
-				input = strings.ToLower(input)
-				return strings.Contains(name, input) || strings.Contains(id, input)
-			}
-
-			prompt := promptui.Select{
-				Label:     "Select task to delete",
-				Items:     tasks,
-				Templates: templates,
-				Searcher:  searcher,
-			}
-
-			i, _, err := prompt.Run()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Task selection failed %v\\n", err)
-				os.Exit(1)
-			}
-			taskIDToDelete = tasks[i].ID
+			taskIDToDelete = selectedTask.ID
+			taskTitle = selectedTask.Title
 		}
 
 		// Confirmation prompt
 		confirmPrompt := promptui.Prompt{
-			Label:     fmt.Sprintf("Are you sure you want to delete task ID %s?", taskIDToDelete),
+			Label:     fmt.Sprintf("Are you sure you want to delete task '%s' (ID: %s)?", taskTitle, taskIDToDelete),
 			IsConfirm: true,
 		}
 		_, err = confirmPrompt.Run()

@@ -1,100 +1,40 @@
-# TaskWing.app
+# TaskWing
 
-TaskWing.app is an AI-assisted task manager built for modern development workflows. Designed for engineers, indie hackers, and teams, it aims to automate project planning, task breakdown, prioritization, and workflow clarity—so you can focus on building, not managing.
-
-This README describes the current Proof of Concept (POC) CLI capabilities.
-
-## Core Features (POC)
-
-- **Project Initialization:** Set up a new TaskWing project environment.
-- **Task Management (CLI):**
-  - Create, list, update, and delete tasks.
-  - Tasks include: ID, Title, Description, Status, Priority, Tags, Dependencies, and Dependents.
-- **Dependency Tracking:** Define and view relationships between tasks.
-- **Local Data Storage:** Tasks are stored locally in a file (JSON, YAML, or TOML) with checksum verification for data integrity.
-- **Interactive Prompts:** User-friendly prompts for adding and updating tasks.
-- **Flexible Filtering & Sorting:** Powerful options for viewing tasks.
-- **Configuration:** Project-specific configuration via a local file.
-
-## Prerequisites
-
-- Go (if building from source, version 1.21+ recommended).
-- A compiled `taskwing` binary (if not building from source).
+TaskWing is an AI-assisted CLI task manager for developers. This proof-of-concept (POC) helps you manage tasks, track dependencies, and organize your workflow directly from the terminal.
 
 ## Installation
 
-Currently, you can build the CLI from source:
+You can build the CLI from source.
+
+**Prerequisites:**
+
+- Go (version 1.21+ recommended)
+
+**Build steps:**
 
 ```bash
+# Build the binary
 go build -o taskwing main.go
+
+# Move it to a directory in your PATH (optional)
+mv ./taskwing /usr/local/bin/
 ```
-
-Then, you can run it as `./taskwing` or move it to a directory in your PATH (e.g., `/usr/local/bin/taskwing`).
-
-## Configuration
-
-TaskWing uses a project-specific configuration. When you initialize a project, it expects settings to be potentially found in a configuration file.
-
-1.  **Project Directory:** By default, all TaskWing specific files for a project are stored in a `.taskwing` directory created in your project's root.
-
-    - **Default Root:** `./.taskwing/`
-
-2.  **Configuration File:**
-
-    - TaskWing looks for a configuration file named `.taskwing.yaml` (or `.taskwing.json`, `.taskwing.toml`) primarily inside the `project.rootDir` (e.g., `./.taskwing/.taskwing.yaml`).
-    - If not found there, it falls back to `$HOME/.taskwing.yaml` and then `./.taskwing.yaml` (in the current directory).
-    - Environment variables prefixed with `TASKWING_` can also be used (e.g., `TASKWING_PROJECT_ROOTDIR`).
-
-3.  **Key Configuration Options (`AppConfig` in `cmd/config.go`):**
-
-    - `project.rootDir`: (Default: `.taskwing`) The base directory for all TaskWing project files.
-    - `project.tasksDir`: (Default: `tasks`) Directory for task data files, relative to `project.rootDir`.
-    - `project.templatesDir`: (Default: `templates`) Directory for templates, relative to `project.rootDir`.
-    - `project.outputLogPath`: (Default: `.taskwing/logs/taskwing.log`) Path for log files.
-    - `data.file`: (Default: `tasks.json`) The name of the task data file.
-    - `data.format`: (Default: `json`) The format of the task data file (`json`, `yaml`, `toml`).
-    - `api.*`: Placeholder for future AI model API key configurations.
-    - `model.*`: Placeholder for future AI model selection and parameters.
-
-    Example structure within your project:
-
-    ```
-    your-project/
-    ├── .taskwing/
-    │   ├── .taskwing.yaml  # Optional project-specific config
-    │   ├── tasks/
-    │   │   └── tasks.json        # Default task data file
-    │   │   └── tasks.json.checksum # Checksum for tasks.json
-    │   └── logs/
-    │       └── taskwing.log    # Log file
-    └── ... your other project files
-    ```
 
 ## Getting Started
 
-1.  **Initialize a new TaskWing project:**
-    Navigate to your project's root directory in the terminal and run:
-    ```bash
-    taskwing init
-    ```
-    This will:
-    - Create the `.taskwing` directory (or your configured `project.rootDir`).
-    - Create the tasks directory within it (e.g., `.taskwing/tasks`).
-    - Ensure the task data file (e.g., `.taskwing/tasks/tasks.json`) can be initialized.
+Navigate to your project's root directory and initialize TaskWing:
 
-## Core Commands
+```bash
+taskwing init
+```
+
+This command creates a `.taskwing` directory in your project to store all related data and configuration.
+
+## Command Reference
 
 ### `taskwing add`
 
-Add a new task. You will be prompted for the following information:
-
-- **Title:** (Required, min 3 chars) The main title of the task.
-- **Description:** (Optional) A more detailed description.
-- **Priority:** (Required) Select from Low, Medium, High, Urgent.
-- **Tags:** (Optional) Comma-separated tags (e.g., `backend,api,refactor`).
-- **Dependencies:** (Optional) Comma-separated IDs of tasks this task depends on.
-
-Example:
+Add a new task. You will be prompted for a title, description, priority, tags, and dependencies.
 
 ```bash
 taskwing add
@@ -102,110 +42,80 @@ taskwing add
 
 ### `taskwing list`
 
-List tasks with various filtering and sorting options.
+List tasks with filters and sorting.
 
-- **Output Columns:** ID, Title, Status, Priority, Tags, Dependencies, Dependents.
-
-- **Filtering Flags:**
-
-  - `--status <statuses>`: Filter by status (comma-separated, e.g., `pending,in-progress`).
-  - `--priority <priorities>`: Filter by priority (comma-separated, e.g., `high,urgent`).
-  - `--title-contains <text>`: Filter by text in title (case-insensitive).
-  - `--description-contains <text>`: Filter by text in description (case-insensitive).
-  - `--tags <tags>`: Filter by tags (ALL tags must match, comma-separated).
-  - `--tags-any <tags>`: Filter by tags (ANY tag must match, comma-separated).
-  - `--search <query>`: Generic search across ID, title, description (case-insensitive).
-
-- **Sorting Flags:**
-  - `--sort-by <field>`: Sort tasks by field (id, title, status, priority, createdAt, updatedAt). Default: `createdAt`.
-  - `--sort-order <asc|desc>`: Sort order. Default: `asc`.
-
-Example:
+- **Filter by:** `--status`, `--priority`, `--title-contains`, `--description-contains`, `--tags`, `--tags-any`, `--search`.
+- **Sort by:** `--sort-by <field>` (e.g., `id`, `priority`, `createdAt`)
+- **Sort order:** `--sort-order <asc|desc>`
 
 ```bash
+# Example: List all high-priority, pending tasks, sorted by creation date.
 taskwing list --status pending --priority high --sort-by createdAt
 ```
 
 ### `taskwing update [task_id]`
 
-Update an existing task.
-
-- If `[task_id]` is provided, it attempts to update that task directly.
-- If no `[task_id]` is provided, an interactive list is shown to select a task.
-
-You can update: Title, Description, Priority, Status, Tags (use 'none' to clear), and Dependencies (use 'none' to clear).
-
-Example (interactive):
+Update a task. If no `task_id` is provided, an interactive selector will be shown.
 
 ```bash
-taskwing update
-```
-
-Example (direct):
-
-```bash
-taskwing update <your_task_id_here>
+taskwing update <your_task_id>
 ```
 
 ### `taskwing delete [task_id]`
 
-Delete a task.
-
-- If `[task_id]` is provided, it attempts to delete that task directly after confirmation.
-- If no `[task_id]` is provided, an interactive list is shown to select a task, followed by a confirmation.
-- **Note:** A task cannot be deleted if other tasks depend on it.
-
-Example:
+Delete a task. If no `task_id` is provided, an interactive selector will be shown. A task cannot be deleted if other tasks depend on it.
 
 ```bash
-taskwing delete <your_task_id_here>
+taskwing delete <your_task_id>
 ```
 
 ### `taskwing done [task_id]`
 
-Mark a task as completed.
-
-- If `[task_id]` is provided, it attempts to mark that task as done.
-- If no `[task_id]` is provided, an interactive list of non-completed tasks is shown.
-
-Example:
+Mark a task as completed. If no `task_id` is provided, an interactive selector will be shown.
 
 ```bash
-taskwing done <your_task_id_here>
+taskwing done <your_task_id>
 ```
 
 ### `taskwing deps [task_id]`
 
-Display dependency information for a specific task. Shows which tasks the given task depends on, and which tasks depend on it.
-
-Example:
+Display dependency relationships for a task.
 
 ```bash
-taskwing deps <your_task_id_here>
+taskwing deps <your_task_id>
 ```
 
 ### `taskwing generate`
 
-(Placeholder for Future AI Feature) This command is intended for AI-assisted task generation from natural language input. Currently, it only prints a message.
+**[Placeholder]** This command is reserved for future AI-assisted task generation.
+
+## Configuration
+
+TaskWing is configured via a `.taskwing.yaml` file (or `.json`/`.toml`). The configuration is loaded in the following order:
+
+1.  Project-specific: `<project.rootDir>/.taskwing.yaml` (e.g. `./.taskwing/.taskwing.yaml`)
+2.  Current directory: `./.taskwing.yaml`
+3.  Home directory: `$HOME/.taskwing.yaml`
+
+Environment variables prefixed with `TASKWING_` can also be used (e.g., `TASKWING_PROJECT_ROOTDIR`).
+
+**Key Options:**
+
+- `project.rootDir`: Base directory for all TaskWing files. (Default: `.taskwing`)
+- `project.tasksDir`: Directory for task data files. (Default: `tasks`)
+- `data.file`: Name of the task data file. (Default: `tasks.json`)
+- `data.format`: Data file format (`json`, `yaml`, `toml`). (Default: `json`)
+- `project.outputLogPath`: Path for log files. (Default: `.taskwing/logs/taskwing.log`)
 
 ## Data Storage
 
-- Tasks are stored locally in a file defined by your configuration (default: `.taskwing/tasks/tasks.json`).
-- The data format can be `json`, `yaml`, or `toml`.
-- A checksum file (e.g., `tasks.json.checksum`) is maintained alongside the data file to ensure data integrity. The store will refuse to load data if a checksum mismatch is detected.
-
-## Building from Source
-
-1.  Ensure you have Go installed (version 1.21 or newer is recommended).
-2.  Clone the repository (if applicable).
-3.  Navigate to the project directory.
-4.  Run: `go build -o taskwing main.go`
-5.  The `taskwing` executable will be created in the current directory.
+- Tasks are stored locally in the file specified by `data.file` (e.g., `.taskwing/tasks/tasks.json`).
+- A `.checksum` file is maintained alongside the data file to ensure data integrity. The application will not load data if a checksum mismatch is detected.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues or pull requests. (Further details to be added).
+Contributions are welcome. Please submit an issue or pull request.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. (Assuming MIT, please update if different).
+This project is licensed under the MIT License. See the `LICENSE` file for details.

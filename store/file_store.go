@@ -292,108 +292,76 @@ func removeStringFromSlice(slice []string, item string) []string {
 }
 
 // CreateTask adds a new task to the store.
-// It generates an ID, sets timestamps, default status/priority, and manages dependency and subtask linkage.
+// It sets the ID, timestamps, and manages relationship consistency.
 func (s *FileTaskStore) CreateTask(task models.Task) (models.Task, error) {
 	if err := s.flk.Lock(); err != nil {
-		return models.Task{}, fmt.Errorf("failed to acquire write lock for CreateTask: %w", err)
+		return models.Task{}, fmt.Errorf("could not lock file for create: %w", err)
 	}
 	defer s.flk.Unlock()
 
+	// Reload state from disk to ensure we are working with the latest version
+	// in case of concurrent access, though the lock should serialize operations.
 	if err := s.loadTasksFromFileInternal(); err != nil {
-		return models.Task{}, fmt.Errorf("failed to load tasks before creating: %w", err)
+		return models.Task{}, fmt.Errorf("failed to reload tasks before create: %w", err)
 	}
 
+	// If ID is empty, generate one. Otherwise, validate the provided one.
 	if task.ID == "" {
 		task.ID = generateID()
-	}
-
-	if _, exists := s.tasks[task.ID]; exists {
-		return models.Task{}, fmt.Errorf("task with ID %s already exists", task.ID)
+	} else {
+		if _, exists := s.tasks[task.ID]; exists {
+			return models.Task{}, fmt.Errorf("task with ID '%s' already exists", task.ID)
+		}
 	}
 
 	now := time.Now().UTC()
 	task.CreatedAt = now
 	task.UpdatedAt = now
+	task.Dependents = []string{} // Ensure dependents is initialized and empty
 
-	if task.Status == "" {
-		task.Status = models.StatusPending
-	}
-	if task.Priority == "" {
-		task.Priority = models.PriorityMedium
-	}
-	task.CompletedAt = nil
-	if task.Dependents == nil { // Ensure Dependents is initialized
-		task.Dependents = []string{}
-	}
-	if task.SubtaskIDs == nil { // Ensure SubtaskIDs is initialized
-		task.SubtaskIDs = []string{}
-	}
-
-	// Validate and link dependencies
-	for _, depID := range task.Dependencies {
-		if depID == task.ID {
-			return models.Task{}, fmt.Errorf("task %s cannot depend on itself", task.ID)
-		}
-		depTask, exists := s.tasks[depID]
-		if !exists {
-			return models.Task{}, fmt.Errorf("dependency task with ID %s not found", depID)
-		}
-		depTask.Dependents = addStringToSliceIfMissing(depTask.Dependents, task.ID)
-		s.tasks[depID] = depTask // Update the dependency task in the map
-	}
-
-	// Handle ParentID linkage
-	if task.ParentID != nil && *task.ParentID != "" {
-		parentID := *task.ParentID
-		if parentID == task.ID {
-			return models.Task{}, fmt.Errorf("task %s cannot be its own parent", task.ID)
-		}
-		parentTask, exists := s.tasks[parentID]
-		if !exists {
-			return models.Task{}, fmt.Errorf("parent task with ID %s not found", parentID)
-		}
-		parentTask.SubtaskIDs = addStringToSliceIfMissing(parentTask.SubtaskIDs, task.ID)
-		parentTask.UpdatedAt = now // Parent task is also updated
-		s.tasks[parentID] = parentTask
-	}
-
+	// Validate the task struct before proceeding
 	if err := models.ValidateStruct(task); err != nil {
-		// Attempt to rollback dependency and parent changes - best effort
-		for _, depID := range task.Dependencies {
-			if depTask, exists := s.tasks[depID]; exists {
-				depTask.Dependents = removeStringFromSlice(depTask.Dependents, task.ID)
-				s.tasks[depID] = depTask
-			}
-		}
-		if task.ParentID != nil && *task.ParentID != "" {
-			if parentTask, exists := s.tasks[*task.ParentID]; exists {
-				parentTask.SubtaskIDs = removeStringFromSlice(parentTask.SubtaskIDs, task.ID)
-				s.tasks[*task.ParentID] = parentTask
-			}
-		}
 		return models.Task{}, fmt.Errorf("validation failed for new task: %w", err)
 	}
 
-	s.tasks[task.ID] = task
-	if err := s.saveTasksToFileInternal(); err != nil {
-		// Attempt to revert in-memory changes if save fails
-		delete(s.tasks, task.ID)
-		// Also revert dependency updates
+	// --- Relationship Management ---
+
+	// 1. Handle Parent-Child relationship
+	if task.ParentID != nil && *task.ParentID != "" {
+		parentTask, exists := s.tasks[*task.ParentID]
+		if !exists {
+			return models.Task{}, fmt.Errorf("parent task with ID '%s' not found", *task.ParentID)
+		}
+		parentTask.SubtaskIDs = addStringToSliceIfMissing(parentTask.SubtaskIDs, task.ID)
+		parentTask.UpdatedAt = now
+		s.tasks[*task.ParentID] = parentTask
+	}
+
+	// 2. Handle Dependencies
+	if len(task.Dependencies) > 0 {
 		for _, depID := range task.Dependencies {
-			if depTask, exists := s.tasks[depID]; exists {
-				depTask.Dependents = removeStringFromSlice(depTask.Dependents, task.ID)
-				s.tasks[depID] = depTask
+			if depID == task.ID {
+				return models.Task{}, fmt.Errorf("task cannot depend on itself")
 			}
-		}
-		// Also revert parent task's SubtaskIDs update
-		if task.ParentID != nil && *task.ParentID != "" {
-			if parentTask, exists := s.tasks[*task.ParentID]; exists {
-				parentTask.SubtaskIDs = removeStringFromSlice(parentTask.SubtaskIDs, task.ID)
-				// No need to update parent's UpdatedAt here for revert, as original parent state will be restored
-				s.tasks[*task.ParentID] = parentTask
+			dependencyTask, exists := s.tasks[depID]
+			if !exists {
+				return models.Task{}, fmt.Errorf("dependency task with ID '%s' not found", depID)
 			}
+			// Add this new task's ID to the dependent list of the task it depends on.
+			dependencyTask.Dependents = addStringToSliceIfMissing(dependencyTask.Dependents, task.ID)
+			dependencyTask.UpdatedAt = now
+			s.tasks[depID] = dependencyTask
 		}
-		return models.Task{}, fmt.Errorf("failed to save new task (with dependencies/parent): %w", err)
+	}
+
+	s.tasks[task.ID] = task
+
+	if err := s.saveTasksToFileInternal(); err != nil {
+		// Attempt to revert in-memory changes on save failure.
+		// This is best-effort and a transactional approach would be more robust.
+		// For now, reloading from the unchanged file is the simplest "rollback".
+		_ = s.loadTasksFromFileInternal()
+		return models.Task{}, fmt.Errorf("failed to save new task: %w", err)
 	}
 
 	return task, nil
@@ -420,257 +388,226 @@ func (s *FileTaskStore) GetTask(id string) (models.Task, error) {
 	return task, nil
 }
 
-// UpdateTask modifies an existing task in the store identified by its ID, applying the given updates.
-// This includes managing dependency links and parent-child relationships if relevant fields are updated.
+// UpdateTask modifies an existing task.
+// It uses a map of updates and ensures relationship consistency (parents, dependencies).
 func (s *FileTaskStore) UpdateTask(id string, updates map[string]interface{}) (models.Task, error) {
 	if err := s.flk.Lock(); err != nil {
-		return models.Task{}, fmt.Errorf("failed to acquire write lock for UpdateTask: %w", err)
+		return models.Task{}, fmt.Errorf("could not lock file for update: %w", err)
 	}
 	defer s.flk.Unlock()
 
 	if err := s.loadTasksFromFileInternal(); err != nil {
-		return models.Task{}, fmt.Errorf("failed to load tasks before updating: %w", err)
+		return models.Task{}, fmt.Errorf("failed to reload tasks before update: %w", err)
 	}
 
-	task, ok := s.tasks[id]
-	if !ok {
-		return models.Task{}, fmt.Errorf("task with ID %s not found for update", id)
+	task, exists := s.tasks[id]
+	if !exists {
+		return models.Task{}, fmt.Errorf("task with ID '%s' not found", id)
 	}
+	originalTask := task // Keep a copy for potential rollback
 
 	now := time.Now().UTC()
-	originalTask := task
-	originalDependencies := slices.Clone(task.Dependencies)
-	originalParentID := task.ParentID
-
-	var originalOldParentTaskState models.Task
-	var originalNewParentTaskState models.Task
-	var oldParentExists, newParentExists bool
-	var parentIDFieldProvided bool // Declare here for wider scope
-
-	// Handle ParentID updates first if present
-	var newParentIDRaw interface{}
-	if newParentIDRaw, parentIDFieldProvided = updates["parentId"]; parentIDFieldProvided {
-		var newParentIDPtr *string
-		if newParentIDRaw == nil {
-			newParentIDPtr = nil
-		} else if newParentIDStr, isStr := newParentIDRaw.(string); isStr {
-			if newParentIDStr == "" { // Treat empty string as unsetting the parent
-				newParentIDPtr = nil
-			} else {
-				if newParentIDStr == id {
-					return models.Task{}, fmt.Errorf("task %s cannot be its own parent", id)
-				}
-				if _, parentExists := s.tasks[newParentIDStr]; !parentExists {
-					return models.Task{}, fmt.Errorf("new parent task with ID %s not found", newParentIDStr)
-				}
-				newParentIDPtr = &newParentIDStr
-			}
-		} else {
-			return models.Task{}, fmt.Errorf("invalid type for 'parentId' field: expected string or nil, got %T", newParentIDRaw)
-		}
-
-		// If old parent existed, remove task from its SubtaskIDs
-		if originalParentID != nil && *originalParentID != "" {
-			if oldParentTask, exists := s.tasks[*originalParentID]; exists {
-				originalOldParentTaskState = oldParentTask // Save state for rollback
-				oldParentExists = true
-				oldParentTask.SubtaskIDs = removeStringFromSlice(oldParentTask.SubtaskIDs, id)
-				oldParentTask.UpdatedAt = now
-				s.tasks[*originalParentID] = oldParentTask
-			}
-		}
-
-		// If new parent exists, add task to its SubtaskIDs
-		if newParentIDPtr != nil && *newParentIDPtr != "" {
-			newParentIDVal := *newParentIDPtr
-			if newParentTask, exists := s.tasks[newParentIDVal]; exists {
-				originalNewParentTaskState = newParentTask // Save state for rollback
-				newParentExists = true
-				newParentTask.SubtaskIDs = addStringToSliceIfMissing(newParentTask.SubtaskIDs, id)
-				newParentTask.UpdatedAt = now
-				s.tasks[newParentIDVal] = newParentTask
-			}
-		}
-		task.ParentID = newParentIDPtr
-		delete(updates, "parentId") // Processed
-	}
-
-	// Handle dependency updates if present (copied from original logic, ensure it's still relevant)
-	if newDepsRaw, depsFieldProvided := updates["dependencies"]; depsFieldProvided {
-		var newDepIDs []string
-		if newDepsStrSlice, isStrSlice := newDepsRaw.([]string); isStrSlice {
-			newDepIDs = newDepsStrSlice
-		} else if newDepsIfaceSlice, isIfaceSlice := newDepsRaw.([]interface{}); isIfaceSlice {
-			newDepIDs = make([]string, len(newDepsIfaceSlice))
-			for i, v := range newDepsIfaceSlice {
-				if strV, isStr := v.(string); isStr {
-					newDepIDs[i] = strV
-				} else {
-					return models.Task{}, fmt.Errorf("invalid type for dependency ID in list: expected string, got %T for item %v", v, v)
-				}
-			}
-		} else if newDepsRaw == nil { // explicitly setting dependencies to empty list
-			newDepIDs = []string{}
-		} else {
-			return models.Task{}, fmt.Errorf("invalid type for 'dependencies' field: expected []string or []interface{}, got %T", newDepsRaw)
-		}
-
-		// Validate new dependencies and prevent self-dependency
-		for _, depID := range newDepIDs {
-			if depID == id {
-				return models.Task{}, fmt.Errorf("task %s cannot depend on itself", id)
-			}
-			if _, exists := s.tasks[depID]; !exists {
-				return models.Task{}, fmt.Errorf("dependency task with ID %s not found", depID)
-			}
-		}
-
-		// Determine added and removed dependencies
-		oldDepSet := make(map[string]struct{})
-		for _, depID := range originalDependencies {
-			oldDepSet[depID] = struct{}{}
-		}
-		newDepSet := make(map[string]struct{})
-		for _, depID := range newDepIDs {
-			newDepSet[depID] = struct{}{}
-		}
-
-		// Update Dependents for removed dependencies
-		for _, oldDepID := range originalDependencies {
-			if _, stillExists := newDepSet[oldDepID]; !stillExists {
-				if depTask, exists := s.tasks[oldDepID]; exists {
-					depTask.Dependents = removeStringFromSlice(depTask.Dependents, id)
-					s.tasks[oldDepID] = depTask
-				}
-			}
-		}
-
-		// Update Dependents for added dependencies
-		for _, newDepID := range newDepIDs {
-			if _, wasAlreadyThere := oldDepSet[newDepID]; !wasAlreadyThere {
-				if depTask, exists := s.tasks[newDepID]; exists {
-					depTask.Dependents = addStringToSliceIfMissing(depTask.Dependents, id)
-					s.tasks[newDepID] = depTask
-				}
-			}
-		}
-		task.Dependencies = newDepIDs
-		delete(updates, "dependencies")
-	}
-
-	taskValue := reflect.ValueOf(&task).Elem()
-	for key, value := range updates { // Process remaining updates
-		// Disallow direct updates to SubtaskIDs as it's managed internally
-		if key == "subtaskIds" || key == "SubtaskIDs" {
-			return models.Task{}, fmt.Errorf("direct update to 'SubtaskIDs' field is not allowed; it is managed via ParentID changes")
-		}
-
-		fieldName := strings.ToUpper(key[:1]) + key[1:]
-		field := taskValue.FieldByName(fieldName)
-
-		if !field.IsValid() {
-			return models.Task{}, fmt.Errorf("invalid field for update: %s", fieldName)
-		}
-		if !field.CanSet() {
-			return models.Task{}, fmt.Errorf("cannot set field: %s", fieldName)
-		}
-
-		updateValue := reflect.ValueOf(value)
-
-		if field.Type() == reflect.TypeOf((*time.Time)(nil)) {
-			if strVal, ok := value.(string); ok {
-				if strVal == "" {
-					field.Set(reflect.Zero(field.Type()))
-					continue
-				}
-			}
-		}
-
-		if updateValue.IsValid() && updateValue.Type().AssignableTo(field.Type()) {
-			field.Set(updateValue)
-		} else if updateValue.IsValid() && field.Type().Kind() == reflect.String && updateValue.Type().ConvertibleTo(field.Type()) {
-			field.Set(updateValue.Convert(field.Type()))
-		} else if fieldName == "Status" && updateValue.Type().ConvertibleTo(reflect.TypeOf(models.StatusPending)) {
-			statusVal, ok := value.(string)
-			if !ok {
-				return models.Task{}, fmt.Errorf("invalid type for Status: expected string, got %T", value)
-			}
-			task.Status = models.TaskStatus(statusVal)
-		} else if fieldName == "Priority" && updateValue.Type().ConvertibleTo(reflect.TypeOf(models.PriorityLow)) {
-			priorityVal, ok := value.(string)
-			if !ok {
-				return models.Task{}, fmt.Errorf("invalid type for Priority: expected string, got %T", value)
-			}
-			task.Priority = models.TaskPriority(priorityVal)
-		} else if fieldName == "Dependencies" || fieldName == "Tags" {
-			strSlice, ok := value.([]string)
-			if !ok {
-				if ifaceSlice, isIfaceSlice := value.([]interface{}); isIfaceSlice {
-					strSlice = make([]string, len(ifaceSlice))
-					for i, v := range ifaceSlice {
-						strV, isStr := v.(string)
-						if !isStr {
-							return models.Task{}, fmt.Errorf("invalid type for element in %s: expected string, got %T", fieldName, v)
-						}
-						strSlice[i] = strV
-					}
-					ok = true
-				}
-			}
-			if ok {
-				field.Set(reflect.ValueOf(strSlice))
-			} else {
-				return models.Task{}, fmt.Errorf("invalid type for %s: expected []string, got %T", fieldName, value)
-			}
-		} else if updateValue.IsValid() {
-			return models.Task{}, fmt.Errorf("type mismatch for field %s: expected %s, got %s", fieldName, field.Type(), updateValue.Type())
-		} else if value == nil && field.Type().Kind() == reflect.Ptr {
-			field.Set(reflect.Zero(field.Type()))
-		} else {
-			return models.Task{}, fmt.Errorf("invalid value for field %s", fieldName)
-		}
-	}
-
 	task.UpdatedAt = now
 
-	if err := models.ValidateStruct(task); err != nil {
-		s.tasks[id] = originalTask
-		if parentIDFieldProvided { // Check if parentID was part of the update attempt
-			if oldParentExists {
-				s.tasks[*originalParentID] = originalOldParentTaskState
-			}
-			if newParentExists && task.ParentID != nil && *task.ParentID != "" { // task.ParentID is the NEW parent ID here
-				_, found := s.tasks[*task.ParentID]
-				if found && originalNewParentTaskState.ID == *task.ParentID {
-					s.tasks[*task.ParentID] = originalNewParentTaskState
-				}
-				// If not found or ID mismatch, the new parent might have been deleted or changed, rollback is complex.
-				// The primary goal here is to revert the main task and attempt to revert immediate parent states.
-			}
+	// Apply updates reflectively.
+	for key, value := range updates {
+		// Handle relationship fields separately.
+		if key == "parentId" || key == "dependencies" {
+			continue
 		}
-		return models.Task{}, fmt.Errorf("validation failed for updated task %s: %w", id, err)
+		// Use reflection to set field value.
+		// This is simpler than a large switch but requires careful key matching.
+		field := reflect.ValueOf(&task).Elem().FieldByName(strings.Title(key))
+		if field.IsValid() && field.CanSet() {
+			val := reflect.ValueOf(value)
+			// Handle type conversion for fields that need it (e.g., string to custom type)
+			if field.Type() != val.Type() {
+				if converted, err := convertType(val.Interface(), field.Type()); err == nil {
+					val = converted
+				} else {
+					return models.Task{}, fmt.Errorf("type conversion error for field %s: %w", key, err)
+				}
+			}
+			field.Set(val)
+		}
+	}
+
+	// Handle parent change
+	if newParentID, ok := updates["parentId"]; ok {
+		if err := s.updateParentLink(&task, newParentID, now); err != nil {
+			return models.Task{}, err
+		}
+	}
+
+	// Handle dependencies change
+	if newDeps, ok := updates["dependencies"]; ok {
+		if err := s.updateDependenciesLink(&task, newDeps, now); err != nil {
+			return models.Task{}, err
+		}
+	}
+
+	// Validate the updated task struct.
+	if err := models.ValidateStruct(task); err != nil {
+		return models.Task{}, fmt.Errorf("validation failed for updated task: %w", err)
 	}
 
 	s.tasks[id] = task
+
 	if err := s.saveTasksToFileInternal(); err != nil {
-		s.tasks[id] = originalTask
-		if parentIDFieldProvided { // Check if parentID was part of the update attempt
-			if oldParentExists {
-				s.tasks[*originalParentID] = originalOldParentTaskState
-			}
-			if newParentExists && task.ParentID != nil && *task.ParentID != "" { // task.ParentID is the NEW parent ID here
-				_, found := s.tasks[*task.ParentID]
-				if found && originalNewParentTaskState.ID == *task.ParentID {
-					s.tasks[*task.ParentID] = originalNewParentTaskState
-				}
-				// If not found or ID mismatch, the new parent might have been deleted or changed, rollback is complex.
-				// The primary goal here is to revert the main task and attempt to revert immediate parent states.
-			}
-		}
-		return models.Task{}, fmt.Errorf("failed to save updated task %s: %w", id, err)
+		s.tasks[id] = originalTask // Rollback in-memory change
+		// More complex rollback for parent/dependency changes would be needed for full atomicity.
+		// For now, this is a best-effort rollback of the primary task.
+		return models.Task{}, fmt.Errorf("failed to save updated task: %w", err)
 	}
 
 	return task, nil
+}
+
+// updateParentLink handles the logic for changing a task's parent.
+func (s *FileTaskStore) updateParentLink(task *models.Task, newParentIDValue interface{}, now time.Time) error {
+	var newParentID *string
+	if newParentIDValue != nil {
+		idStr, ok := newParentIDValue.(string)
+		if !ok {
+			return fmt.Errorf("invalid type for parentId; must be a string or nil")
+		}
+		newParentID = &idStr
+	}
+
+	// Prevent self-parenting
+	if newParentID != nil && *newParentID == task.ID {
+		return fmt.Errorf("task cannot be its own parent")
+	}
+
+	oldParentID := task.ParentID
+
+	// No change, do nothing.
+	if (oldParentID == nil && newParentID == nil) || (oldParentID != nil && newParentID != nil && *oldParentID == *newParentID) {
+		return nil
+	}
+
+	// Remove from old parent's SubtaskIDs
+	if oldParentID != nil && *oldParentID != "" {
+		if oldParent, ok := s.tasks[*oldParentID]; ok {
+			oldParent.SubtaskIDs = removeStringFromSlice(oldParent.SubtaskIDs, task.ID)
+			oldParent.UpdatedAt = now
+			s.tasks[*oldParentID] = oldParent
+		}
+	}
+
+	// Add to new parent's SubtaskIDs
+	if newParentID != nil && *newParentID != "" {
+		if newParent, ok := s.tasks[*newParentID]; ok {
+			// Check for circular dependency (new parent cannot be a subtask of the current task)
+			if s.isSubtask(newParent, task.ID) {
+				return fmt.Errorf("cannot set parent: '%s' is a subtask of '%s'", newParent.Title, task.Title)
+			}
+			newParent.SubtaskIDs = addStringToSliceIfMissing(newParent.SubtaskIDs, task.ID)
+			newParent.UpdatedAt = now
+			s.tasks[*newParentID] = newParent
+		} else {
+			return fmt.Errorf("new parent task with ID '%s' not found", *newParentID)
+		}
+	}
+
+	task.ParentID = newParentID
+	return nil
+}
+
+// isSubtask checks if a potential parent task is actually a subtask of the given task.
+func (s *FileTaskStore) isSubtask(potentialParent models.Task, originalTaskID string) bool {
+	if potentialParent.ParentID == nil {
+		return false
+	}
+	if *potentialParent.ParentID == originalTaskID {
+		return true
+	}
+	// Recurse up the chain
+	if grandParent, ok := s.tasks[*potentialParent.ParentID]; ok {
+		return s.isSubtask(grandParent, originalTaskID)
+	}
+	return false
+}
+
+// updateDependenciesLink handles the logic for changing a task's dependencies.
+func (s *FileTaskStore) updateDependenciesLink(task *models.Task, newDepsValue interface{}, now time.Time) error {
+	newDeps, ok := newDepsValue.([]string)
+	if !ok {
+		return fmt.Errorf("invalid type for dependencies; must be a []string")
+	}
+
+	oldDeps := task.Dependencies
+	task.Dependencies = newDeps // Set new dependencies on the task struct
+
+	// Determine which dependencies were added and which were removed.
+	depsToAdd := []string{}
+	depsToRemove := []string{}
+
+	oldDepSet := make(map[string]bool)
+	for _, id := range oldDeps {
+		oldDepSet[id] = true
+	}
+	newDepSet := make(map[string]bool)
+	for _, id := range newDeps {
+		newDepSet[id] = true
+	}
+
+	for id := range newDepSet {
+		if !oldDepSet[id] {
+			depsToAdd = append(depsToAdd, id)
+		}
+	}
+	for id := range oldDepSet {
+		if !newDepSet[id] {
+			depsToRemove = append(depsToRemove, id)
+		}
+	}
+
+	// Remove this task from the Dependents list of tasks that are no longer dependencies.
+	for _, depID := range depsToRemove {
+		if depTask, ok := s.tasks[depID]; ok {
+			depTask.Dependents = removeStringFromSlice(depTask.Dependents, task.ID)
+			depTask.UpdatedAt = now
+			s.tasks[depID] = depTask
+		}
+	}
+
+	// Add this task to the Dependents list of new dependencies.
+	for _, depID := range depsToAdd {
+		if depID == task.ID {
+			return fmt.Errorf("task cannot depend on itself")
+		}
+		if depTask, ok := s.tasks[depID]; ok {
+			depTask.Dependents = addStringToSliceIfMissing(depTask.Dependents, task.ID)
+			depTask.UpdatedAt = now
+			s.tasks[depID] = depTask
+		} else {
+			return fmt.Errorf("new dependency task with ID '%s' not found", depID)
+		}
+	}
+
+	return nil
+}
+
+// convertType attempts to convert an interface value to a target reflect.Type.
+// This is a simplified converter for specific types used in Task.
+func convertType(value interface{}, targetType reflect.Type) (reflect.Value, error) {
+	valueType := reflect.TypeOf(value)
+	if valueType == targetType {
+		return reflect.ValueOf(value), nil
+	}
+
+	// Handle string to custom types like TaskStatus and TaskPriority
+	if valueStr, ok := value.(string); ok {
+		switch targetType {
+		case reflect.TypeOf(models.TaskStatus("")):
+			return reflect.ValueOf(models.TaskStatus(valueStr)), nil
+		case reflect.TypeOf(models.TaskPriority("")):
+			return reflect.ValueOf(models.TaskPriority(valueStr)), nil
+		}
+	}
+
+	return reflect.Value{}, fmt.Errorf("unsupported type conversion from %v to %v", valueType, targetType)
 }
 
 // DeleteTask removes a task from the store by its unique identifier.
@@ -679,79 +616,65 @@ func (s *FileTaskStore) UpdateTask(id string, updates map[string]interface{}) (m
 // and from the SubtaskIDs list of its parent task.
 func (s *FileTaskStore) DeleteTask(id string) error {
 	if err := s.flk.Lock(); err != nil {
-		return fmt.Errorf("failed to acquire write lock for DeleteTask: %w", err)
+		return fmt.Errorf("could not lock file for delete: %w", err)
 	}
 	defer s.flk.Unlock()
 
 	if err := s.loadTasksFromFileInternal(); err != nil {
-		return fmt.Errorf("failed to load tasks before deleting: %w", err)
+		return fmt.Errorf("failed to reload tasks before delete: %w", err)
 	}
 
-	taskToDelete, ok := s.tasks[id]
-	if !ok {
-		return fmt.Errorf("task with ID %s not found for deletion", id)
+	taskToDelete, exists := s.tasks[id]
+	if !exists {
+		return fmt.Errorf("task with ID '%s' not found", id)
 	}
 
-	// Prevent deletion if other tasks depend on this task
-	if len(taskToDelete.Dependents) > 0 {
-		return fmt.Errorf("task %s cannot be deleted because other tasks depend on it: %v", id, taskToDelete.Dependents)
-	}
-
-	// Prevent deletion if this task has subtasks
-	if len(taskToDelete.SubtaskIDs) > 0 {
-		return fmt.Errorf("task %s cannot be deleted because it has subtasks: %v. Please delete or reassign subtasks first.", id, taskToDelete.SubtaskIDs)
-	}
-
+	// --- Relationship Management ---
 	now := time.Now().UTC()
-	originalTaskForRevert := taskToDelete
-	originalDependenciesForRevert := make(map[string]models.Task)
-	var originalParentTaskState models.Task
-	parentModified := false
 
-	// Remove this task from the Dependents list of tasks it depended on
+	// 1. Update parent task if this was a subtask
+	if taskToDelete.ParentID != nil && *taskToDelete.ParentID != "" {
+		if parentTask, ok := s.tasks[*taskToDelete.ParentID]; ok {
+			parentTask.SubtaskIDs = removeStringFromSlice(parentTask.SubtaskIDs, id)
+			parentTask.UpdatedAt = now
+			s.tasks[*taskToDelete.ParentID] = parentTask
+		}
+	}
+
+	// 2. Remove this task from the Dependents list of its dependencies
 	for _, depID := range taskToDelete.Dependencies {
-		if depTask, exists := s.tasks[depID]; exists {
-			originalDependenciesForRevert[depID] = depTask
+		if depTask, ok := s.tasks[depID]; ok {
 			depTask.Dependents = removeStringFromSlice(depTask.Dependents, id)
-			depTask.UpdatedAt = now // Also update timestamp of modified dependency
+			depTask.UpdatedAt = now
 			s.tasks[depID] = depTask
 		}
 	}
 
-	// If this task was a subtask, remove it from its parent's SubtaskIDs list
-	if taskToDelete.ParentID != nil && *taskToDelete.ParentID != "" {
-		parentID := *taskToDelete.ParentID
-		if parentTask, exists := s.tasks[parentID]; exists {
-			originalParentTaskState = parentTask // Save for potential rollback
-			parentModified = true
-			parentTask.SubtaskIDs = removeStringFromSlice(parentTask.SubtaskIDs, id)
-			parentTask.UpdatedAt = now
-			s.tasks[parentID] = parentTask
-		}
+	// 3. Handle dependents of the task being deleted. For now, we disallow deletion of tasks that have dependents.
+	// A more advanced implementation could offer to re-link dependents or delete them recursively.
+	if len(taskToDelete.Dependents) > 0 {
+		return fmt.Errorf("cannot delete task '%s': it is a dependency for other tasks (e.g., %s)", taskToDelete.Title, strings.Join(taskToDelete.Dependents, ", "))
 	}
 
+	// 4. Handle subtasks of the task being deleted. For now, disallow deletion of tasks with subtasks.
+	if len(taskToDelete.SubtaskIDs) > 0 {
+		return fmt.Errorf("cannot delete task '%s': it has subtasks. Please delete or re-assign subtasks first.", taskToDelete.Title)
+	}
+
+	// Finally, delete the task itself
 	delete(s.tasks, id)
 
 	if err := s.saveTasksToFileInternal(); err != nil {
-		// Revert deletion and all modifications
-		s.tasks[id] = originalTaskForRevert
-		for depID, originalDepTask := range originalDependenciesForRevert {
-			s.tasks[depID] = originalDepTask
-		}
-		if parentModified && taskToDelete.ParentID != nil && *taskToDelete.ParentID != "" {
-			// Ensure originalParentTaskState was actually captured and ID matches
-			if originalParentTaskState.ID == *taskToDelete.ParentID {
-				s.tasks[*taskToDelete.ParentID] = originalParentTaskState
-			}
-		}
-		_ = s.saveTasksToFileInternal() // Best effort to save reverted state
-		return fmt.Errorf("failed to save after deleting task %s and updating related tasks: %w", id, err)
+		// Best-effort rollback
+		_ = s.loadTasksFromFileInternal()
+		return fmt.Errorf("failed to save after deleting task: %w", err)
 	}
+
 	return nil
 }
 
 // DeleteAllTasks removes all tasks from the store.
-// It does this by clearing the in-memory task map and saving an empty state to the data file.
+// This is a destructive operation that wipes the entire task map.
 func (s *FileTaskStore) DeleteAllTasks() error {
 	if err := s.flk.Lock(); err != nil {
 		return fmt.Errorf("failed to acquire write lock for DeleteAllTasks: %w", err)

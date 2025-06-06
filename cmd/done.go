@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/josephgoksu/taskwing.app/models"
 	"github.com/manifoldco/promptui"
@@ -38,49 +37,19 @@ var doneCmd = &cobra.Command{
 			notDoneFilter := func(t models.Task) bool {
 				return t.Status != models.StatusCompleted
 			}
-			tasks, err := taskStore.ListTasks(notDoneFilter, nil)
+			taskToMarkDone, err = selectTaskInteractive(taskStore, notDoneFilter, "Select task to mark as done")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to list tasks for selection: %v\\n", err)
+				if err == promptui.ErrInterrupt {
+					fmt.Println("Operation cancelled.")
+					return
+				}
+				if err == ErrNoTasksFound {
+					fmt.Println("No active tasks available to mark as done.")
+					return
+				}
+				fmt.Fprintf(os.Stderr, "Task selection failed: %v\n", err)
 				os.Exit(1)
 			}
-			if len(tasks) == 0 {
-				fmt.Println("No active tasks available to mark as done.")
-				return
-			}
-
-			templates := &promptui.SelectTemplates{
-				Label:    "{{ . }}?",
-				Active:   `> {{ .Title | cyan }} (ID: {{ .ID }}, Status: {{ .Status }})`,
-				Inactive: `  {{ .Title | faint }} (ID: {{ .ID }}, Status: {{ .Status }})`,
-				Selected: `{{ "✔" | green }} {{ .Title | faint }} (ID: {{ .ID }})`,
-				Details: `
---------- Task Details ----------
-{{ "ID:	" | faint }} {{ .ID }}
-{{ "Title:	" | faint }} {{ .Title }}
-{{ "Status:	" | faint }} {{ .Status }}
-{{ "Priority:	" | faint }} {{ .Priority }}`,
-			}
-
-			searcher := func(input string, index int) bool {
-				task := tasks[index]
-				name := strings.ToLower(task.Title)
-				input = strings.ToLower(input)
-				return strings.Contains(name, input) || strings.Contains(task.ID, input)
-			}
-
-			prompt := promptui.Select{
-				Label:     "Select task to mark as done",
-				Items:     tasks,
-				Templates: templates,
-				Searcher:  searcher,
-			}
-
-			i, _, err := prompt.Run()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Task selection failed %v\\n", err)
-				os.Exit(1)
-			}
-			taskToMarkDone = tasks[i]
 		}
 
 		if taskToMarkDone.Status == models.StatusCompleted {

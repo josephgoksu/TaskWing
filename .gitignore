@@ -20,3 +20,6 @@
 .taskwing
 .cursor
 .cursorrules
+
+# Added by goreleaser init:
+dist/

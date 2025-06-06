@@ -20,11 +20,6 @@ func NewProvider(config *LLMConfig) (Provider, error) {
 			return nil, fmt.Errorf("OpenAI provider selected but API key is missing")
 		}
 		return NewOpenAIProvider(apiKey), nil
-	case "google":
-		if config.ProjectID == "" {
-			return nil, fmt.Errorf("Google Cloud provider selected but ProjectID is missing")
-		}
-		return NewGoogleProvider(apiKey, config.ProjectID), nil
 	case "": // No provider specified
 		return nil, fmt.Errorf("no LLM provider specified in configuration")
 	default:

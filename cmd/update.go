@@ -37,51 +37,19 @@ var updateCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		} else {
-			tasks, err := taskStore.ListTasks(nil, nil)
+			taskToUpdate, err = selectTaskInteractive(taskStore, nil, "Select task to update")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to list tasks for selection: %v\n", err)
+				if err == promptui.ErrInterrupt {
+					fmt.Println("Update cancelled.")
+					return
+				}
+				if err == ErrNoTasksFound {
+					fmt.Println("No tasks available to update.")
+					return
+				}
+				fmt.Fprintf(os.Stderr, "Task selection failed: %v\n", err)
 				os.Exit(1)
 			}
-			if len(tasks) == 0 {
-				fmt.Println("No tasks available to update.")
-				return
-			}
-
-			templates := &promptui.SelectTemplates{
-				Label:    "{{ . }}?",
-				Active:   `> {{ .Title | cyan }} ({{ .ID | red }})`,
-				Inactive: `  {{ .Title | faint }} ({{ .ID | faint }})`,
-				Selected: `{{ "✔" | green }} {{ .Title | faint }}`,
-				Details: `
---------- Task Details ----------
-{{ "ID:	" | faint }} {{ .ID }}
-{{ "Title:	" | faint }} {{ .Title }}
-{{ "Status:	" | faint }} {{ .Status }}
-{{ "Priority:	" | faint }} {{ .Priority }}
-{{ "Description:	" | faint }} {{ .Description }}
-{{ "Tags:	" | faint }} {{ if .Tags }}{{ Join .Tags ", " }}{{ else }}None{{ end }}`,
-			}
-
-			searcher := func(input string, index int) bool {
-				task := tasks[index]
-				name := strings.ToLower(task.Title)
-				input = strings.ToLower(input)
-				return strings.Contains(name, input) || strings.Contains(task.ID, input)
-			}
-
-			prompt := promptui.Select{
-				Label:     "Select task to update",
-				Items:     tasks,
-				Templates: templates,
-				Searcher:  searcher,
-			}
-
-			i, _, err := prompt.Run()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Task selection failed %v\n", err)
-				os.Exit(1)
-			}
-			taskToUpdate = tasks[i]
 		}
 
 		fmt.Printf("Updating task: %s (ID: %s)\n", taskToUpdate.Title, taskToUpdate.ID)

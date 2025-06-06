@@ -17,20 +17,6 @@ const (
 	envPrefix  = "TASKWING"
 )
 
-// APIConfig holds API related configuration (example, can be removed if not used elsewhere)
-type APIConfig struct {
-	Key    string `mapstructure:"key"`
-	Secret string `mapstructure:"secret"`
-	URL    string `mapstructure:"url" validate:"omitempty,url"` // omitempty if API is optional
-}
-
-// ModelConfig holds AI model related configuration (example, can be removed or repurposed if LLMConfig covers it)
-type ModelConfig struct {
-	Name        string  `mapstructure:"name" validate:"omitempty,min=1"`
-	Temperature float64 `mapstructure:"temperature" validate:"omitempty,min=0,max=2"`
-	MaxTokens   int     `mapstructure:"maxTokens" validate:"omitempty,min=1"`
-}
-
 // LLMConfig holds configuration for Large Language Model interactions.
 type LLMConfig struct {
 	Provider                   string  `mapstructure:"provider" validate:"omitempty,oneof=openai google"`
@@ -58,8 +44,6 @@ type AppConfig struct {
 	Greeting string        `mapstructure:"greeting"`
 	Verbose  bool          `mapstructure:"verbose"`
 	Config   string        `mapstructure:"config"`
-	API      APIConfig     `mapstructure:"api" validate:"omitempty"`   // Now optional
-	Model    ModelConfig   `mapstructure:"model" validate:"omitempty"` // Now optional
 	Project  ProjectConfig `mapstructure:"project" validate:"required"`
 	LLM      LLMConfig     `mapstructure:"llm" validate:"omitempty"` // LLM config is optional overall
 }
@@ -157,11 +141,6 @@ func initConfig() {
 
 	// Set default values
 	viper.SetDefault("greeting", "Hello from TaskWing!")
-	// API and Model defaults can be minimal if they are truly optional examples now
-	viper.SetDefault("api.url", "")
-	viper.SetDefault("model.name", "")
-	viper.SetDefault("model.temperature", 0.0)
-	viper.SetDefault("model.maxTokens", 0)
 
 	viper.SetDefault("project.rootDir", ".taskwing")
 	viper.SetDefault("project.tasksDir", "tasks")
@@ -177,9 +156,9 @@ func initConfig() {
 	viper.SetDefault("llm.projectId", "")
 	viper.SetDefault("llm.maxOutputTokens", 8192)
 	viper.SetDefault("llm.temperature", 0.7)
-	viper.SetDefault("llm.estimationTemperature", 0.2)
+	viper.SetDefault("llm.estimationTemperature", 0.7)
 	viper.SetDefault("llm.estimationMaxOutputTokens", 1024)
-	viper.SetDefault("llm.improvementTemperature", 0.2)
+	viper.SetDefault("llm.improvementTemperature", 0.7)
 	viper.SetDefault("llm.improvementMaxOutputTokens", 8192)
 
 	// After all sources are configured, unmarshal into GlobalAppConfig
