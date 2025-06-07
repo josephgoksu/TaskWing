@@ -6,20 +6,20 @@
     TaskWing.app is an open-source, AI-assisted task manager built for modern development workflows. Designed for engineers, indie hackers, and teams, it automates project planning, task breakdown, prioritization, and workflow clarity—so you can focus on building, not managing.
   </Overview>
   <KeyFeatures>
-    <Feature>AI-Driven Task Generation: Create tasks, subtasks, and priorities directly from natural language or your project spec/PRD. Let the AI handle the structure.</Feature>
-    <Feature>Smart Task Expansion: Use AI to break down complex requirements into granular, actionable steps with correct dependencies.</Feature>
-    <Feature>Priority Intelligence: Suggests optimal task priority, grouping, and ordering based on project goals.</Feature>
-    <Feature>Developer-Centric UX: Fast, distraction-free interface, seamless CLI and editor (MCP) integrations.</Feature>
-    <Feature>Model-Agnostic: Plug in your API keys for OpenAI, Claude, Gemini, and more—choose your preferred AI model.</Feature>
-    <Feature>Conflict-Free Collaboration: Intelligent merge resolution and refactoring for team environments.</Feature>
-    <Feature>Aviation-Inspired Design: Flight motif and frosted glass UI—clarity, movement, and elegance built-in.</Feature>
-    <Feature>Secure &amp; Open: All configs are local, API keys never leave your machine. MIT + Commons Clause licensed.</Feature>
+    <Feature>AI-Powered Task Generation: Automatically generate a complete project plan from a Product Requirements Document (PRD), including tasks, subtasks, priorities, and dependencies.</Feature>
+    <Feature>Automated PRD Refinement: Optionally use an LLM to automatically improve your PRD for better clarity and more accurate task generation before planning.</Feature>
+    <Feature>Interactive CLI Workflow: A powerful and user-friendly command-line interface for all core operations, with interactive prompts for creating, viewing, and completing tasks.</Feature>
+    <Feature>Hierarchical &amp; Dependency-Aware: Full support for creating nested subtasks and defining dependencies between tasks, ensuring a logical project flow.</Feature>
+    <Feature>Advanced Task Views: List tasks in a simple table or a hierarchical tree view. Powerful filtering by status, priority, or text search, and sorting by any field.</Feature>
+    <Feature>Robust Local-First Storage: Persist tasks locally in JSON, YAML, or TOML. Data integrity is ensured through file locking and checksum verification.</Feature>
+    <Feature>Secure &amp; Configurable: All configurations and API keys are stored locally and never leave your machine. Configure your preferred LLM provider (OpenAI currently supported) and model via config files or environment variables.</Feature>
+    <Feature>Project Scaffolding &amp; Portability: Use the `init` command to quickly set up a new project. Built-in backup and restore commands make your data portable.</Feature>
   </KeyFeatures>
   <UseCases>
     <UseCase>Solo indie devs planning side projects with AI assistance.</UseCase>
     <UseCase>Product teams breaking down PRDs or RFCs into structured sprints.</UseCase>
     <UseCase>Open-source maintainers managing issues and PRs with automated clarity.</UseCase>
-    <UseCase>Anyone who wants to “fly above” project chaos.</UseCase>
+    <UseCase>Anyone who wants to "fly above" project chaos.</UseCase>
   </UseCases>
   <Tags>
     <Tag>AI</Tag>

@@ -151,15 +151,11 @@ func initConfig() {
 
 	// Defaults for LLMConfig
 	viper.SetDefault("llm.provider", "openai")
-	viper.SetDefault("llm.modelName", "o4-mini-2025-04-16")
+	viper.SetDefault("llm.modelName", "")
 	viper.SetDefault("llm.apiKey", "")
 	viper.SetDefault("llm.projectId", "")
-	viper.SetDefault("llm.maxOutputTokens", 8192)
+	viper.SetDefault("llm.maxOutputTokens", 16384)
 	viper.SetDefault("llm.temperature", 0.7)
-	viper.SetDefault("llm.estimationTemperature", 0.7)
-	viper.SetDefault("llm.estimationMaxOutputTokens", 1024)
-	viper.SetDefault("llm.improvementTemperature", 0.7)
-	viper.SetDefault("llm.improvementMaxOutputTokens", 8192)
 
 	// After all sources are configured, unmarshal into GlobalAppConfig
 	if err := viper.Unmarshal(&GlobalAppConfig); err != nil {

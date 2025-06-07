@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/briandowns/spinner"
 	"github.com/google/uuid"                  // For generating final IDs
 	"github.com/josephgoksu/taskwing.app/llm" // Import the new llm package
 	"github.com/josephgoksu/taskwing.app/models"
@@ -184,9 +185,13 @@ llm:
 		}
 
 		if err == nil { // User confirmed "yes"
-			fmt.Println("\nImproving PRD with LLM... (This may take a moment)")
+			s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
+			s.Suffix = " Improving PRD with LLM... (This may take a moment)"
+			s.Start()
+
 			improveSystemPrompt, promptErr := prompts.GetPrompt(prompts.KeyImprovePRD, absoluteTemplatesDir)
 			if promptErr != nil {
+				s.Stop()
 				HandleError("Error loading PRD improvement prompt.", promptErr)
 			}
 			improvedContent, improveErr := provider.ImprovePRD(
@@ -198,6 +203,9 @@ llm:
 				resolvedLLMConfig.ImprovementMaxOutputTokens,
 				resolvedLLMConfig.ImprovementTemperature,
 			)
+			s.Stop()
+			fmt.Println() // Newline after spinner stops
+
 			if improveErr != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to improve PRD: %v. Proceeding with original content.\n", improveErr)
 			} else {
@@ -222,9 +230,13 @@ llm:
 		}
 
 		// Attempt to estimate task parameters to dynamically set maxOutputTokens
-		fmt.Printf("\nEstimating task parameters from document using %s provider and model %s...\n", resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
+		s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
+		s.Suffix = fmt.Sprintf(" Estimating task parameters from document using %s provider and model %s...", resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
+		s.Start()
+
 		estimateSystemPrompt, promptErr := prompts.GetPrompt(prompts.KeyEstimateTasks, absoluteTemplatesDir)
 		if promptErr != nil {
+			s.Stop()
 			HandleError("Error loading task estimation prompt.", promptErr)
 		}
 		estimationOutput, estimationErr := provider.EstimateTaskParameters(
@@ -236,6 +248,8 @@ llm:
 			resolvedLLMConfig.EstimationMaxOutputTokens, // Use configured estimation tokens
 			resolvedLLMConfig.EstimationTemperature,     // Use configured estimation temperature
 		)
+		s.Stop()
+		fmt.Println() // Newline after spinner stops
 
 		currentMaxOutputTokens := resolvedLLMConfig.MaxOutputTokens // Fallback to configured value
 		const minDynamicTokens = 4096                               // Absolute minimum if we calculate dynamically below this.
@@ -266,14 +280,20 @@ llm:
 			}
 		}
 
-		fmt.Printf("Generating tasks from '%s' (max output tokens: %d) using %s provider and model %s...\n", docPath, currentMaxOutputTokens, resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
+		genSpinner := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
+		genSpinner.Suffix = fmt.Sprintf(" Generating tasks from '%s' (max output tokens: %d) using %s provider and model %s...", docPath, currentMaxOutputTokens, resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
+		genSpinner.Start()
 
 		// 5. Call LLM service to generate tasks with the determined maxOutputTokens.
 		generateSystemPrompt, promptErr := prompts.GetPrompt(prompts.KeyGenerateTasks, absoluteTemplatesDir)
 		if promptErr != nil {
+			genSpinner.Stop()
 			HandleError("Error loading task generation prompt.", promptErr)
 		}
 		llmTaskOutputs, err := provider.GenerateTasks(generateSystemPrompt, prdContent, resolvedLLMConfig.ModelName, resolvedLLMConfig.APIKey, resolvedLLMConfig.ProjectID, currentMaxOutputTokens, resolvedLLMConfig.Temperature)
+		genSpinner.Stop()
+		fmt.Println() // Newline after spinner stops
+
 		if err != nil {
 			HandleError("Error: The AI model failed to generate tasks.", err)
 		}
