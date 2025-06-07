@@ -18,12 +18,13 @@ type LLMConfig struct {
 // TaskOutput is the expected structure for tasks extracted by an LLM.
 // This structure is designed to be easily convertible to models.Task.
 type TaskOutput struct {
-	Title        string       `json:"title"`
-	Description  string       `json:"description"`
-	Priority     string       `json:"priority"` // e.g., "high", "medium", "low", "urgent"
-	TempID       int          `json:"tempId"`   // A temporary, unique ID for this task within the generation context.
-	Subtasks     []TaskOutput `json:"subtasks,omitempty"`
-	DependsOnIDs []int        `json:"dependsOnIds,omitempty"` // List of TempIDs of other tasks it depends on.
+	Title              string       `json:"title"`
+	Description        string       `json:"description"`
+	AcceptanceCriteria string       `json:"acceptanceCriteria"`
+	Priority           string       `json:"priority"` // e.g., "high", "medium", "low", "urgent"
+	TempID             int          `json:"tempId"`   // A temporary, unique ID for this task within the generation context.
+	Subtasks           []TaskOutput `json:"subtasks,omitempty"`
+	DependsOnIDs       []int        `json:"dependsOnIds,omitempty"` // List of TempIDs of other tasks it depends on.
 }
 
 // EstimationOutput holds the LLM's estimation of task parameters from a document.
@@ -35,15 +36,15 @@ type EstimationOutput struct {
 // Provider defines the interface for interacting with different LLM providers
 // to generate tasks from a document.
 type Provider interface {
-	// GenerateTasks takes the content of a document (e.g., PRD), model parameters,
-	// and returns a list of TaskOutput objects or an error.
-	GenerateTasks(prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error)
+	// GenerateTasks takes a system prompt, the content of a document (e.g., PRD),
+	// model parameters, and returns a list of TaskOutput objects or an error.
+	GenerateTasks(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error)
 
-	// EstimateTaskParameters takes the content of a document and returns an estimation
+	// EstimateTaskParameters takes a system prompt, the content of a document and returns an estimation
 	// of task count and complexity. This is used to dynamically adjust parameters for GenerateTasks.
-	EstimateTaskParameters(prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error)
+	EstimateTaskParameters(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error)
 
-	// ImprovePRD takes the content of a PRD, sends it to an LLM for refinement,
+	// ImprovePRD takes a system prompt, the content of a PRD, sends it to an LLM for refinement,
 	// and returns the improved document content as a string.
-	ImprovePRD(prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error)
+	ImprovePRD(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error)
 }

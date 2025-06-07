@@ -33,6 +33,8 @@ and ensuring the task data file (e.g., 'tasks.json') can be initialized.`,
 		projectRootDir := cfg.Project.RootDir
 		relativeTasksDir := cfg.Project.TasksDir
 		absoluteTasksDir := filepath.Join(projectRootDir, relativeTasksDir)
+		relativeTemplatesDir := cfg.Project.TemplatesDir
+		absoluteTemplatesDir := filepath.Join(projectRootDir, relativeTemplatesDir)
 
 		// Create the project root directory (e.g., .taskwing)
 		if err := os.MkdirAll(projectRootDir, 0755); err != nil {
@@ -42,6 +44,11 @@ and ensuring the task data file (e.g., 'tasks.json') can be initialized.`,
 		// Create the tasks directory within the project root (e.g., .taskwing/tasks)
 		if err := os.MkdirAll(absoluteTasksDir, 0755); err != nil {
 			HandleError(fmt.Sprintf("Error: Could not create tasks directory '%s'.", absoluteTasksDir), err)
+		}
+
+		// Create the templates directory within the project root (e.g., .taskwing/templates)
+		if err := os.MkdirAll(absoluteTemplatesDir, 0755); err != nil {
+			HandleError(fmt.Sprintf("Error: Could not create templates directory '%s'.", absoluteTemplatesDir), err)
 		}
 
 		// Construct the expected full path to the task data file for messaging.
@@ -186,6 +193,7 @@ data:
 		fmt.Printf("TaskWing project initialized successfully.\n")
 		fmt.Printf("Project root directory: %s\n", projectRootDir)
 		fmt.Printf("Tasks directory: %s\n", absoluteTasksDir)
+		fmt.Printf("Templates directory: %s\n", absoluteTemplatesDir)
 		fmt.Printf("Task data file will be managed at: %s\n", fullTaskDataPath)
 
 		if configCreated {

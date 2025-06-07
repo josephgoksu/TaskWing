@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/josephgoksu/taskwing.app/prompts"
 )
 
 // OpenAIProvider implements the Provider interface for OpenAI LLMs.
@@ -85,7 +83,7 @@ const openAIAPIURL = "https://api.openai.com/v1/chat/completions"
 
 // GenerateTasks for OpenAIProvider.
 // TODO: Implement the actual API call and error handling.
-func (p *OpenAIProvider) GenerateTasks(prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error) {
+func (p *OpenAIProvider) GenerateTasks(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error) {
 	if apiKey == "" {
 		apiKey = p.apiKey // Use provider's key if per-call key is not given
 	}
@@ -93,7 +91,6 @@ func (p *OpenAIProvider) GenerateTasks(prdContent string, modelName string, apiK
 		return nil, fmt.Errorf("OpenAI API key is not set")
 	}
 
-	systemPrompt := prompts.GenerateTasksSystemPrompt
 	userMessage := fmt.Sprintf("PRD Content:\n---\n%s\n---", prdContent)
 
 	requestPayload := OpenAIRequestPayload{
@@ -183,7 +180,7 @@ func (p *OpenAIProvider) GenerateTasks(prdContent string, modelName string, apiK
 }
 
 // EstimateTaskParameters for OpenAIProvider.
-func (p *OpenAIProvider) EstimateTaskParameters(prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error) {
+func (p *OpenAIProvider) EstimateTaskParameters(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error) {
 	if apiKey == "" {
 		apiKey = p.apiKey // Use provider's key if per-call key is not given
 	}
@@ -191,13 +188,12 @@ func (p *OpenAIProvider) EstimateTaskParameters(prdContent string, modelName str
 		return EstimationOutput{}, fmt.Errorf("OpenAI API key is not set for estimation")
 	}
 
-	estimationSystemPrompt := prompts.EstimateTasksSystemPrompt
 	userMessage := fmt.Sprintf("PRD Content:\n---\n%s\n---", prdContent)
 
 	requestPayload := OpenAIRequestPayload{
 		Model: modelName,
 		Messages: []OpenAIMessage{
-			{Role: "system", Content: estimationSystemPrompt},
+			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userMessage},
 		},
 		ResponseFormat: &OpenAIResponseFormat{Type: "json_object"},
@@ -273,7 +269,7 @@ func (p *OpenAIProvider) EstimateTaskParameters(prdContent string, modelName str
 }
 
 // ImprovePRD sends the PRD content to OpenAI with a prompt to refine and improve it.
-func (p *OpenAIProvider) ImprovePRD(prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error) {
+func (p *OpenAIProvider) ImprovePRD(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error) {
 	if apiKey == "" {
 		apiKey = p.apiKey
 	}
@@ -281,7 +277,6 @@ func (p *OpenAIProvider) ImprovePRD(prdContent string, modelName string, apiKey 
 		return "", fmt.Errorf("OpenAI API key is not set for PRD improvement")
 	}
 
-	systemPrompt := prompts.ImprovePRDSystemPrompt
 	userMessage := fmt.Sprintf("Please improve the following PRD content:\n---\n%s\n---", prdContent)
 
 	requestPayload := OpenAIRequestPayload{

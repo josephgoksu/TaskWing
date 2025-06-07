@@ -169,6 +169,9 @@ llm:
 		}
 
 		// --- OPTIONAL PRD IMPROVEMENT ---
+		// Construct the absolute path to the templates directory for the prompt loader.
+		absoluteTemplatesDir := filepath.Join(appCfg.Project.RootDir, appCfg.Project.TemplatesDir)
+
 		improvePrompt := promptui.Prompt{
 			Label:     prompts.GenerateTasksImprovementConfirmation,
 			IsConfirm: true,
@@ -182,7 +185,12 @@ llm:
 
 		if err == nil { // User confirmed "yes"
 			fmt.Println("\nImproving PRD with LLM... (This may take a moment)")
+			improveSystemPrompt, promptErr := prompts.GetPrompt(prompts.KeyImprovePRD, absoluteTemplatesDir)
+			if promptErr != nil {
+				HandleError("Error loading PRD improvement prompt.", promptErr)
+			}
 			improvedContent, improveErr := provider.ImprovePRD(
+				improveSystemPrompt,
 				prdContent,
 				resolvedLLMConfig.ModelName,
 				resolvedLLMConfig.APIKey,
@@ -215,7 +223,12 @@ llm:
 
 		// Attempt to estimate task parameters to dynamically set maxOutputTokens
 		fmt.Printf("\nEstimating task parameters from document using %s provider and model %s...\n", resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
+		estimateSystemPrompt, promptErr := prompts.GetPrompt(prompts.KeyEstimateTasks, absoluteTemplatesDir)
+		if promptErr != nil {
+			HandleError("Error loading task estimation prompt.", promptErr)
+		}
 		estimationOutput, estimationErr := provider.EstimateTaskParameters(
+			estimateSystemPrompt,
 			prdContent,
 			resolvedLLMConfig.ModelName,
 			resolvedLLMConfig.APIKey,
@@ -256,7 +269,11 @@ llm:
 		fmt.Printf("Generating tasks from '%s' (max output tokens: %d) using %s provider and model %s...\n", docPath, currentMaxOutputTokens, resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
 
 		// 5. Call LLM service to generate tasks with the determined maxOutputTokens.
-		llmTaskOutputs, err := provider.GenerateTasks(prdContent, resolvedLLMConfig.ModelName, resolvedLLMConfig.APIKey, resolvedLLMConfig.ProjectID, currentMaxOutputTokens, resolvedLLMConfig.Temperature)
+		generateSystemPrompt, promptErr := prompts.GetPrompt(prompts.KeyGenerateTasks, absoluteTemplatesDir)
+		if promptErr != nil {
+			HandleError("Error loading task generation prompt.", promptErr)
+		}
+		llmTaskOutputs, err := provider.GenerateTasks(generateSystemPrompt, prdContent, resolvedLLMConfig.ModelName, resolvedLLMConfig.APIKey, resolvedLLMConfig.ProjectID, currentMaxOutputTokens, resolvedLLMConfig.Temperature)
 		if err != nil {
 			HandleError("Error: The AI model failed to generate tasks.", err)
 		}
@@ -371,10 +388,11 @@ func resolveAndBuildTaskCandidates(llmOutputs []llm.TaskOutput) ([]models.Task, 
 			relMap.taskOrder = append(relMap.taskOrder, currentTempID)
 
 			candidateTask := models.Task{
-				Title:       llmTask.Title,
-				Description: llmTask.Description,
-				Priority:    mapLLMPriority(llmTask.Priority),
-				Status:      models.StatusPending,
+				Title:              llmTask.Title,
+				Description:        llmTask.Description,
+				AcceptanceCriteria: llmTask.AcceptanceCriteria,
+				Priority:           mapLLMPriority(llmTask.Priority),
+				Status:             models.StatusPending,
 			}
 			relMap.flattenedTasks[currentTempID] = candidateTask
 
@@ -462,6 +480,11 @@ func displayTaskCandidates(tasks []models.Task, relMap taskRelationshipMap) {
 		fmt.Printf("[%d] Title: %s (Priority: %s)\n", i+1, task.Title, task.Priority)
 		if task.Description != "" && task.Description != task.Title {
 			fmt.Printf("    Description: %s\n", task.Description)
+		}
+		if task.AcceptanceCriteria != "" {
+			// Format acceptance criteria for better readability
+			formattedAC := strings.ReplaceAll(task.AcceptanceCriteria, "\n", "\n                 ")
+			fmt.Printf("    Acceptance Criteria: %s\n", formattedAC)
 		}
 
 		if parentTempID, isChild := relMap.tempChildToParent[currentTempID]; isChild {

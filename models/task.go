@@ -33,18 +33,19 @@ const (
 
 // Task represents a unit of work.
 type Task struct {
-	ID           string       `json:"id" validate:"required,uuid4"`
-	Title        string       `json:"title" validate:"required,min=3,max=255"`
-	Description  string       `json:"description,omitempty"`
-	Status       TaskStatus   `json:"status" validate:"required,oneof=pending in-progress completed cancelled on-hold blocked needs-review"`
-	ParentID     *string      `json:"parentId,omitempty" validate:"omitempty,uuid4"` // ID of the parent task
-	SubtaskIDs   []string     `json:"subtaskIds,omitempty" validate:"dive,uuid4"`    // IDs of direct children tasks
-	Dependencies []string     `json:"dependencies,omitempty" validate:"dive,uuid4"`  // Slice of Task IDs this task depends on
-	Dependents   []string     `json:"dependents,omitempty" validate:"dive,uuid4"`    // Slice of Task IDs that depend on this task (managed internally)
-	Priority     TaskPriority `json:"priority" validate:"required,oneof=low medium high urgent"`
-	CreatedAt    time.Time    `json:"createdAt" validate:"required"`
-	UpdatedAt    time.Time    `json:"updatedAt" validate:"required"`
-	CompletedAt  *time.Time   `json:"completedAt,omitempty"` // Optional: pointer to allow null
+	ID                 string       `json:"id" validate:"required,uuid4"`
+	Title              string       `json:"title" validate:"required,min=3,max=255"`
+	Description        string       `json:"description,omitempty"`
+	AcceptanceCriteria string       `json:"acceptanceCriteria,omitempty"`
+	Status             TaskStatus   `json:"status" validate:"required,oneof=pending in-progress completed cancelled on-hold blocked needs-review"`
+	ParentID           *string      `json:"parentId,omitempty" validate:"omitempty,uuid4"` // ID of the parent task
+	SubtaskIDs         []string     `json:"subtaskIds,omitempty" validate:"dive,uuid4"`    // IDs of direct children tasks
+	Dependencies       []string     `json:"dependencies,omitempty" validate:"dive,uuid4"`  // Slice of Task IDs this task depends on
+	Dependents         []string     `json:"dependents,omitempty" validate:"dive,uuid4"`    // Slice of Task IDs that depend on this task (managed internally)
+	Priority           TaskPriority `json:"priority" validate:"required,oneof=low medium high urgent"`
+	CreatedAt          time.Time    `json:"createdAt" validate:"required"`
+	UpdatedAt          time.Time    `json:"updatedAt" validate:"required"`
+	CompletedAt        *time.Time   `json:"completedAt,omitempty"` // Optional: pointer to allow null
 }
 
 // TaskList represents a collection of tasks.
