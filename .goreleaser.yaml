@@ -58,7 +58,7 @@ archives:
 
 # Checksums
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
 
 # Changelog generation
 changelog:
@@ -78,10 +78,10 @@ changelog:
     - title: Features
       regexp: '^.*?feat(\(.+\))??!?:.+$'
       order: 0
-    - title: 'Bug fixes'
+    - title: "Bug fixes"
       regexp: '^.*?fix(\(.+\))??!?:.+$'
       order: 1
-    - title: 'Enhancements'
+    - title: "Enhancements"
       regexp: '^.*?(enhancement|refactor)(\(.+\))??!?:.+$'
       order: 2
     - title: Others
@@ -97,53 +97,53 @@ release:
   mode: replace
   header: |
     ## TaskWing {{.Tag}}
-    
+
     ### AI-Assisted CLI Task Manager for Developers
-    
+
     TaskWing helps you manage tasks efficiently with powerful AI integration through the Model Context Protocol (MCP).
-    
+
     ### Quick Start
-    
+
     1. Download the appropriate binary for your platform
     2. Extract the archive
     3. Run `./taskwing init` to initialize TaskWing in your project
     4. Start managing tasks with `./taskwing add`
-    
+
     ### AI Integration
-    
+
     TaskWing supports MCP for seamless AI tool integration:
     ```bash
     # Start MCP server for AI tools
     ./taskwing mcp
     ```
-    
+
     See the included MCP_GUIDE.md for detailed AI integration instructions.
-    
+
   footer: |
     ---
-    
+
     ### Installation
-    
+
     **Homebrew (macOS/Linux):**
     ```bash
     # Coming soon
     ```
-    
+
     **Manual Installation:**
     1. Download the appropriate binary for your platform from the assets below
     2. Extract the archive
     3. Move the binary to a directory in your PATH
     4. Run `taskwing --help` to get started
-    
+
     **From Source:**
     ```bash
     git clone https://github.com/josephgoksu/taskwing.app
     cd taskwing.app
     go build -o taskwing main.go
     ```
-    
+
     ---
-    
+
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser) 🚀
 
 # Homebrew tap (future)
@@ -160,32 +160,32 @@ brews:
       name: goreleaserbot
       email: bot@goreleaser.com
     commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
-    skip_upload: true  # Enable when homebrew-tap repo is ready
+    skip_upload: true # Enable when homebrew-tap repo is ready
 
-# Docker images (future)
-dockers:
-  - image_templates:
-    - "josephgoksu/taskwing:latest"
-    - "josephgoksu/taskwing:{{ .Tag }}"
-    - "josephgoksu/taskwing:v{{ .Major }}"
-    dockerfile: Dockerfile
-    build_flag_templates:
-    - "--pull"
-    - "--label=org.opencontainers.image.created={{.Date}}"
-    - "--label=org.opencontainers.image.title={{.ProjectName}}"
-    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-    - "--label=org.opencontainers.image.version={{.Version}}"
-    skip_push: true  # Enable when Docker Hub is ready
+# Docker images (disabled - uncomment when ready)
+# dockers:
+#   - image_templates:
+#     - "josephgoksu/taskwing:latest"
+#     - "josephgoksu/taskwing:{{ .Tag }}"
+#     - "josephgoksu/taskwing:v{{ .Major }}"
+#     dockerfile: Dockerfile
+#     build_flag_templates:
+#     - "--pull"
+#     - "--label=org.opencontainers.image.created={{.Date}}"
+#     - "--label=org.opencontainers.image.title={{.ProjectName}}"
+#     - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+#     - "--label=org.opencontainers.image.version={{.Version}}"
+#     skip_push: true
 
-# Snapcraft (future)
-snapcrafts:
-  - name: taskwing
-    summary: AI-assisted CLI task manager for developers
-    description: |
-      TaskWing is a command-line task management tool designed for developers 
-      who want to organize their work efficiently while leveraging AI assistance 
-      for better productivity.
-    grade: stable
-    confinement: strict
-    publish: false  # Enable when Snapcraft is ready
-    license: MIT
+# Snapcraft (disabled - uncomment when ready)
+# snapcrafts:
+#   - name: taskwing
+#     summary: AI-assisted CLI task manager for developers
+#     description: |
+#       TaskWing is a command-line task management tool designed for developers
+#       who want to organize their work efficiently while leveraging AI assistance
+#       for better productivity.
+#     grade: stable
+#     confinement: strict
+#     publish: false
+#     license: MIT
