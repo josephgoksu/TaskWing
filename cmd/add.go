@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 NAME HERE josephgoksu@gmail.com
+Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
@@ -19,91 +19,123 @@ var addCmd = &cobra.Command{
 	Short: "Add a new task",
 	Long:  `Add a new task to the task manager. Prompts for title, description, priority, tags, dependencies, and optional parent task ID.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		taskStore, err := getStore()
+		taskStore, err := GetStore()
 		if err != nil {
 			HandleError("Error: Could not initialize the task store.", err)
 		}
 		defer taskStore.Close()
 
-		titlePrompt := promptui.Prompt{
-			Label: "Task Title",
-			Validate: func(input string) error {
-				if len(input) < 3 {
-					return fmt.Errorf("title must be at least 3 characters long")
-				}
-				return nil
-			},
-		}
-		title, err := titlePrompt.Run()
+		// Interactive prompts for task details
+		// ... (rest of the logic for collecting task details)
+
+		// Get title from flag or prompt
+		title, err := cmd.Flags().GetString("title")
 		if err != nil {
-			if err == promptui.ErrInterrupt {
-				fmt.Println("Task addition cancelled.")
-				os.Exit(0)
+			HandleError("Error getting title flag", err)
+		}
+		if title == "" {
+			// Interactive prompt for title
+			titlePrompt := promptui.Prompt{
+				Label: "Task Title",
+				Validate: func(input string) error {
+					if len(strings.TrimSpace(input)) < 3 {
+						return fmt.Errorf("title must be at least 3 characters long")
+					}
+					return nil
+				},
 			}
-			HandleError("Error: Failed to read task title.", err)
-		}
-
-		descriptionPrompt := promptui.Prompt{
-			Label: "Task Description (optional)",
-		}
-		description, err := descriptionPrompt.Run()
-		if err != nil && err != promptui.ErrInterrupt {
-			HandleError("Error: Failed to read task description.", err)
-		}
-
-		prioritySelect := promptui.Select{
-			Label: "Task Priority",
-			Items: []models.TaskPriority{models.PriorityLow, models.PriorityMedium, models.PriorityHigh, models.PriorityUrgent},
-		}
-		_, priorityStr, err := prioritySelect.Run()
-		if err != nil {
-			if err == promptui.ErrInterrupt {
-				fmt.Println("Task addition cancelled.")
-				os.Exit(0)
-			}
-			HandleError("Error: Failed to select priority.", err)
-		}
-
-		// Prompt for Dependencies
-		depsPrompt := promptui.Prompt{
-			Label: "Task Dependencies (optional, comma-separated IDs)",
-		}
-		depsStr, err := depsPrompt.Run()
-		var dependencyIDs []string
-		if err != nil && err != promptui.ErrInterrupt {
-			HandleError("Error: Failed to read dependencies.", err)
-		} else if err == nil && strings.TrimSpace(depsStr) != "" {
-			dependencyIDs = strings.Split(strings.ReplaceAll(depsStr, " ", ""), ",")
-		}
-
-		// Prompt for Parent Task ID
-		var parentIDPtr *string
-		parentIDPrompt := promptui.Prompt{
-			Label: "Parent Task ID (optional, leave empty if none)",
-			Validate: func(input string) error {
-				if strings.TrimSpace(input) == "" {
-					return nil // Allow empty for no parent
+			title, err = titlePrompt.Run()
+			if err != nil {
+				if err == promptui.ErrInterrupt {
+					fmt.Println("Task addition cancelled.")
+					os.Exit(0)
 				}
-				// Basic format check could be done here, but existence is checked by store
-				// For example, ensure it's not outrageously long or invalid chars if needed.
-				return nil
-			},
-		}
-		parentIDStr, err := parentIDPrompt.Run()
-		if err != nil && err != promptui.ErrInterrupt {
-			HandleError("Error: Failed to read parent task ID.", err)
-		} else if err == nil && strings.TrimSpace(parentIDStr) != "" {
-			cleanParentIDStr := strings.TrimSpace(parentIDStr)
-			parentIDPtr = &cleanParentIDStr
+				HandleError("Error: Failed to read task title.", err)
+			}
 		}
 
+		// Get description from flag or prompt
+		description, err := cmd.Flags().GetString("description")
+		if err != nil {
+			HandleError("Error getting description flag", err)
+		}
+		if description == "" {
+			descriptionPrompt := promptui.Prompt{
+				Label: "Task Description (optional)",
+			}
+			description, err = descriptionPrompt.Run()
+			if err != nil && err != promptui.ErrInterrupt {
+				HandleError("Error: Failed to read task description.", err)
+			}
+		}
+
+		// ... (similar logic for priority, dependencies, parentID)
+
+		// Get priority from flag or prompt
+		priorityStr, err := cmd.Flags().GetString("priority")
+		if err != nil {
+			HandleError("Error getting priority flag", err)
+		}
+		if priorityStr == "" {
+			priorityPrompt := promptui.Select{
+				Label: "Select Priority",
+				Items: []string{"low", "medium", "high", "urgent"},
+			}
+			_, priorityStr, err = priorityPrompt.Run()
+			if err != nil && err != promptui.ErrInterrupt {
+				HandleError("Error: Failed to select priority.", err)
+			}
+		}
+
+		// Get dependencies from flag or prompt
+		dependenciesStr, err := cmd.Flags().GetString("dependencies")
+		if err != nil {
+			HandleError("Error getting dependencies flag", err)
+		}
+		if dependenciesStr == "" {
+			dependenciesPrompt := promptui.Prompt{
+				Label: "Dependencies (comma-separated task IDs, optional)",
+			}
+			dependenciesStr, err = dependenciesPrompt.Run()
+			if err != nil && err != promptui.ErrInterrupt {
+				HandleError("Error: Failed to read dependencies.", err)
+			}
+		}
+		var dependencies []string
+		if dependenciesStr != "" {
+			dependencies = strings.Split(dependenciesStr, ",")
+			for i, dep := range dependencies {
+				dependencies[i] = strings.TrimSpace(dep)
+			}
+		}
+
+		// Get Parent ID from flag or prompt
+		parentIDStr, err := cmd.Flags().GetString("parentID")
+		if err != nil {
+			HandleError("Error getting parentID flag", err)
+		}
+		if parentIDStr == "" {
+			parentSelectPrompt := promptui.Prompt{
+				Label: "Parent Task ID (optional, press Enter to skip)",
+			}
+			parentIDStr, err = parentSelectPrompt.Run()
+			if err != nil && err != promptui.ErrInterrupt {
+				HandleError("Error: Failed to read parent task ID.", err)
+			}
+		}
+		var parentID *string
+		if parentIDStr != "" {
+			parentID = &parentIDStr
+		}
+
+		// Create the new task
 		newTask := models.Task{
 			Title:        title,
 			Description:  description,
+			Status:       models.StatusPending,
 			Priority:     models.TaskPriority(priorityStr),
-			Status:       models.StatusPending, // Explicitly set default status
-			Dependencies: dependencyIDs,
-			ParentID:     parentIDPtr,
+			Dependencies: dependencies,
+			ParentID:     parentID,
 		}
 
 		createdTask, err := taskStore.CreateTask(newTask)
@@ -111,13 +143,8 @@ var addCmd = &cobra.Command{
 			HandleError("Error: Could not create the new task.", err)
 		}
 
-		fmt.Printf("Task '%s' added successfully! ID: %s\n", createdTask.Title, createdTask.ID)
-		if createdTask.ParentID != nil && *createdTask.ParentID != "" {
-			fmt.Printf("Parent Task ID: %s\n", *createdTask.ParentID)
-		}
-		if len(createdTask.Dependencies) > 0 {
-			fmt.Printf("Dependencies: %v\n", createdTask.Dependencies)
-		}
+		fmt.Printf("✅ Task added successfully!\n")
+		fmt.Printf("ID: %s\nTitle: %s\n", createdTask.ID, createdTask.Title)
 	},
 }
 
@@ -125,6 +152,11 @@ func init() {
 	rootCmd.AddCommand(addCmd)
 
 	// Here you will define your flags and configuration settings.
+	addCmd.Flags().String("title", "", "Title of the task")
+	addCmd.Flags().String("description", "", "Description of the task")
+	addCmd.Flags().String("priority", "medium", "Priority of the task (low, medium, high, urgent)")
+	addCmd.Flags().String("dependencies", "", "Comma-separated task IDs that this task depends on")
+	addCmd.Flags().String("parentID", "", "ID of the parent task")
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:

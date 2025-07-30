@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 NAME HERE josephgoksu@gmail.com
+Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
@@ -25,9 +25,9 @@ If a task_id is provided, it will show details for that specific task.
 Otherwise, it will present an interactive menu to select a task.`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		taskStore, err := getStore()
+		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: Could not initialize the task store.", err)
+			HandleError("Error: could not get the task store", err)
 		}
 		defer taskStore.Close()
 

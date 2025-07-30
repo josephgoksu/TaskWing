@@ -1,25 +1,52 @@
-.tasks
-.taskwing
+# TaskWing data directories
+.taskwing/
+.tasks/
 
-.DS_Store
+# TaskWing binary
+taskwing
 
-# Go
-
-# Binaries for programs and plugins
+# Go binaries and artifacts
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-
-# Test binary, built with `go test -c`
 *.test
-
-.env
-.goose
-.taskwing
-.cursor
-.cursorrules
-
-# Added by goreleaser init:
 dist/
+
+# Environment and local config
+.env
+.env.local
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Development tools
+.cursor/
+.cursorrules
+.claude/
+
+# Test files
+test_*.py
+*_test_*
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/

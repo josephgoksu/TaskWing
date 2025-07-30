@@ -69,8 +69,8 @@ func validateAppConfig(config *AppConfig) error {
 	return nil
 }
 
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
+// InitConfig reads in config file and ENV variables if set.
+func InitConfig() {
 	// Load .env file first if present
 	if err := godotenv.Load(); err != nil {
 		// It's okay if .env file doesn't exist.

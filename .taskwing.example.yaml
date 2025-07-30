@@ -1,0 +1,23 @@
+# TaskWing Configuration Example
+# Copy this to .taskwing.yaml in your project or home directory
+
+project:
+  # Base directory for TaskWing files
+  rootDir: ".taskwing"
+  
+  # Directory for task data (relative to rootDir)
+  tasksDir: "tasks"
+  
+  # Log file path
+  outputLogPath: "logs/taskwing.log"
+
+data:
+  # Task data file name
+  file: "tasks.json"
+  
+  # Data format: json, yaml, or toml
+  format: "json"
+
+# Optional: Debug settings
+debug: false
+verbose: false

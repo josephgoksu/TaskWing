@@ -15,7 +15,7 @@ var doneCmd = &cobra.Command{
 	Long:  `Mark a task as completed. If task_id is provided, it attempts to mark that task directly. Otherwise, it presents an interactive list to choose a task.`,
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		taskStore, err := getStore()
+		taskStore, err := GetStore()
 		if err != nil {
 			HandleError("Error: Could not initialize the task store.", err)
 		}

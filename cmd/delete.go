@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 NAME HERE josephgoksu@gmail.com
+Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
@@ -24,9 +24,9 @@ var deleteCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		recursive, _ = cmd.Flags().GetBool("recursive")
 
-		taskStore, err := getStore()
+		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: Could not initialize the task store.", err)
+			HandleError("Error getting task store", err)
 		}
 		defer taskStore.Close()
 

@@ -1,5 +1,7 @@
 package llm
 
+import "context"
+
 // LLMConfig holds the specific configuration fields needed by the LLM package.
 // This helps avoid circular dependencies with the cmd package.
 type LLMConfig struct {
@@ -38,13 +40,13 @@ type EstimationOutput struct {
 type Provider interface {
 	// GenerateTasks takes a system prompt, the content of a document (e.g., PRD),
 	// model parameters, and returns a list of TaskOutput objects or an error.
-	GenerateTasks(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error)
+	GenerateTasks(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error)
 
 	// EstimateTaskParameters takes a system prompt, the content of a document and returns an estimation
 	// of task count and complexity. This is used to dynamically adjust parameters for GenerateTasks.
-	EstimateTaskParameters(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error)
+	EstimateTaskParameters(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error)
 
 	// ImprovePRD takes a system prompt, the content of a PRD, sends it to an LLM for refinement,
 	// and returns the improved document content as a string.
-	ImprovePRD(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error)
+	ImprovePRD(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error)
 }

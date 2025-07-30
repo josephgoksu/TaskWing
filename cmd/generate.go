@@ -1,12 +1,15 @@
 /*
-Copyright © 2025 NAME HERE josephgoksu@gmail.com
+Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
 import (
+	"context"
 	"encoding/json" // For pretty printing task output for now
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
@@ -51,6 +54,10 @@ llm:
 `,
 	Args: cobra.NoArgs, // Path will be a flag
 	Run: func(cmd *cobra.Command, args []string) {
+		// Graceful shutdown context listening for SIGINT (Ctrl+C)
+		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+		defer stop()
+
 		docPath, _ := cmd.Flags().GetString("file")
 
 		if docPath == "" {
@@ -59,7 +66,7 @@ llm:
 
 		// --- PRE-GENERATION CHECKS ---
 		// 1. Check for existing tasks and ask for overwrite confirmation BEFORE any expensive operations.
-		taskStore, err := getStore()
+		taskStore, err := GetStore()
 		if err != nil {
 			HandleError("Error: Could not initialize the task store.", err)
 		}
@@ -195,6 +202,7 @@ llm:
 				HandleError("Error loading PRD improvement prompt.", promptErr)
 			}
 			improvedContent, improveErr := provider.ImprovePRD(
+				ctx, // Pass the cancellable context
 				improveSystemPrompt,
 				prdContent,
 				resolvedLLMConfig.ModelName,
@@ -207,6 +215,10 @@ llm:
 			fmt.Println() // Newline after spinner stops
 
 			if improveErr != nil {
+				if errors.Is(improveErr, context.Canceled) {
+					fmt.Println("\nOperation cancelled by user.")
+					os.Exit(130) // Standard exit code for Ctrl+C
+				}
 				fmt.Fprintf(os.Stderr, "Warning: Failed to improve PRD: %v. Proceeding with original content.\n", improveErr)
 			} else {
 				prdContent = improvedContent // Use the improved content for subsequent steps
@@ -240,6 +252,7 @@ llm:
 			HandleError("Error loading task estimation prompt.", promptErr)
 		}
 		estimationOutput, estimationErr := provider.EstimateTaskParameters(
+			ctx, // Pass the cancellable context
 			estimateSystemPrompt,
 			prdContent,
 			resolvedLLMConfig.ModelName,
@@ -256,6 +269,10 @@ llm:
 		const maxSensibleDynamicTokens = 32768                      // Cap for dynamically calculated tokens
 
 		if estimationErr != nil {
+			if errors.Is(estimationErr, context.Canceled) {
+				fmt.Println("\nOperation cancelled by user.")
+				os.Exit(130)
+			}
 			fmt.Fprintf(os.Stderr, "Warning: Failed to estimate task parameters, will use configured maxOutputTokens (%d). Error: %v\n", currentMaxOutputTokens, estimationErr)
 		} else {
 			fmt.Printf("LLM Estimation - Estimated Task Count: %d, Complexity: %s\n", estimationOutput.EstimatedTaskCount, estimationOutput.EstimatedComplexity)
@@ -290,11 +307,24 @@ llm:
 			genSpinner.Stop()
 			HandleError("Error loading task generation prompt.", promptErr)
 		}
-		llmTaskOutputs, err := provider.GenerateTasks(generateSystemPrompt, prdContent, resolvedLLMConfig.ModelName, resolvedLLMConfig.APIKey, resolvedLLMConfig.ProjectID, currentMaxOutputTokens, resolvedLLMConfig.Temperature)
+		llmTaskOutputs, err := provider.GenerateTasks(
+			ctx, // Pass the cancellable context
+			generateSystemPrompt,
+			prdContent,
+			resolvedLLMConfig.ModelName,
+			resolvedLLMConfig.APIKey,
+			resolvedLLMConfig.ProjectID,
+			currentMaxOutputTokens,
+			resolvedLLMConfig.Temperature,
+		)
 		genSpinner.Stop()
 		fmt.Println() // Newline after spinner stops
 
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				fmt.Println("\nOperation cancelled by user.")
+				os.Exit(130)
+			}
 			HandleError("Error: The AI model failed to generate tasks.", err)
 		}
 
@@ -343,7 +373,7 @@ llm:
 
 		// 9. If confirmed, get a fresh store connection and create tasks.
 		fmt.Println("\nCreating tasks...")
-		finalTaskStore, finalStoreErr := getStore()
+		finalTaskStore, finalStoreErr := GetStore()
 		if finalStoreErr != nil {
 			HandleError("Error: Could not initialize task store for the final step.", finalStoreErr)
 		}

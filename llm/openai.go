@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -83,7 +84,7 @@ const openAIAPIURL = "https://api.openai.com/v1/chat/completions"
 
 // GenerateTasks for OpenAIProvider.
 // TODO: Implement the actual API call and error handling.
-func (p *OpenAIProvider) GenerateTasks(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error) {
+func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error) {
 	if apiKey == "" {
 		apiKey = p.apiKey // Use provider's key if per-call key is not given
 	}
@@ -123,7 +124,7 @@ func (p *OpenAIProvider) GenerateTasks(systemPrompt, prdContent string, modelNam
 		return nil, fmt.Errorf("failed to marshal OpenAI request payload: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OpenAI request: %w", err)
 	}
@@ -180,7 +181,7 @@ func (p *OpenAIProvider) GenerateTasks(systemPrompt, prdContent string, modelNam
 }
 
 // EstimateTaskParameters for OpenAIProvider.
-func (p *OpenAIProvider) EstimateTaskParameters(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error) {
+func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error) {
 	if apiKey == "" {
 		apiKey = p.apiKey // Use provider's key if per-call key is not given
 	}
@@ -218,7 +219,7 @@ func (p *OpenAIProvider) EstimateTaskParameters(systemPrompt, prdContent string,
 		return EstimationOutput{}, fmt.Errorf("failed to marshal OpenAI estimation request payload: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return EstimationOutput{}, fmt.Errorf("failed to create OpenAI estimation request: %w", err)
 	}
@@ -269,7 +270,7 @@ func (p *OpenAIProvider) EstimateTaskParameters(systemPrompt, prdContent string,
 }
 
 // ImprovePRD sends the PRD content to OpenAI with a prompt to refine and improve it.
-func (p *OpenAIProvider) ImprovePRD(systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error) {
+func (p *OpenAIProvider) ImprovePRD(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error) {
 	if apiKey == "" {
 		apiKey = p.apiKey
 	}
@@ -304,7 +305,7 @@ func (p *OpenAIProvider) ImprovePRD(systemPrompt, prdContent string, modelName s
 		return "", fmt.Errorf("failed to marshal OpenAI PRD improvement request payload: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return "", fmt.Errorf("failed to create OpenAI PRD improvement request: %w", err)
 	}

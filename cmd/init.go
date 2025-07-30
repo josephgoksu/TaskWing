@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 NAME HERE josephgoksu@gmail.com
+Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
@@ -66,8 +66,11 @@ and ensuring the task data file (e.g., 'tasks.json') can be initialized.`,
 		fullTaskDataPath := filepath.Join(absoluteTasksDir, taskFileName)
 
 		// Attempt to get the store, which will initialize the data file if it doesn't exist.
-		_, err := getStore()
+		_, err := GetStore()
 		if err != nil {
+			// We can ignore certain errors if the purpose is just to get paths.
+			// For example, if tasks.json doesn't exist yet, that's fine for init.
+			// However, a failure to get config paths would be a problem.
 			HandleError(fmt.Sprintf("Error: Could not initialize task store at '%s'.", fullTaskDataPath), err)
 		}
 

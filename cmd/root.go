@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 NAME HERE josephgoksu@gmail.com
+Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
@@ -55,7 +55,7 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize(InitConfig)
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
@@ -75,8 +75,8 @@ func init() {
 
 // initConfig is defined in config.go
 
-// getStore initializes and returns the task store.
-func getStore() (store.TaskStore, error) {
+// GetStore initializes and returns the task store.
+func GetStore() (store.TaskStore, error) {
 	s := store.NewFileTaskStore()
 
 	cfg := GetConfig() // Get the global AppConfig

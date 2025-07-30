@@ -1,5 +1,5 @@
 /*
-Copyright © 2025 NAME HERE josephgoksu@gmail.com
+Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
@@ -15,53 +15,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Helper to convert priority to an integer for sorting
-func priorityToInt(p models.TaskPriority) int {
-	switch p {
-	case models.PriorityUrgent:
-		return 4
-	case models.PriorityHigh:
-		return 3
-	case models.PriorityMedium:
-		return 2
-	case models.PriorityLow:
-		return 1
-	default:
-		return 0 // Should not happen with validated data
-	}
-}
-
-// Helper to convert status to an integer for sorting (example order)
-func statusToInt(s models.TaskStatus) int {
-	switch s {
-	case models.StatusPending:
-		return 1
-	case models.StatusInProgress:
-		return 2
-	case models.StatusBlocked:
-		return 3
-	case models.StatusNeedsReview:
-		return 4
-	case models.StatusOnHold:
-		return 5
-	case models.StatusCompleted:
-		return 6
-	case models.StatusCancelled:
-		return 7
-	default:
-		return 0 // Should not happen
-	}
-}
-
 // listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists tasks with filtering and sorting options",
 	Long:  `Lists tasks with various filtering (status, priority, text, tags) and sorting capabilities.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		taskStore, err := getStore()
+		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: Could not initialize the task store.", err)
+			HandleError("Error: could not get the task store", err)
 		}
 		defer taskStore.Close()
 

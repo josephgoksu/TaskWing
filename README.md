@@ -1,121 +1,233 @@
 # TaskWing
 
-TaskWing is an AI-assisted CLI task manager for developers. This proof-of-concept (POC) helps you manage tasks, track dependencies, and organize your workflow directly from the terminal.
+> AI-assisted CLI task manager for developers
 
-## Installation
+TaskWing is a command-line task management tool designed for developers who want to organize their work efficiently while leveraging AI assistance for better productivity.
 
-You can build the CLI from source.
+## Features
 
-**Prerequisites:**
+- **📝 Task Management**: Create, update, delete, and track tasks with priorities and dependencies
+- **🤖 AI Integration**: Model Context Protocol (MCP) support for seamless AI tool integration
+- **🔗 Dependencies**: Manage task relationships and prevent circular dependencies
+- **📊 Filtering & Sorting**: Advanced task filtering and customizable sorting options
+- **⚡ Fast & Local**: File-based storage with data integrity checks
+- **🛠 Developer-Friendly**: Built for command-line workflows
 
-- Go (version 1.21+ recommended)
+## Quick Start
 
-**Build steps:**
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/josephgoksu/taskwing.app
+cd taskwing.app
+
 # Build the binary
 go build -o taskwing main.go
 
-# Move it to a directory in your PATH (optional)
+# Optional: Add to PATH
 mv ./taskwing /usr/local/bin/
 ```
 
-## Getting Started
-
-Navigate to your project's root directory and initialize TaskWing:
+### Basic Usage
 
 ```bash
+# Initialize TaskWing in your project
 taskwing init
-```
 
-This command creates a `.taskwing` directory in your project to store all related data and configuration.
-
-## Command Reference
-
-### `taskwing add`
-
-Add a new task. You will be prompted for a title, description, priority, tags, and dependencies.
-
-```bash
+# Add a new task
 taskwing add
+
+# List all tasks
+taskwing list
+
+# Mark a task as done
+taskwing done [task_id]
 ```
 
-### `taskwing list`
+## Architecture
 
-List tasks with filters and sorting.
+```mermaid
+graph TB
+    CLI[TaskWing CLI] --> Store[Task Store]
+    CLI --> MCP[MCP Server]
+    Store --> Files[(Local Files)]
+    MCP --> AI[AI Tools]
 
-- **Filter by:** `--status`, `--priority`, `--title-contains`, `--description-contains`, `--tags`, `--tags-any`, `--search`.
-- **Sort by:** `--sort-by <field>` (e.g., `id`, `priority`, `createdAt`)
-- **Sort order:** `--sort-order <asc|desc>`
+    subgraph "Task Management"
+        Store --> JSON[tasks.json]
+        Store --> Checksum[.checksum]
+    end
+
+    subgraph "AI Integration"
+        MCP --> Tools[MCP Tools]
+        MCP --> Resources[MCP Resources]
+        MCP --> Prompts[MCP Prompts]
+    end
+
+    AI --> Claude[Claude Code]
+    AI --> Cursor[Cursor IDE]
+    AI --> Other[Other AI Tools]
+```
+
+## Commands
+
+### Core Commands
+
+| Command                | Description                              |
+| ---------------------- | ---------------------------------------- |
+| `taskwing init`        | Initialize TaskWing in current directory |
+| `taskwing add`         | Add a new task (interactive)             |
+| `taskwing list`        | List tasks with optional filters         |
+| `taskwing update [id]` | Update an existing task                  |
+| `taskwing delete [id]` | Delete a task                            |
+| `taskwing done [id]`   | Mark task as completed                   |
+| `taskwing show [id]`   | Show detailed task information           |
+
+### Filtering & Sorting
 
 ```bash
-# Example: List all high-priority, pending tasks, sorted by creation date.
-taskwing list --status pending --priority high --sort-by createdAt
+# Filter by status and priority
+taskwing list --status pending --priority high
+
+# Search in title and description
+taskwing list --search "authentication"
+
+# Sort by creation date
+taskwing list --sort-by createdAt --sort-order desc
 ```
 
-### `taskwing update [task_id]`
-
-Update a task. If no `task_id` is provided, an interactive selector will be shown.
+### AI Integration
 
 ```bash
-taskwing update <your_task_id>
+# Start MCP server for AI tools
+taskwing mcp
+
+# With verbose logging
+taskwing mcp -v
 ```
 
-### `taskwing delete [task_id]`
+## AI Integration (MCP)
 
-Delete a task. If no `task_id` is provided, an interactive selector will be shown. A task cannot be deleted if other tasks depend on it.
+TaskWing supports the Model Context Protocol, enabling AI tools to directly manage your tasks.
 
-```bash
-taskwing delete <your_task_id>
+### Supported AI Tools
+
+- **Claude Code** - Direct task management from Claude's interface
+- **Cursor IDE** - Task integration within your editor
+- **Custom AI Tools** - Any MCP-compatible tool
+
+### Setup for Claude Code
+
+Add to your MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "taskwing": {
+      "command": "taskwing",
+      "args": ["mcp"]
+    }
+  }
+}
 ```
 
-### `taskwing done [task_id]`
+### MCP Capabilities
 
-Mark a task as completed. If no `task_id` is provided, an interactive selector will be shown.
+```mermaid
+graph LR
+    AI[AI Tool] --> MCP[MCP Server]
 
-```bash
-taskwing done <your_task_id>
+    subgraph "TaskWing MCP"
+        MCP --> Tools[6 Tools]
+        MCP --> Resources[2 Resources]
+        MCP --> Prompts[2 Prompts]
+    end
+
+    Tools --> Create[add-task]
+    Tools --> Read[list-tasks]
+    Tools --> Update[update-task]
+    Tools --> Delete[delete-task]
+    Tools --> Complete[mark-done]
+    Tools --> Detail[get-task]
+
+    Resources --> TaskData[taskwing://tasks]
+    Resources --> Config[taskwing://config]
+
+    Prompts --> Generate[task-generation]
+    Prompts --> Breakdown[task-breakdown]
 ```
 
-### `taskwing deps [task_id]`
+#### Available Tools
 
-Display dependency relationships for a task.
+- **add-task**: Create tasks with validation
+- **list-tasks**: Query and filter tasks
+- **update-task**: Modify existing tasks
+- **delete-task**: Remove tasks safely
+- **mark-done**: Complete tasks
+- **get-task**: Get detailed task info
 
-```bash
-taskwing deps <your_task_id>
-```
+#### Resources
 
-### `taskwing generate`
+- **taskwing://tasks**: Access all task data in JSON
+- **taskwing://config**: View configuration settings
 
-**[Placeholder]** This command is reserved for future AI-assisted task generation.
+#### Prompts
+
+- **task-generation**: Generate tasks from descriptions
+- **task-breakdown**: Break complex tasks into subtasks
 
 ## Configuration
 
-TaskWing is configured via a `.taskwing.yaml` file (or `.json`/`.toml`). The configuration is loaded in the following order:
+TaskWing uses YAML configuration files with this hierarchy:
 
-1.  Project-specific: `<project.rootDir>/.taskwing.yaml` (e.g. `./.taskwing/.taskwing.yaml`)
-2.  Current directory: `./.taskwing.yaml`
-3.  Home directory: `$HOME/.taskwing.yaml`
+1. Project: `.taskwing/.taskwing.yaml`
+2. Directory: `./.taskwing.yaml`
+3. Home: `$HOME/.taskwing.yaml`
 
-Environment variables prefixed with `TASKWING_` can also be used (e.g., `TASKWING_PROJECT_ROOTDIR`).
+### Key Settings
 
-**Key Options:**
+```yaml
+project:
+  rootDir: ".taskwing" # TaskWing data directory
+  tasksDir: "tasks" # Tasks subdirectory
+  outputLogPath: "logs/taskwing.log"
 
-- `project.rootDir`: Base directory for all TaskWing files. (Default: `.taskwing`)
-- `project.tasksDir`: Directory for task data files. (Default: `tasks`)
-- `data.file`: Name of the task data file. (Default: `tasks.json`)
-- `data.format`: Data file format (`json`, `yaml`, `toml`). (Default: `json`)
-- `project.outputLogPath`: Path for log files. (Default: `.taskwing/logs/taskwing.log`)
+data:
+  file: "tasks.json" # Task data file
+  format: "json" # json, yaml, or toml
+```
+
+Environment variables with `TASKWING_` prefix are also supported.
 
 ## Data Storage
 
-- Tasks are stored locally in the file specified by `data.file` (e.g., `.taskwing/tasks/tasks.json`).
-- A `.checksum` file is maintained alongside the data file to ensure data integrity. The application will not load data if a checksum mismatch is detected.
+TaskWing stores data locally with integrity protection:
+
+- **tasks.json**: Your task data
+- **.checksum**: Data integrity validation
+- **Locking**: Prevents concurrent modification issues
 
 ## Contributing
 
-Contributions are welcome. Please submit an issue or pull request.
+Contributions are welcome! Please feel free to submit issues and pull requests.
+
+### Development
+
+```bash
+# Build and test
+go build -o taskwing main.go
+go test ./...
+
+# Run with development config
+./taskwing init
+./taskwing add
+```
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+**Built for developers, by developers** 🚀
