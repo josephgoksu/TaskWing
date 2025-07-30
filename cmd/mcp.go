@@ -55,11 +55,25 @@ func runMCPServer(ctx context.Context) error {
 		Name:    "taskwing",
 		Version: version,
 	}
-	server := mcp.NewServer(impl, nil)
+	
+	// Create server options with notification handlers
+	serverOpts := &mcp.ServerOptions{
+		// Handle the initialized notification properly
+		InitializedHandler: func(ctx context.Context, serverSession *mcp.ServerSession, params *mcp.InitializedParams) {
+			logInfo("MCP client initialized successfully")
+		},
+	}
+	
+	server := mcp.NewServer(impl, serverOpts)
 
 	// Register MCP tools
 	if err := registerMCPTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register MCP tools: %w", err)
+	}
+
+	// Register advanced MCP tools
+	if err := RegisterAdvancedMCPTools(server, taskStore); err != nil {
+		return fmt.Errorf("failed to register advanced MCP tools: %w", err)
 	}
 
 	// Register MCP resources
@@ -84,37 +98,37 @@ func registerMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
 	// Add task tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "add-task",
-		Description: "Create a new task with title, description, priority, and optional dependencies",
+		Description: "Create a new task with comprehensive details. Returns the created task with its unique ID. Validates all inputs and checks for dependency conflicts.",
 	}, addTaskHandler(taskStore))
 
 	// List tasks tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list-tasks",
-		Description: "List tasks with optional filtering by status, priority, or search text",
+		Description: "List and filter tasks with powerful search capabilities. Supports filtering by status, priority, parent task, and text search. Returns task count and detailed task information.",
 	}, listTasksHandler(taskStore))
 
 	// Update task tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update-task",
-		Description: "Update an existing task's properties",
+		Description: "Update any properties of an existing task. Supports partial updates - only provide fields you want to change. Validates all changes and maintains data integrity.",
 	}, updateTaskHandler(taskStore))
 
 	// Delete task tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "delete-task",
-		Description: "Delete a task by ID (checks for dependencies)",
+		Description: "Safely delete a task by ID. Prevents deletion of tasks with dependents to maintain referential integrity. Returns clear error messages if deletion is blocked.",
 	}, deleteTaskHandler(taskStore))
 
 	// Mark task done tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mark-done",
-		Description: "Mark a task as completed",
+		Description: "Mark a task as completed and set its completion timestamp. This is a convenience method that updates status to 'completed' and records completion time.",
 	}, markDoneHandler(taskStore))
 
 	// Get task tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get-task",
-		Description: "Get detailed information about a specific task",
+		Description: "Retrieve comprehensive details about a specific task including all metadata, relationships, and timestamps. Useful for examining task state before updates.",
 	}, getTaskHandler(taskStore))
 
 	return nil

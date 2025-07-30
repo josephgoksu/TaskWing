@@ -22,10 +22,17 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams,
 
 		// Validate required fields
 		if strings.TrimSpace(args.Title) == "" {
-			return nil, fmt.Errorf("title is required")
+			return nil, NewMCPError("MISSING_TITLE", "Task title is required", map[string]interface{}{
+				"field": "title",
+			})
 		}
 
-		// Validate priority
+		// Validate input
+		if err := ValidateTaskInput(args.Title, args.Priority, ""); err != nil {
+			return nil, err
+		}
+
+		// Set priority with default
 		priority := models.PriorityMedium
 		if args.Priority != "" {
 			switch strings.ToLower(args.Priority) {
@@ -37,8 +44,6 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams,
 				priority = models.PriorityHigh
 			case "urgent":
 				priority = models.PriorityUrgent
-			default:
-				return nil, fmt.Errorf("invalid priority: %s (must be low, medium, high, or urgent)", args.Priority)
 			}
 		}
 
@@ -64,18 +69,26 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams,
 		// Create task in store
 		createdTask, err := taskStore.CreateTask(task)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create task: %w", err)
+			return nil, WrapStoreError(err, "create", task.ID)
 		}
 
 		logInfo(fmt.Sprintf("Created task: %s", createdTask.ID))
 
+		// Get context for enriched response
+		context, _ := BuildTaskContext(taskStore)
+		responseText := fmt.Sprintf("Created task '%s' with ID: %s", createdTask.Title, createdTask.ID)
+		if context != nil {
+			responseText = EnrichToolResponse(responseText, context)
+		}
+
 		return &mcp.CallToolResultFor[TaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
-					Text: fmt.Sprintf("Created task '%s' with ID: %s", createdTask.Title, createdTask.ID),
+					Text: responseText,
 				},
 			},
 			StructuredContent: taskToResponse(createdTask),
+			IsError: false,
 		}, nil
 	}
 }
