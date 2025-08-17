@@ -249,8 +249,8 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[UpdateTaskP
 }
 
 // deleteTaskHandler deletes a task
-func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[DeleteTaskParams, bool] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[DeleteTaskParams]) (*mcp.CallToolResultFor[bool], error) {
+func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[DeleteTaskParams, DeleteTaskResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[DeleteTaskParams]) (*mcp.CallToolResultFor[DeleteTaskResponse], error) {
 		args := params.Arguments
 
 		// Validate required fields
@@ -286,13 +286,19 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[DeleteTaskP
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[bool]{
+		response := DeleteTaskResponse{
+			Success: true,
+			TaskID:  args.ID,
+			Message: fmt.Sprintf("Task '%s' deleted successfully", task.Title),
+		}
+
+		return &mcp.CallToolResultFor[DeleteTaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
 					Text: responseText,
 				},
 			},
-			StructuredContent: true,
+			StructuredContent: response,
 		}, nil
 	}
 }

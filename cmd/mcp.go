@@ -242,6 +242,12 @@ type TaskListResponse struct {
 	Count int            `json:"count"`
 }
 
+type DeleteTaskResponse struct {
+	Success bool   `json:"success"`
+	TaskID  string `json:"task_id"`
+	Message string `json:"message"`
+}
+
 func taskToResponse(task models.Task) TaskResponse {
 	var completedAt *string
 	if task.CompletedAt != nil {

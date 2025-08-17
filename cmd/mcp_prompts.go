@@ -45,7 +45,17 @@ func taskGenerationPromptHandler(taskStore store.TaskStore) func(context.Context
 
 User's Request: %s
 
-Please analyze this request and create well-structured tasks. For each task, provide:
+IMPORTANT: After providing your analysis, you should actually CREATE the tasks using the TaskWing MCP tools available to you.
+
+You have access to these TaskWing MCP tools:
+- add-task: Create a new task with title, description, acceptanceCriteria, priority, and dependencies
+- batch-create-tasks: Create multiple tasks at once with automatic dependency resolution (RECOMMENDED for task generation)
+- list-tasks: List existing tasks with filtering options
+- update-task: Update existing tasks
+- bulk-tasks: Perform bulk operations on multiple tasks
+- task-summary: Get summary of current task state
+
+STEP 1: Analyze and break down the request into manageable tasks. For each task, provide:
 1. A clear, actionable title
 2. A detailed description of what needs to be done
 3. Acceptance criteria that define when the task is complete
@@ -65,7 +75,22 @@ When suggesting task dependencies, consider:
 - Tasks that can be done in parallel
 - Critical path items that might block other work%s
 
-Please format your response as a structured breakdown with clear task definitions that can be easily converted into TaskWing tasks.`,
+STEP 2: Actually CREATE the tasks using the batch-create-tasks tool (preferred) or individual add-task calls.
+
+RECOMMENDED APPROACH - Use batch-create-tasks:
+1. Prepare an array of all tasks with their details
+2. For dependencies, use existing task IDs if referencing existing tasks, or leave empty for new task dependencies
+3. Call batch-create-tasks with the complete task list
+4. The tool will handle dependency resolution automatically
+
+ALTERNATIVE APPROACH - Use individual add-task calls:
+1. First, create all independent tasks and note their IDs
+2. Then create dependent tasks, referencing the IDs from step 1
+3. Use appropriate priorities and detailed acceptance criteria
+
+FINAL STEP: Provide a summary of created tasks and any next steps for the user.
+
+This approach ensures the user gets both the analysis AND the actual tasks created in their TaskWing system, making the workflow much more efficient.`,
 			description, existingTasksContext)
 
 		logInfo("Generated task generation prompt")

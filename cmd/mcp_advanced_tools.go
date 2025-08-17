@@ -36,6 +36,28 @@ type TaskSearchParams struct {
 	HasSubtasks *bool    `json:"has_subtasks,omitempty" mcp:"Filter tasks that have subtasks"`
 }
 
+// TaskCreationRequest for batch task creation
+type TaskCreationRequest struct {
+	Title              string   `json:"title"`
+	Description        string   `json:"description"`
+	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty"`
+	Priority           string   `json:"priority,omitempty"`
+	Dependencies       []string `json:"dependencies,omitempty"`
+}
+
+// BatchCreateTasksParams for creating multiple tasks at once
+type BatchCreateTasksParams struct {
+	Tasks []TaskCreationRequest `json:"tasks" mcp:"List of tasks to create"`
+}
+
+// BatchCreateTasksResponse for batch task creation
+type BatchCreateTasksResponse struct {
+	CreatedTasks []TaskResponse `json:"created_tasks"`
+	Failed       []string       `json:"failed,omitempty"`
+	Success      int            `json:"success_count"`
+	Errors       []string       `json:"errors,omitempty"`
+}
+
 // TaskSummaryResponse provides a high-level summary
 type TaskSummaryResponse struct {
 	Summary        string          `json:"summary"`
@@ -188,6 +210,106 @@ func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, 
 	}
 }
 
+// batchCreateTasksHandler creates multiple tasks at once with dependency resolution
+func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[BatchCreateTasksParams, BatchCreateTasksResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[BatchCreateTasksParams]) (*mcp.CallToolResultFor[BatchCreateTasksResponse], error) {
+		args := params.Arguments
+
+		if len(args.Tasks) == 0 {
+			return nil, NewMCPError("NO_TASKS_SPECIFIED", "No tasks provided for batch creation", nil)
+		}
+
+		response := BatchCreateTasksResponse{
+			CreatedTasks: []TaskResponse{},
+			Failed:       []string{},
+			Errors:       []string{},
+		}
+
+		// Create a map to track created task IDs for dependency resolution
+		createdTaskMap := make(map[string]string) // title -> task_id
+
+		// First pass: create tasks without dependencies
+		for i, taskReq := range args.Tasks {
+			if len(taskReq.Dependencies) > 0 {
+				continue // Skip tasks with dependencies in first pass
+			}
+
+			task := models.Task{
+				Title:              taskReq.Title,
+				Description:        taskReq.Description,
+				AcceptanceCriteria: taskReq.AcceptanceCriteria,
+				Status:             models.StatusPending,
+			}
+
+			// Set priority
+			if taskReq.Priority != "" {
+				task.Priority = models.TaskPriority(taskReq.Priority)
+			} else {
+				task.Priority = models.PriorityMedium
+			}
+
+			createdTask, err := taskStore.CreateTask(task)
+			if err != nil {
+				response.Failed = append(response.Failed, fmt.Sprintf("Task %d: %s", i+1, taskReq.Title))
+				response.Errors = append(response.Errors, fmt.Sprintf("Task %d (%s): %v", i+1, taskReq.Title, err))
+				continue
+			}
+
+			response.CreatedTasks = append(response.CreatedTasks, taskToResponse(createdTask))
+			createdTaskMap[taskReq.Title] = createdTask.ID
+			response.Success++
+		}
+
+		// Second pass: create tasks with dependencies
+		for i, taskReq := range args.Tasks {
+			if len(taskReq.Dependencies) == 0 {
+				continue // Skip tasks without dependencies (already created)
+			}
+
+			task := models.Task{
+				Title:              taskReq.Title,
+				Description:        taskReq.Description,
+				AcceptanceCriteria: taskReq.AcceptanceCriteria,
+				Status:             models.StatusPending,
+				Dependencies:       taskReq.Dependencies, // Use provided dependencies as-is
+			}
+
+			// Set priority
+			if taskReq.Priority != "" {
+				task.Priority = models.TaskPriority(taskReq.Priority)
+			} else {
+				task.Priority = models.PriorityMedium
+			}
+
+			createdTask, err := taskStore.CreateTask(task)
+			if err != nil {
+				response.Failed = append(response.Failed, fmt.Sprintf("Task %d: %s", i+1, taskReq.Title))
+				response.Errors = append(response.Errors, fmt.Sprintf("Task %d (%s): %v", i+1, taskReq.Title, err))
+				continue
+			}
+
+			response.CreatedTasks = append(response.CreatedTasks, taskToResponse(createdTask))
+			response.Success++
+		}
+
+		resultText := fmt.Sprintf("Batch task creation: %d succeeded, %d failed", 
+			response.Success, len(response.Failed))
+
+		// If all operations failed, return as an error
+		if len(response.Failed) > 0 && response.Success == 0 {
+			errorMsg := fmt.Sprintf("All %d task creations failed: %s", len(response.Failed), strings.Join(response.Errors, "; "))
+			return nil, fmt.Errorf("batch task creation failed: %s", errorMsg)
+		}
+
+		return &mcp.CallToolResultFor[BatchCreateTasksResponse]{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: resultText},
+			},
+			StructuredContent: response,
+		}, nil
+	}
+}
+
 // advancedSearchHandler provides powerful search capabilities
 func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[TaskSearchParams, TaskListResponse] {
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[TaskSearchParams]) (*mcp.CallToolResultFor[TaskListResponse], error) {
@@ -306,6 +428,12 @@ func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[TaskSea
 
 // RegisterAdvancedMCPTools registers additional MCP tools
 func RegisterAdvancedMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
+	// Batch create tasks tool
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "batch-create-tasks",
+		Description: "Create multiple tasks at once with automatic dependency resolution. Ideal for task generation workflows.",
+	}, batchCreateTasksHandler(taskStore))
+
 	// Bulk operations tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bulk-tasks",
