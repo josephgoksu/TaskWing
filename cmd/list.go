@@ -207,6 +207,9 @@ var listCmd = &cobra.Command{
 		} else if renderAsTree {
 			displayTasksAsTree(tasks, treeRootID, taskStore, 0, finalFilterFn) // Pass taskStore for fetching children
 		} else {
+			// Show current task information if available
+			showCurrentTaskBanner(taskStore)
+			
 			t := table.NewWriter()
 			t.SetOutputMirror(os.Stdout)
 			t.SetStyle(table.StyleLight)
@@ -401,4 +404,24 @@ func printParentID(parentID *string) string {
 		return "none"
 	}
 	return *parentID
+}
+
+// showCurrentTaskBanner displays current task information if set
+func showCurrentTaskBanner(taskStore store.TaskStore) {
+	currentTaskID := GetCurrentTask()
+	if currentTaskID == "" {
+		return
+	}
+
+	task, err := taskStore.GetTask(currentTaskID)
+	if err != nil {
+		fmt.Printf("⚠️  Current task '%s' not found (may have been deleted)\n\n", truncateUUID(currentTaskID))
+		return
+	}
+
+	fmt.Printf("📌 Current Task: %s - %s (%s, %s)\n\n", 
+		truncateUUID(task.ID), 
+		task.Title, 
+		task.Status, 
+		task.Priority)
 }

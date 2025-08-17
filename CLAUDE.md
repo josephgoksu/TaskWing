@@ -36,12 +36,18 @@ taskwing delete [task_id]       # Delete task (checks dependencies)
 taskwing done [task_id]         # Mark task completed
 taskwing show [task_id]         # Show detailed task info
 
+# Current task management (NEW)
+taskwing current set <task_id>  # Set current active task
+taskwing current show           # Show current task details
+taskwing current clear          # Clear current task
+
 # MCP server for AI integration
 taskwing mcp                    # Start MCP server
 taskwing mcp -v                 # Start with verbose logging
 
 # Configuration management
-taskwing config [key] [value]   # Manage configuration
+taskwing config show            # Show current configuration
+taskwing config path            # Show config file location
 ```
 
 ### MCP Development Workflow
@@ -51,7 +57,8 @@ taskwing config [key] [value]   # Manage configuration
 ./taskwing mcp
 
 # Test MCP functionality through Claude Code
-# MCP tools available: add-task, list-tasks, update-task, delete-task, mark-done, get-task
+# Basic MCP tools: add-task, list-tasks, update-task, delete-task, mark-done, get-task
+# Current task tools: set-current-task, get-current-task, clear-current-task
 # Advanced tools: batch-create-tasks, bulk-tasks, search-tasks, task-summary
 ```
 
@@ -76,7 +83,7 @@ taskwing config [key] [value]   # Manage configuration
 
 TaskWing implements a full MCP server with:
 
-- **9 Tools**: add-task, list-tasks, update-task, delete-task, mark-done, get-task, batch-create-tasks, bulk-tasks, search-tasks
+- **12 Tools**: add-task, list-tasks, update-task, delete-task, mark-done, get-task, set-current-task, get-current-task, clear-current-task, batch-create-tasks, bulk-tasks, search-tasks, task-summary
 - **2 Resources**: taskwing://tasks (JSON data), taskwing://config (settings)
 - **2 Prompts**: task-generation, task-breakdown
 
@@ -114,6 +121,7 @@ Key configuration options:
 
 - `project.rootDir`: Base directory (default: `.taskwing`)
 - `project.tasksDir`: Tasks directory (default: `tasks`)
+- `project.currentTaskId`: Current active task UUID (managed automatically)
 - `data.file`: Data file name (default: `tasks.json`)
 - `data.format`: Storage format (json/yaml/toml)
 
@@ -190,6 +198,7 @@ type AddTaskParams = types.AddTaskParams
 - Configuration is loaded once during command initialization
 - Environment variables automatically override file settings
 - Returns `*types.AppConfig` for type safety
+- **Current Task Management**: `SetCurrentTask()`, `GetCurrentTask()`, `ClearCurrentTask()` persist to config
 
 ## Key Implementation Details
 
@@ -248,3 +257,42 @@ Configuration loading follows strict precedence:
 6. **Built-in defaults** (lowest priority)
 
 Environment variables use dot-to-underscore mapping: `project.rootDir` → `TASKWING_PROJECT_ROOTDIR`
+
+## Current Task Feature
+
+TaskWing tracks a "current task" that represents what the user is actively working on. This is critical for AI tool integration as it provides context about the user's focus.
+
+### Key Benefits for AI Tools
+
+- **Context Awareness**: AI tools automatically know what task you're working on
+- **Intelligent Responses**: MCP responses include current task context
+- **Workflow Integration**: Easy task switching and completion tracking
+- **Visual Indicators**: Current task appears in CLI outputs (list command)
+
+### Implementation Pattern
+
+```go
+// Setting current task
+if err := SetCurrentTask(taskID); err != nil {
+    // Handle error
+}
+
+// Getting current task
+currentTaskID := GetCurrentTask()
+if currentTaskID != "" {
+    // Use current task
+}
+
+// Clearing current task
+if err := ClearCurrentTask(); err != nil {
+    // Handle error
+}
+```
+
+### MCP Integration
+
+Current task is automatically included in:
+
+- All MCP tool response contexts
+- Task context enrichment
+- Project health assessments

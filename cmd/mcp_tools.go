@@ -452,3 +452,201 @@ func createSortFunction(sortBy, sortOrder string) func([]models.Task) []models.T
 		return tasks
 	}
 }
+
+// setCurrentTaskHandler sets the current active task
+func setCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.SetCurrentTaskParams, types.CurrentTaskResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.SetCurrentTaskParams]) (*mcp.CallToolResultFor[types.CurrentTaskResponse], error) {
+		args := params.Arguments
+		logToolCall("set-current-task", args)
+
+		// Validate required fields
+		if strings.TrimSpace(args.ID) == "" {
+			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: "Task ID is required",
+					},
+				},
+				StructuredContent: types.CurrentTaskResponse{
+					Success: false,
+					Message: "Task ID is required",
+				},
+				IsError: true,
+			}, nil
+		}
+
+		// Verify the task exists
+		task, err := taskStore.GetTask(args.ID)
+		if err != nil {
+			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: fmt.Sprintf("Task '%s' not found", args.ID),
+					},
+				},
+				StructuredContent: types.CurrentTaskResponse{
+					Success: false,
+					Message: fmt.Sprintf("Task '%s' not found", args.ID),
+				},
+				IsError: true,
+			}, nil
+		}
+
+		// Set the current task
+		if err := SetCurrentTask(args.ID); err != nil {
+			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: fmt.Sprintf("Failed to set current task: %v", err),
+					},
+				},
+				StructuredContent: types.CurrentTaskResponse{
+					Success: false,
+					Message: fmt.Sprintf("Failed to set current task: %v", err),
+				},
+				IsError: true,
+			}, nil
+		}
+
+		logInfo(fmt.Sprintf("Set current task: %s - %s", task.ID, task.Title))
+
+		response := types.CurrentTaskResponse{
+			CurrentTask: taskToResponsePtr(task),
+			Success:     true,
+			Message:     fmt.Sprintf("Set current task: %s - %s", task.ID, task.Title),
+		}
+
+		return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: response.Message,
+				},
+			},
+			StructuredContent: response,
+		}, nil
+	}
+}
+
+// getCurrentTaskHandler gets the current active task
+func getCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.GetCurrentTaskParams, types.CurrentTaskResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.GetCurrentTaskParams]) (*mcp.CallToolResultFor[types.CurrentTaskResponse], error) {
+		logToolCall("get-current-task", params.Arguments)
+
+		currentTaskID := GetCurrentTask()
+		
+		if currentTaskID == "" {
+			response := types.CurrentTaskResponse{
+				Success: true,
+				Message: "No current task set",
+			}
+
+			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: "No current task set",
+					},
+				},
+				StructuredContent: response,
+			}, nil
+		}
+
+		// Get the current task
+		task, err := taskStore.GetTask(currentTaskID)
+		if err != nil {
+			response := types.CurrentTaskResponse{
+				Success: false,
+				Message: fmt.Sprintf("Current task '%s' not found (may have been deleted)", currentTaskID),
+			}
+
+			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: response.Message,
+					},
+				},
+				StructuredContent: response,
+				IsError: true,
+			}, nil
+		}
+
+		logInfo(fmt.Sprintf("Retrieved current task: %s - %s", task.ID, task.Title))
+
+		response := types.CurrentTaskResponse{
+			CurrentTask: taskToResponsePtr(task),
+			Success:     true,
+			Message:     fmt.Sprintf("Current task: %s - %s", task.ID, task.Title),
+		}
+
+		return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: response.Message,
+				},
+			},
+			StructuredContent: response,
+		}, nil
+	}
+}
+
+// clearCurrentTaskHandler clears the current active task
+func clearCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ClearCurrentTaskParams, types.CurrentTaskResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ClearCurrentTaskParams]) (*mcp.CallToolResultFor[types.CurrentTaskResponse], error) {
+		logToolCall("clear-current-task", params.Arguments)
+
+		currentTaskID := GetCurrentTask()
+		
+		if currentTaskID == "" {
+			response := types.CurrentTaskResponse{
+				Success: true,
+				Message: "No current task was set",
+			}
+
+			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: "No current task was set",
+					},
+				},
+				StructuredContent: response,
+			}, nil
+		}
+
+		// Clear the current task
+		if err := ClearCurrentTask(); err != nil {
+			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcp.Content{
+					&mcp.TextContent{
+						Text: fmt.Sprintf("Failed to clear current task: %v", err),
+					},
+				},
+				StructuredContent: types.CurrentTaskResponse{
+					Success: false,
+					Message: fmt.Sprintf("Failed to clear current task: %v", err),
+				},
+				IsError: true,
+			}, nil
+		}
+
+		logInfo(fmt.Sprintf("Cleared current task: %s", currentTaskID))
+
+		response := types.CurrentTaskResponse{
+			Success: true,
+			Message: fmt.Sprintf("Cleared current task: %s", currentTaskID),
+		}
+
+		return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: response.Message,
+				},
+			},
+			StructuredContent: response,
+		}, nil
+	}
+}
+
+// Helper function to convert task to response pointer
+func taskToResponsePtr(task models.Task) *types.TaskResponse {
+	response := taskToResponse(task)
+	return &response
+}

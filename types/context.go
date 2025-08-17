@@ -16,6 +16,7 @@ type TaskContext struct {
 	Suggestions     []string        `json:"suggestions"`
 	ProjectHealth   string          `json:"project_health"`
 	Metrics         ProjectMetrics  `json:"metrics"`
+	CurrentTask     *TaskResponse   `json:"current_task,omitempty"`
 }
 
 // ActivityEntry represents a recent task activity

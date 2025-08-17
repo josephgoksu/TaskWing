@@ -121,6 +121,14 @@ func BuildTaskContext(taskStore store.TaskStore) (*types.TaskContext, error) {
 		context.Metrics.VelocityTrend = "stable"
 	}
 
+	// Add current task information
+	currentTaskID := GetCurrentTask()
+	if currentTaskID != "" {
+		if currentTask, err := taskStore.GetTask(currentTaskID); err == nil {
+			context.CurrentTask = taskToResponsePtr(currentTask)
+		}
+	}
+
 	// Generate project health assessment
 	context.ProjectHealth = assessProjectHealth(context)
 
@@ -200,6 +208,10 @@ func generateSuggestions(ctx *types.TaskContext) []string {
 // EnrichToolResponse adds context to tool responses
 func EnrichToolResponse(response string, context *types.TaskContext) string {
 	var contextInfo []string
+
+	if context.CurrentTask != nil {
+		contextInfo = append(contextInfo, fmt.Sprintf("Current task: %s (%s)", context.CurrentTask.Title, context.CurrentTask.Status))
+	}
 
 	if context.ProjectHealth != "excellent" && context.ProjectHealth != "good" {
 		contextInfo = append(contextInfo, fmt.Sprintf("Project health: %s", context.ProjectHealth))

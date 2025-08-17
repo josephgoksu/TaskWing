@@ -30,6 +30,7 @@ The MCP server runs over stdin/stdout and provides tools for:
 - Deleting tasks
 - Marking tasks as done
 - Getting task details
+- Managing current active task
 
 Example usage with Claude Code:
   taskwing mcp
@@ -129,6 +130,22 @@ func registerMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
 		Name:        "get-task",
 		Description: "Retrieve comprehensive details about a specific task including all metadata, relationships, and timestamps. Useful for examining task state before updates.",
 	}, getTaskHandler(taskStore))
+
+	// Current task management tools
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "set-current-task",
+		Description: "Set the current active task that you're working on. This helps AI tools understand what you're currently focused on.",
+	}, setCurrentTaskHandler(taskStore))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get-current-task",
+		Description: "Get the current active task that you're working on. Returns the task details or indicates if no current task is set.",
+	}, getCurrentTaskHandler(taskStore))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clear-current-task",
+		Description: "Clear the current active task setting. Use this when you're finished with the current task or want to reset.",
+	}, clearCurrentTaskHandler(taskStore))
 
 	return nil
 }

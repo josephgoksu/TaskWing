@@ -19,6 +19,7 @@ type ProjectConfig struct {
 	TasksDir      string `mapstructure:"tasksDir" validate:"required"`
 	TemplatesDir  string `mapstructure:"templatesDir" validate:"required"`
 	OutputLogPath string `mapstructure:"outputLogPath" validate:"required"`
+	CurrentTaskID string `mapstructure:"currentTaskId" validate:"omitempty,uuid4"`
 }
 
 // DataConfig holds data storage configuration

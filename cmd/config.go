@@ -122,6 +122,7 @@ func InitConfig() {
 	viper.SetDefault("project.tasksDir", "tasks")
 	viper.SetDefault("project.templatesDir", "templates")
 	viper.SetDefault("project.outputLogPath", "logs/taskwing.log")
+	viper.SetDefault("project.currentTaskId", "")
 	viper.SetDefault("data.file", "tasks.json")
 	viper.SetDefault("data.format", "json")
 
@@ -185,6 +186,36 @@ func InitConfig() {
 // GetConfig returns a pointer to the global AppConfig instance.
 func GetConfig() *types.AppConfig {
 	return &GlobalAppConfig
+}
+
+// SetCurrentTask updates the current task ID in the configuration and persists it
+func SetCurrentTask(taskID string) error {
+	GlobalAppConfig.Project.CurrentTaskID = taskID
+	viper.Set("project.currentTaskId", taskID)
+	
+	// Write the updated configuration to file
+	configFile := viper.ConfigFileUsed()
+	if configFile == "" {
+		// No config file exists, create a project-specific one
+		projectConfigDir := GlobalAppConfig.Project.RootDir
+		if err := os.MkdirAll(projectConfigDir, 0755); err != nil {
+			return fmt.Errorf("failed to create config directory: %w", err)
+		}
+		configFile = filepath.Join(projectConfigDir, ".taskwing.yaml")
+		viper.SetConfigFile(configFile)
+	}
+	
+	return viper.WriteConfig()
+}
+
+// GetCurrentTask returns the current task ID from configuration
+func GetCurrentTask() string {
+	return GlobalAppConfig.Project.CurrentTaskID
+}
+
+// ClearCurrentTask removes the current task from configuration
+func ClearCurrentTask() error {
+	return SetCurrentTask("")
 }
 
 // Example of how to get a config value

@@ -52,6 +52,17 @@ type GetTaskParams struct {
 	ID string `json:"id" mcp:"Task ID to retrieve (required)"`
 }
 
+// SetCurrentTaskParams for setting the current active task
+type SetCurrentTaskParams struct {
+	ID string `json:"id" mcp:"Task ID to set as current (required)"`
+}
+
+// GetCurrentTaskParams for retrieving the current active task
+type GetCurrentTaskParams struct{}
+
+// ClearCurrentTaskParams for clearing the current active task
+type ClearCurrentTaskParams struct{}
+
 // BulkTaskParams for bulk operations
 type BulkTaskParams struct {
 	TaskIDs  []string `json:"task_ids" mcp:"List of task IDs to operate on"`
@@ -140,4 +151,11 @@ type BulkOperationResponse struct {
 	Failed       int      `json:"failed"`
 	Errors       []string `json:"errors,omitempty"`
 	UpdatedTasks []string `json:"updated_task_ids"`
+}
+
+// CurrentTaskResponse for current task operations
+type CurrentTaskResponse struct {
+	CurrentTask *TaskResponse `json:"current_task,omitempty"`
+	Message     string        `json:"message"`
+	Success     bool          `json:"success"`
 }
