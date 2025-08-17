@@ -25,8 +25,8 @@ var addCmd = &cobra.Command{
 		}
 		defer taskStore.Close()
 
-		// Interactive prompts for task details
-		// ... (rest of the logic for collecting task details)
+		// Check if running in non-interactive mode
+		nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
 
 		// Get title from flag or prompt
 		title, err := cmd.Flags().GetString("title")
@@ -34,6 +34,10 @@ var addCmd = &cobra.Command{
 			HandleError("Error getting title flag", err)
 		}
 		if title == "" {
+			if nonInteractive {
+				HandleError("Title is required in non-interactive mode. Use --title flag.", nil)
+				return
+			}
 			// Interactive prompt for title
 			titlePrompt := promptui.Prompt{
 				Label: "Task Title",
@@ -59,7 +63,7 @@ var addCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Error getting description flag", err)
 		}
-		if description == "" {
+		if description == "" && !nonInteractive {
 			descriptionPrompt := promptui.Prompt{
 				Label: "Task Description (optional)",
 			}
@@ -77,13 +81,17 @@ var addCmd = &cobra.Command{
 			HandleError("Error getting priority flag", err)
 		}
 		if priorityStr == "" {
-			priorityPrompt := promptui.Select{
-				Label: "Select Priority",
-				Items: []string{"low", "medium", "high", "urgent"},
-			}
-			_, priorityStr, err = priorityPrompt.Run()
-			if err != nil && err != promptui.ErrInterrupt {
-				HandleError("Error: Failed to select priority.", err)
+			if nonInteractive {
+				priorityStr = "medium" // Default priority in non-interactive mode
+			} else {
+				priorityPrompt := promptui.Select{
+					Label: "Select Priority",
+					Items: []string{"low", "medium", "high", "urgent"},
+				}
+				_, priorityStr, err = priorityPrompt.Run()
+				if err != nil && err != promptui.ErrInterrupt {
+					HandleError("Error: Failed to select priority.", err)
+				}
 			}
 		}
 
@@ -92,7 +100,7 @@ var addCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Error getting dependencies flag", err)
 		}
-		if dependenciesStr == "" {
+		if dependenciesStr == "" && !nonInteractive {
 			dependenciesPrompt := promptui.Prompt{
 				Label: "Dependencies (comma-separated task IDs, optional)",
 			}
@@ -114,7 +122,7 @@ var addCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Error getting parentID flag", err)
 		}
-		if parentIDStr == "" {
+		if parentIDStr == "" && !nonInteractive {
 			parentSelectPrompt := promptui.Prompt{
 				Label: "Parent Task ID (optional, press Enter to skip)",
 			}
@@ -157,6 +165,7 @@ func init() {
 	addCmd.Flags().String("priority", "medium", "Priority of the task (low, medium, high, urgent)")
 	addCmd.Flags().String("dependencies", "", "Comma-separated task IDs that this task depends on")
 	addCmd.Flags().String("parentID", "", "ID of the parent task")
+	addCmd.Flags().Bool("non-interactive", false, "Run in non-interactive mode (requires --title flag)")
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:

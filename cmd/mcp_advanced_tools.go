@@ -33,7 +33,7 @@ type TaskSearchParams struct {
 	Tags        []string `json:"tags,omitempty" mcp:"Filter by tags"`
 	DateFrom    string   `json:"date_from,omitempty" mcp:"Filter tasks created after this date (YYYY-MM-DD)"`
 	DateTo      string   `json:"date_to,omitempty" mcp:"Filter tasks created before this date (YYYY-MM-DD)"`
-	HasSubtasks bool     `json:"has_subtasks,omitempty" mcp:"Filter tasks that have subtasks"`
+	HasSubtasks *bool    `json:"has_subtasks,omitempty" mcp:"Filter tasks that have subtasks"`
 }
 
 // TaskSummaryResponse provides a high-level summary
@@ -105,12 +105,17 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[BulkTaskParam
 		resultText := fmt.Sprintf("Bulk %s operation: %d succeeded, %d failed", 
 			args.Action, response.Succeeded, response.Failed)
 
+		// If all operations failed, return as an error instead of IsError flag
+		if response.Failed > 0 && response.Succeeded == 0 {
+			errorMsg := fmt.Sprintf("All %d operations failed: %s", response.Failed, strings.Join(response.Errors, "; "))
+			return nil, fmt.Errorf("bulk %s operation failed: %s", args.Action, errorMsg)
+		}
+
 		return &mcp.CallToolResultFor[BulkOperationResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: resultText},
 			},
 			StructuredContent: response,
-			IsError: response.Failed > 0 && response.Succeeded == 0,
 		}, nil
 	}
 }
@@ -264,7 +269,7 @@ func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[TaskSea
 			}
 
 			// Subtask filter
-			if args.HasSubtasks && len(task.SubtaskIDs) == 0 {
+			if args.HasSubtasks != nil && *args.HasSubtasks && len(task.SubtaskIDs) == 0 {
 				return false
 			}
 

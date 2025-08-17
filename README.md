@@ -1,125 +1,51 @@
 # TaskWing
 
-> AI-assisted CLI task manager for developers
+**AI-powered CLI task manager built for developers**
 
-TaskWing is a command-line task management tool designed for developers who want to organize their work efficiently while leveraging AI assistance for better productivity.
+[![Go](https://img.shields.io/badge/Go-1.24+-blue.svg)](https://golang.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io)
 
-## Features
+TaskWing integrates directly with Claude Code, Cursor, and other AI tools via the Model Context Protocol. Manage tasks from your terminal or let AI handle it for you.
 
-- **📝 Task Management**: Create, update, delete, and track tasks with priorities and dependencies
-- **🤖 AI Integration**: Model Context Protocol (MCP) support for seamless AI tool integration
-- **🔗 Dependencies**: Manage task relationships and prevent circular dependencies
-- **📊 Filtering & Sorting**: Advanced task filtering and customizable sorting options
-- **⚡ Fast & Local**: File-based storage with data integrity checks
-- **🛠 Developer-Friendly**: Built for command-line workflows
+## Why TaskWing?
+
+- **🤖 AI-Native**: First CLI tool with full MCP integration for Claude Code/Cursor
+- **⚡ Zero Config**: Works out of the box, stores data locally
+- **🔗 Smart Dependencies**: Automatic dependency tracking and circular reference prevention
+- **🚀 Developer UX**: Built by developers who hate context switching
 
 ## Quick Start
 
-### Installation
-
 ```bash
-# Clone the repository
-git clone https://github.com/josephgoksu/taskwing.app
-cd taskwing.app
+# Install
+go install github.com/josephgoksu/taskwing.app@latest
 
-# Build the binary
-go build -o taskwing main.go
-
-# Optional: Add to PATH
-mv ./taskwing /usr/local/bin/
-```
-
-### Basic Usage
-
-```bash
-# Initialize TaskWing in your project
+# Initialize
 taskwing init
 
-# Add a new task
-taskwing add
+# Add task
+taskwing add --title "Fix auth bug" --priority urgent
 
-# List all tasks
-taskwing list
-
-# Mark a task as done
-taskwing done [task_id]
+# AI Integration
+taskwing mcp  # Connect to Claude Code/Cursor
 ```
 
-## Architecture
-
-```mermaid
-graph TB
-    CLI[TaskWing CLI] --> Store[Task Store]
-    CLI --> MCP[MCP Server]
-    Store --> Files[(Local Files)]
-    MCP --> AI[AI Tools]
-
-    subgraph "Task Management"
-        Store --> JSON[tasks.json]
-        Store --> Checksum[.checksum]
-    end
-
-    subgraph "AI Integration"
-        MCP --> Tools[MCP Tools]
-        MCP --> Resources[MCP Resources]
-        MCP --> Prompts[MCP Prompts]
-    end
-
-    AI --> Claude[Claude Code]
-    AI --> Cursor[Cursor IDE]
-    AI --> Other[Other AI Tools]
-```
-
-## Commands
-
-### Core Commands
-
-| Command                | Description                              |
-| ---------------------- | ---------------------------------------- |
-| `taskwing init`        | Initialize TaskWing in current directory |
-| `taskwing add`         | Add a new task (interactive)             |
-| `taskwing list`        | List tasks with optional filters         |
-| `taskwing update [id]` | Update an existing task                  |
-| `taskwing delete [id]` | Delete a task                            |
-| `taskwing done [id]`   | Mark task as completed                   |
-| `taskwing show [id]`   | Show detailed task information           |
-
-### Filtering & Sorting
+## Core Commands
 
 ```bash
-# Filter by status and priority
+taskwing add                 # Interactive task creation
 taskwing list --status pending --priority high
-
-# Search in title and description
-taskwing list --search "authentication"
-
-# Sort by creation date
-taskwing list --sort-by createdAt --sort-order desc
-```
-
-### AI Integration
-
-```bash
-# Start MCP server for AI tools
-taskwing mcp
-
-# With verbose logging
-taskwing mcp -v
+taskwing update <id>         # Modify existing task
+taskwing done <id>           # Mark complete
+taskwing delete <id>         # Remove task
 ```
 
 ## AI Integration (MCP)
 
-TaskWing supports the Model Context Protocol, enabling AI tools to directly manage your tasks.
+Connect TaskWing to Claude Code or Cursor for AI-powered task management:
 
-### Supported AI Tools
-
-- **Claude Code** - Direct task management from Claude's interface
-- **Cursor IDE** - Task integration within your editor
-- **Custom AI Tools** - Any MCP-compatible tool
-
-### Setup for Claude Code
-
-Add to your MCP configuration:
+### Claude Code Setup
 
 ```json
 {
@@ -132,102 +58,60 @@ Add to your MCP configuration:
 }
 ```
 
-### MCP Capabilities
+### AI Capabilities
 
-```mermaid
-graph LR
-    AI[AI Tool] --> MCP[MCP Server]
+- **9 Tools**: CRUD operations, bulk actions, advanced search
+- **2 Resources**: Live task data, configuration access
+- **2 Prompts**: Task generation, breakdown assistance
 
-    subgraph "TaskWing MCP"
-        MCP --> Tools[6 Tools]
-        MCP --> Resources[2 Resources]
-        MCP --> Prompts[2 Prompts]
-    end
+Let AI create, organize, and manage your tasks while you focus on coding.
 
-    Tools --> Create[add-task]
-    Tools --> Read[list-tasks]
-    Tools --> Update[update-task]
-    Tools --> Delete[delete-task]
-    Tools --> Complete[mark-done]
-    Tools --> Detail[get-task]
+## Architecture
 
-    Resources --> TaskData[taskwing://tasks]
-    Resources --> Config[taskwing://config]
-
-    Prompts --> Generate[task-generation]
-    Prompts --> Breakdown[task-breakdown]
+```
+CLI Commands ──► Task Store ──► Local Files (JSON/YAML/TOML)
+     │
+     └──► MCP Server ──► AI Tools (Claude, Cursor, etc.)
 ```
 
-#### Available Tools
+**Local-first**: Your data stays on your machine. No cloud dependencies.
 
-- **add-task**: Create tasks with validation
-- **list-tasks**: Query and filter tasks
-- **update-task**: Modify existing tasks
-- **delete-task**: Remove tasks safely
-- **mark-done**: Complete tasks
-- **get-task**: Get detailed task info
+## Advanced Features
 
-#### Resources
+```bash
+# Dependency management
+taskwing add --dependencies "task1,task2"
 
-- **taskwing://tasks**: Access all task data in JSON
-- **taskwing://config**: View configuration settings
+# Advanced filtering
+taskwing list --search "auth" --sort-by priority
 
-#### Prompts
-
-- **task-generation**: Generate tasks from descriptions
-- **task-breakdown**: Break complex tasks into subtasks
-
-## Configuration
-
-TaskWing uses YAML configuration files with this hierarchy:
-
-1. Project: `.taskwing/.taskwing.yaml`
-2. Directory: `./.taskwing.yaml`
-3. Home: `$HOME/.taskwing.yaml`
-
-### Key Settings
-
-```yaml
-project:
-  rootDir: ".taskwing" # TaskWing data directory
-  tasksDir: "tasks" # Tasks subdirectory
-  outputLogPath: "logs/taskwing.log"
-
-data:
-  file: "tasks.json" # Task data file
-  format: "json" # json, yaml, or toml
+# Bulk operations via AI
+# "Mark all urgent auth tasks as completed"
 ```
 
-Environment variables with `TASKWING_` prefix are also supported.
+## Development
 
-## Data Storage
-
-TaskWing stores data locally with integrity protection:
-
-- **tasks.json**: Your task data
-- **.checksum**: Data integrity validation
-- **Locking**: Prevents concurrent modification issues
+```bash
+git clone https://github.com/josephgoksu/taskwing.app
+cd taskwing.app
+go build -o taskwing main.go
+go test ./...
+```
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues and pull requests.
+We welcome contributions! TaskWing is built with:
 
-### Development
+- **Go 1.24+** with Cobra CLI framework
+- **MCP SDK** for AI integration
+- **Local file storage** with integrity checks
 
-```bash
-# Build and test
-go build -o taskwing main.go
-go test ./...
-
-# Run with development config
-./taskwing init
-./taskwing add
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
-**Built for developers, by developers** 🚀
+**Built for the terminal. Powered by AI. Made for developers.** 🚀

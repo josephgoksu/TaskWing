@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -31,183 +30,107 @@ and ensuring the task data file (e.g., 'tasks.json') can be initialized.`,
 		cfg := GetConfig() // Get the application configuration
 
 		projectRootDir := cfg.Project.RootDir
-		relativeTasksDir := cfg.Project.TasksDir
-		absoluteTasksDir := filepath.Join(projectRootDir, relativeTasksDir)
-		relativeTemplatesDir := cfg.Project.TemplatesDir
-		absoluteTemplatesDir := filepath.Join(projectRootDir, relativeTemplatesDir)
+		projectTasksDir := filepath.Join(projectRootDir, cfg.Project.TasksDir)
 
-		// Create the project root directory (e.g., .taskwing)
-		if err := os.MkdirAll(projectRootDir, 0755); err != nil {
-			HandleError(fmt.Sprintf("Error: Could not create project directory '%s'.", projectRootDir), err)
+		// Create the project root and tasks directories
+		if err := os.MkdirAll(projectTasksDir, 0755); err != nil {
+			HandleError(fmt.Sprintf("Error: Could not create project directories at '%s'.", projectTasksDir), err)
 		}
-
-		// Create the tasks directory within the project root (e.g., .taskwing/tasks)
-		if err := os.MkdirAll(absoluteTasksDir, 0755); err != nil {
-			HandleError(fmt.Sprintf("Error: Could not create tasks directory '%s'.", absoluteTasksDir), err)
-		}
-
-		// Create the templates directory within the project root (e.g., .taskwing/templates)
-		if err := os.MkdirAll(absoluteTemplatesDir, 0755); err != nil {
-			HandleError(fmt.Sprintf("Error: Could not create templates directory '%s'.", absoluteTemplatesDir), err)
-		}
-
-		// Construct the expected full path to the task data file for messaging.
-		taskFileName := viper.GetString("data.file")
-		taskFileFormat := viper.GetString("data.format")
-		ext := filepath.Ext(taskFileName)
-		desiredExt := "." + taskFileFormat
-		if taskFileFormat != "" && ext != desiredExt {
-			baseName := strings.TrimSuffix(taskFileName, ext)
-			taskFileName = baseName + desiredExt
-		}
-		if taskFileName == "" {
-			taskFileName = "tasks." + taskFileFormat // Fallback, though viper should provide default
-		}
-		fullTaskDataPath := filepath.Join(absoluteTasksDir, taskFileName)
 
 		// Attempt to get the store, which will initialize the data file if it doesn't exist.
-		_, err := GetStore()
+		store, err := GetStore()
 		if err != nil {
-			// We can ignore certain errors if the purpose is just to get paths.
-			// For example, if tasks.json doesn't exist yet, that's fine for init.
-			// However, a failure to get config paths would be a problem.
-			HandleError(fmt.Sprintf("Error: Could not initialize task store at '%s'.", fullTaskDataPath), err)
+			HandleError(fmt.Sprintf("Error: Could not initialize task store."), err)
 		}
+		store.Close() // Close the lock immediately after initialization
 
-		// Create default config file if it doesn't exist
-		defaultConfigFileName := fmt.Sprintf("%s.yaml", projectConfigName)
-		defaultConfigFilePath := filepath.Join(projectRootDir, defaultConfigFileName)
+		// Create default config file if it doesn't exist inside the project root dir
+		projectConfigFilePath := filepath.Join(projectRootDir, fmt.Sprintf("%s.yaml", projectConfigName))
 		configCreated := false
 		configExisted := false
 
-		if _, statErr := os.Stat(defaultConfigFilePath); os.IsNotExist(statErr) {
-			fmt.Printf("Creating default configuration file: %s\n", defaultConfigFilePath)
+		if _, statErr := os.Stat(projectConfigFilePath); os.IsNotExist(statErr) {
+			fmt.Printf("Creating default configuration file: %s\n", projectConfigFilePath)
 
-			projectTasksDir := viper.GetString("project.tasksDir")
-			projectTemplatesDir := viper.GetString("project.templatesDir")
-			projectOutputLogPath := viper.GetString("project.outputLogPath") // Relative default like "logs/taskwing.log"
-			dataFile := viper.GetString("data.file")
-			dataFormat := viper.GetString("data.format")
-			greeting := viper.GetString("greeting")
-
-			llmProvider := viper.GetString("llm.provider")
-			llmModelName := viper.GetString("llm.modelName")
-			// llmApiKey is sensitive, so we don't write a default value to the file.
-			// We will however show where to set it (ENV var).
-			llmProjectId := viper.GetString("llm.projectId")
-			llmMaxOutputTokens := viper.GetInt("llm.maxOutputTokens")
-			llmTemperature := viper.GetFloat64("llm.temperature")
-
-			// verbose is a flag, not typically a persisted project config default unless explicitly set by user in file
-			// For initial file, we comment it out or show the current flag's effect.
-			verboseCurrent := viper.GetBool("verbose")
-
-			configContentStr := fmt.Sprintf(
+			// Use viper to get the default values as strings/ints/etc.
+			defaultConfigContent := fmt.Sprintf(
 				`# TaskWing Project-Specific Configuration
 # File: %s
 # This file allows you to override default TaskWing settings for this project.
 
 project:
-  # rootDir: "%s"
-  #   Description: The root directory for all project-specific files (e.g., tasks, templates, logs).
-  #   Default: ".taskwing" (This is typically the directory containing this config file).
-  #   Note: If you move this config file, ensure TaskWing can still find the project root.
-
+  rootDir: "%s"
   tasksDir: "%s"
-  #   Description: Directory for task data files, relative to project.rootDir.
-  #   Default: "tasks" (e.g., %s)
-
   templatesDir: "%s"
-  #   Description: Directory for templates, relative to project.rootDir.
-  #   Default: "templates" (e.g., %s)
-
   outputLogPath: "%s"
-  #   Description: Path for output logs, relative to project.rootDir.
-  #   Default: "logs/taskwing.log" (e.g., %s)
 
 data:
   file: "%s"
-  #   Description: Name of the task data file.
-  #   Default: "tasks.json"
-
   format: "%s"
-  #   Description: Format of the task data file. Supported: json, yaml, toml.
-  #   Default: "json"
 
-# --- Optional configurations ---\n# Uncomment and customize as needed.\n# TaskWing uses built-in defaults if these are not specified.
+# --- Optional configurations ---
+# Uncomment and customize as needed.
 
-# --- LLM Configuration for Task Generation ---
-# Uncomment and configure to use the 'taskwing generate tasks' command.
+# --- LLM Configuration for 'taskwing generate tasks' ---
 # llm:
-#   provider: "%s"  # Supported: "openai", "google"
-#   modelName: "%s" # e.g., "gpt-4o-mini", "gpt-4o" for OpenAI; "gemini-1.5-pro-latest" for Google
-#   # apiKey: "YOUR_API_KEY"
-#   #   It's STRONGLY recommended to set this via an environment variable:
-#   #   - For OpenAI: TASKWING_LLM_APIKEY or OPENAI_API_KEY
-#   #   - For Google: TASKWING_LLM_APIKEY or GOOGLE_API_KEY (or use application default credentials)
-#   # projectId: "%s" # Required for Google Cloud provider, if llm.provider is "google".
-#   # maxOutputTokens: %d
-#   # temperature: %.1f
+#   provider: "%s"
+#   modelName: "%s"
+#   # It's STRONGLY recommended to set API keys via an environment variable:
+#   # - For OpenAI: TASKWING_LLM_APIKEY or OPENAI_API_KEY
+#   # - For Google: TASKWING_LLM_APIKEY or GOOGLE_API_KEY
+#   apiKey: ""
+#   # Required for Google Cloud provider if not using Application Default Credentials
+#   projectId: "%s"
+#   maxOutputTokens: %d
+#   temperature: %.1f
+#   estimationTemperature: %.1f
+#   estimationMaxOutputTokens: %d
+#   improvementTemperature: %.1f
+#   improvementMaxOutputTokens: %d
 
-# greeting: "%s"
-
-# verbose: %t # Overrides the --verbose flag if set to true or false here.
-              # Current effective verbose value (from flag/ENV): %t
+# verbose: %t
 `,
-				filepath.ToSlash(defaultConfigFilePath),
-				projectRootDir, // For project.rootDir comment
-
-				projectTasksDir,
-				filepath.ToSlash(filepath.Join(projectRootDir, projectTasksDir)),
-
-				projectTemplatesDir,
-				filepath.ToSlash(filepath.Join(projectRootDir, projectTemplatesDir)),
-
-				projectOutputLogPath,
-				filepath.ToSlash(filepath.Join(projectRootDir, projectOutputLogPath)),
-
-				dataFile,
-				dataFormat,
-
-				llmProvider,
-				llmModelName,
-				llmProjectId, // Value will be empty if not set, appropriately commented
-				llmMaxOutputTokens,
-				llmTemperature,
-
-				greeting,
-				verboseCurrent, // For the # verbose: line
-				verboseCurrent, // For the # Current effective ... line
+				filepath.ToSlash(projectConfigFilePath),
+				viper.GetString("project.rootDir"),
+				viper.GetString("project.tasksDir"),
+				viper.GetString("project.templatesDir"),
+				viper.GetString("project.outputLogPath"),
+				viper.GetString("data.file"),
+				viper.GetString("data.format"),
+				viper.GetString("llm.provider"),
+				viper.GetString("llm.modelName"),
+				viper.GetString("llm.projectId"),
+				viper.GetInt("llm.maxOutputTokens"),
+				viper.GetFloat64("llm.temperature"),
+				viper.GetFloat64("llm.estimationTemperature"),
+				viper.GetInt("llm.estimationMaxOutputTokens"),
+				viper.GetFloat64("llm.improvementTemperature"),
+				viper.GetInt("llm.improvementMaxOutputTokens"),
+				viper.GetBool("verbose"),
 			)
 
-			if errWrite := os.WriteFile(defaultConfigFilePath, []byte(configContentStr), 0644); errWrite != nil {
-				// This is a non-critical warning, not a fatal error.
-				fmt.Fprintf(os.Stderr, "Warning: Failed to create default config file at %s: %v\n", defaultConfigFilePath, errWrite)
-			} else {
-				configCreated = true
+			// Write the config file
+			err = os.WriteFile(projectConfigFilePath, []byte(defaultConfigContent), 0644)
+			if err != nil {
+				HandleError(fmt.Sprintf("Error: Could not write configuration file at '%s'.", projectConfigFilePath), err)
 			}
-		} else if statErr == nil {
-			configExisted = true
+			configCreated = true
 		} else {
-			// This is a non-critical warning.
-			fmt.Fprintf(os.Stderr, "Warning: Could not check for existing config file at %s: %v\n", defaultConfigFilePath, statErr)
+			configExisted = true
 		}
 
-		fmt.Printf("TaskWing project initialized successfully.\n")
+		// Summary
+		fmt.Printf("TaskWing has been initialized in the current directory.\n")
 		fmt.Printf("Project root directory: %s\n", projectRootDir)
-		fmt.Printf("Tasks directory: %s\n", absoluteTasksDir)
-		fmt.Printf("Templates directory: %s\n", absoluteTemplatesDir)
-		fmt.Printf("Task data file will be managed at: %s\n", fullTaskDataPath)
+		fmt.Printf("Tasks directory: %s\n", projectTasksDir)
 
 		if configCreated {
-			fmt.Printf("Default configuration file created at: %s\n", defaultConfigFilePath)
+			fmt.Printf("Configuration file created: %s\n", projectConfigFilePath)
 		} else if configExisted {
-			fmt.Printf("Using existing configuration file: %s\n", defaultConfigFilePath)
-		} else {
-			// This case should ideally not be hit if stat error was handled, but as a fallback.
-			fmt.Printf("No project-specific configuration file found at %s. TaskWing will use global defaults and environment variables.\n", defaultConfigFilePath)
-			fmt.Printf("You can create %s to override defaults for this project.\n", defaultConfigFileName)
+			fmt.Printf("Configuration file already exists: %s\n", projectConfigFilePath)
 		}
+
+		fmt.Println("You can now use 'taskwing add' to create your first task!")
 	},
 }
 

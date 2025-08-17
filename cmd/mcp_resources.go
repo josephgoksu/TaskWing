@@ -10,7 +10,6 @@ import (
 
 	"github.com/josephgoksu/taskwing.app/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/spf13/viper"
 )
 
 // tasksResourceHandler provides access to all tasks in JSON format
@@ -51,42 +50,11 @@ func tasksResourceHandler(taskStore store.TaskStore) mcp.ResourceHandler {
 // configResourceHandler provides access to TaskWing configuration
 func configResourceHandler() mcp.ResourceHandler {
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.ReadResourceParams) (*mcp.ReadResourceResult, error) {
-		// Get current configuration
+		// Get current simple configuration
 		config := GetConfig()
 
-		// Create a simplified config structure for MCP
-		mcpConfig := struct {
-			Project struct {
-				RootDir       string `json:"rootDir"`
-				TasksDir      string `json:"tasksDir"`
-				OutputLogPath string `json:"outputLogPath"`
-			} `json:"project"`
-			Data struct {
-				File   string `json:"file"`
-				Format string `json:"format"`
-			} `json:"data"`
-			Debug   bool `json:"debug"`
-			Verbose bool `json:"verbose"`
-		}{
-			Project: struct {
-				RootDir       string `json:"rootDir"`
-				TasksDir      string `json:"tasksDir"`
-				OutputLogPath string `json:"outputLogPath"`
-			}{
-				RootDir:       config.Project.RootDir,
-				TasksDir:      config.Project.TasksDir,
-				OutputLogPath: config.Project.OutputLogPath,
-			},
-			Data: struct {
-				File   string `json:"file"`
-				Format string `json:"format"`
-			}{
-				File:   viper.GetString("data.file"),
-				Format: viper.GetString("data.format"),
-			},
-			Debug:   viper.GetBool("debug"),
-			Verbose: viper.GetBool("verbose"),
-		}
+		// Use the simple config structure directly
+		mcpConfig := config
 
 		// Marshal to JSON
 		jsonData, err := json.MarshalIndent(mcpConfig, "", "  ")

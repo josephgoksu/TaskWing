@@ -39,12 +39,19 @@ type ProjectConfig struct {
 	OutputLogPath string `mapstructure:"outputLogPath" validate:"required"` // Can be relative to RootDir or absolute
 }
 
+// DataConfig holds data storage-related configuration
+type DataConfig struct {
+	File   string `mapstructure:"file" validate:"required"`
+	Format string `mapstructure:"format" validate:"required,oneof=json yaml toml"`
+}
+
 // AppConfig holds the application's entire configuration
 type AppConfig struct {
 	Greeting string        `mapstructure:"greeting"`
 	Verbose  bool          `mapstructure:"verbose"`
 	Config   string        `mapstructure:"config"`
 	Project  ProjectConfig `mapstructure:"project" validate:"required"`
+	Data     DataConfig    `mapstructure:"data" validate:"required"`
 	LLM      LLMConfig     `mapstructure:"llm" validate:"omitempty"` // LLM config is optional overall
 }
 
@@ -151,7 +158,7 @@ func InitConfig() {
 
 	// Defaults for LLMConfig
 	viper.SetDefault("llm.provider", "openai")
-	viper.SetDefault("llm.modelName", "")
+	viper.SetDefault("llm.modelName", "gpt-5-mini-2025-08-07")
 	viper.SetDefault("llm.apiKey", "")
 	viper.SetDefault("llm.projectId", "")
 	viper.SetDefault("llm.maxOutputTokens", 16384)

@@ -28,7 +28,6 @@ type OpenAIRequestPayload struct {
 	Messages            []OpenAIMessage       `json:"messages"`
 	Temperature         float64               `json:"temperature,omitempty"`
 	MaxTokens           int                   `json:"max_tokens,omitempty"`
-	MaxCompletionTokens int                   `json:"max_completion_tokens,omitempty"`
 	ResponseFormat      *OpenAIResponseFormat `json:"response_format,omitempty"`
 }
 
@@ -103,21 +102,9 @@ func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdCon
 		ResponseFormat: &OpenAIResponseFormat{Type: "json_object"},
 	}
 
-	// Model-specific parameter handling
-	// TODO: Consider a more scalable way to manage model-specific capabilities if more models/params are added.
-	if modelName == "o4-mini-2025-04-16" {
-		requestPayload.MaxCompletionTokens = maxTokens
-		// For o4-mini-2025-04-16, only send temperature if it's 1.0 (its required default)
-		// Otherwise, omit it to let the API use its internal default.
-		if temperature == 1.0 {
-			requestPayload.Temperature = temperature
-		}
-		// If temperature is not 1.0, we don't set it, and omitempty will handle it.
-	} else {
-		// Default handling for other models (e.g., gpt-4o-mini)
-		requestPayload.MaxTokens = maxTokens
-		requestPayload.Temperature = temperature
-	}
+	// Use standard parameters for all models
+	requestPayload.MaxTokens = maxTokens
+	requestPayload.Temperature = temperature
 
 	payloadBytes, err := json.Marshal(requestPayload)
 	if err != nil {
@@ -200,19 +187,9 @@ func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPromp
 		ResponseFormat: &OpenAIResponseFormat{Type: "json_object"},
 	}
 
-	// Model-specific parameter handling for estimation call
-	if modelName == "o4-mini-2025-04-16" {
-		requestPayload.MaxCompletionTokens = maxTokensForEstimation
-		// For o4-mini-2025-04-16, only send temperature if it's its required default (1.0).
-		// Otherwise, omit it to let the API use its internal default.
-		if temperatureForEstimation == 1.0 {
-			requestPayload.Temperature = temperatureForEstimation
-		} // If not 1.0, Temperature remains 0.0 and omitempty handles it.
-	} else {
-		// For other models, use the provided estimation parameters directly.
-		requestPayload.MaxTokens = maxTokensForEstimation
-		requestPayload.Temperature = temperatureForEstimation
-	}
+	// Use standard parameters for all models
+	requestPayload.MaxTokens = maxTokensForEstimation
+	requestPayload.Temperature = temperatureForEstimation
 
 	payloadBytes, err := json.Marshal(requestPayload)
 	if err != nil {
@@ -281,24 +258,16 @@ func (p *OpenAIProvider) ImprovePRD(ctx context.Context, systemPrompt, prdConten
 	userMessage := fmt.Sprintf("Please improve the following PRD content:\n---\n%s\n---", prdContent)
 
 	requestPayload := OpenAIRequestPayload{
-		Model: modelName, // A powerful model is recommended for this task, e.g., gpt-4o
+		Model: modelName, // GPT-5 Mini is the default model
 		Messages: []OpenAIMessage{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userMessage},
 		},
 	}
 
-	// Model-specific parameter handling
-	if strings.HasPrefix(modelName, "o4-mini") {
-		requestPayload.MaxCompletionTokens = maxTokensForImprovement
-		// For o4-mini models, only send temperature if it's the required default (1.0).
-		if temperatureForImprovement == 1.0 {
-			requestPayload.Temperature = temperatureForImprovement
-		}
-	} else {
-		requestPayload.MaxTokens = maxTokensForImprovement
-		requestPayload.Temperature = temperatureForImprovement
-	}
+	// Use standard parameters for all models
+	requestPayload.MaxTokens = maxTokensForImprovement
+	requestPayload.Temperature = temperatureForImprovement
 
 	payloadBytes, err := json.Marshal(requestPayload)
 	if err != nil {

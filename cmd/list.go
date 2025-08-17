@@ -4,6 +4,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -39,6 +40,7 @@ var listCmd = &cobra.Command{
 		filterTopLevel, _ := cmd.Flags().GetBool("top-level")
 		renderAsTree, _ := cmd.Flags().GetBool("tree")
 		showAllTasks, _ := cmd.Flags().GetBool("all")
+		jsonOutput, _ := cmd.Flags().GetBool("json")
 
 		// Retrieve sorting flag values
 		sortBy, _ := cmd.Flags().GetString("sort-by")
@@ -186,11 +188,23 @@ var listCmd = &cobra.Command{
 		}
 
 		if len(tasks) == 0 {
-			fmt.Println("No tasks found matching your criteria.")
+			if jsonOutput {
+				fmt.Println("[]")
+			} else {
+				fmt.Println("No tasks found matching your criteria.")
+			}
 			return
 		}
 
-		if renderAsTree {
+		if jsonOutput {
+			// Output as JSON
+			jsonData, err := json.MarshalIndent(tasks, "", "  ")
+			if err != nil {
+				HandleError("Failed to marshal tasks to JSON", err)
+				return
+			}
+			fmt.Println(string(jsonData))
+		} else if renderAsTree {
 			displayTasksAsTree(tasks, treeRootID, taskStore, 0, finalFilterFn) // Pass taskStore for fetching children
 		} else {
 			t := table.NewWriter()
@@ -241,6 +255,9 @@ func init() {
 	listCmd.Flags().Bool("top-level", false, "Filter to show only top-level tasks (tasks without a parent)")
 	listCmd.Flags().Bool("tree", false, "Display tasks in a hierarchical tree structure. If a task ID is provided as an argument, the tree starts from that task.")
 	listCmd.Flags().Bool("all", false, "Show all tasks in a flat list, including subtasks (overrides default top-level filtering for table view).")
+
+	// Output format flags
+	listCmd.Flags().Bool("json", false, "Output results in JSON format for automation and scripting")
 }
 
 // displayTasksAsTree recursively prints tasks in a tree structure.

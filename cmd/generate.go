@@ -46,7 +46,7 @@ Requires LLM to be configured in .taskwing/.taskwing.yaml or via environment var
 Example configuration in .taskwing/.taskwing.yaml:
 llm:
   provider: "openai" # or "google"
-  modelName: "gpt-4o-mini" # Example: "gpt-4o-mini", "gpt-4o"
+  modelName: "gpt-5-mini-2025-08-07" # GPT-5 Mini model
   # apiKey: "YOUR_OPENAI_API_KEY" # Set via TASKWING_LLM_APIKEY or OPENAI_API_KEY
   # projectId: "your-gcp-project-id" # For Google, if provider is "google"
   # maxOutputTokens: 2048

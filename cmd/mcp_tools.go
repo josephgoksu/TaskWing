@@ -6,6 +6,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams, TaskResponse] {
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[AddTaskParams]) (*mcp.CallToolResultFor[TaskResponse], error) {
 		args := params.Arguments
+		logToolCall("add-task", args)
 
 		// Validate required fields
 		if strings.TrimSpace(args.Title) == "" {
@@ -63,7 +65,7 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams,
 
 		// Validate task
 		if err := models.ValidateStruct(task); err != nil {
-			return nil, fmt.Errorf("task validation failed: %w", err)
+			return nil, NewMCPError("VALIDATION_FAILED", fmt.Sprintf("Task validation failed: %s", err.Error()), nil)
 		}
 
 		// Create task in store
@@ -143,7 +145,7 @@ func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[ListTasksPar
 		// List tasks
 		tasks, err := taskStore.ListTasks(filterFn, sortFn)
 		if err != nil {
-			return nil, fmt.Errorf("failed to list tasks: %w", err)
+			return nil, WrapStoreError(err, "list", "multiple")
 		}
 
 		// Convert to response format
@@ -159,10 +161,17 @@ func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[ListTasksPar
 
 		logInfo(fmt.Sprintf("Listed %d tasks", len(tasks)))
 
+		// Get context for enriched response
+		context, _ := BuildTaskContext(taskStore)
+		responseText := fmt.Sprintf("Found %d tasks", len(tasks))
+		if context != nil {
+			responseText = EnrichToolResponse(responseText, context)
+		}
+
 		return &mcp.CallToolResultFor[TaskListResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
-					Text: fmt.Sprintf("Found %d tasks", len(tasks)),
+					Text: responseText,
 				},
 			},
 			StructuredContent: response,
@@ -177,7 +186,7 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[UpdateTaskP
 
 		// Validate required fields
 		if strings.TrimSpace(args.ID) == "" {
-			return nil, fmt.Errorf("task ID is required")
+			return nil, NewMCPError("MISSING_ID", "Task ID is required for update", nil)
 		}
 
 		// Build updates map
@@ -196,41 +205,17 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[UpdateTaskP
 		}
 
 		if args.Status != "" {
-			// Validate status
-			switch strings.ToLower(args.Status) {
-			case "pending":
-				updates["status"] = models.StatusPending
-			case "in-progress":
-				updates["status"] = models.StatusInProgress
-			case "completed":
-				updates["status"] = models.StatusCompleted
-			case "cancelled":
-				updates["status"] = models.StatusCancelled
-			case "on-hold":
-				updates["status"] = models.StatusOnHold
-			case "blocked":
-				updates["status"] = models.StatusBlocked
-			case "needs-review":
-				updates["status"] = models.StatusNeedsReview
-			default:
-				return nil, fmt.Errorf("invalid status: %s", args.Status)
+			if err := ValidateTaskInput("", "", args.Status); err != nil {
+				return nil, err
 			}
+			updates["status"] = models.TaskStatus(args.Status)
 		}
 
 		if args.Priority != "" {
-			// Validate priority
-			switch strings.ToLower(args.Priority) {
-			case "low":
-				updates["priority"] = models.PriorityLow
-			case "medium":
-				updates["priority"] = models.PriorityMedium
-			case "high":
-				updates["priority"] = models.PriorityHigh
-			case "urgent":
-				updates["priority"] = models.PriorityUrgent
-			default:
-				return nil, fmt.Errorf("invalid priority: %s", args.Priority)
+			if err := ValidateTaskInput("", args.Priority, ""); err != nil {
+				return nil, err
 			}
+			updates["priority"] = models.TaskPriority(args.Priority)
 		}
 
 		if args.Dependencies != nil {
@@ -240,15 +225,22 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[UpdateTaskP
 		// Update task
 		updatedTask, err := taskStore.UpdateTask(args.ID, updates)
 		if err != nil {
-			return nil, fmt.Errorf("failed to update task: %w", err)
+			return nil, WrapStoreError(err, "update", args.ID)
 		}
 
 		logInfo(fmt.Sprintf("Updated task: %s", updatedTask.ID))
 
+		// Get context for enriched response
+		context, _ := BuildTaskContext(taskStore)
+		responseText := fmt.Sprintf("Updated task '%s' (ID: %s)", updatedTask.Title, updatedTask.ID)
+		if context != nil {
+			responseText = EnrichToolResponse(responseText, context)
+		}
+
 		return &mcp.CallToolResultFor[TaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
-					Text: fmt.Sprintf("Updated task '%s' (ID: %s)", updatedTask.Title, updatedTask.ID),
+					Text: responseText,
 				},
 			},
 			StructuredContent: taskToResponse(updatedTask),
@@ -263,31 +255,41 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[DeleteTaskP
 
 		// Validate required fields
 		if strings.TrimSpace(args.ID) == "" {
-			return nil, fmt.Errorf("task ID is required")
+			return nil, NewMCPError("MISSING_ID", "Task ID is required for deletion", nil)
 		}
 
-		// Get task to check for dependents
+		// Get task to check for dependents and for response text
 		task, err := taskStore.GetTask(args.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get task: %w", err)
+			return nil, WrapStoreError(err, "get_for_delete", args.ID)
 		}
 
 		// Check if task has dependents
 		if len(task.Dependents) > 0 {
-			return nil, fmt.Errorf("cannot delete task with dependents: %v", task.Dependents)
+			return nil, NewMCPError("HAS_DEPENDENTS", "Cannot delete task with dependent tasks", map[string]interface{}{
+				"task_id":    args.ID,
+				"dependents": task.Dependents,
+			})
 		}
 
 		// Delete task
 		if err := taskStore.DeleteTask(args.ID); err != nil {
-			return nil, fmt.Errorf("failed to delete task: %w", err)
+			return nil, WrapStoreError(err, "delete", args.ID)
 		}
 
 		logInfo(fmt.Sprintf("Deleted task: %s", args.ID))
 
+		// Get context for enriched response
+		context, _ := BuildTaskContext(taskStore)
+		responseText := fmt.Sprintf("Deleted task '%s' (ID: %s)", task.Title, task.ID)
+		if context != nil {
+			responseText = EnrichToolResponse(responseText, context)
+		}
+
 		return &mcp.CallToolResultFor[bool]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
-					Text: fmt.Sprintf("Deleted task '%s' (ID: %s)", task.Title, task.ID),
+					Text: responseText,
 				},
 			},
 			StructuredContent: true,
@@ -302,21 +304,28 @@ func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[MarkDoneParam
 
 		// Validate required fields
 		if strings.TrimSpace(args.ID) == "" {
-			return nil, fmt.Errorf("task ID is required")
+			return nil, NewMCPError("MISSING_ID", "Task ID is required to mark as done", nil)
 		}
 
 		// Mark task as done
 		completedTask, err := taskStore.MarkTaskDone(args.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to mark task as done: %w", err)
+			return nil, WrapStoreError(err, "mark_done", args.ID)
 		}
 
 		logInfo(fmt.Sprintf("Marked task as done: %s", completedTask.ID))
 
+		// Get context for enriched response
+		context, _ := BuildTaskContext(taskStore)
+		responseText := fmt.Sprintf("Marked task '%s' as completed (ID: %s)", completedTask.Title, completedTask.ID)
+		if context != nil {
+			responseText = EnrichToolResponse(responseText, context)
+		}
+
 		return &mcp.CallToolResultFor[TaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
-					Text: fmt.Sprintf("Marked task '%s' as completed (ID: %s)", completedTask.Title, completedTask.ID),
+					Text: responseText,
 				},
 			},
 			StructuredContent: taskToResponse(completedTask),
@@ -331,21 +340,28 @@ func getTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[GetTaskParams,
 
 		// Validate required fields
 		if strings.TrimSpace(args.ID) == "" {
-			return nil, fmt.Errorf("task ID is required")
+			return nil, NewMCPError("MISSING_ID", "Task ID is required to get a task", nil)
 		}
 
 		// Get task
 		task, err := taskStore.GetTask(args.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get task: %w", err)
+			return nil, WrapStoreError(err, "get", args.ID)
 		}
 
 		logInfo(fmt.Sprintf("Retrieved task: %s", task.ID))
 
+		// Get context for enriched response
+		context, _ := BuildTaskContext(taskStore)
+		responseText := fmt.Sprintf("Task '%s' (ID: %s)", task.Title, task.ID)
+		if context != nil {
+			responseText = EnrichToolResponse(responseText, context)
+		}
+
 		return &mcp.CallToolResultFor[TaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
-					Text: fmt.Sprintf("Task '%s' (ID: %s)", task.Title, task.ID),
+					Text: responseText,
 				},
 			},
 			StructuredContent: taskToResponse(task),
@@ -356,8 +372,32 @@ func getTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[GetTaskParams,
 // Helper function to create sort function
 func createSortFunction(sortBy, sortOrder string) func([]models.Task) []models.Task {
 	return func(tasks []models.Task) []models.Task {
-		// For now, return tasks as-is since the store interface doesn't specify sorting
-		// In a real implementation, you'd sort based on the sortBy field
+		sort.SliceStable(tasks, func(i, j int) bool {
+			t1 := tasks[i]
+			t2 := tasks[j]
+			var less bool
+			switch strings.ToLower(sortBy) {
+			case "id":
+				less = t1.ID < t2.ID
+			case "title":
+				less = strings.ToLower(t1.Title) < strings.ToLower(t2.Title)
+			case "status":
+				less = statusToInt(t1.Status) < statusToInt(t2.Status)
+			case "priority":
+				less = priorityToInt(t1.Priority) < priorityToInt(t2.Priority)
+			case "createdat":
+				less = t1.CreatedAt.Before(t2.CreatedAt)
+			case "updatedat":
+				less = t1.UpdatedAt.Before(t2.UpdatedAt)
+			default:
+				// Default to createdAt if sort field is unknown
+				less = t1.CreatedAt.Before(t2.CreatedAt)
+			}
+			if strings.ToLower(sortOrder) == "desc" {
+				return !less
+			}
+			return less
+		})
 		return tasks
 	}
 }

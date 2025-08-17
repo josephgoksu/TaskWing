@@ -12,6 +12,7 @@ import (
 	"github.com/josephgoksu/taskwing.app/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // mcpCmd represents the mcp command
@@ -40,9 +41,11 @@ The server will run until the client disconnects.`,
 
 func init() {
 	rootCmd.AddCommand(mcpCmd)
+	// MCP server inherits verbose flag from root command
 }
 
 func runMCPServer(ctx context.Context) error {
+
 	// Initialize TaskWing store
 	taskStore, err := GetStore()
 	if err != nil {
@@ -56,13 +59,8 @@ func runMCPServer(ctx context.Context) error {
 		Version: version,
 	}
 	
-	// Create server options with notification handlers
-	serverOpts := &mcp.ServerOptions{
-		// Handle the initialized notification properly
-		InitializedHandler: func(ctx context.Context, serverSession *mcp.ServerSession, params *mcp.InitializedParams) {
-			logInfo("MCP client initialized successfully")
-		},
-	}
+	// Create server options
+	serverOpts := &mcp.ServerOptions{}
 	
 	server := mcp.NewServer(impl, serverOpts)
 
@@ -267,13 +265,25 @@ func taskToResponse(task models.Task) TaskResponse {
 }
 
 func logError(err error) {
-	if verbose {
-		log.Printf("Error: %v", err)
+	if viper.GetBool("verbose") {
+		log.Printf("[MCP ERROR] %v", err)
 	}
 }
 
 func logInfo(msg string) {
-	if verbose {
-		log.Printf("Info: %s", msg)
+	if viper.GetBool("verbose") {
+		log.Printf("[MCP INFO] %s", msg)
+	}
+}
+
+func logDebug(msg string) {
+	if viper.GetBool("verbose") {
+		log.Printf("[MCP DEBUG] %s", msg)
+	}
+}
+
+func logToolCall(toolName string, params interface{}) {
+	if viper.GetBool("verbose") {
+		log.Printf("[MCP TOOL] %s called with params: %+v", toolName, params)
 	}
 }

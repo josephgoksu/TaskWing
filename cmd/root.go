@@ -75,41 +75,25 @@ func init() {
 
 // initConfig is defined in config.go
 
-// GetStore initializes and returns the task store.
+// GetTaskFilePath returns the full path to the tasks file
+func GetTaskFilePath() string {
+	config := GetConfig()
+	return filepath.Join(config.Project.RootDir, config.Project.TasksDir, config.Data.File)
+}
+
+// GetStore initializes and returns the task store using the unified AppConfig.
 func GetStore() (store.TaskStore, error) {
 	s := store.NewFileTaskStore()
+	config := GetConfig()
 
-	cfg := GetConfig() // Get the global AppConfig
-
-	projectRoot := cfg.Project.RootDir       // e.g., ".taskwing"
-	relativeTasksDir := cfg.Project.TasksDir // e.g., "tasks"
-
-	// Construct the absolute path to the directory where tasks.json will reside
-	absoluteTasksDir := filepath.Join(projectRoot, relativeTasksDir) // e.g., ".taskwing/tasks"
-
-	taskFileName := viper.GetString("data.file")     // e.g., "tasks.json"
-	taskFileFormat := viper.GetString("data.format") // e.g., "json"
-
-	// Ensure taskFileName has the correct extension based on taskFileFormat
-	ext := filepath.Ext(taskFileName)
-	desiredExt := "." + taskFileFormat
-	if taskFileFormat != "" && ext != desiredExt {
-		baseName := strings.TrimSuffix(taskFileName, ext)
-		taskFileName = baseName + desiredExt
-	}
-	if taskFileName == "" { // Should be caught by viper default, but as a safeguard
-		taskFileName = "tasks." + taskFileFormat
-	}
-
-	// The final full path to the data file itself
-	fullPath := filepath.Join(absoluteTasksDir, taskFileName) // e.g., ".taskwing/tasks/tasks.json"
+	taskFilePath := GetTaskFilePath()
 
 	err := s.Initialize(map[string]string{
-		"dataFile":       fullPath,
-		"dataFileFormat": taskFileFormat,
+		"dataFile":       taskFilePath,
+		"dataFileFormat": config.Data.Format,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize store at %s: %w", fullPath, err)
+		return nil, fmt.Errorf("failed to initialize store at %s: %w", taskFilePath, err)
 	}
 	return s, nil
 }

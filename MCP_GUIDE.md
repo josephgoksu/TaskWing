@@ -53,7 +53,7 @@ Add to your Claude Code MCP configuration file:
       "command": "taskwing",
       "args": ["mcp"],
       "env": {
-        "TASKWING_PROJECT_ROOTDIR": ".taskwing"
+        "TASKWING_DATA_DIR": ".taskwing"
       }
     }
   }
@@ -97,6 +97,14 @@ For any MCP-compatible tool, use:
 | `delete-task` | Remove task      | `id`          | None                                                                               |
 | `mark-done`   | Complete task    | `id`          | None                                                                               |
 | `get-task`    | Get task details | `id`          | None                                                                               |
+
+### Advanced Tools
+
+| Tool           | Purpose                                                        | Required Args        | Optional Args                                  |
+| -------------- | -------------------------------------------------------------- | -------------------- | ---------------------------------------------- |
+| `bulk-tasks`   | Perform bulk operations (complete, cancel, delete, prioritize) | `task_ids`, `action` | `priority` (for 'prioritize' action)           |
+| `task-summary` | Get a high-level summary of all tasks and project health       | None                 | None                                           |
+| `search-tasks` | Advanced search with logical operators and date filters        | `query`              | `tags`, `date_from`, `date_to`, `has_subtasks` |
 
 ### Example Tool Usage
 
