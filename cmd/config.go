@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
+	"github.com/josephgoksu/taskwing.app/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -17,46 +18,14 @@ const (
 	envPrefix  = "TASKWING"
 )
 
-// LLMConfig holds configuration for Large Language Model interactions.
-type LLMConfig struct {
-	Provider                   string  `mapstructure:"provider" validate:"omitempty,oneof=openai google"`
-	ModelName                  string  `mapstructure:"modelName" validate:"omitempty,min=1"`
-	APIKey                     string  `mapstructure:"apiKey" validate:"omitempty,min=1"`    // Sensitive, primarily for ENV var loading
-	ProjectID                  string  `mapstructure:"projectId" validate:"omitempty,min=1"` // For Google Cloud
-	MaxOutputTokens            int     `mapstructure:"maxOutputTokens" validate:"omitempty,min=1"`
-	Temperature                float64 `mapstructure:"temperature" validate:"omitempty,min=0,max=2"`
-	EstimationTemperature      float64 `mapstructure:"estimationTemperature" validate:"omitempty,min=0,max=2"`
-	EstimationMaxOutputTokens  int     `mapstructure:"estimationMaxOutputTokens" validate:"omitempty,min=1"`
-	ImprovementTemperature     float64 `mapstructure:"improvementTemperature" validate:"omitempty,min=0,max=2"`
-	ImprovementMaxOutputTokens int     `mapstructure:"improvementMaxOutputTokens" validate:"omitempty,min=1"`
-}
-
-// ProjectConfig holds project path related configuration
-type ProjectConfig struct {
-	RootDir       string `mapstructure:"rootDir" validate:"required"`       // Base directory for all project-specific files
-	TasksDir      string `mapstructure:"tasksDir" validate:"required"`      // Relative to RootDir
-	TemplatesDir  string `mapstructure:"templatesDir" validate:"required"`  // Relative to RootDir
-	OutputLogPath string `mapstructure:"outputLogPath" validate:"required"` // Can be relative to RootDir or absolute
-}
-
-// DataConfig holds data storage-related configuration
-type DataConfig struct {
-	File   string `mapstructure:"file" validate:"required"`
-	Format string `mapstructure:"format" validate:"required,oneof=json yaml toml"`
-}
-
-// AppConfig holds the application's entire configuration
-type AppConfig struct {
-	Greeting string        `mapstructure:"greeting"`
-	Verbose  bool          `mapstructure:"verbose"`
-	Config   string        `mapstructure:"config"`
-	Project  ProjectConfig `mapstructure:"project" validate:"required"`
-	Data     DataConfig    `mapstructure:"data" validate:"required"`
-	LLM      LLMConfig     `mapstructure:"llm" validate:"omitempty"` // LLM config is optional overall
-}
+// Type aliases for unified configuration types
+type LLMConfig = types.LLMConfig
+type ProjectConfig = types.ProjectConfig
+type DataConfig = types.DataConfig
+type AppConfig = types.AppConfig
 
 // GlobalAppConfig holds the global application configuration instance.
-var GlobalAppConfig AppConfig
+var GlobalAppConfig types.AppConfig
 
 // validate is a single instance of Translate, it caches struct info
 var validate *validator.Validate
@@ -66,7 +35,7 @@ func init() {
 }
 
 // validateAppConfig performs validation on the AppConfig struct.
-func validateAppConfig(config *AppConfig) error {
+func validateAppConfig(config *types.AppConfig) error {
 	errs := validate.Struct(config)
 	if errs != nil {
 		// Optionally, you can iterate through errs to get more specific error messages.
@@ -214,7 +183,7 @@ func InitConfig() {
 }
 
 // GetConfig returns a pointer to the global AppConfig instance.
-func GetConfig() *AppConfig {
+func GetConfig() *types.AppConfig {
 	return &GlobalAppConfig
 }
 

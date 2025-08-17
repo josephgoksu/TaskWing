@@ -11,89 +11,36 @@ import (
 
 	"github.com/josephgoksu/taskwing.app/models"
 	"github.com/josephgoksu/taskwing.app/store"
+	"github.com/josephgoksu/taskwing.app/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// BulkTaskParams for bulk operations
-type BulkTaskParams struct {
-	TaskIDs  []string `json:"task_ids" mcp:"List of task IDs to operate on"`
-	Action   string   `json:"action" mcp:"Action to perform: complete, cancel, delete, prioritize"`
-	Priority string   `json:"priority,omitempty" mcp:"New priority for prioritize action"`
-}
-
-// TaskAnalyticsParams for analytics queries
-type TaskAnalyticsParams struct {
-	Period string `json:"period,omitempty" mcp:"Time period: today, week, month, all"`
-	GroupBy string `json:"group_by,omitempty" mcp:"Group results by: status, priority, none"`
-}
-
-// TaskSearchParams for advanced search
-type TaskSearchParams struct {
-	Query       string   `json:"query" mcp:"Search query supporting AND, OR, NOT operators"`
-	Tags        []string `json:"tags,omitempty" mcp:"Filter by tags"`
-	DateFrom    string   `json:"date_from,omitempty" mcp:"Filter tasks created after this date (YYYY-MM-DD)"`
-	DateTo      string   `json:"date_to,omitempty" mcp:"Filter tasks created before this date (YYYY-MM-DD)"`
-	HasSubtasks *bool    `json:"has_subtasks,omitempty" mcp:"Filter tasks that have subtasks"`
-}
-
-// TaskCreationRequest for batch task creation
-type TaskCreationRequest struct {
-	Title              string   `json:"title"`
-	Description        string   `json:"description"`
-	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty"`
-	Priority           string   `json:"priority,omitempty"`
-	Dependencies       []string `json:"dependencies,omitempty"`
-}
-
-// BatchCreateTasksParams for creating multiple tasks at once
-type BatchCreateTasksParams struct {
-	Tasks []TaskCreationRequest `json:"tasks" mcp:"List of tasks to create"`
-}
-
-// BatchCreateTasksResponse for batch task creation
-type BatchCreateTasksResponse struct {
-	CreatedTasks []TaskResponse `json:"created_tasks"`
-	Failed       []string       `json:"failed,omitempty"`
-	Success      int            `json:"success_count"`
-	Errors       []string       `json:"errors,omitempty"`
-}
-
-// TaskSummaryResponse provides a high-level summary
-type TaskSummaryResponse struct {
-	Summary        string          `json:"summary"`
-	TotalTasks     int             `json:"total_tasks"`
-	ActiveTasks    int             `json:"active_tasks"`
-	CompletedToday int             `json:"completed_today"`
-	DueToday       int             `json:"due_today"`
-	Blocked        int             `json:"blocked"`
-	Context        *TaskContext    `json:"context"`
-}
-
-// BulkOperationResponse for bulk operations
-type BulkOperationResponse struct {
-	Succeeded   int      `json:"succeeded"`
-	Failed      int      `json:"failed"`
-	Errors      []string `json:"errors,omitempty"`
-	UpdatedTasks []string `json:"updated_task_ids"`
-}
+// Type aliases for backward compatibility
+type BulkTaskParams = types.BulkTaskParams
+type TaskSearchParams = types.TaskSearchParams
+type TaskCreationRequest = types.TaskCreationRequest
+type BatchCreateTasksParams = types.BatchCreateTasksParams
+type BatchCreateTasksResponse = types.BatchCreateTasksResponse
+type TaskSummaryResponse = types.TaskSummaryResponse
+type BulkOperationResponse = types.BulkOperationResponse
 
 // bulkTaskHandler handles bulk operations on multiple tasks
-func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[BulkTaskParams, BulkOperationResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[BulkTaskParams]) (*mcp.CallToolResultFor[BulkOperationResponse], error) {
+func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTaskParams, types.BulkOperationResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.BulkTaskParams]) (*mcp.CallToolResultFor[types.BulkOperationResponse], error) {
 		args := params.Arguments
 
 		if len(args.TaskIDs) == 0 {
 			return nil, NewMCPError("NO_TASKS_SPECIFIED", "No task IDs provided for bulk operation", nil)
 		}
 
-		response := BulkOperationResponse{
+		response := types.BulkOperationResponse{
 			UpdatedTasks: []string{},
-			Errors:      []string{},
+			Errors:       []string{},
 		}
 
 		for _, taskID := range args.TaskIDs {
 			var err error
-			
+
 			switch strings.ToLower(args.Action) {
 			case "complete":
 				_, err = taskStore.MarkTaskDone(taskID)
@@ -124,7 +71,7 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[BulkTaskParam
 			}
 		}
 
-		resultText := fmt.Sprintf("Bulk %s operation: %d succeeded, %d failed", 
+		resultText := fmt.Sprintf("Bulk %s operation: %d succeeded, %d failed",
 			args.Action, response.Succeeded, response.Failed)
 
 		// If all operations failed, return as an error instead of IsError flag
@@ -143,8 +90,8 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[BulkTaskParam
 }
 
 // taskSummaryHandler provides a high-level task summary
-func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, TaskSummaryResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[struct{}]) (*mcp.CallToolResultFor[TaskSummaryResponse], error) {
+func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, types.TaskSummaryResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[struct{}]) (*mcp.CallToolResultFor[types.TaskSummaryResponse], error) {
 		// Get all tasks
 		tasks, err := taskStore.ListTasks(nil, nil)
 		if err != nil {
@@ -160,8 +107,8 @@ func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, 
 		// Calculate summary metrics
 		now := time.Now()
 		today := now.Truncate(24 * time.Hour)
-		
-		response := TaskSummaryResponse{
+
+		response := types.TaskSummaryResponse{
 			TotalTasks: len(tasks),
 			Context:    context,
 		}
@@ -211,16 +158,16 @@ func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, 
 }
 
 // batchCreateTasksHandler creates multiple tasks at once with dependency resolution
-func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[BatchCreateTasksParams, BatchCreateTasksResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[BatchCreateTasksParams]) (*mcp.CallToolResultFor[BatchCreateTasksResponse], error) {
+func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BatchCreateTasksParams, types.BatchCreateTasksResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.BatchCreateTasksParams]) (*mcp.CallToolResultFor[types.BatchCreateTasksResponse], error) {
 		args := params.Arguments
 
 		if len(args.Tasks) == 0 {
 			return nil, NewMCPError("NO_TASKS_SPECIFIED", "No tasks provided for batch creation", nil)
 		}
 
-		response := BatchCreateTasksResponse{
-			CreatedTasks: []TaskResponse{},
+		response := types.BatchCreateTasksResponse{
+			CreatedTasks: []types.TaskResponse{},
 			Failed:       []string{},
 			Errors:       []string{},
 		}
@@ -234,11 +181,19 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[Batch
 				continue // Skip tasks with dependencies in first pass
 			}
 
+			// Set parent ID if provided
+			var parentID *string
+			if strings.TrimSpace(taskReq.ParentID) != "" {
+				parentID = &taskReq.ParentID
+			}
+
 			task := models.Task{
 				Title:              taskReq.Title,
 				Description:        taskReq.Description,
 				AcceptanceCriteria: taskReq.AcceptanceCriteria,
 				Status:             models.StatusPending,
+				ParentID:           parentID,
+				SubtaskIDs:         []string{},
 			}
 
 			// Set priority
@@ -266,11 +221,19 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[Batch
 				continue // Skip tasks without dependencies (already created)
 			}
 
+			// Set parent ID if provided
+			var parentID *string
+			if strings.TrimSpace(taskReq.ParentID) != "" {
+				parentID = &taskReq.ParentID
+			}
+
 			task := models.Task{
 				Title:              taskReq.Title,
 				Description:        taskReq.Description,
 				AcceptanceCriteria: taskReq.AcceptanceCriteria,
 				Status:             models.StatusPending,
+				ParentID:           parentID,
+				SubtaskIDs:         []string{},
 				Dependencies:       taskReq.Dependencies, // Use provided dependencies as-is
 			}
 
@@ -292,7 +255,7 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[Batch
 			response.Success++
 		}
 
-		resultText := fmt.Sprintf("Batch task creation: %d succeeded, %d failed", 
+		resultText := fmt.Sprintf("Batch task creation: %d succeeded, %d failed",
 			response.Success, len(response.Failed))
 
 		// If all operations failed, return as an error
@@ -311,14 +274,14 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[Batch
 }
 
 // advancedSearchHandler provides powerful search capabilities
-func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[TaskSearchParams, TaskListResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[TaskSearchParams]) (*mcp.CallToolResultFor[TaskListResponse], error) {
+func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.TaskSearchParams, types.TaskListResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.TaskSearchParams]) (*mcp.CallToolResultFor[types.TaskListResponse], error) {
 		args := params.Arguments
 
 		// Parse date filters
 		var dateFrom, dateTo time.Time
 		var err error
-		
+
 		if args.DateFrom != "" {
 			dateFrom, err = time.Parse("2006-01-02", args.DateFrom)
 			if err != nil {
@@ -405,12 +368,12 @@ func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[TaskSea
 		}
 
 		// Convert to response
-		taskResponses := make([]TaskResponse, len(tasks))
+		taskResponses := make([]types.TaskResponse, len(tasks))
 		for i, task := range tasks {
 			taskResponses[i] = taskToResponse(task)
 		}
 
-		response := TaskListResponse{
+		response := types.TaskListResponse{
 			Tasks: taskResponses,
 			Count: len(taskResponses),
 		}

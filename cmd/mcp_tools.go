@@ -13,12 +13,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/josephgoksu/taskwing.app/models"
 	"github.com/josephgoksu/taskwing.app/store"
+	"github.com/josephgoksu/taskwing.app/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // addTaskHandler creates a new task
-func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams, TaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[AddTaskParams]) (*mcp.CallToolResultFor[TaskResponse], error) {
+func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskParams, types.TaskResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.AddTaskParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 		logToolCall("add-task", args)
 
@@ -49,6 +50,19 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams,
 			}
 		}
 
+		// Set parent ID if provided
+		var parentID *string
+		if strings.TrimSpace(args.ParentID) != "" {
+			// Validate that parent task exists
+			_, err := taskStore.GetTask(args.ParentID)
+			if err != nil {
+				return nil, NewMCPError("PARENT_NOT_FOUND", fmt.Sprintf("Parent task %s not found", args.ParentID), map[string]interface{}{
+					"parent_id": args.ParentID,
+				})
+			}
+			parentID = &args.ParentID
+		}
+
 		// Create new task
 		task := models.Task{
 			ID:                 uuid.New().String(),
@@ -57,6 +71,8 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams,
 			AcceptanceCriteria: strings.TrimSpace(args.AcceptanceCriteria),
 			Status:             models.StatusPending,
 			Priority:           priority,
+			ParentID:           parentID,
+			SubtaskIDs:         []string{},
 			Dependencies:       args.Dependencies,
 			Dependents:         []string{},
 			CreatedAt:          time.Now(),
@@ -72,6 +88,24 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams,
 		createdTask, err := taskStore.CreateTask(task)
 		if err != nil {
 			return nil, WrapStoreError(err, "create", task.ID)
+		}
+
+		// If this is a subtask, update parent's SubtaskIDs
+		if parentID != nil {
+			parentTask, err := taskStore.GetTask(*parentID)
+			if err != nil {
+				// Log error but don't fail the creation since task was already created
+				logError(fmt.Errorf("failed to get parent task %s for subtask update: %w", *parentID, err))
+			} else {
+				// Add this task to parent's subtasks
+				updatedSubtasks := append(parentTask.SubtaskIDs, createdTask.ID)
+				_, err = taskStore.UpdateTask(*parentID, map[string]interface{}{
+					"subtaskIds": updatedSubtasks,
+				})
+				if err != nil {
+					logError(fmt.Errorf("failed to update parent task %s with new subtask: %w", *parentID, err))
+				}
+			}
 		}
 
 		logInfo(fmt.Sprintf("Created task: %s", createdTask.ID))
@@ -90,14 +124,14 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[AddTaskParams,
 				},
 			},
 			StructuredContent: taskToResponse(createdTask),
-			IsError: false,
+			IsError:           false,
 		}, nil
 	}
 }
 
 // listTasksHandler lists tasks with optional filtering
-func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[ListTasksParams, TaskListResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[ListTasksParams]) (*mcp.CallToolResultFor[TaskListResponse], error) {
+func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ListTasksParams, types.TaskListResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ListTasksParams]) (*mcp.CallToolResultFor[types.TaskListResponse], error) {
 		args := params.Arguments
 
 		// Create filter function
@@ -149,12 +183,12 @@ func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[ListTasksPar
 		}
 
 		// Convert to response format
-		taskResponses := make([]TaskResponse, len(tasks))
+		taskResponses := make([]types.TaskResponse, len(tasks))
 		for i, task := range tasks {
 			taskResponses[i] = taskToResponse(task)
 		}
 
-		response := TaskListResponse{
+		response := types.TaskListResponse{
 			Tasks: taskResponses,
 			Count: len(taskResponses),
 		}
@@ -180,8 +214,8 @@ func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[ListTasksPar
 }
 
 // updateTaskHandler updates an existing task
-func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[UpdateTaskParams, TaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[UpdateTaskParams]) (*mcp.CallToolResultFor[TaskResponse], error) {
+func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.UpdateTaskParams, types.TaskResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.UpdateTaskParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 
 		// Validate required fields
@@ -222,6 +256,17 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[UpdateTaskP
 			updates["dependencies"] = args.Dependencies
 		}
 
+		if args.ParentID != "" {
+			// Validate that parent task exists
+			_, err := taskStore.GetTask(args.ParentID)
+			if err != nil {
+				return nil, NewMCPError("PARENT_NOT_FOUND", fmt.Sprintf("Parent task %s not found", args.ParentID), map[string]interface{}{
+					"parent_id": args.ParentID,
+				})
+			}
+			updates["parentId"] = &args.ParentID
+		}
+
 		// Update task
 		updatedTask, err := taskStore.UpdateTask(args.ID, updates)
 		if err != nil {
@@ -249,8 +294,8 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[UpdateTaskP
 }
 
 // deleteTaskHandler deletes a task
-func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[DeleteTaskParams, DeleteTaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[DeleteTaskParams]) (*mcp.CallToolResultFor[DeleteTaskResponse], error) {
+func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.DeleteTaskParams, types.DeleteTaskResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.DeleteTaskParams]) (*mcp.CallToolResultFor[types.DeleteTaskResponse], error) {
 		args := params.Arguments
 
 		// Validate required fields
@@ -286,7 +331,7 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[DeleteTaskP
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		response := DeleteTaskResponse{
+		response := types.DeleteTaskResponse{
 			Success: true,
 			TaskID:  args.ID,
 			Message: fmt.Sprintf("Task '%s' deleted successfully", task.Title),
@@ -304,8 +349,8 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[DeleteTaskP
 }
 
 // markDoneHandler marks a task as completed
-func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[MarkDoneParams, TaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[MarkDoneParams]) (*mcp.CallToolResultFor[TaskResponse], error) {
+func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.MarkDoneParams, types.TaskResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.MarkDoneParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 
 		// Validate required fields
@@ -340,8 +385,8 @@ func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[MarkDoneParam
 }
 
 // getTaskHandler retrieves a specific task
-func getTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[GetTaskParams, TaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[GetTaskParams]) (*mcp.CallToolResultFor[TaskResponse], error) {
+func getTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.GetTaskParams, types.TaskResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.GetTaskParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 
 		// Validate required fields

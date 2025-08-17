@@ -44,6 +44,17 @@ taskwing mcp -v                 # Start with verbose logging
 taskwing config [key] [value]   # Manage configuration
 ```
 
+### MCP Development Workflow
+
+```bash
+# Start MCP server for development
+./taskwing mcp
+
+# Test MCP functionality through Claude Code
+# MCP tools available: add-task, list-tasks, update-task, delete-task, mark-done, get-task
+# Advanced tools: batch-create-tasks, bulk-tasks, search-tasks, task-summary
+```
+
 ## Architecture
 
 ### Core Components
@@ -53,6 +64,7 @@ taskwing config [key] [value]   # Manage configuration
 - **store/**: TaskStore interface with file-based implementation
 - **llm/**: AI integration layer for task generation
 - **prompts/**: System prompts for LLM interactions
+- **types/**: Unified type definitions shared across CLI and MCP (eliminates duplication)
 
 ### Key Data Flow
 
@@ -64,7 +76,7 @@ taskwing config [key] [value]   # Manage configuration
 
 TaskWing implements a full MCP server with:
 
-- **6 Tools**: add-task, list-tasks, update-task, delete-task, mark-done, get-task
+- **9 Tools**: add-task, list-tasks, update-task, delete-task, mark-done, get-task, batch-create-tasks, bulk-tasks, search-tasks
 - **2 Resources**: taskwing://tasks (JSON data), taskwing://config (settings)
 - **2 Prompts**: task-generation, task-breakdown
 
@@ -72,8 +84,11 @@ MCP implementation is split across:
 
 - `cmd/mcp.go`: Server setup and tool registration
 - `cmd/mcp_tools.go`: Tool handlers (CRUD operations)
+- `cmd/mcp_advanced_tools.go`: Advanced tool handlers (batch operations, search)
 - `cmd/mcp_resources.go`: Resource handlers (data access)
 - `cmd/mcp_prompts.go`: Prompt handlers (AI assistance)
+- `cmd/mcp_context.go`: Context and metrics for intelligent responses
+- `cmd/mcp_errors.go`: Structured error handling for MCP responses
 
 ### Task Model
 
@@ -131,26 +146,105 @@ Uses promptui for consistent interactive experiences:
 
 ## Code Patterns
 
+### Unified Type System
+
+**Critical**: All shared types are defined in the `types/` package to eliminate duplication:
+
+- `types/mcp.go`: MCP tool parameters and responses
+- `types/config.go`: Configuration structures
+- `types/context.go`: Task context and metrics
+- `types/errors.go`: MCP error handling
+- `types/llm.go`: LLM-specific types
+
+**Usage**: Import `types` package and use type aliases in cmd packages:
+
+```go
+type AddTaskParams = types.AddTaskParams
+```
+
 ### Error Handling
 
 - Use `ErrNoTasksFound` for interactive selection scenarios
 - Wrap errors with context using `fmt.Errorf`
 - Validate all structs using validator tags
+- MCP errors use structured `types.MCPError` with codes and details
 
 ### MCP Tool Implementation
 
 - All tools use typed parameters with `omitempty` JSON tags for optional fields
 - Tools return structured content with text descriptions
 - Error responses use `isError: true` in CallToolResult, not JSON-RPC errors
+- **Subtask Support**: `parentId` parameter creates parent-child relationships
+- **Context Enrichment**: All responses include project health and metrics
 
 ### Task Dependencies
 
 - Circular dependency validation prevents invalid relationships
 - Dependents are managed automatically when dependencies are set
 - Delete operations check for dependents before allowing removal
+- **Parent-Child Relationships**: Separate from dependencies, managed via `ParentID`/`SubtaskIDs`
 
 ### Configuration Access
 
 - Use `GetConfig()` function in cmd package for unified config access
 - Configuration is loaded once during command initialization
 - Environment variables automatically override file settings
+- Returns `*types.AppConfig` for type safety
+
+## Key Implementation Details
+
+### MCP Tool Development
+
+When adding new MCP tools:
+
+1. **Define types** in `types/mcp.go` (parameters and responses)
+2. **Implement handler** in appropriate mcp file (`cmd/mcp_tools.go` for basic CRUD, `cmd/mcp_advanced_tools.go` for complex operations)
+3. **Register tool** in `cmd/mcp.go` with descriptive name and schema
+4. **Add type aliases** in relevant cmd files for backward compatibility
+
+### Task Store Pattern
+
+All data operations go through the `store.TaskStore` interface:
+
+```go
+type TaskStore interface {
+    CreateTask(task models.Task) (models.Task, error)
+    GetTask(id string) (models.Task, error)
+    UpdateTask(id string, updates map[string]interface{}) (models.Task, error)
+    DeleteTask(id string) error
+    ListTasks(filterFn func(models.Task) bool, sortFn func([]models.Task) []models.Task) ([]models.Task, error)
+    // ... additional methods
+}
+```
+
+This pattern ensures:
+
+- **Consistent data handling** across CLI and MCP
+- **File locking** for concurrent access safety
+- **Validation** through struct tags
+- **Dependency management** with circular detection
+
+### Interactive UI Consistency
+
+Use `manifoldco/promptui` patterns for all interactive commands:
+
+```go
+// Task selection with search
+selectedTask, err := selectTaskInteractive(taskStore, filterFn, "Select a task")
+if err == promptui.ErrInterrupt {
+    // Handle graceful cancellation
+}
+```
+
+### Configuration Hierarchy
+
+Configuration loading follows strict precedence:
+
+1. **Command flags** (highest priority)
+2. **Environment variables** (`TASKWING_*` prefix)
+3. **Project config** (`.taskwing/.taskwing.yaml`)
+4. **Legacy config** (`./.taskwing.yaml`)
+5. **Global config** (`$HOME/.taskwing.yaml`)
+6. **Built-in defaults** (lowest priority)
+
+Environment variables use dot-to-underscore mapping: `project.rootDir` → `TASKWING_PROJECT_ROOTDIR`

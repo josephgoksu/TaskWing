@@ -24,11 +24,11 @@ func NewOpenAIProvider(apiKey string) *OpenAIProvider {
 
 // OpenAIRequestPayload defines the structure for the OpenAI API request.
 type OpenAIRequestPayload struct {
-	Model               string                `json:"model"`
-	Messages            []OpenAIMessage       `json:"messages"`
-	Temperature         float64               `json:"temperature,omitempty"`
-	MaxTokens           int                   `json:"max_tokens,omitempty"`
-	ResponseFormat      *OpenAIResponseFormat `json:"response_format,omitempty"`
+	Model          string                `json:"model"`
+	Messages       []OpenAIMessage       `json:"messages"`
+	Temperature    float64               `json:"temperature,omitempty"`
+	MaxTokens      int                   `json:"max_tokens,omitempty"`
+	ResponseFormat *OpenAIResponseFormat `json:"response_format,omitempty"`
 }
 
 // OpenAIResponseFormat specifies the output format for OpenAI (e.g., JSON object).

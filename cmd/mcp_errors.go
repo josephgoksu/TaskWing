@@ -7,36 +7,24 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/josephgoksu/taskwing.app/types"
 )
 
 // MCP error types for better error categorization
 var (
-	ErrInvalidInput      = errors.New("invalid input")
-	ErrTaskNotFound      = errors.New("task not found")
+	ErrInvalidInput       = errors.New("invalid input")
+	ErrTaskNotFound       = errors.New("task not found")
 	ErrDependencyConflict = errors.New("dependency conflict")
-	ErrPermissionDenied  = errors.New("permission denied")
-	ErrResourceConflict  = errors.New("resource conflict")
+	ErrPermissionDenied   = errors.New("permission denied")
+	ErrResourceConflict   = errors.New("resource conflict")
 )
 
-// MCPError provides structured error information for MCP responses
-type MCPError struct {
-	Code    string                 `json:"code"`
-	Message string                 `json:"message"`
-	Details map[string]interface{} `json:"details,omitempty"`
-}
+// Type aliases for backward compatibility
+type MCPError = types.MCPError
 
-func (e *MCPError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Code, e.Message)
-}
-
-// NewMCPError creates a new structured MCP error
-func NewMCPError(code string, message string, details map[string]interface{}) *MCPError {
-	return &MCPError{
-		Code:    code,
-		Message: message,
-		Details: details,
-	}
-}
+// NewMCPError is an alias for types.NewMCPError
+var NewMCPError = types.NewMCPError
 
 // ValidateTaskInput validates common task input parameters
 func ValidateTaskInput(title, priority, status string) error {
@@ -53,9 +41,9 @@ func ValidateTaskInput(title, priority, status string) error {
 		validPriorities := map[string]bool{"low": true, "medium": true, "high": true, "urgent": true}
 		if !validPriorities[strings.ToLower(priority)] {
 			return NewMCPError("INVALID_PRIORITY", "Invalid priority value", map[string]interface{}{
-				"field":           "priority",
-				"value":           priority,
-				"valid_values":    []string{"low", "medium", "high", "urgent"},
+				"field":        "priority",
+				"value":        priority,
+				"valid_values": []string{"low", "medium", "high", "urgent"},
 			})
 		}
 	}
@@ -86,7 +74,7 @@ func WrapStoreError(err error, operation string, taskID string) error {
 
 	// Check for common error patterns
 	errStr := err.Error()
-	
+
 	if strings.Contains(errStr, "not found") {
 		return NewMCPError("TASK_NOT_FOUND", fmt.Sprintf("Task %s not found", taskID), map[string]interface{}{
 			"operation": operation,
@@ -110,8 +98,8 @@ func WrapStoreError(err error, operation string, taskID string) error {
 
 	// Generic error
 	return NewMCPError("OPERATION_FAILED", fmt.Sprintf("%s operation failed: %v", operation, err), map[string]interface{}{
-		"operation":     operation,
-		"task_id":       taskID,
+		"operation":      operation,
+		"task_id":        taskID,
 		"original_error": err.Error(),
 	})
 }

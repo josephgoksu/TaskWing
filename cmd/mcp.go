@@ -10,6 +10,7 @@ import (
 
 	"github.com/josephgoksu/taskwing.app/models"
 	"github.com/josephgoksu/taskwing.app/store"
+	"github.com/josephgoksu/taskwing.app/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -58,10 +59,10 @@ func runMCPServer(ctx context.Context) error {
 		Name:    "taskwing",
 		Version: version,
 	}
-	
+
 	// Create server options
 	serverOpts := &mcp.ServerOptions{}
-	
+
 	server := mcp.NewServer(impl, serverOpts)
 
 	// Register MCP tools
@@ -182,86 +183,33 @@ func registerMCPPrompts(server *mcp.Server, taskStore store.TaskStore) error {
 	return nil
 }
 
-// Task-related type definitions for MCP tools
-type AddTaskParams struct {
-	Title              string   `json:"title" mcp:"Task title (required)"`
-	Description        string   `json:"description,omitempty" mcp:"Task description"`
-	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty" mcp:"Acceptance criteria for task completion"`
-	Priority           string   `json:"priority,omitempty" mcp:"Task priority: low, medium, high, urgent"`
-	Dependencies       []string `json:"dependencies,omitempty" mcp:"List of task IDs this task depends on"`
-}
+// Type aliases for backward compatibility and convenience
+type AddTaskParams = types.AddTaskParams
+type ListTasksParams = types.ListTasksParams
+type UpdateTaskParams = types.UpdateTaskParams
+type DeleteTaskParams = types.DeleteTaskParams
+type MarkDoneParams = types.MarkDoneParams
+type GetTaskParams = types.GetTaskParams
+type TaskResponse = types.TaskResponse
+type TaskListResponse = types.TaskListResponse
+type DeleteTaskResponse = types.DeleteTaskResponse
 
-type ListTasksParams struct {
-	Status    string `json:"status,omitempty" mcp:"Filter by status: pending, in-progress, completed, cancelled, on-hold, blocked, needs-review"`
-	Priority  string `json:"priority,omitempty" mcp:"Filter by priority: low, medium, high, urgent"`
-	Search    string `json:"search,omitempty" mcp:"Search in title and description"`
-	ParentID  string `json:"parentId,omitempty" mcp:"Filter by parent task ID"`
-	SortBy    string `json:"sortBy,omitempty" mcp:"Sort by: id, title, priority, createdAt, updatedAt"`
-	SortOrder string `json:"sortOrder,omitempty" mcp:"Sort order: asc, desc"`
-}
-
-type UpdateTaskParams struct {
-	ID                 string   `json:"id" mcp:"Task ID to update (required)"`
-	Title              string   `json:"title,omitempty" mcp:"New task title"`
-	Description        string   `json:"description,omitempty" mcp:"New task description"`
-	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty" mcp:"New acceptance criteria"`
-	Status             string   `json:"status,omitempty" mcp:"New task status"`
-	Priority           string   `json:"priority,omitempty" mcp:"New task priority"`
-	Dependencies       []string `json:"dependencies,omitempty" mcp:"New dependencies list"`
-}
-
-type DeleteTaskParams struct {
-	ID string `json:"id" mcp:"Task ID to delete (required)"`
-}
-
-type MarkDoneParams struct {
-	ID string `json:"id" mcp:"Task ID to mark as done (required)"`
-}
-
-type GetTaskParams struct {
-	ID string `json:"id" mcp:"Task ID to retrieve (required)"`
-}
-
-// Tool response types
-type TaskResponse struct {
-	ID                 string   `json:"id"`
-	Title              string   `json:"title"`
-	Description        string   `json:"description"`
-	AcceptanceCriteria string   `json:"acceptanceCriteria"`
-	Status             string   `json:"status"`
-	Priority           string   `json:"priority"`
-	Dependencies       []string `json:"dependencies"`
-	Dependents         []string `json:"dependents"`
-	CreatedAt          string   `json:"createdAt"`
-	UpdatedAt          string   `json:"updatedAt"`
-	CompletedAt        *string  `json:"completedAt"`
-}
-
-type TaskListResponse struct {
-	Tasks []TaskResponse `json:"tasks"`
-	Count int            `json:"count"`
-}
-
-type DeleteTaskResponse struct {
-	Success bool   `json:"success"`
-	TaskID  string `json:"task_id"`
-	Message string `json:"message"`
-}
-
-func taskToResponse(task models.Task) TaskResponse {
+func taskToResponse(task models.Task) types.TaskResponse {
 	var completedAt *string
 	if task.CompletedAt != nil {
 		completed := task.CompletedAt.Format("2006-01-02T15:04:05Z")
 		completedAt = &completed
 	}
 
-	return TaskResponse{
+	return types.TaskResponse{
 		ID:                 task.ID,
 		Title:              task.Title,
 		Description:        task.Description,
 		AcceptanceCriteria: task.AcceptanceCriteria,
 		Status:             string(task.Status),
 		Priority:           string(task.Priority),
+		ParentID:           task.ParentID,
+		SubtaskIDs:         task.SubtaskIDs,
 		Dependencies:       task.Dependencies,
 		Dependents:         task.Dependents,
 		CreatedAt:          task.CreatedAt.Format("2006-01-02T15:04:05Z"),

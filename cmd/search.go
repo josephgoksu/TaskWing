@@ -55,9 +55,9 @@ Examples:
 			descLower := strings.ToLower(task.Description)
 			idLower := strings.ToLower(task.ID)
 
-			return strings.Contains(titleLower, queryLower) || 
-				   strings.Contains(descLower, queryLower) || 
-				   strings.Contains(idLower, queryLower)
+			return strings.Contains(titleLower, queryLower) ||
+				strings.Contains(descLower, queryLower) ||
+				strings.Contains(idLower, queryLower)
 		}
 
 		// Search tasks
