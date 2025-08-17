@@ -75,17 +75,24 @@ When suggesting task dependencies, consider:
 - Tasks that can be done in parallel
 - Critical path items that might block other work%s
 
-STEP 2: Actually CREATE the tasks using the batch-create-tasks tool (preferred) or individual add-task calls.
+STEP 2: Actually CREATE the tasks using the TaskWing MCP tools.
+
+CRITICAL: If you need to create SUBTASKS of existing tasks:
+1. FIRST use list-tasks to get the EXACT UUID of existing parent tasks (e.g., "7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b")
+2. NEVER use placeholder IDs like "task_1", "task_2" - these will fail validation
+3. Use the EXACT UUID from list-tasks as the parentId value (must be valid UUID4 format)
+4. Only create subtasks if you have the real parent task UUID
 
 RECOMMENDED APPROACH - Use batch-create-tasks:
-1. Prepare an array of all tasks with their details
-2. For dependencies, use existing task IDs if referencing existing tasks, or leave empty for new task dependencies
-3. Call batch-create-tasks with the complete task list
-4. The tool will handle dependency resolution automatically
+1. If creating subtasks, first call list-tasks to get EXACT parent task UUIDs
+2. Prepare an array of all tasks with their details
+3. For subtasks, include the parentId field with the EXACT UUID (not placeholder)
+4. For dependencies, use EXACT UUIDs from existing tasks
+5. Call batch-create-tasks with the complete task list
 
 ALTERNATIVE APPROACH - Use individual add-task calls:
-1. First, create all independent tasks and note their IDs
-2. Then create dependent tasks, referencing the IDs from step 1
+1. If creating subtasks, first call list-tasks to get EXACT parent task UUIDs  
+2. Create tasks one by one, using EXACT UUID for parentId field
 3. Use appropriate priorities and detailed acceptance criteria
 
 FINAL STEP: Provide a summary of created tasks and any next steps for the user.
@@ -172,8 +179,22 @@ Guidelines:
 
 The subtasks should collectively fulfill the parent task's acceptance criteria and move it toward completion.
 
-Please format your response as a structured breakdown with clear subtask definitions that can be easily converted into TaskWing tasks.`,
-			task.Title, task.Description, task.AcceptanceCriteria, task.Priority, task.Status, relatedTasksContext)
+IMPORTANT: After providing your analysis, you should actually CREATE the subtasks using TaskWing MCP tools:
+
+1. Use batch-create-tasks to create all subtasks at once
+2. Set the parentId field to "%s" for each subtask (THIS IS THE EXACT UUID)
+3. NEVER use placeholder IDs like "task_1" - use the exact UUID provided
+4. This will properly establish the parent-child relationship in TaskWing
+
+Example TaskCreationRequest for subtasks:
+{
+  "title": "Subtask Title",
+  "description": "Detailed description",
+  "acceptanceCriteria": "Clear completion criteria",
+  "priority": "high",
+  "parentId": "%s"
+}`,
+			task.Title, task.Description, task.AcceptanceCriteria, task.Priority, task.Status, relatedTasksContext, task.ID, task.ID)
 
 		logInfo(fmt.Sprintf("Generated task breakdown prompt for task: %s", task.ID))
 

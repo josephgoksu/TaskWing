@@ -25,7 +25,7 @@ var (
 	// ErrNoTasksFound is returned when an interactive selection is attempted but no tasks are available.
 	ErrNoTasksFound = errors.New("no tasks found matching your criteria")
 	// version is the application version.
-	version = "0.1.0"
+	version = "0.2.0"
 )
 
 // rootCmd represents the base command when called without any subcommands

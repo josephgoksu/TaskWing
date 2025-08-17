@@ -370,7 +370,7 @@ func (s *FileTaskStore) CreateTask(task models.Task) (models.Task, error) {
 // GetTask retrieves a task by its unique identifier.
 // This function assumes that a read lock (s.flk.RLock()) is already held by the caller if needed for safety with other ops.
 // However, for a single Get, an exclusive lock for load might be simpler if tasks aren't kept hot.
-// For simplicity and consistency with other ops, using exclusive lock for load.
+// For simplicity and consistency with other ops, using a read lock.
 func (s *FileTaskStore) GetTask(id string) (models.Task, error) {
 	if err := s.flk.Lock(); err != nil { // Using exclusive lock to ensure fresh load and safety
 		return models.Task{}, fmt.Errorf("failed to acquire lock for GetTask: %w", err)
@@ -386,6 +386,23 @@ func (s *FileTaskStore) GetTask(id string) (models.Task, error) {
 		return models.Task{}, fmt.Errorf("task with ID %s not found", id)
 	}
 	return task, nil
+}
+
+// fieldNameMapping maps JSON field names to struct field names
+var fieldNameMapping = map[string]string{
+	"id":                 "ID",
+	"title":              "Title",
+	"description":        "Description",
+	"acceptanceCriteria": "AcceptanceCriteria",
+	"status":             "Status",
+	"parentId":           "ParentID",
+	"subtaskIds":         "SubtaskIDs",
+	"dependencies":       "Dependencies",
+	"dependents":         "Dependents",
+	"priority":           "Priority",
+	"createdAt":          "CreatedAt",
+	"updatedAt":          "UpdatedAt",
+	"completedAt":        "CompletedAt",
 }
 
 // UpdateTask modifies an existing task.
@@ -415,9 +432,15 @@ func (s *FileTaskStore) UpdateTask(id string, updates map[string]interface{}) (m
 		if key == "parentId" || key == "dependencies" {
 			continue
 		}
+		// Use field name mapping to get correct struct field name
+		fieldName, ok := fieldNameMapping[key]
+		if !ok {
+			// Fallback to capitalizing first letter for backward compatibility
+			fieldName = strings.Title(key)
+		}
+		
 		// Use reflection to set field value.
-		// This is simpler than a large switch but requires careful key matching.
-		field := reflect.ValueOf(&task).Elem().FieldByName(strings.Title(key))
+		field := reflect.ValueOf(&task).Elem().FieldByName(fieldName)
 		if field.IsValid() && field.CanSet() {
 			val := reflect.ValueOf(value)
 			// Handle type conversion for fields that need it (e.g., string to custom type)
@@ -842,7 +865,7 @@ func (s *FileTaskStore) ListTasks(filterFn func(models.Task) bool, sortFn func([
 
 // Backup creates a backup of the current task data to the specified destination path.
 func (s *FileTaskStore) Backup(destinationPath string) error {
-	if err := s.flk.RLock(); err != nil { // Shared lock for reading the data file
+	if err := s.flk.Lock(); err != nil { // Shared lock for reading the data file
 		return fmt.Errorf("failed to acquire read lock for backup: %w", err)
 	}
 	defer s.flk.Unlock()
@@ -896,7 +919,7 @@ func (s *FileTaskStore) Restore(sourcePath string) error {
 
 // GetTaskWithDescendants fetches a task by its ID along with all its children, grandchildren, etc.
 func (s *FileTaskStore) GetTaskWithDescendants(rootID string) ([]models.Task, error) {
-	if err := s.flk.RLock(); err != nil {
+	if err := s.flk.Lock(); err != nil {
 		return nil, fmt.Errorf("could not acquire read lock for GetTaskWithDescendants: %w", err)
 	}
 	defer s.flk.Unlock()

@@ -166,6 +166,26 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 			return nil, NewMCPError("NO_TASKS_SPECIFIED", "No tasks provided for batch creation", nil)
 		}
 
+		// Pre-validate to catch common AI mistakes with placeholder IDs BEFORE processing
+		for i, taskReq := range args.Tasks {
+			if taskReq.ParentID != "" {
+				// Check for common placeholder patterns
+				if strings.HasPrefix(taskReq.ParentID, "task_") || 
+				   strings.Contains(taskReq.ParentID, "placeholder") ||
+				   !strings.Contains(taskReq.ParentID, "-") { // UUIDs always contain hyphens
+					return nil, fmt.Errorf("task %d (%s): parentId '%s' appears to be a placeholder. Use list-tasks to get real UUID values like '7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b'", i+1, taskReq.Title, taskReq.ParentID)
+				}
+			}
+			// Also check dependencies for placeholder patterns
+			for _, depID := range taskReq.Dependencies {
+				if strings.HasPrefix(depID, "task_") || 
+				   strings.Contains(depID, "placeholder") ||
+				   !strings.Contains(depID, "-") {
+					return nil, fmt.Errorf("task %d (%s): dependency '%s' appears to be a placeholder. Use list-tasks to get real UUID values", i+1, taskReq.Title, depID)
+				}
+			}
+		}
+
 		response := types.BatchCreateTasksResponse{
 			CreatedTasks: []types.TaskResponse{},
 			Failed:       []string{},
