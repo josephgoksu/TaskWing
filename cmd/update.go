@@ -160,7 +160,7 @@ var updateCmd = &cobra.Command{
 
 			// Prompt for Status (existing)
 			currentStatusIndex := 0
-			statusItems := []models.TaskStatus{models.StatusPending, models.StatusInProgress, models.StatusOnHold, models.StatusBlocked, models.StatusNeedsReview, models.StatusCompleted, models.StatusCancelled}
+			statusItems := []models.TaskStatus{models.StatusTodo, models.StatusDoing, models.StatusReview, models.StatusDone}
 			for i, s := range statusItems {
 				if s == taskToUpdate.Status {
 					currentStatusIndex = i

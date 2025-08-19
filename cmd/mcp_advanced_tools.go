@@ -50,7 +50,7 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTas
 				_, err = taskStore.MarkTaskDone(taskID)
 			case "cancel":
 				_, err = taskStore.UpdateTask(taskID, map[string]interface{}{
-					"status": models.StatusCancelled,
+					"status": models.StatusDone,
 				})
 			case "delete":
 				err = taskStore.DeleteTask(taskID)
@@ -119,22 +119,22 @@ func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, 
 
 		for _, task := range tasks {
 			// Count active tasks
-			if task.Status == models.StatusPending || task.Status == models.StatusInProgress {
+			if task.Status == models.StatusTodo || task.Status == models.StatusDoing {
 				response.ActiveTasks++
 			}
 
 			// Count completed today
-			if task.Status == models.StatusCompleted && task.CompletedAt != nil && task.CompletedAt.After(today) {
+			if task.Status == models.StatusDone && task.CompletedAt != nil && task.CompletedAt.After(today) {
 				response.CompletedToday++
 			}
 
 			// Count blocked
-			if task.Status == models.StatusBlocked {
+			if task.Status == models.StatusReview {
 				response.Blocked++
 			}
 
 			// Count due today (urgent and not completed)
-			if task.Priority == models.PriorityUrgent && task.Status != models.StatusCompleted {
+			if task.Priority == models.PriorityUrgent && task.Status != models.StatusDone {
 				response.DueToday++
 			}
 		}
@@ -404,7 +404,7 @@ func createTaskFromRequest(taskStore store.TaskStore, taskReq types.TaskCreation
 		Title:              taskReq.Title,
 		Description:        taskReq.Description,
 		AcceptanceCriteria: taskReq.AcceptanceCriteria,
-		Status:             models.StatusPending,
+		Status:             models.StatusTodo,
 		ParentID:           parentID,
 		SubtaskIDs:         []string{},
 		Dependencies:       taskReq.Dependencies,

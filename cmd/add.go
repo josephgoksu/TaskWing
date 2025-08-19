@@ -140,7 +140,7 @@ var addCmd = &cobra.Command{
 		newTask := models.Task{
 			Title:        title,
 			Description:  description,
-			Status:       models.StatusPending,
+			Status:       models.StatusTodo,
 			Priority:     models.TaskPriority(priorityStr),
 			Dependencies: dependencies,
 			ParentID:     parentID,

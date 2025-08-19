@@ -12,13 +12,12 @@ import (
 type TaskStatus string
 
 const (
-	StatusPending     TaskStatus = "pending"
-	StatusInProgress  TaskStatus = "in-progress"
-	StatusCompleted   TaskStatus = "completed"
-	StatusCancelled   TaskStatus = "cancelled"
-	StatusOnHold      TaskStatus = "on-hold"
-	StatusBlocked     TaskStatus = "blocked"
-	StatusNeedsReview TaskStatus = "needs-review"
+	// New minimal status system
+	StatusTodo   TaskStatus = "todo"
+	StatusDoing  TaskStatus = "doing"
+	StatusReview TaskStatus = "review"
+	StatusDone   TaskStatus = "done"
+
 )
 
 // TaskPriority represents the priority levels of a task.
@@ -37,7 +36,7 @@ type Task struct {
 	Title              string       `json:"title" validate:"required,min=3,max=255"`
 	Description        string       `json:"description,omitempty"`
 	AcceptanceCriteria string       `json:"acceptanceCriteria,omitempty"`
-	Status             TaskStatus   `json:"status" validate:"required,oneof=pending in-progress completed cancelled on-hold blocked needs-review"`
+	Status             TaskStatus   `json:"status" validate:"required,oneof=todo doing review done"`
 	ParentID           *string      `json:"parentId,omitempty" validate:"omitempty,uuid4"` // ID of the parent task
 	SubtaskIDs         []string     `json:"subtaskIds,omitempty" validate:"dive,uuid4"`    // IDs of direct children tasks
 	Dependencies       []string     `json:"dependencies,omitempty" validate:"dive,uuid4"`  // Slice of Task IDs this task depends on
@@ -55,6 +54,34 @@ type TaskList struct {
 	TotalCount int `json:"totalCount"`
 	Page       int `json:"page,omitempty"`
 	PerPage    int `json:"perPage,omitempty"`
+}
+
+// CoreStatuses returns the 4 core statuses in workflow order
+func CoreStatuses() []TaskStatus {
+	return []TaskStatus{StatusTodo, StatusDoing, StatusReview, StatusDone}
+}
+
+// ValidateStatusTransition checks if a status transition is valid
+func ValidateStatusTransition(from, to TaskStatus) bool {
+	// Define valid transitions
+	validTransitions := map[TaskStatus][]TaskStatus{
+		StatusTodo:   {StatusDoing, StatusDone},
+		StatusDoing:  {StatusReview, StatusTodo, StatusDone},
+		StatusReview: {StatusDoing, StatusDone, StatusTodo},
+		StatusDone:   {StatusTodo}, // Allow reopening tasks
+	}
+	
+	allowedTransitions, exists := validTransitions[from]
+	if !exists {
+		return false
+	}
+	
+	for _, allowed := range allowedTransitions {
+		if allowed == to {
+			return true
+		}
+	}
+	return false
 }
 
 // global validator instance

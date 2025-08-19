@@ -442,7 +442,7 @@ func resolveAndBuildTaskCandidates(llmOutputs []llm.TaskOutput) ([]models.Task, 
 				Description:        llmTask.Description,
 				AcceptanceCriteria: llmTask.AcceptanceCriteria,
 				Priority:           mapLLMPriority(llmTask.Priority),
-				Status:             models.StatusPending,
+				Status:             models.StatusTodo,
 			}
 			relMap.flattenedTasks[currentTempID] = candidateTask
 

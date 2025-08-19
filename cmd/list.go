@@ -224,10 +224,13 @@ var listCmd = &cobra.Command{
 					parentIDStr = truncateUUID(*task.ParentID)
 				}
 
+				// Display status
+				statusDisplay := string(task.Status)
+
 				t.AppendRow(table.Row{
 					truncateUUID(task.ID),
 					task.Title,
-					task.Status,
+					statusDisplay,
 					task.Priority,
 					parentIDStr,
 					dependenciesStr,
@@ -388,12 +391,15 @@ func printTaskWithIndent(task models.Task, indentLevel int) {
 		// This part needs a way to know if it's the last child to use \u2514\u2500\u2500 (└──)
 		// For simplicity, always using ├──. A more complex tree renderer would track siblings.
 	}
+	// Display normalized status with indicator
+	statusDisplay := string(task.Status)
+
 	fmt.Printf("%s%s[%s] %s (%s) Subtasks: %d, Parent: %s\n",
 		indent,
 		prefix,
 		truncateUUID(task.ID),
 		task.Title,
-		task.Status,
+		statusDisplay,
 		len(task.SubtaskIDs),
 		printParentID(task.ParentID),
 	)

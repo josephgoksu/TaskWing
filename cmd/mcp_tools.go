@@ -69,7 +69,7 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskP
 			Title:              strings.TrimSpace(args.Title),
 			Description:        strings.TrimSpace(args.Description),
 			AcceptanceCriteria: strings.TrimSpace(args.AcceptanceCriteria),
-			Status:             models.StatusPending,
+			Status:             models.StatusTodo,
 			Priority:           priority,
 			ParentID:           parentID,
 			SubtaskIDs:         []string{},

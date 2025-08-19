@@ -32,7 +32,7 @@ var doneCmd = &cobra.Command{
 		} else {
 			// Filter for tasks that are not yet completed
 			notDoneFilter := func(t models.Task) bool {
-				return t.Status != models.StatusCompleted
+				return t.Status != models.StatusDone
 			}
 			taskToMarkDone, err = selectTaskInteractive(taskStore, notDoneFilter, "Select task to mark as done")
 			if err != nil {
@@ -48,7 +48,7 @@ var doneCmd = &cobra.Command{
 			}
 		}
 
-		if taskToMarkDone.Status == models.StatusCompleted {
+		if taskToMarkDone.Status == models.StatusDone {
 			fmt.Printf("Task '%s' (ID: %s) is already completed.\n", taskToMarkDone.Title, taskToMarkDone.ID)
 			return
 		}

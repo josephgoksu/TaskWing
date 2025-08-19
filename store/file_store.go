@@ -805,7 +805,7 @@ func (s *FileTaskStore) MarkTaskDone(id string) (models.Task, error) {
 	originalTask := task // For potential revert
 
 	now := time.Now().UTC()
-	task.Status = models.StatusCompleted
+	task.Status = models.StatusDone
 	task.CompletedAt = &now
 	task.UpdatedAt = now
 

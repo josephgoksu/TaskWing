@@ -51,6 +51,9 @@ func ValidateTaskInput(title, priority, status string) error {
 	// Status validation
 	if status != "" {
 		validStatuses := map[string]bool{
+			// New minimal statuses
+			"todo": true, "doing": true, "review": true, "done": true,
+			// Legacy statuses (for backward compatibility)
 			"pending": true, "in-progress": true, "completed": true,
 			"cancelled": true, "on-hold": true, "blocked": true, "needs-review": true,
 		}
@@ -58,7 +61,7 @@ func ValidateTaskInput(title, priority, status string) error {
 			return NewMCPError("INVALID_STATUS", "Invalid status value", map[string]interface{}{
 				"field":        "status",
 				"value":        status,
-				"valid_values": []string{"pending", "in-progress", "completed", "cancelled", "on-hold", "blocked", "needs-review"},
+				"valid_values": []string{"todo", "doing", "review", "done", "pending", "in-progress", "completed", "cancelled", "on-hold", "blocked", "needs-review"},
 			})
 		}
 	}

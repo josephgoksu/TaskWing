@@ -76,6 +76,21 @@ func runMCPServer(ctx context.Context) error {
 		return fmt.Errorf("failed to register advanced MCP tools: %w", err)
 	}
 
+	// Register task resolution tools
+	if err := RegisterTaskResolutionTools(server, taskStore); err != nil {
+		return fmt.Errorf("failed to register task resolution tools: %w", err)
+	}
+
+	// Register JSON processing tools
+	if err := RegisterJSONProcessingTools(server, taskStore); err != nil {
+		return fmt.Errorf("failed to register JSON processing tools: %w", err)
+	}
+
+	// Register workflow integration tools
+	if err := RegisterWorkflowIntegrationTools(server, taskStore); err != nil {
+		return fmt.Errorf("failed to register workflow integration tools: %w", err)
+	}
+
 	// Register MCP resources
 	if err := registerMCPResources(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register MCP resources: %w", err)
@@ -232,6 +247,34 @@ type GetTaskParams = types.GetTaskParams
 type TaskResponse = types.TaskResponse
 type TaskListResponse = types.TaskListResponse
 type DeleteTaskResponse = types.DeleteTaskResponse
+
+// Task resolution type aliases
+type FindTaskByTitleParams = types.FindTaskByTitleParams
+type ResolveTaskReferenceParams = types.ResolveTaskReferenceParams
+type TaskAutocompleteParams = types.TaskAutocompleteParams
+type FindTaskByTitleResponse = types.FindTaskByTitleResponse
+type ResolveTaskReferenceResponse = types.ResolveTaskReferenceResponse
+type TaskAutocompleteResponse = types.TaskAutocompleteResponse
+type TaskMatch = types.TaskMatch
+
+// JSON processing type aliases
+type FilterTasksParams = types.FilterTasksParams
+type ExtractTaskIDsParams = types.ExtractTaskIDsParams
+type TaskAnalyticsParams = types.TaskAnalyticsParams
+type FilterTasksResponse = types.FilterTasksResponse
+type ExtractTaskIDsResponse = types.ExtractTaskIDsResponse
+type TaskAnalyticsResponse = types.TaskAnalyticsResponse
+
+// Workflow integration type aliases
+type SmartTaskTransitionParams = types.SmartTaskTransitionParams
+type WorkflowStatusParams = types.WorkflowStatusParams
+type DependencyHealthParams = types.DependencyHealthParams
+type SmartTaskTransitionResponse = types.SmartTaskTransitionResponse
+type WorkflowStatusResponse = types.WorkflowStatusResponse
+type DependencyHealthResponse = types.DependencyHealthResponse
+type TaskTransition = types.TaskTransition
+type ProjectPhase = types.ProjectPhase
+type DependencyIssue = types.DependencyIssue
 
 func taskToResponse(task models.Task) types.TaskResponse {
 	var completedAt *string

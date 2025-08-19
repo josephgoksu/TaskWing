@@ -50,12 +50,12 @@ func BuildTaskContext(taskStore store.TaskStore) (*types.TaskContext, error) {
 		context.TasksByPriority[string(task.Priority)]++
 
 		// Check for overdue tasks (assuming tasks older than 30 days in pending are overdue)
-		if task.Status == models.StatusPending && now.Sub(task.CreatedAt) > 30*24*time.Hour {
+		if task.Status == models.StatusTodo && now.Sub(task.CreatedAt) > 30*24*time.Hour {
 			context.OverdueTasks++
 		}
 
 		// Count blocked tasks
-		if task.Status == models.StatusBlocked {
+		if task.Status == models.StatusReview {
 			context.BlockedTasks++
 		}
 
@@ -63,7 +63,7 @@ func BuildTaskContext(taskStore store.TaskStore) (*types.TaskContext, error) {
 		totalAge += now.Sub(task.CreatedAt).Hours() / 24
 
 		// Count completed tasks
-		if task.Status == models.StatusCompleted {
+		if task.Status == models.StatusDone {
 			completedTasks++
 			if task.CompletedAt != nil && task.CompletedAt.After(weekAgo) {
 				tasksCompletedThisWeek++
@@ -80,7 +80,7 @@ func BuildTaskContext(taskStore store.TaskStore) (*types.TaskContext, error) {
 			action := "updated"
 			if task.CreatedAt.Equal(task.UpdatedAt) {
 				action = "created"
-			} else if task.Status == models.StatusCompleted && task.CompletedAt != nil && task.CompletedAt.Equal(task.UpdatedAt) {
+			} else if task.Status == models.StatusDone && task.CompletedAt != nil && task.CompletedAt.Equal(task.UpdatedAt) {
 				action = "completed"
 			}
 

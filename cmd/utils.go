@@ -18,24 +18,18 @@ func priorityToInt(p models.TaskPriority) int {
 	}
 }
 
-// Helper to convert status to an integer for sorting (example order)
+// Helper to convert status to an integer for sorting (workflow order)
 func statusToInt(s models.TaskStatus) int {
 	switch s {
-	case models.StatusPending:
+	case models.StatusTodo:
 		return 1
-	case models.StatusInProgress:
+	case models.StatusDoing:
 		return 2
-	case models.StatusBlocked:
+	case models.StatusReview:
 		return 3
-	case models.StatusNeedsReview:
+	case models.StatusDone:
 		return 4
-	case models.StatusOnHold:
-		return 5
-	case models.StatusCompleted:
-		return 6
-	case models.StatusCancelled:
-		return 7
 	default:
-		return 0 // Should not happen
+		return 0
 	}
 }
