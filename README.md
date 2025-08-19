@@ -24,13 +24,20 @@ TaskWing integrates directly with Claude Code, Cursor, and other AI tools via th
 Choose your preferred method:
 
 ```bash
-# Go install (recommended)
+# One-liner install (recommended)
+curl -sSfL https://raw.githubusercontent.com/josephgoksu/taskwing.app/main/install.sh | sh
+
+# Homebrew (macOS/Linux) - Coming Soon
+# brew tap josephgoksu/tap
+# brew install taskwing
+
+# Go install
 go install github.com/josephgoksu/taskwing.app@latest
 
-# Or download from releases
+# Manual download from releases
 # https://github.com/josephgoksu/taskwing.app/releases
 
-# Or build from source
+# Build from source
 git clone https://github.com/josephgoksu/taskwing.app
 cd taskwing-app && go build -o taskwing main.go
 ```
@@ -102,7 +109,7 @@ taskwing retrospective                  # Generate project insights
 ## Documentation
 
 - **[DOCS.md](DOCS.md)** - Complete user guide with examples and workflows
-- **[MCP.md](MCP.md)** - AI integration setup and reference  
+- **[MCP.md](MCP.md)** - AI integration setup and reference
 - **[CLAUDE.md](CLAUDE.md)** - Developer guide and architecture
 
 ## Architecture
@@ -111,7 +118,7 @@ taskwing retrospective                  # Generate project insights
 CLI Commands ──► Task Store ──► Local Files (JSON/YAML/TOML)
      │                           │
      │                           ├─► Archive System
-     │                           ├─► Pattern Library  
+     │                           ├─► Pattern Library
      │                           └─► Knowledge Base
      │
      └──► MCP Server ──► AI Tools (Claude, Cursor, etc.)
@@ -121,7 +128,7 @@ CLI Commands ──► Task Store ──► Local Files (JSON/YAML/TOML)
               └─► Task Generation
 ```
 
-**Local-first**: Your data stays on your machine. No cloud dependencies.  
+**Local-first**: Your data stays on your machine. No cloud dependencies.
 **AI-Enhanced**: Learns from your project history to provide better suggestions.
 
 ## Contributing
