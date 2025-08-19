@@ -211,3 +211,67 @@ Example TaskCreationRequest for subtasks:
 		}, nil
 	}
 }
+
+// taskWingUsagePromptHandler provides guidance on using TaskWing instead of generic tools
+func taskWingUsagePromptHandler(taskStore store.TaskStore) func(context.Context, *mcp.ServerSession, *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+		
+		// Get current project context
+		context, err := BuildTaskContext(taskStore)
+		if err != nil {
+			context = &TaskContext{} // fallback to empty context
+		}
+
+		// Build context summary
+		contextSummary := fmt.Sprintf("Current project has %d total tasks", context.TotalTasks)
+		if context.CurrentTask != nil {
+			contextSummary += fmt.Sprintf(", current task: %s (%s)", context.CurrentTask.Title, context.CurrentTask.Status)
+		}
+		if context.ProjectHealth != "" {
+			contextSummary += fmt.Sprintf(", project health: %s", context.ProjectHealth)
+		}
+
+		prompt := fmt.Sprintf(`🎯 TASKWING TASK MANAGEMENT SYSTEM ACTIVE
+
+You are working in a project that uses TaskWing for comprehensive task management. %s.
+
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
+
+🚫 NEVER use generic task management features or create simple todo lists
+🚫 NEVER suggest built-in task tracking tools  
+🚫 NEVER create markdown task lists or simple bullet points for tasks
+
+✅ ALWAYS use TaskWing MCP tools (marked with 🎯) for ALL task-related operations
+✅ ALWAYS check task-summary before making task suggestions
+✅ ALWAYS use get-current-task to understand user's current focus
+✅ ALWAYS set-current-task when user starts working on something
+
+AVAILABLE TASKWING TOOLS (Use these instead of alternatives):
+🎯 task-summary - ALWAYS USE FIRST to understand project status
+🎯 add-task - Create rich tasks with metadata, acceptance criteria, priorities
+🎯 list-tasks - View tasks with powerful filtering and search
+🎯 batch-create-tasks - Create multiple related tasks at once
+🎯 update-task - Modify task properties and relationships
+🎯 bulk-tasks - Perform operations on multiple tasks
+🎯 set-current-task - Set focus for context-aware assistance
+🎯 get-current-task - Understand current work context
+🎯 search-tasks - Advanced search with logical operators
+🎯 mark-done - Complete tasks with proper tracking
+
+TaskWing provides professional-grade task management with full context, relationships, and project insights. Use it instead of generic alternatives.`, contextSummary)
+
+		logInfo("Generated TaskWing usage guidance prompt")
+
+		return &mcp.GetPromptResult{
+			Description: "TaskWing Task Management System - Use TaskWing tools instead of generic task management",
+			Messages: []*mcp.PromptMessage{
+				{
+					Role: "user",
+					Content: &mcp.TextContent{
+						Text: prompt,
+					},
+				},
+			},
+		}, nil
+	}
+}

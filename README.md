@@ -13,100 +13,122 @@ TaskWing integrates directly with Claude Code, Cursor, and other AI tools via th
 - **🤖 AI-Native**: First CLI tool with full MCP integration for Claude Code/Cursor
 - **⚡ Zero Config**: Works out of the box, stores data locally
 - **🔗 Smart Dependencies**: Automatic dependency tracking and circular reference prevention
+- **📚 Learning System**: Captures patterns from completed projects for future AI assistance
+- **🗄️ Knowledge Archive**: Preserves project history and lessons learned
 - **🚀 Developer UX**: Built by developers who hate context switching
 
 ## Quick Start
 
+### Installation
+
+Choose your preferred method:
+
 ```bash
-# Install
+# Go install (recommended)
 go install github.com/josephgoksu/taskwing.app@latest
 
-# Initialize
-taskwing init
+# Or download from releases
+# https://github.com/josephgoksu/taskwing.app/releases
 
-# Add task
-taskwing add --title "Fix auth bug" --priority urgent
-
-# AI Integration
-taskwing mcp  # Connect to Claude Code/Cursor
+# Or build from source
+git clone https://github.com/josephgoksu/taskwing.app
+cd taskwing-app && go build -o taskwing main.go
 ```
 
-## Core Commands
+### First Steps
 
 ```bash
-taskwing add                 # Interactive task creation
-taskwing list --status pending --priority high
-taskwing update <id>         # Modify existing task
-taskwing done <id>           # Mark complete
-taskwing delete <id>         # Remove task
+# Initialize in your project
+taskwing init
+
+# Add your first task
+taskwing add --title "Fix auth bug" --priority urgent
+
+# View tasks
+taskwing list
+
+# Mark task complete
+taskwing done <task-id>
 ```
 
-## AI Integration (MCP)
+### AI Integration (Optional)
 
-Connect TaskWing to Claude Code or Cursor for AI-powered task management:
+Enable AI-powered task management:
 
-### Claude Code Setup
+```bash
+# Start MCP server
+taskwing mcp
 
-```json
-{
-  "mcpServers": {
-    "taskwing": {
-      "command": "taskwing",
-      "args": ["mcp"]
-    }
-  }
-}
+# Configure your AI tool (Claude Code, Cursor, etc.)
+# See MCP.md for complete setup instructions
 ```
 
-### AI Capabilities
+## Core Features
 
-- **9 Tools**: CRUD operations, bulk actions, advanced search
-- **2 Resources**: Live task data, configuration access
-- **2 Prompts**: Task generation, breakdown assistance
+### Essential Commands
 
-Let AI create, organize, and manage your tasks while you focus on coding.
+```bash
+taskwing add                    # Interactive task creation
+taskwing list                   # View all tasks
+taskwing list --priority high   # Filter by priority
+taskwing update <id>            # Modify existing task
+taskwing done <id>              # Mark complete
+taskwing delete <id>            # Remove task
+```
+
+### Smart Task Management
+
+```bash
+# Dependencies and relationships
+taskwing add --dependencies "task1,task2"
+
+# Current task tracking
+taskwing current set <id>       # Set active task
+taskwing current show           # Show current task
+
+# Advanced search and filtering
+taskwing search "auth bug"
+taskwing list --status pending --sort-by priority
+
+# Pattern-based task planning
+taskwing patterns match "consolidate documentation"
+taskwing patterns list                  # View all patterns
+
+# Project archival and knowledge capture
+taskwing archive                        # Archive completed work
+taskwing retrospective                  # Generate project insights
+```
+
+## Documentation
+
+- **[DOCS.md](DOCS.md)** - Complete user guide with examples and workflows
+- **[MCP.md](MCP.md)** - AI integration setup and reference  
+- **[CLAUDE.md](CLAUDE.md)** - Developer guide and architecture
 
 ## Architecture
 
 ```
 CLI Commands ──► Task Store ──► Local Files (JSON/YAML/TOML)
+     │                           │
+     │                           ├─► Archive System
+     │                           ├─► Pattern Library  
+     │                           └─► Knowledge Base
      │
      └──► MCP Server ──► AI Tools (Claude, Cursor, etc.)
+              │
+              ├─► Historical Data Resources
+              ├─► Pattern Suggestions
+              └─► Task Generation
 ```
 
-**Local-first**: Your data stays on your machine. No cloud dependencies.
-
-## Advanced Features
-
-```bash
-# Dependency management
-taskwing add --dependencies "task1,task2"
-
-# Advanced filtering
-taskwing list --search "auth" --sort-by priority
-
-# Bulk operations via AI
-# "Mark all urgent auth tasks as completed"
-```
-
-## Development
-
-```bash
-git clone https://github.com/josephgoksu/taskwing.app
-cd taskwing.app
-go build -o taskwing main.go
-go test ./...
-```
+**Local-first**: Your data stays on your machine. No cloud dependencies.  
+**AI-Enhanced**: Learns from your project history to provide better suggestions.
 
 ## Contributing
 
-We welcome contributions! TaskWing is built with:
+We welcome contributions! TaskWing is built with Go 1.24+ using Cobra CLI framework and the MCP SDK for AI integration.
 
-- **Go 1.24+** with Cobra CLI framework
-- **MCP SDK** for AI integration
-- **Local file storage** with integrity checks
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See [CLAUDE.md](CLAUDE.md) for development setup and contributing guidelines.
 
 ## License
 

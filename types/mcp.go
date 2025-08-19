@@ -52,6 +52,47 @@ type GetTaskParams struct {
 	ID string `json:"id" mcp:"Task ID to retrieve (required)"`
 }
 
+// Pattern suggestion types
+type SuggestPatternParams struct {
+	Description string `json:"description" mcp:"Description of work to find patterns for (required)"`
+	ProjectType string `json:"projectType,omitempty" mcp:"Type of project (e.g., documentation, development, refactoring)"`
+	Complexity  string `json:"complexity,omitempty" mcp:"Project complexity: simple, medium, complex"`
+}
+
+type PatternSuggestion struct {
+	PatternID          string                 `json:"pattern_id"`
+	Name               string                 `json:"name"`
+	MatchScore         float64                `json:"match_score"`
+	Category           string                 `json:"category"`
+	Description        string                 `json:"description"`
+	SuccessRate        float64                `json:"success_rate"`
+	AverageDuration    float64                `json:"average_duration_hours"`
+	TaskBreakdown      []PatternPhase         `json:"task_breakdown"`
+	SuccessFactors     []string               `json:"success_factors"`
+	WhenToUse          []string               `json:"when_to_use"`
+	AIGuidance         PatternAIGuidance      `json:"ai_guidance"`
+}
+
+type PatternPhase struct {
+	Phase                string   `json:"phase"`
+	Tasks                []string `json:"tasks"`
+	TypicalDurationHours float64  `json:"typical_duration_hours"`
+	Priority             string   `json:"priority"`
+}
+
+type PatternAIGuidance struct {
+	TaskGenerationHints  []string            `json:"task_generation_hints"`
+	PrioritySuggestions  map[string]string   `json:"priority_suggestions"`
+	DependencyPatterns   []string            `json:"dependency_patterns"`
+}
+
+type SuggestPatternResponse struct {
+	MatchingPatterns []PatternSuggestion `json:"matching_patterns"`
+	BestMatch        *PatternSuggestion  `json:"best_match,omitempty"`
+	Suggestions      string             `json:"suggestions"`
+	LibraryStats     map[string]interface{} `json:"library_stats"`
+}
+
 // SetCurrentTaskParams for setting the current active task
 type SetCurrentTaskParams struct {
 	ID string `json:"id" mcp:"Task ID to set as current (required)"`
@@ -81,6 +122,7 @@ type TaskSearchParams struct {
 
 // TaskCreationRequest for batch task creation
 type TaskCreationRequest struct {
+	TempID             int      `json:"tempId,omitempty"`
 	Title              string   `json:"title"`
 	Description        string   `json:"description"`
 	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty"`

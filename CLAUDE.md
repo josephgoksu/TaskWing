@@ -1,6 +1,8 @@
-# CLAUDE.md
+# TaskWing Developer Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides comprehensive guidance for developers working on TaskWing, including setup, architecture, and contribution guidelines.
+
+**For Claude Code users**: This file contains project-specific instructions for AI-assisted development.
 
 ## Project Overview
 
@@ -67,6 +69,9 @@ taskwing config path            # Show config file location
 ### Core Components
 
 - **cmd/**: Cobra-based CLI commands with MCP integration
+  - **archive.go**: Project archival and knowledge capture system
+  - **patterns.go**: Task pattern library and extraction engine
+  - **retrospective.go**: Interactive retrospective generation
 - **models/**: Core Task model with validation (go-playground/validator)
 - **store/**: TaskStore interface with file-based implementation
 - **llm/**: AI integration layer for task generation
@@ -78,13 +83,14 @@ taskwing config path            # Show config file location
 1. **CLI Commands** → **TaskStore Interface** → **File Storage** (JSON/YAML/TOML)
 2. **MCP Server** → **MCP Tools/Resources/Prompts** → **TaskStore Interface**
 3. **AI Tools** ↔ **MCP Protocol** ↔ **TaskWing**
+4. **Archive System** → **Pattern Extraction** → **Knowledge Base** → **AI Suggestions**
 
 ### MCP Integration Architecture
 
 TaskWing implements a full MCP server with:
 
-- **12 Tools**: add-task, list-tasks, update-task, delete-task, mark-done, get-task, set-current-task, get-current-task, clear-current-task, batch-create-tasks, bulk-tasks, search-tasks, task-summary
-- **2 Resources**: taskwing://tasks (JSON data), taskwing://config (settings)
+- **13 Tools**: add-task, list-tasks, update-task, delete-task, mark-done, get-task, set-current-task, get-current-task, clear-current-task, batch-create-tasks, bulk-tasks, search-tasks, task-summary, suggest-patterns
+- **4 Resources**: taskwing://tasks (JSON data), taskwing://config (settings), taskwing://archive (historical data), taskwing://knowledge (pattern library)
 - **2 Prompts**: task-generation, task-breakdown
 
 MCP implementation is split across:
@@ -258,6 +264,47 @@ Configuration loading follows strict precedence:
 
 Environment variables use dot-to-underscore mapping: `project.rootDir` → `TASKWING_PROJECT_ROOTDIR`
 
+## Knowledge Management System
+
+TaskWing includes a comprehensive knowledge management system that learns from completed projects and provides AI-enhanced assistance for future work.
+
+### Archive System
+
+When projects complete, use `taskwing archive` to capture:
+
+- **Project metadata**: Duration, task count, success metrics
+- **Task details**: All completed tasks with timing data
+- **Retrospective insights**: User-provided lessons learned
+- **Pattern identification**: Automated extraction of task patterns
+
+Archives are stored in `.taskwing/archive/YYYY/MM/` with hierarchical organization for scalability.
+
+### Pattern Library
+
+The pattern library (`taskwing patterns`) automatically extracts reusable workflows:
+
+- **Pattern extraction**: Analyzes archived tasks to identify common approaches
+- **Success metrics**: Tracks completion rates, duration estimates, and effectiveness
+- **AI integration**: Provides pattern suggestions via `suggest-patterns` MCP tool
+- **Continuous learning**: Updates patterns as new projects are archived
+
+### Knowledge Base
+
+Located in `KNOWLEDGE.md`, this accumulates organizational wisdom:
+
+- **Best practices**: Proven approaches from successful projects
+- **Decision log**: Key decisions and their outcomes
+- **Pattern catalog**: Detailed task breakdown templates
+- **AI guidance**: Instructions for better task generation
+
+### MCP Integration
+
+Knowledge management enhances AI tools through:
+
+- **Historical context**: Access to past project data via `taskwing://archive` resource
+- **Pattern suggestions**: AI can recommend proven approaches via `suggest-patterns` tool
+- **Learning feedback**: Each archived project improves future AI suggestions
+
 ## Current Task Feature
 
 TaskWing tracks a "current task" that represents what the user is actively working on. This is critical for AI tool integration as it provides context about the user's focus.
@@ -296,3 +343,79 @@ Current task is automatically included in:
 - All MCP tool response contexts
 - Task context enrichment
 - Project health assessments
+
+## Contributing Guidelines
+
+### Development Workflow
+
+1. **Fork and clone** the repository
+2. **Create a feature branch**: `git checkout -b feature/your-feature-name`
+3. **Make changes** following the code patterns described above
+4. **Test thoroughly**: Run tests, build, and test MCP integration
+5. **Commit with clear messages**: Follow conventional commit format
+6. **Submit a pull request** with detailed description
+
+### Before Submitting PRs
+
+```bash
+# Run tests
+go test ./...
+
+# Build and verify
+go build -o taskwing main.go
+./taskwing --version
+
+# Test MCP integration
+./taskwing mcp -v
+
+# Check code formatting
+go fmt ./...
+gofmt -d .
+
+# Run linting (if available)
+golangci-lint run
+```
+
+### Code Standards
+
+- **Follow Go conventions**: Use `gofmt`, proper naming, error handling
+- **Add tests**: Include unit tests for new functionality
+- **Update documentation**: Keep CLAUDE.md, DOCS.md, and MCP.md current
+- **Validate MCP tools**: Test new MCP functionality thoroughly
+- **Handle errors gracefully**: Use structured error types and helpful messages
+
+### Areas for Contribution
+
+**High Priority:**
+- Performance optimizations for large task sets
+- Additional output formats (CSV, XML)
+- Enhanced search and filtering capabilities
+- Integration with external tools (GitHub, Jira, etc.)
+
+**Medium Priority:**
+- UI improvements for interactive commands
+- Additional MCP resources and prompts
+- Plugin system for custom task processors
+- Backup and sync functionality
+
+**Documentation:**
+- Improve code comments and documentation
+- Add more examples to user guides
+- Create video tutorials or demos
+- Translate documentation to other languages
+
+### Getting Help
+
+- **Issues**: Use GitHub Issues for bugs and feature requests
+- **Discussions**: Use GitHub Discussions for questions and ideas
+- **Development**: This CLAUDE.md file contains architecture details
+- **MCP Integration**: See MCP.md for AI tool integration help
+
+### Release Process
+
+1. Update version numbers in relevant files
+2. Update CHANGELOG.md with release notes
+3. Create release branch and test thoroughly
+4. Tag release following semantic versioning
+5. Build and publish binaries
+6. Update documentation as needed

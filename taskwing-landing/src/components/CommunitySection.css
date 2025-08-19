@@ -1,0 +1,198 @@
+.community-section {
+  padding: 6rem 0;
+  background: white;
+  text-align: center;
+}
+
+.community-section .section-title {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 2rem;
+  letter-spacing: -0.01em;
+}
+
+.community-content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.community-description {
+  font-size: 1.125rem;
+  color: #6b7280;
+  line-height: 1.7;
+  margin-bottom: 3rem;
+}
+
+.community-section .github-stats {
+  justify-content: center;
+  margin: 3rem auto;
+}
+
+.community-cta {
+  margin: 4rem 0;
+  padding: 3rem 2rem;
+  background: #fafafa;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.community-cta h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 1rem;
+}
+
+.community-cta p {
+  color: #6b7280;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+.community-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.community-actions .btn-primary,
+.community-actions .btn-secondary {
+  padding: 1rem 2rem;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+
+.community-actions .btn-primary {
+  background: #111827;
+  color: white;
+  border: 1px solid #111827;
+}
+
+.community-actions .btn-primary:hover {
+  background: #374151;
+  border-color: #374151;
+}
+
+.community-actions .btn-secondary {
+  background: transparent;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+
+.community-actions .btn-secondary:hover {
+  border-color: #9ca3af;
+  color: #374151;
+  background: #f9fafb;
+}
+
+.early-adopter {
+  margin-top: 3rem;
+  padding: 2rem;
+  background: #f0fdf4;
+  border-radius: 8px;
+  border: 1px solid #86efac;
+}
+
+.early-adopter h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #166534;
+  margin-bottom: 0.75rem;
+}
+
+.early-adopter p {
+  color: #166534;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Dark mode styles */
+:root.dark .community-section {
+  background: #111827;
+}
+
+:root.dark .community-section .section-title {
+  color: #f9fafb;
+}
+
+:root.dark .community-description {
+  color: #d1d5db;
+}
+
+:root.dark .community-cta {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+:root.dark .community-cta h3 {
+  color: #f9fafb;
+}
+
+:root.dark .community-cta p {
+  color: #d1d5db;
+}
+
+:root.dark .community-actions .btn-primary {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+:root.dark .community-actions .btn-primary:hover {
+  background: #374151;
+  border-color: #6b7280;
+}
+
+:root.dark .community-actions .btn-secondary {
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+:root.dark .community-actions .btn-secondary:hover {
+  border-color: #6b7280;
+  color: #f9fafb;
+  background: #1f2937;
+}
+
+:root.dark .early-adopter {
+  background: #064e3b;
+  border-color: #10b981;
+}
+
+:root.dark .early-adopter h4 {
+  color: #a7f3d0;
+}
+
+:root.dark .early-adopter p {
+  color: #d1fae5;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .community-section {
+    padding: 4rem 0;
+  }
+
+  .community-section .section-title {
+    font-size: 1.75rem;
+  }
+
+  .community-cta {
+    padding: 2rem 1.5rem;
+  }
+
+  .community-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .community-actions .btn-primary,
+  .community-actions .btn-secondary {
+    width: 100%;
+    max-width: 280px;
+  }
+}

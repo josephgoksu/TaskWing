@@ -1,0 +1,97 @@
+.github-stats {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.github-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.github-stat:hover {
+  border-color: #d1d5db;
+  background: #f3f4f6;
+}
+
+.stat-icon {
+  font-size: 1rem;
+}
+
+.stat-value {
+  font-weight: 600;
+  color: #111827;
+  font-size: 0.9rem;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.github-stats.loading {
+  gap: 1rem;
+}
+
+.stat-skeleton {
+  width: 80px;
+  height: 36px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Dark mode styles */
+:root.dark .github-stat {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+:root.dark .github-stat:hover {
+  border-color: #6b7280;
+  background: #374151;
+}
+
+:root.dark .stat-value {
+  color: #f9fafb;
+}
+
+:root.dark .stat-label {
+  color: #9ca3af;
+}
+
+:root.dark .stat-skeleton {
+  background: #374151;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .github-stats {
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  
+  .github-stat {
+    flex: 1;
+    min-width: 100px;
+    justify-content: center;
+  }
+}

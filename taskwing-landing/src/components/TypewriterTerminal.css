@@ -1,0 +1,224 @@
+.typewriter-terminal {
+  background: #1a1a1a;
+  border-radius: 8px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  max-width: 100%;
+  width: 100%;
+  border: 1px solid #e5e7eb;
+}
+
+.terminal-header {
+  background: #f8fafc;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  position: relative;
+}
+
+.terminal-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.terminal-buttons .btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.terminal-buttons .btn:hover {
+  transform: scale(1.1);
+  opacity: 0.8;
+}
+
+.terminal-buttons .btn.red {
+  background: #ff5f56;
+  border: 1px solid #ff5f56;
+}
+
+.terminal-buttons .btn.red:hover::after {
+  content: '×';
+  position: absolute;
+  color: #000;
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.terminal-buttons .btn.yellow {
+  background: #ffbd2e;
+  border: 1px solid #ffbd2e;
+}
+
+.terminal-buttons .btn.yellow:hover::after {
+  content: '−';
+  position: absolute;
+  color: #000;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.terminal-buttons .btn.green {
+  background: #27ca3f;
+  border: 1px solid #27ca3f;
+}
+
+.terminal-buttons .btn.green:hover::after {
+  content: '⤢';
+  position: absolute;
+  color: #000;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.terminal-title {
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+  text-align: center;
+  margin-right: 32px; /* Offset for buttons */
+}
+
+.terminal-body {
+  padding: 20px;
+  min-height: 220px;
+  background: #000000;
+  color: #e0e0e0;
+}
+
+.terminal-line {
+  display: flex;
+  margin-bottom: 6px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  align-items: baseline;
+}
+
+.prompt {
+  color: #67d391;
+  margin-right: 8px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.command {
+  color: #e0e0e0;
+}
+
+.output {
+  color: #cbd5e0;
+}
+
+.cursor {
+  background: #67d391;
+  color: #1a1a1a;
+  animation: blink 1s infinite;
+  margin-left: 2px;
+  padding: 0 1px;
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .typewriter-terminal {
+    font-size: 13px;
+    border-radius: 6px;
+  }
+  
+  .terminal-header {
+    padding: 10px 16px;
+  }
+  
+  .terminal-buttons .btn {
+    width: 10px;
+    height: 10px;
+  }
+  
+  .terminal-title {
+    font-size: 12px;
+    margin-right: 26px; /* Adjust for smaller buttons */
+  }
+  
+  .terminal-body {
+    padding: 16px;
+    min-height: 180px;
+  }
+  
+  .terminal-line {
+    margin-bottom: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .typewriter-terminal {
+    font-size: 12px;
+  }
+  
+  .terminal-body {
+    padding: 14px;
+    min-height: 160px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .typewriter-terminal {
+    border: 2px solid #ffffff;
+  }
+  
+  .prompt {
+    color: #00ff00;
+  }
+  
+  .command {
+    color: #ffffff;
+  }
+  
+  .output {
+    color: #cccccc;
+  }
+}
+
+/* Dark mode styles */
+:root.dark .typewriter-terminal {
+  border-color: #374151;
+}
+
+:root.dark .terminal-header {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+:root.dark .terminal-title {
+  color: #d1d5db;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .cursor {
+    animation: none;
+    opacity: 1;
+  }
+}
