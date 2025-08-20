@@ -22,10 +22,6 @@ builds:
     goarch:
       - amd64
       - arm64
-      - arm
-    goarm:
-      - "6"
-      - "7"
     ignore:
       - goos: windows
         goarch: arm64
@@ -52,7 +48,7 @@ archives:
         format: zip
     files:
       - README.md
-      - MCP_GUIDE.md
+      - MCP.md
       - LICENSE
       - .taskwing.example.yaml
 
@@ -95,6 +91,8 @@ release:
   draft: false
   prerelease: auto
   mode: replace
+  disable: false
+  skip_upload: false
   header: |
     ## TaskWing {{.Tag}}
 
@@ -117,7 +115,7 @@ release:
     ./taskwing mcp
     ```
 
-    See the included MCP_GUIDE.md for detailed AI integration instructions.
+    See the included MCP.md for detailed AI integration instructions.
 
   footer: |
     ---
@@ -146,7 +144,7 @@ release:
 
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser) 🚀
 
-# Homebrew tap (future)
+# Homebrew tap
 brews:
   - name: taskwing
     description: "AI-assisted CLI task manager for developers"
@@ -160,7 +158,23 @@ brews:
       name: goreleaserbot
       email: bot@goreleaser.com
     commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
-    skip_upload: true # Enable when homebrew-tap repo is ready
+    skip_upload: true # Will be enabled after homebrew-tap repo is created
+
+# Scoop bucket for Windows (future)
+scoops:
+  - name: taskwing
+    description: "AI-assisted CLI task manager for developers"
+    homepage: "https://github.com/josephgoksu/taskwing.app"
+    license: "MIT"
+    repository:
+      owner: josephgoksu
+      name: scoop-bucket
+    directory: bucket
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "Scoop update for {{ .ProjectName }} version {{ .Tag }}"
+    skip_upload: true # Enable when scoop-bucket repo is ready
 
 # Docker images (disabled - uncomment when ready)
 # dockers:
