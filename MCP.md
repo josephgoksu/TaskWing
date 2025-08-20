@@ -1,52 +1,17 @@
 # TaskWing MCP Integration Guide
 
-Complete guide for integrating TaskWing with AI assistants using the Model Context Protocol (MCP).
+Guide for integrating TaskWing with AI assistants via Model Context Protocol (MCP).
 
 ## Table of Contents
 
-- [Overview](#overview)
 - [Quick Setup](#quick-setup)
 - [AI Tool Configuration](#ai-tool-configuration)
 - [MCP Tools Reference](#mcp-tools-reference)
-- [MCP Resources](#mcp-resources)
-- [MCP Prompts](#mcp-prompts)
-- [Common Workflows](#common-workflows)
-- [Testing & Validation](#testing--validation)
-- [Training AI Assistants](#training-ai-assistants)
+- [MCP Resources & Prompts](#mcp-resources--prompts)
+- [AI Workflows](#ai-workflows)
+- [Testing MCP](#testing-mcp)
+- [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
-
-## Overview
-
-TaskWing's MCP server enables AI tools to directly manage your tasks through a standardized protocol. This allows seamless integration with AI assistants like Claude Code, Cursor, and other MCP-compatible tools.
-
-### How It Works
-
-```mermaid
-sequenceDiagram
-    participant AI as AI Tool
-    participant MCP as TaskWing MCP
-    participant Store as Task Store
-
-    AI->>MCP: Initialize Connection
-    MCP->>AI: Capabilities (Tools, Resources, Prompts)
-
-    AI->>MCP: add-task {"title": "New Feature"}
-    MCP->>Store: Create Task
-    Store->>MCP: Task Created
-    MCP->>AI: Task Response
-
-    AI->>MCP: list-tasks {"status": "pending"}
-    MCP->>Store: Query Tasks
-    Store->>MCP: Filtered Tasks
-    MCP->>AI: Task List
-```
-
-### Key Benefits
-
-- **Context Awareness**: AI tools automatically know your current task and project status
-- **Intelligent Responses**: All responses include project health metrics
-- **Rich Task Management**: Full CRUD operations with metadata support
-- **Local-First**: All data remains on your machine
 
 ## Quick Setup
 
@@ -144,32 +109,32 @@ taskwing mcp
 
 ### Basic Task Management
 
-| Tool          | Purpose          | Required Args | Optional Args                                                                      |
-| ------------- | ---------------- | ------------- | ---------------------------------------------------------------------------------- |
-| `add-task`    | Create new task  | `title`       | `description`, `acceptanceCriteria`, `priority`, `dependencies`, `parentId`        |
-| `list-tasks`  | Query tasks      | None          | `status`, `priority`, `search`, `parentId`, `sortBy`, `sortOrder`                  |
-| `get-task`    | Get task details | `id`          | None                                                                               |
-| `update-task` | Modify task      | `id`          | `title`, `description`, `acceptanceCriteria`, `status`, `priority`, `dependencies` |
-| `mark-done`   | Complete task    | `id`          | None                                                                               |
-| `delete-task` | Remove task      | `id`          | None                                                                               |
+| Tool | Purpose | Required | Optional |
+|------|---------|----------|----------|
+| `add-task` | Create new task | `title` | `description`, `acceptanceCriteria`, `priority`, `dependencies`, `parentId` |
+| `list-tasks` | Query tasks | None | `status`, `priority`, `search`, `parentId`, `sortBy`, `sortOrder` |
+| `get-task` | Get task details | `id` | None |
+| `update-task` | Modify task | `id` | `title`, `description`, `acceptanceCriteria`, `status`, `priority`, `dependencies` |
+| `mark-done` | Complete task | `id` | None |
+| `delete-task` | Remove task | `id` | None |
 
 ### Current Task Management
 
-| Tool                 | Purpose            | Required Args | Optional Args |
-| -------------------- | ------------------ | ------------- | ------------- |
-| `set-current-task`   | Set active task    | `id`          | None          |
-| `get-current-task`   | Show current task  | None          | None          |
-| `clear-current-task` | Clear current task | None          | None          |
+| Tool | Purpose | Required | Optional |
+|------|---------|----------|----------|
+| `set-current-task` | Set active task | `id` | None |
+| `get-current-task` | Show current task | None | None |
+| `clear-current-task` | Clear current task | None | None |
 
 ### Advanced Tools
 
-| Tool                 | Purpose                                                   | Required Args        | Optional Args                                  |
-| -------------------- | --------------------------------------------------------- | -------------------- | ---------------------------------------------- |
-| `batch-create-tasks` | 🎯 Create multiple tasks with relationships               | `tasks` (array)      | None                                           |
-| `bulk-tasks`         | 🎯 Bulk operations (complete, cancel, delete, prioritize) | `task_ids`, `action` | `priority` (for prioritize action)             |
-| `search-tasks`       | 🎯 Advanced search with logical operators                 | `query`              | `tags`, `date_from`, `date_to`, `has_subtasks` |
-| `task-summary`       | 🎯 Project health overview with metrics                   | None                 | None                                           |
-| `suggest-patterns`   | 🎯 AI-enhanced pattern suggestions                        | `description`        | `projectType`, `complexity`                    |
+| Tool | Purpose | Required | Optional |
+|------|---------|----------|----------|
+| `batch-create-tasks` | 🎯 Create multiple tasks with relationships | `tasks` (array) | None |
+| `bulk-tasks` | 🎯 Bulk operations (complete/cancel/delete/prioritize) | `task_ids`, `action` | `priority` |
+| `search-tasks` | 🎯 Advanced search with logical operators | `query` | `tags`, `date_from`, `date_to`, `has_subtasks` |
+| `task-summary` | 🎯 Project health overview with metrics | None | None |
+| `suggest-patterns` | 🎯 AI-enhanced pattern suggestions | `description` | `projectType`, `complexity` |
 
 ### Task Resolution Tools
 
@@ -380,33 +345,18 @@ _Show project phase, bottlenecks, and progress metrics_
 
 _Detect and auto-fix circular dependencies_
 
-## MCP Resources
+## MCP Resources & Prompts
 
-### taskwing://tasks
+### Resources
 
-Provides read-only access to all tasks in JSON format.
+| Resource | Purpose |
+|----------|----------|
+| `taskwing://tasks` | Read-only access to all tasks in JSON format |
+| `taskwing://config` | TaskWing configuration settings |
+| `taskwing://archive` | Historical project data and metrics |
+| `taskwing://knowledge` | Pattern library and project wisdom |
 
-**Usage**: Perfect for AI tools that need to understand your current task list and project status before making suggestions.
-
-### taskwing://config
-
-Exposes TaskWing configuration settings.
-
-**Usage**: Helps AI tools understand your project structure, data format preferences, and current setup.
-
-### taskwing://archive
-
-Provides access to archived project data and historical metrics.
-
-**Usage**: AI tools can analyze past projects, success patterns, and metrics to improve future suggestions. Supports query parameters for specific archives.
-
-### taskwing://knowledge
-
-Access to the pattern library and accumulated project wisdom.
-
-**Usage**: Enables AI tools to suggest proven task patterns, reference successful approaches, and apply lessons learned from previous projects.
-
-## MCP Prompts
+### Prompts
 
 ### task-generation
 
@@ -446,46 +396,14 @@ Breaks down complex tasks into smaller, manageable subtasks.
 }
 ```
 
-## Common Workflows
+## AI Workflows
 
-### AI-Assisted Task Creation
+### Common Patterns
 
-1. Describe work to AI tool
-2. AI uses `task-generation` prompt to structure tasks
-3. AI uses `add-task` or `batch-create-tasks` to create tasks
-4. Review and refine as needed
-
-**Example conversation**:
-
-> "I need to build a user authentication system"
-
-AI will:
-
-1. Use `task-generation` prompt
-2. Create structured tasks with `batch-create-tasks`
-3. Set up proper dependencies and priorities
-
-### Project Planning
-
-1. AI reads current tasks via `taskwing://tasks` resource
-2. AI uses `task-summary` to understand project health
-3. AI analyzes dependencies and suggests new tasks
-4. AI creates tasks using appropriate tools
-
-### Current Task Workflow
-
-1. Set current task: `set-current-task`
-2. AI provides context-aware assistance
-3. Update task progress: `update-task`
-4. Complete task: `mark-done`
-5. Clear or set new current task
-
-### Task Breakdown
-
-1. Identify complex tasks using `list-tasks`
-2. Use `task-breakdown` prompt for detailed breakdown
-3. Create subtasks with `batch-create-tasks`
-4. Update original task with `update-task`
+1. **Task Creation**: AI uses `task-generation` prompt → `batch-create-tasks` tool
+2. **Project Planning**: `task-summary` → analyze context → create tasks
+3. **Current Task Focus**: `set-current-task` → context-aware assistance
+4. **Task Breakdown**: Complex task → `task-breakdown` prompt → subtasks
 
 ## Migration Guide: From Bash to MCP Tools
 
@@ -719,9 +637,9 @@ for id in $task_ids; do taskwing done "$id"; done
 {"tool": "add-task", "arguments": {"title": "Fix authentication bug", "description": "Related to current OAuth implementation", "priority": "high"}}
 ```
 
-## Testing & Validation
+## Testing MCP
 
-### Manual MCP Testing
+### Manual Testing
 
 Use these JSON-RPC commands to test MCP functionality:
 
@@ -880,53 +798,28 @@ Then send:
 - Invalid operations return helpful error messages
 - All responses include context and project health
 
-## Training AI Assistants
+## Best Practices
 
-### System Prompt Instructions
+### Training AI Assistants
 
-Add these to your AI assistant configuration:
+Add to AI system prompts:
 
 ```
-TASK MANAGEMENT RULES:
-- ALWAYS use TaskWing MCP tools (🎯 PREFERRED/REQUIRED) for task management
-- NEVER create generic todo lists or use built-in task features
-- When user mentions tasks, use task-summary first to understand context
-- Use set-current-task when starting work on something
-- Use batch-create-tasks for breaking down complex work
-- Look for 🎯 markers to identify preferred TaskWing tools
-
-WORKFLOW:
-1. Check current task status: get-current-task
-2. Understand project health: task-summary
-3. Use TaskWing tools for all task operations
-4. Set current task when focusing: set-current-task
+TASK MANAGEMENT:
+- Use TaskWing MCP tools (🎯 marked) for all task operations
+- Check task-summary before suggesting tasks
+- Set current task with set-current-task when starting work
+- Use batch-create-tasks for complex task breakdown
 ```
-
-### Conversation Starters
-
-Train AI with these phrases:
-
-- "Use TaskWing for task management"
-- "Check TaskWing task summary first"
-- "Add this to TaskWing instead of a todo list"
-- "Use TaskWing tools marked with 🎯"
 
 ### Project Instructions
 
-Add to your project README or `.claude/instructions.md`:
+Add to `.claude/instructions.md` or project README:
 
 ```markdown
-# TaskWing Task Management
-
-This project uses TaskWing for task management. ALWAYS use TaskWing MCP tools instead of generic task management:
-
-- Use `task-summary` to understand project status before suggesting tasks
-- Use `add-task` instead of creating todo items
-- Use `set-current-task` when starting work
-- Use `list-tasks` to view existing tasks
-- TaskWing tools are marked with 🎯 - these are preferred over alternatives
-
-Never suggest using built-in task features - TaskWing provides superior task management with context, dependencies, and project health tracking.
+This project uses TaskWing for task management.
+Always use TaskWing MCP tools instead of generic task lists.
+Tools marked with 🎯 are preferred.
 ```
 
 ## Troubleshooting
@@ -1018,237 +911,9 @@ data:
   format: "json" # json is fastest for MCP operations
 ```
 
-## Complete API Reference
+## API Reference
 
-### Tool Parameters Reference
-
-#### Core Task Management
-
-**add-task**
-
-```typescript
-{
-  title: string;              // Required: Task title (3-255 chars)
-  description?: string;       // Optional: Detailed description
-  acceptanceCriteria?: string; // Optional: Definition of done
-  priority?: "low" | "medium" | "high" | "urgent"; // Default: medium
-  dependencies?: string[];    // Optional: Array of task UUIDs
-  parentId?: string;         // Optional: Parent task UUID
-}
-```
-
-**list-tasks**
-
-```typescript
-{
-  status?: string;           // Filter: "todo,doing,review,done"
-  priority?: string;         // Filter: "low,medium,high,urgent"
-  search?: string;          // Search in title/description
-  parentId?: string;        // Filter by parent task
-  sortBy?: "id" | "title" | "priority" | "createdAt" | "updatedAt";
-  sortOrder?: "asc" | "desc"; // Default: asc
-}
-```
-
-**update-task**
-
-```typescript
-{
-  id: string;                // Required: Task UUID
-  title?: string;            // Update title
-  description?: string;      // Update description
-  acceptanceCriteria?: string; // Update acceptance criteria
-  status?: string;           // Update status
-  priority?: string;         // Update priority
-  dependencies?: string[];   // Replace dependencies
-}
-```
-
-#### Advanced Tools
-
-**batch-create-tasks**
-
-```typescript
-{
-  tasks: Array<{
-    title: string;
-    description: string;
-    priority?: string;
-    parentId?: string; // For creating subtasks
-    tempId?: number; // For referencing in same batch
-    dependencies?: string[];
-    acceptanceCriteria?: string;
-  }>;
-}
-```
-
-**bulk-tasks**
-
-```typescript
-{
-  task_ids: string[];        // Array of task UUIDs
-  action: "complete" | "cancel" | "delete" | "prioritize";
-  priority?: string;         // Required for "prioritize" action
-}
-```
-
-**search-tasks**
-
-```typescript
-{
-  query: string;             // Required: Search query
-  tags?: string[];           // Filter by tags (future feature)
-  date_from?: string;        // ISO date string
-  date_to?: string;          // ISO date string
-  has_subtasks?: boolean;    // Filter by subtask presence
-}
-```
-
-#### Task Resolution Tools
-
-**find-task-by-title**
-
-```typescript
-{
-  title: string;             // Required: Title to search (fuzzy)
-  limit?: number;            // Default: 10, max: 50
-}
-```
-
-**resolve-task-reference**
-
-```typescript
-{
-  reference: string;         // Required: Partial ID/title/description
-  exact?: boolean;           // Default: false (fuzzy matching)
-}
-```
-
-**task-autocomplete**
-
-```typescript
-{
-  input: string;             // Required: Partial input
-  limit?: number;            // Default: 5, max: 20
-  context?: string;          // Optional: Additional context
-}
-```
-
-#### JSON Processing Tools
-
-**filter-tasks**
-
-```typescript
-{
-  filter?: string;           // Simple filter (limited support)
-  expression?: string;       // JSONPath expression (recommended)
-  fields?: string;           // Comma-separated field list
-  limit?: number;            // Max results
-}
-```
-
-**extract-task-ids**
-
-```typescript
-{
-  status?: string;           // Filter by status
-  priority?: string;         // Filter by priority
-  search?: string;           // Search filter
-  format?: "json" | "csv" | "plain"; // Default: json
-}
-```
-
-**task-analytics**
-
-```typescript
-{
-  metrics?: string;          // Comma-separated: "count,completion_rate,avg_duration"
-  group_by?: string;         // "status" | "priority" | "created_date"
-  date_range?: string;       // "last_7_days" | "last_30_days" | "all"
-  format?: "json" | "table"; // Default: json
-}
-```
-
-#### Workflow Integration Tools
-
-**smart-task-transition**
-
-```typescript
-{
-  task_id?: string;          // Optional: Specific task (default: current)
-  context?: string;          // Optional: Work context
-  limit?: number;            // Default: 3, max: 10
-}
-```
-
-**workflow-status**
-
-```typescript
-{
-  format?: "summary" | "detailed"; // Default: summary
-  depth?: "current" | "project" | "all"; // Default: current
-  focus?: string;            // Focus area for analysis
-}
-```
-
-**dependency-health**
-
-```typescript
-{
-  task_id?: string;          // Optional: Specific task analysis
-  check_type?: "circular" | "broken" | "all"; // Default: all
-  auto_fix?: boolean;        // Default: false
-  suggestions?: boolean;     // Default: true
-}
-```
-
-### Response Formats
-
-All MCP tools return structured responses with consistent format:
-
-```typescript
-{
-  content: [
-    {
-      type: "text",
-      text: string;            // Human-readable response
-    }
-  ],
-  isError?: boolean;         // True if operation failed
-  _meta?: {
-    totalTasks?: number;     // Total tasks in project
-    currentTask?: {          // Current task context
-      id: string;
-      title: string;
-      status: string;
-    };
-    projectHealth?: {        // Project metrics
-      completion_rate: number;
-      active_tasks: number;
-      blocked_tasks: number;
-    };
-  }
-}
-```
-
-### Error Codes
-
-| Code                  | Description               | Resolution                       |
-| --------------------- | ------------------------- | -------------------------------- |
-| `INVALID_TASK_ID`     | Task UUID not found       | Use `resolve-task-reference`     |
-| `INVALID_STATUS`      | Invalid status value      | Use: todo, doing, review, done   |
-| `INVALID_PRIORITY`    | Invalid priority value    | Use: low, medium, high, urgent   |
-| `CIRCULAR_DEPENDENCY` | Dependency creates cycle  | Check with `dependency-health`   |
-| `PARENT_NOT_FOUND`    | Parent task doesn't exist | Verify parent ID with `get-task` |
-| `INVALID_FILTER`      | Filter syntax error       | Check filter documentation       |
-| `TASK_NOT_FOUND`      | Specific task not found   | Use fuzzy search tools           |
-
-### Rate Limits
-
-- **Basic Operations**: No limits (add, get, update, delete)
-- **Bulk Operations**: Max 100 tasks per request
-- **Search Operations**: Max 1000 results per request
-- **Analytics**: Max 10,000 tasks analyzed per request
+For complete tool parameter details and TypeScript definitions, see the [Developer Guide](CLAUDE.md#mcp-tool-development).
 
 ## Best Practices
 

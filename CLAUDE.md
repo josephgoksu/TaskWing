@@ -1,67 +1,43 @@
-# TaskWing Developer Guide
+# CLAUDE.md
 
-This file provides comprehensive guidance for developers working on TaskWing, including setup, architecture, and contribution guidelines.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**For Claude Code users**: This file contains project-specific instructions for AI-assisted development.
+## Overview
 
-## Project Overview
-
-TaskWing is an AI-assisted CLI task manager for developers built in Go. It provides comprehensive task management with Model Context Protocol (MCP) integration for seamless AI tool interaction.
+TaskWing is a Go 1.24+ CLI task manager with Model Context Protocol (MCP) server for AI tool integration. The architecture prioritizes local-first storage with no cloud dependencies while enabling sophisticated AI assistance through MCP.
 
 ## Development Commands
 
-### Building and Testing
-
 ```bash
-# Build the binary
+# Build the application
 go build -o taskwing main.go
 
-# Run tests (standard Go testing)
+# Run all tests
 go test ./...
 
-# Run with development setup
-./taskwing init
-./taskwing add
-```
+# Run tests with verbose output
+go test -v ./...
 
-### Key CLI Commands for Testing
+# Run tests with coverage
+go test -cover ./...
 
-```bash
-# Initialize TaskWing in current directory
-taskwing init
+# Format code
+go fmt ./...
 
-# Core task operations
-taskwing add                    # Interactive task creation
-taskwing list [filters]         # List with optional filtering
-taskwing update [task_id]       # Update existing task
-taskwing delete [task_id]       # Delete task (checks dependencies)
-taskwing done [task_id]         # Mark task completed
-taskwing show [task_id]         # Show detailed task info
+# Tidy dependencies
+go mod tidy
 
-# Current task management (NEW)
-taskwing current set <task_id>  # Set current active task
-taskwing current show           # Show current task details
-taskwing current clear          # Clear current task
+# Generate any code (before build)
+go generate ./...
 
-# MCP server for AI integration
-taskwing mcp                    # Start MCP server
-taskwing mcp -v                 # Start with verbose logging
+# Run the MCP server for testing
+./taskwing mcp -v
 
-# Configuration management
-taskwing config show            # Show current configuration
-taskwing config path            # Show config file location
-```
+# Build for release (uses goreleaser)
+goreleaser build --snapshot --clean
 
-### MCP Development Workflow
-
-```bash
-# Start MCP server for development
-./taskwing mcp
-
-# Test MCP functionality through Claude Code
-# Basic MCP tools: add-task, list-tasks, update-task, delete-task, mark-done, get-task
-# Current task tools: set-current-task, get-current-task, clear-current-task
-# Advanced tools: batch-create-tasks, bulk-tasks, search-tasks, task-summary
+# Lint code (if golangci-lint is installed)
+golangci-lint run
 ```
 
 ## Architecture
@@ -78,12 +54,13 @@ taskwing config path            # Show config file location
 - **prompts/**: System prompts for LLM interactions
 - **types/**: Unified type definitions shared across CLI and MCP (eliminates duplication)
 
-### Key Data Flow
+### Critical Data Flow Paths
 
-1. **CLI Commands** → **TaskStore Interface** → **File Storage** (JSON/YAML/TOML)
-2. **MCP Server** → **MCP Tools/Resources/Prompts** → **TaskStore Interface**
-3. **AI Tools** ↔ **MCP Protocol** ↔ **TaskWing**
-4. **Archive System** → **Pattern Extraction** → **Knowledge Base** → **AI Suggestions**
+1. **CLI → Store → File**: All CLI commands (`cmd/*.go`) interact with `store.TaskStore` interface, never directly with files
+2. **MCP → Store → File**: MCP tools use the same TaskStore, ensuring consistency
+3. **Config Loading**: Viper loads config hierarchically: flags → env → project → home → defaults
+4. **Task Validation**: Input → Validator tags → Store validation → File write with flock
+5. **Pattern Learning**: Completed tasks → Archive → Pattern extraction → Knowledge base → AI suggestions
 
 ### MCP Integration Architecture
 
@@ -113,33 +90,30 @@ Tasks have comprehensive metadata:
 - **Relationships**: ParentID, SubtaskIDs, Dependencies, Dependents
 - **Timestamps**: CreatedAt, UpdatedAt, CompletedAt
 
-### Configuration System
+### Configuration
 
-Uses Viper with hierarchical configuration:
+Hierarchical configuration using Viper:
 
-1. Project: `.taskwing/.taskwing.yaml`
-2. Directory: `./.taskwing.yaml`
-3. Home: `$HOME/.taskwing.yaml`
+- Project: `.taskwing/.taskwing.yaml`
+- Home: `$HOME/.taskwing.yaml`
+- Environment: `TASKWING_*` variables
 
-Environment variables with `TASKWING_` prefix override file settings.
+See [Configuration Guide](DOCS.md#configuration) for details.
 
-Key configuration options:
+### TaskStore Interface (Critical)
 
-- `project.rootDir`: Base directory (default: `.taskwing`)
-- `project.tasksDir`: Tasks directory (default: `tasks`)
-- `project.currentTaskId`: Current active task UUID (managed automatically)
-- `data.file`: Data file name (default: `tasks.json`)
-- `data.format`: Storage format (json/yaml/toml)
+The `store.TaskStore` interface in `store/store.go` is the ONLY way to interact with task data:
 
-### Store Interface
+```go
+// Key methods that MUST be used:
+CreateTask(task models.Task) (models.Task, error)  // Validates & assigns UUID
+GetTask(id string) (models.Task, error)            // Returns ErrTaskNotFound if missing
+UpdateTask(id string, updates map[string]interface{}) (models.Task, error)
+DeleteTask(id string) error                        // Checks dependencies first
+ListTasks(filterFn, sortFn) ([]models.Task, error) // Never returns nil
+```
 
-All persistence goes through `store.TaskStore` interface:
-
-- **CRUD Operations**: CreateTask, GetTask, UpdateTask, DeleteTask
-- **Querying**: ListTasks with filtering and sorting
-- **Dependencies**: GetTaskWithDescendents for hierarchy
-- **Data Integrity**: File locking (gofrs/flock) and checksum validation
-- **Batch Operations**: DeleteTasks, DeleteAllTasks
+**Critical**: The store uses file locking (flock) to prevent corruption during concurrent access. Never bypass this!
 
 ### Interactive UI Patterns
 
@@ -149,16 +123,16 @@ Uses promptui for consistent interactive experiences:
 - Custom templates for task display
 - Error handling with `ErrNoTasksFound` for empty selections
 
-### Dependencies and Key Libraries
+### Critical Dependencies
 
-**CLI Framework**: spf13/cobra + spf13/viper
-**UI**: manifoldco/promptui for interactive prompts
-**Validation**: go-playground/validator with struct tags
-**Display**: jedib0t/go-pretty for table formatting
-**MCP**: modelcontextprotocol/go-sdk for AI integration
-**Storage**: File-based with gofrs/flock for concurrency safety
+- **spf13/cobra**: CLI framework - all commands in `cmd/` extend cobra.Command
+- **spf13/viper**: Config management - hierarchical config loading with env overrides
+- **modelcontextprotocol/go-sdk**: MCP server implementation for AI integration
+- **gofrs/flock**: File locking to prevent concurrent file corruption
+- **go-playground/validator**: Struct validation using tags like `validate:"required,min=3"`
+- **manifoldco/promptui**: Interactive prompts - consistent UX patterns
 
-## Code Patterns
+## Critical Code Patterns
 
 ### Unified Type System
 
@@ -239,110 +213,58 @@ This pattern ensures:
 - **Validation** through struct tags
 - **Dependency management** with circular detection
 
-### Interactive UI Consistency
+### Interactive Command Patterns
 
-Use `manifoldco/promptui` patterns for all interactive commands:
+All interactive commands follow this pattern (see `cmd/utils.go`):
 
 ```go
-// Task selection with search
-selectedTask, err := selectTaskInteractive(taskStore, filterFn, "Select a task")
+// 1. Check for tasks first
+tasks, _ := taskStore.ListTasks(nil, nil)
+if len(tasks) == 0 {
+    return ErrNoTasksFound  // Defined in cmd/errors.go
+}
+
+// 2. Use selectTaskInteractive helper
+task, err := selectTaskInteractive(taskStore, filterFn, "Select task")
 if err == promptui.ErrInterrupt {
-    // Handle graceful cancellation
+    return nil  // User cancelled - don't show error
 }
 ```
 
-### Configuration Hierarchy
+### Configuration Loading (Viper)
 
-Configuration loading follows strict precedence:
+The config system (`cmd/config.go`) uses Viper with this exact precedence:
 
-1. **Command flags** (highest priority)
-2. **Environment variables** (`TASKWING_*` prefix)
-3. **Project config** (`.taskwing/.taskwing.yaml`)
-4. **Legacy config** (`./.taskwing.yaml`)
-5. **Global config** (`$HOME/.taskwing.yaml`)
-6. **Built-in defaults** (lowest priority)
+1. **Command flags** - Set via cobra commands
+2. **Environment variables** - `TASKWING_*` prefix (auto-bound)
+3. **Project config** - `.taskwing/.taskwing.yaml` (if exists)
+4. **Directory config** - `./.taskwing.yaml` (legacy support)
+5. **Home config** - `$HOME/.taskwing.yaml`
+6. **Defaults** - Hardcoded in `initConfig()`
 
-Environment variables use dot-to-underscore mapping: `project.rootDir` → `TASKWING_PROJECT_ROOTDIR`
+**Critical**: The `GetConfig()` function returns a singleton - call it once per command execution
 
-## Knowledge Management System
+## Knowledge Management
 
-TaskWing includes a comprehensive knowledge management system that learns from completed projects and provides AI-enhanced assistance for future work.
+### Components
 
-### Archive System
+- **Archive System**: Captures completed project data in `.taskwing/archive/`
+- **Pattern Library**: Extracts reusable workflows from archives
+- **Knowledge Base**: `KNOWLEDGE.md` stores organizational wisdom
 
-When projects complete, use `taskwing archive` to capture:
+### AI Integration
 
-- **Project metadata**: Duration, task count, success metrics
-- **Task details**: All completed tasks with timing data
-- **Retrospective insights**: User-provided lessons learned
-- **Pattern identification**: Automated extraction of task patterns
-
-Archives are stored in `.taskwing/archive/YYYY/MM/` with hierarchical organization for scalability.
-
-### Pattern Library
-
-The pattern library (`taskwing patterns`) automatically extracts reusable workflows:
-
-- **Pattern extraction**: Analyzes archived tasks to identify common approaches
-- **Success metrics**: Tracks completion rates, duration estimates, and effectiveness
-- **AI integration**: Provides pattern suggestions via `suggest-patterns` MCP tool
-- **Continuous learning**: Updates patterns as new projects are archived
-
-### Knowledge Base
-
-Located in `KNOWLEDGE.md`, this accumulates organizational wisdom:
-
-- **Best practices**: Proven approaches from successful projects
-- **Decision log**: Key decisions and their outcomes
-- **Pattern catalog**: Detailed task breakdown templates
-- **AI guidance**: Instructions for better task generation
-
-### MCP Integration
-
-Knowledge management enhances AI tools through:
-
-- **Historical context**: Access to past project data via `taskwing://archive` resource
-- **Pattern suggestions**: AI can recommend proven approaches via `suggest-patterns` tool
-- **Learning feedback**: Each archived project improves future AI suggestions
+- Historical data via `taskwing://archive` resource
+- Pattern suggestions via `suggest-patterns` tool
+- Continuous learning from archived projects
 
 ## Current Task Feature
 
-TaskWing tracks a "current task" that represents what the user is actively working on. This is critical for AI tool integration as it provides context about the user's focus.
+Tracks active task for context-aware AI assistance.
 
-### Key Benefits for AI Tools
+**Implementation**: `SetCurrentTask()`, `GetCurrentTask()`, `ClearCurrentTask()`
 
-- **Context Awareness**: AI tools automatically know what task you're working on
-- **Intelligent Responses**: MCP responses include current task context
-- **Workflow Integration**: Easy task switching and completion tracking
-- **Visual Indicators**: Current task appears in CLI outputs (list command)
-
-### Implementation Pattern
-
-```go
-// Setting current task
-if err := SetCurrentTask(taskID); err != nil {
-    // Handle error
-}
-
-// Getting current task
-currentTaskID := GetCurrentTask()
-if currentTaskID != "" {
-    // Use current task
-}
-
-// Clearing current task
-if err := ClearCurrentTask(); err != nil {
-    // Handle error
-}
-```
-
-### MCP Integration
-
-Current task is automatically included in:
-
-- All MCP tool response contexts
-- Task context enrichment
-- Project health assessments
+**MCP Integration**: Current task context included in all tool responses for better AI assistance.
 
 ## Contributing Guidelines
 
@@ -355,24 +277,19 @@ Current task is automatically included in:
 5. **Commit with clear messages**: Follow conventional commit format
 6. **Submit a pull request** with detailed description
 
-### Before Submitting PRs
+### Before Committing
 
 ```bash
-# Run tests
+# Required checks
 go test ./...
-
-# Build and verify
+go fmt ./...
+go mod tidy
 go build -o taskwing main.go
-./taskwing --version
 
-# Test MCP integration
+# Test MCP functionality
 ./taskwing mcp -v
 
-# Check code formatting
-go fmt ./...
-gofmt -d .
-
-# Run linting (if available)
+# Optional but recommended
 golangci-lint run
 ```
 
@@ -384,38 +301,43 @@ golangci-lint run
 - **Validate MCP tools**: Test new MCP functionality thoroughly
 - **Handle errors gracefully**: Use structured error types and helpful messages
 
-### Areas for Contribution
+## Important Implementation Notes
 
-**High Priority:**
-- Performance optimizations for large task sets
-- Additional output formats (CSV, XML)
-- Enhanced search and filtering capabilities
-- Integration with external tools (GitHub, Jira, etc.)
+### MCP Server Architecture
 
-**Medium Priority:**
-- UI improvements for interactive commands
-- Additional MCP resources and prompts
-- Plugin system for custom task processors
-- Backup and sync functionality
+The MCP server runs as a subprocess communicating via stdin/stdout:
 
-**Documentation:**
-- Improve code comments and documentation
-- Add more examples to user guides
-- Create video tutorials or demos
-- Translate documentation to other languages
+- Tools are registered in `initializeMCPServer()` in `cmd/mcp.go`
+- Each tool handler is in `cmd/mcp_tools.go` or `cmd/mcp_advanced_tools.go`
+- All tools return `CallToolResult` with optional `_meta` for context
+- Errors use `isError: true` flag, not JSON-RPC errors
 
-### Getting Help
+### Task ID Resolution
 
-- **Issues**: Use GitHub Issues for bugs and feature requests
-- **Discussions**: Use GitHub Discussions for questions and ideas
-- **Development**: This CLAUDE.md file contains architecture details
-- **MCP Integration**: See MCP.md for AI tool integration help
+TaskWing uses UUID v4 for task IDs but supports partial matching:
 
-### Release Process
+- Full UUID: `7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b`
+- Short form: `7b3e4f2a` (first 8 chars)
+- The `resolveTaskID()` helper in `cmd/utils.go` handles this
 
-1. Update version numbers in relevant files
-2. Update CHANGELOG.md with release notes
-3. Create release branch and test thoroughly
-4. Tag release following semantic versioning
-5. Build and publish binaries
-6. Update documentation as needed
+### Dependency Management
+
+- Dependencies are task IDs that must complete before a task can start
+- Parent/Child relationships are separate from dependencies
+- Circular dependency checking happens in `store.validateDependencies()`
+- Deleting a task with dependents is blocked
+
+### Current Task Context
+
+The "current task" feature is critical for AI integration:
+
+- Stored in config as `project.currentTaskId`
+- Automatically included in all MCP tool responses
+- Used by AI to understand user's active work context
+
+### File Storage Details
+
+- Tasks stored in `.taskwing/tasks/tasks.json` (or .yaml/.toml)
+- File is locked during reads/writes using `flock`
+- Backup created before each write operation
+- Empty task list is valid - stored as `[]` in JSON

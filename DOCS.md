@@ -1,45 +1,46 @@
 # TaskWing User Guide
 
-Complete documentation for TaskWing, the AI-powered CLI task manager.
+Comprehensive guide for using TaskWing CLI task manager.
 
 ## Table of Contents
 
 - [Installation](#installation)
 - [Getting Started](#getting-started)
 - [Commands Reference](#commands-reference)
-- [Task Management](#task-management)
+- [Task Properties](#task-properties)
 - [Configuration](#configuration)
 - [Common Workflows](#common-workflows)
-- [JSON Output & Automation](#json-output--automation)
+- [Automation & Scripting](#automation--scripting)
 - [Troubleshooting](#troubleshooting)
 
 ## Installation
 
-### Method 1: Go Install (Recommended)
+### Quick Install
 
 ```bash
+# One-liner install (recommended)
+curl -sSfL https://raw.githubusercontent.com/josephgoksu/taskwing.app/main/install.sh | sh
+
+# Via Go (requires Go 1.24+)
 go install github.com/josephgoksu/taskwing.app@latest
 ```
 
-Requires Go 1.24 or later.
+### Other Methods
 
-### Method 2: Download Binary
+- **Download Binary**: Get pre-built binaries from [GitHub Releases](https://github.com/josephgoksu/taskwing.app/releases)
+- **Build from Source**:
 
-Visit [GitHub Releases](https://github.com/josephgoksu/taskwing.app/releases) and download the appropriate binary for your platform.
+  ```bash
+  git clone https://github.com/josephgoksu/taskwing.app
+  cd taskwing-app && go build -o taskwing main.go
+  ```
 
-### Method 3: Build from Source
-
-```bash
-git clone https://github.com/josephgoksu/taskwing.app
-cd taskwing-app
-go build -o taskwing main.go
-```
+- **Homebrew** (coming soon): `brew install josephgoksu/tap/taskwing`
 
 ### Verify Installation
 
 ```bash
 taskwing --version
-taskwing --help
 ```
 
 ## Getting Started
@@ -133,19 +134,17 @@ taskwing search "review"
 | `mcp` | Start MCP server for AI integration | `taskwing mcp` |
 | `mcp -v` | Start MCP server with verbose logging | `taskwing mcp -v` |
 
-## Task Management
+## Task Properties
 
-### Task Properties
-
-Tasks have the following properties:
-
-- **Title**: Short descriptive name
-- **Description**: Detailed explanation
-- **Status**: `pending`, `in-progress`, `completed`, `cancelled`, `on-hold`, `blocked`, `needs-review`
-- **Priority**: `low`, `medium`, `high`, `urgent`
-- **Dependencies**: Other tasks that must be completed first
-- **Parent/Subtasks**: Hierarchical task relationships
-- **Acceptance Criteria**: Definition of done
+| Property | Description | Values |
+|----------|-------------|--------|
+| **Title** | Short descriptive name (required) | 3-255 characters |
+| **Description** | Detailed explanation | Any text |
+| **Status** | Current task state | `pending`, `in-progress`, `completed`, `cancelled`, `on-hold`, `blocked`, `needs-review` |
+| **Priority** | Task urgency | `low`, `medium`, `high`, `urgent` |
+| **Dependencies** | Tasks that must complete first | Array of task IDs |
+| **Parent/Subtasks** | Hierarchical relationships | Parent ID or subtask IDs |
+| **Acceptance Criteria** | Definition of done | Any text |
 
 ### Creating Tasks
 
@@ -361,58 +360,40 @@ taskwing patterns match "system implementation"
 # Follow suggested task breakdown from pattern
 ```
 
-## JSON Output & Automation
+## Automation & Scripting
 
-### JSON Mode
+### JSON Output
 
-Add `--json` to any command for machine-readable output:
+All commands support `--json` flag for machine-readable output:
 
 ```bash
-# JSON task list
 taskwing list --json
-
-# JSON task details
 taskwing show <task-id> --json
-
-# Pipe to other tools
-taskwing list --json | jq '.tasks[] | select(.priority == "urgent")'
 ```
 
-### Scripting Examples
-
-#### Bash Script Integration
+### Script Integration
 
 ```bash
 #!/bin/bash
-
-# Create tasks from file
+# Batch task creation
 while IFS= read -r line; do
   taskwing add --title "$line" --priority medium
 done < task-list.txt
 
-# Get urgent tasks count
-urgent_count=$(taskwing list --priority urgent --json | jq '.tasks | length')
-echo "Urgent tasks: $urgent_count"
-```
-
-#### CI/CD Integration
-
-```bash
-# In your CI pipeline
+# CI/CD integration
 if [ "$CI_PIPELINE_STATUS" = "failed" ]; then
-  taskwing add --title "Fix CI failure in $CI_COMMIT_REF_NAME" --priority high
+  taskwing add --title "Fix CI failure" --priority high
 fi
 ```
 
-### Export and Import
+### Data Export
 
 ```bash
-# Export tasks for backup
+# Backup tasks
 taskwing list --json > backup-$(date +%Y%m%d).json
-
-# Share tasks with team
-taskwing list --priority high --json | jq '.tasks'
 ```
+
+**Note**: For advanced automation with AI tools, see [MCP Integration Guide](MCP.md).
 
 ## Troubleshooting
 

@@ -10,37 +10,25 @@ TaskWing integrates directly with Claude Code, Cursor, and other AI tools via th
 
 ## Why TaskWing?
 
-- **🤖 AI-Native**: First CLI tool with full MCP integration for Claude Code/Cursor
-- **⚡ Zero Config**: Works out of the box, stores data locally
+- **🤖 AI-Native**: Full MCP integration for Claude Code, Cursor, and other AI tools
+- **⚡ Zero Config**: Works immediately, stores data locally in your project
 - **🔗 Smart Dependencies**: Automatic dependency tracking and circular reference prevention
 - **📚 Learning System**: Captures patterns from completed projects for future AI assistance
-- **🗄️ Knowledge Archive**: Preserves project history and lessons learned
-- **🚀 Developer UX**: Built by developers who hate context switching
+- **🚀 Developer-First**: Built for developers who value focus and efficiency
 
 ## Quick Start
 
 ### Installation
 
-Choose your preferred method:
-
 ```bash
 # One-liner install (recommended)
 curl -sSfL https://raw.githubusercontent.com/josephgoksu/taskwing.app/main/install.sh | sh
 
-# Homebrew (macOS/Linux) - Coming Soon
-# brew tap josephgoksu/tap
-# brew install taskwing
-
-# Go install
+# Or via Go
 go install github.com/josephgoksu/taskwing.app@latest
-
-# Manual download from releases
-# https://github.com/josephgoksu/taskwing.app/releases
-
-# Build from source
-git clone https://github.com/josephgoksu/taskwing.app
-cd taskwing-app && go build -o taskwing main.go
 ```
+
+For other installation methods, see [Installation Guide](DOCS.md#installation).
 
 ### First Steps
 
@@ -48,88 +36,44 @@ cd taskwing-app && go build -o taskwing main.go
 # Initialize in your project
 taskwing init
 
-# Add your first task
+# Add and manage tasks
 taskwing add --title "Fix auth bug" --priority urgent
-
-# View tasks
 taskwing list
-
-# Mark task complete
 taskwing done <task-id>
 ```
 
-### AI Integration (Optional)
-
-Enable AI-powered task management:
+### AI Integration
 
 ```bash
-# Start MCP server
+# Start MCP server for AI tools
 taskwing mcp
-
-# Configure your AI tool (Claude Code, Cursor, etc.)
-# See MCP.md for complete setup instructions
 ```
+
+See [MCP Setup Guide](MCP.md#quick-setup) for AI tool configuration.
 
 ## Core Features
 
-### Essential Commands
+- **Task Management**: Create, update, track, and complete tasks with rich metadata
+- **Current Task Focus**: Track what you're actively working on for context-aware AI assistance
+- **Smart Dependencies**: Manage task relationships and prevent circular dependencies
+- **Pattern Library**: Learn from completed projects to improve future planning
+- **MCP Integration**: Direct AI tool integration for intelligent task assistance
 
-```bash
-taskwing add                    # Interactive task creation
-taskwing list                   # View all tasks
-taskwing list --priority high   # Filter by priority
-taskwing update <id>            # Modify existing task
-taskwing done <id>              # Mark complete
-taskwing delete <id>            # Remove task
-```
-
-### Smart Task Management
-
-```bash
-# Dependencies and relationships
-taskwing add --dependencies "task1,task2"
-
-# Current task tracking
-taskwing current set <id>       # Set active task
-taskwing current show           # Show current task
-
-# Advanced search and filtering
-taskwing search "auth bug"
-taskwing list --status pending --sort-by priority
-
-# Pattern-based task planning
-taskwing patterns match "consolidate documentation"
-taskwing patterns list                  # View all patterns
-
-# Project archival and knowledge capture
-taskwing archive                        # Archive completed work
-taskwing retrospective                  # Generate project insights
-```
+For complete command reference, see [User Guide](DOCS.md#commands-reference).
 
 ## Documentation
 
-- **[DOCS.md](DOCS.md)** - Complete user guide with examples and workflows
-- **[MCP.md](MCP.md)** - AI integration setup and reference
-- **[CLAUDE.md](CLAUDE.md)** - Developer guide and architecture
+| Document | Purpose |
+|----------|----------|
+| **[DOCS.md](DOCS.md)** | User guide - Installation, commands, workflows |
+| **[MCP.md](MCP.md)** | AI integration - Setup and tool reference |
+| **[CLAUDE.md](CLAUDE.md)** | Developer guide - Architecture and contributing |
 
-## Architecture
+## Architecture Overview
 
-```
-CLI Commands ──► Task Store ──► Local Files (JSON/YAML/TOML)
-     │                           │
-     │                           ├─► Archive System
-     │                           ├─► Pattern Library
-     │                           └─► Knowledge Base
-     │
-     └──► MCP Server ──► AI Tools (Claude, Cursor, etc.)
-              │
-              ├─► Historical Data Resources
-              ├─► Pattern Suggestions
-              └─► Task Generation
-```
+TaskWing is a local-first CLI tool that stores all data in your project directory. It provides an MCP server for AI tool integration, enabling intelligent task management without cloud dependencies.
 
-**Local-first**: Your data stays on your machine. No cloud dependencies.
-**AI-Enhanced**: Learns from your project history to provide better suggestions.
+For detailed architecture information, see [Developer Guide](CLAUDE.md#architecture).
 
 ## Contributing
 
