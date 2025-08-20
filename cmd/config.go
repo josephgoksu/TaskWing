@@ -18,11 +18,6 @@ const (
 	envPrefix  = "TASKWING"
 )
 
-// Type aliases for unified configuration types
-type LLMConfig = types.LLMConfig
-type ProjectConfig = types.ProjectConfig
-type DataConfig = types.DataConfig
-type AppConfig = types.AppConfig
 
 // GlobalAppConfig holds the global application configuration instance.
 var GlobalAppConfig types.AppConfig
@@ -180,10 +175,10 @@ func InitConfig() {
 	// The verbose and config values are bound from flags directly to Viper.
 	// When Unmarshal runs, it will populate GlobalAppConfig.Verbose and GlobalAppConfig.Config
 	// if those fields exist in the struct and are mapped.
-	// We've added them to AppConfig struct with mapstructure tags.
+	// We've added them to types.AppConfig struct with mapstructure tags.
 }
 
-// GetConfig returns a pointer to the global AppConfig instance.
+// GetConfig returns a pointer to the global types.AppConfig instance.
 func GetConfig() *types.AppConfig {
 	return &GlobalAppConfig
 }

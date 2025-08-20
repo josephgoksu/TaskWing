@@ -104,6 +104,19 @@ type GetCurrentTaskParams struct{}
 // ClearCurrentTaskParams for clearing the current active task
 type ClearCurrentTaskParams struct{}
 
+// Clear tasks management types
+
+// ClearTasksParams for bulk clearing operations with safety options
+type ClearTasksParams struct {
+	Status      string `json:"status,omitempty" mcp:"Clear tasks by status (comma-separated: todo,doing,review,done)"`
+	Priority    string `json:"priority,omitempty" mcp:"Clear tasks by priority (comma-separated: low,medium,high,urgent)"`
+	Completed   bool   `json:"completed,omitempty" mcp:"Clear only completed tasks (default: true if no other filters)"`
+	All         bool   `json:"all,omitempty" mcp:"Clear all tasks (requires confirmation)"`
+	Force       bool   `json:"force,omitempty" mcp:"Skip confirmation prompts (dangerous)"`
+	NoBackup    bool   `json:"no_backup,omitempty" mcp:"Skip backup creation (not recommended)"`
+	PreviewOnly bool   `json:"preview_only,omitempty" mcp:"Show what would be cleared without actually clearing"`
+}
+
 // BulkTaskParams for bulk operations
 type BulkTaskParams struct {
 	TaskIDs  []string `json:"task_ids" mcp:"List of task IDs to operate on"`
@@ -202,18 +215,35 @@ type CurrentTaskResponse struct {
 	Success     bool          `json:"success"`
 }
 
+// ClearTasksResponse for clear operations results
+type ClearTasksResponse struct {
+	Preview       bool                   `json:"preview_only"`
+	TasksCleared  int                    `json:"tasks_cleared"`
+	TasksFailed   int                    `json:"tasks_failed"`
+	BackupCreated string                 `json:"backup_file,omitempty"`
+	Criteria      map[string]interface{} `json:"criteria_used"`
+	Tasks         []TaskResponse         `json:"tasks,omitempty"` // For preview mode
+	Message       string                 `json:"message"`
+	ExecutionMs   int64                  `json:"execution_time_ms"`
+}
+
 // Task Resolution Tool Types
 
 // FindTaskByTitleParams for fuzzy title matching
 type FindTaskByTitleParams struct {
-	Title string `json:"title" mcp:"Task title to search for (partial matches allowed)"`
-	Limit int    `json:"limit,omitempty" mcp:"Maximum number of results to return (default: 5)"`
+	Title         string `json:"title" mcp:"Task title to search for (partial matches allowed)"`
+	Limit         int    `json:"limit,omitempty" mcp:"Maximum number of results to return (default: 5)"`
+	MinScore      float64 `json:"min_score,omitempty" mcp:"Minimum similarity score (0.0-1.0, default: 0.1)"`
+	IncludeStatus []string `json:"include_status,omitempty" mcp:"Only include tasks with these statuses"`
 }
 
 // ResolveTaskReferenceParams for smart task resolution
 type ResolveTaskReferenceParams struct {
-	Reference string `json:"reference" mcp:"Task reference - partial ID, title, or description"`
-	Exact     bool   `json:"exact,omitempty" mcp:"Require exact match (default: false for fuzzy matching)"`
+	Reference     string   `json:"reference" mcp:"Task reference - partial ID, title, or description"`
+	Exact         bool     `json:"exact,omitempty" mcp:"Require exact match (default: false for fuzzy matching)"`
+	PreferCurrent bool     `json:"prefer_current,omitempty" mcp:"Prefer current task and related tasks"`
+	MaxSuggestions int     `json:"max_suggestions,omitempty" mcp:"Maximum suggestions if no exact match (default: 5)"`
+	Fields        []string `json:"fields,omitempty" mcp:"Fields to search in: id, title, description (default: all)"`
 }
 
 // TaskAutocompleteParams for predictive suggestions
@@ -257,12 +287,15 @@ type TaskAutocompleteResponse struct {
 
 // JSON Processing Tool Types
 
-// FilterTasksParams for advanced filtering with JSONPath expressions
+// FilterTasksParams for advanced filtering with multiple query syntaxes
 type FilterTasksParams struct {
-	Filter     string `json:"filter" mcp:"JSONPath-style filter expression (e.g., '$.status == \"pending\"')"`
-	Expression string `json:"expression,omitempty" mcp:"Complex filter expression with AND/OR logic"`
-	Fields     string `json:"fields,omitempty" mcp:"Comma-separated fields to return (default: all)"`
-	Limit      int    `json:"limit,omitempty" mcp:"Maximum number of results (default: unlimited)"`
+	Filter       string `json:"filter,omitempty" mcp:"JSONPath-style filter (e.g., 'status=todo', 'priority=high')"`
+	Expression   string `json:"expression,omitempty" mcp:"Complex filter with AND/OR logic (e.g., 'status=todo AND priority=high')"`
+	Query        string `json:"query,omitempty" mcp:"Natural language query (e.g., 'high priority unfinished tasks')"`
+	Fields       string `json:"fields,omitempty" mcp:"Comma-separated fields to return (default: all)"`
+	Limit        int    `json:"limit,omitempty" mcp:"Maximum number of results (default: unlimited)"`
+	FuzzyMatch   bool   `json:"fuzzy_match,omitempty" mcp:"Enable fuzzy matching for text searches"`
+	IncludeScore bool   `json:"include_score,omitempty" mcp:"Include relevance scores in results"`
 }
 
 // ExtractTaskIDsParams for bulk ID extraction with criteria
@@ -285,11 +318,14 @@ type TaskAnalyticsParams struct {
 
 // FilterTasksResponse for filtered task results
 type FilterTasksResponse struct {
-	Tasks       []TaskResponse `json:"tasks"`
-	Count       int            `json:"count"`
-	Filter      string         `json:"filter_used"`
-	Fields      []string       `json:"fields_returned,omitempty"`
-	ExecutionMs int64          `json:"execution_time_ms"`
+	Tasks         []TaskResponse       `json:"tasks"`
+	Count         int                  `json:"count"`
+	Filter        string               `json:"filter_used"`
+	Fields        []string             `json:"fields_returned,omitempty"`
+	ExecutionMs   int64                `json:"execution_time_ms"`
+	MatchedFields map[string][]string  `json:"matched_fields,omitempty"` // Field -> matched values
+	Suggestions   []string             `json:"suggestions,omitempty"`    // Alternative queries if no results
+	QueryType     string               `json:"query_type"`               // "simple", "complex", "natural"
 }
 
 // ExtractTaskIDsResponse for bulk ID extraction results

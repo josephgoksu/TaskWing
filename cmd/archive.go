@@ -4,6 +4,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"github.com/josephgoksu/taskwing.app/types"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -559,7 +560,7 @@ func extractTaskPatterns(tasks []models.Task) []Pattern {
 	return patterns
 }
 
-func saveArchive(archive Archive, cfg *AppConfig) error {
+func saveArchive(archive Archive, cfg *types.AppConfig) error {
 	// Create archive directory structure
 	archiveDir := filepath.Join(cfg.Project.RootDir, "archive", 
 		time.Now().Format("2006"), time.Now().Format("01"))
@@ -583,7 +584,7 @@ func saveArchive(archive Archive, cfg *AppConfig) error {
 	return os.WriteFile(archivePath, data, 0644)
 }
 
-func updateArchiveIndex(archive Archive, cfg *AppConfig) error {
+func updateArchiveIndex(archive Archive, cfg *types.AppConfig) error {
 	// Load existing index or create new one
 	index, _ := loadArchiveIndex(cfg)
 	if index == nil {
@@ -636,7 +637,7 @@ func updateArchiveIndex(archive Archive, cfg *AppConfig) error {
 	return os.WriteFile(indexPath, data, 0644)
 }
 
-func loadArchiveIndex(cfg *AppConfig) (*ArchiveIndex, error) {
+func loadArchiveIndex(cfg *types.AppConfig) (*ArchiveIndex, error) {
 	indexPath := filepath.Join(cfg.Project.RootDir, "archive", "index.json")
 	data, err := os.ReadFile(indexPath)
 	if err != nil {
@@ -657,7 +658,7 @@ func loadArchiveIndex(cfg *AppConfig) (*ArchiveIndex, error) {
 	return &index, nil
 }
 
-func getArchiveFilePath(archive Archive, cfg *AppConfig) string {
+func getArchiveFilePath(archive Archive, cfg *types.AppConfig) string {
 	return filepath.Join(cfg.Project.RootDir, "archive",
 		time.Now().Format("2006"),
 		time.Now().Format("01"),

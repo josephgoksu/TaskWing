@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/taskwing.app/store"
+	"github.com/josephgoksu/taskwing.app/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -219,7 +220,7 @@ func taskWingUsagePromptHandler(taskStore store.TaskStore) func(context.Context,
 		// Get current project context
 		context, err := BuildTaskContext(taskStore)
 		if err != nil {
-			context = &TaskContext{} // fallback to empty context
+			context = &types.TaskContext{} // fallback to empty context
 		}
 
 		// Build context summary

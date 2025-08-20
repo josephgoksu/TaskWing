@@ -6,6 +6,8 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -25,7 +27,7 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskP
 
 		// Validate required fields
 		if strings.TrimSpace(args.Title) == "" {
-			return nil, NewMCPError("MISSING_TITLE", "Task title is required", map[string]interface{}{
+			return nil, types.NewMCPError("MISSING_TITLE", "Task title is required", map[string]interface{}{
 				"field": "title",
 			})
 		}
@@ -56,7 +58,7 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskP
 			// Validate that parent task exists
 			_, err := taskStore.GetTask(args.ParentID)
 			if err != nil {
-				return nil, NewMCPError("PARENT_NOT_FOUND", fmt.Sprintf("Parent task %s not found", args.ParentID), map[string]interface{}{
+				return nil, types.NewMCPError("PARENT_NOT_FOUND", fmt.Sprintf("Parent task %s not found", args.ParentID), map[string]interface{}{
 					"parent_id": args.ParentID,
 				})
 			}
@@ -81,7 +83,7 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskP
 
 		// Validate task
 		if err := models.ValidateStruct(task); err != nil {
-			return nil, NewMCPError("VALIDATION_FAILED", fmt.Sprintf("Task validation failed: %s", err.Error()), nil)
+			return nil, types.NewMCPError("VALIDATION_FAILED", fmt.Sprintf("Task validation failed: %s", err.Error()), nil)
 		}
 
 		// Create task in store
@@ -117,7 +119,7 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskP
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[TaskResponse]{
+		return &mcp.CallToolResultFor[types.TaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
 					Text: responseText,
@@ -202,7 +204,7 @@ func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ListTa
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[TaskListResponse]{
+		return &mcp.CallToolResultFor[types.TaskListResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
 					Text: responseText,
@@ -220,7 +222,7 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Updat
 
 		// Validate required fields
 		if strings.TrimSpace(args.ID) == "" {
-			return nil, NewMCPError("MISSING_ID", "Task ID is required for update", nil)
+			return nil, types.NewMCPError("MISSING_ID", "Task ID is required for update", nil)
 		}
 
 		// Build updates map
@@ -260,7 +262,7 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Updat
 			// Validate that parent task exists
 			_, err := taskStore.GetTask(args.ParentID)
 			if err != nil {
-				return nil, NewMCPError("PARENT_NOT_FOUND", fmt.Sprintf("Parent task %s not found", args.ParentID), map[string]interface{}{
+				return nil, types.NewMCPError("PARENT_NOT_FOUND", fmt.Sprintf("Parent task %s not found", args.ParentID), map[string]interface{}{
 					"parent_id": args.ParentID,
 				})
 			}
@@ -282,7 +284,7 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Updat
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[TaskResponse]{
+		return &mcp.CallToolResultFor[types.TaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
 					Text: responseText,
@@ -300,7 +302,7 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Delet
 
 		// Validate required fields
 		if strings.TrimSpace(args.ID) == "" {
-			return nil, NewMCPError("MISSING_ID", "Task ID is required for deletion", nil)
+			return nil, types.NewMCPError("MISSING_ID", "Task ID is required for deletion", nil)
 		}
 
 		// Get task to check for dependents and for response text
@@ -311,7 +313,7 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Delet
 
 		// Check if task has dependents
 		if len(task.Dependents) > 0 {
-			return nil, NewMCPError("HAS_DEPENDENTS", "Cannot delete task with dependent tasks", map[string]interface{}{
+			return nil, types.NewMCPError("HAS_DEPENDENTS", "Cannot delete task with dependent tasks", map[string]interface{}{
 				"task_id":    args.ID,
 				"dependents": task.Dependents,
 			})
@@ -337,7 +339,7 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Delet
 			Message: fmt.Sprintf("Task '%s' deleted successfully", task.Title),
 		}
 
-		return &mcp.CallToolResultFor[DeleteTaskResponse]{
+		return &mcp.CallToolResultFor[types.DeleteTaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
 					Text: responseText,
@@ -355,7 +357,7 @@ func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.MarkDon
 
 		// Validate required fields
 		if strings.TrimSpace(args.ID) == "" {
-			return nil, NewMCPError("MISSING_ID", "Task ID is required to mark as done", nil)
+			return nil, types.NewMCPError("MISSING_ID", "Task ID is required to mark as done", nil)
 		}
 
 		// Mark task as done
@@ -373,7 +375,7 @@ func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.MarkDon
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[TaskResponse]{
+		return &mcp.CallToolResultFor[types.TaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
 					Text: responseText,
@@ -391,7 +393,7 @@ func getTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.GetTaskP
 
 		// Validate required fields
 		if strings.TrimSpace(args.ID) == "" {
-			return nil, NewMCPError("MISSING_ID", "Task ID is required to get a task", nil)
+			return nil, types.NewMCPError("MISSING_ID", "Task ID is required to get a task", nil)
 		}
 
 		// Get task
@@ -409,7 +411,7 @@ func getTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.GetTaskP
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[TaskResponse]{
+		return &mcp.CallToolResultFor[types.TaskResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
 					Text: responseText,
@@ -650,3 +652,239 @@ func taskToResponsePtr(task models.Task) *types.TaskResponse {
 	response := taskToResponse(task)
 	return &response
 }
+
+// clearTasksHandler clears tasks with safety features and filtering options
+func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ClearTasksParams, types.ClearTasksResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ClearTasksParams]) (*mcp.CallToolResultFor[types.ClearTasksResponse], error) {
+		args := params.Arguments
+		startTime := time.Now()
+		
+		logToolCall("clear-tasks", args)
+
+		// Build filter based on parameters
+		filterFn := func(task models.Task) bool {
+			// If --all is specified, match everything
+			if args.All {
+				return true
+			}
+
+			// If --completed is specified or no other filters, match completed tasks
+			if args.Completed || (args.Status == "" && args.Priority == "") {
+				return task.Status == models.StatusDone
+			}
+
+			// Check status filter
+			if args.Status != "" {
+				statusList := strings.Split(strings.ToLower(args.Status), ",")
+				statusMatch := false
+				for _, status := range statusList {
+					status = strings.TrimSpace(status)
+					switch status {
+					case "todo":
+						if task.Status == models.StatusTodo {
+							statusMatch = true
+						}
+					case "doing":
+						if task.Status == models.StatusDoing {
+							statusMatch = true
+						}
+					case "review":
+						if task.Status == models.StatusReview {
+							statusMatch = true
+						}
+					case "done":
+						if task.Status == models.StatusDone {
+							statusMatch = true
+						}
+					}
+				}
+				if !statusMatch {
+					return false
+				}
+			}
+
+			// Check priority filter
+			if args.Priority != "" {
+				priorityList := strings.Split(strings.ToLower(args.Priority), ",")
+				priorityMatch := false
+				for _, priority := range priorityList {
+					priority = strings.TrimSpace(priority)
+					switch priority {
+					case "low":
+						if task.Priority == models.PriorityLow {
+							priorityMatch = true
+						}
+					case "medium":
+						if task.Priority == models.PriorityMedium {
+							priorityMatch = true
+						}
+					case "high":
+						if task.Priority == models.PriorityHigh {
+							priorityMatch = true
+						}
+					case "urgent":
+						if task.Priority == models.PriorityUrgent {
+							priorityMatch = true
+						}
+					}
+				}
+				if !priorityMatch {
+					return false
+				}
+			}
+
+			return true
+		}
+
+		// Get tasks to be cleared
+		tasksToDelete, err := taskStore.ListTasks(filterFn, nil)
+		if err != nil {
+			return nil, WrapStoreError(err, "list", "clear-candidates")
+		}
+
+		if len(tasksToDelete) == 0 {
+			response := types.ClearTasksResponse{
+				Preview:     args.PreviewOnly,
+				Message:     "No tasks match the clearing criteria",
+				ExecutionMs: time.Since(startTime).Milliseconds(),
+				Criteria: map[string]interface{}{
+					"status":   args.Status,
+					"priority": args.Priority,
+					"all":      args.All,
+				},
+			}
+			return &mcp.CallToolResultFor[types.ClearTasksResponse]{
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: "No tasks match the clearing criteria"},
+				},
+				StructuredContent: response,
+			}, nil
+		}
+
+		// Convert tasks to response format
+		taskResponses := make([]types.TaskResponse, len(tasksToDelete))
+		for i, task := range tasksToDelete {
+			taskResponses[i] = taskToResponse(task)
+		}
+
+		// If preview only, return the tasks that would be cleared
+		if args.PreviewOnly {
+			response := types.ClearTasksResponse{
+				Preview:     true,
+				Tasks:       taskResponses,
+				Message:     fmt.Sprintf("Preview: %d tasks would be cleared", len(tasksToDelete)),
+				ExecutionMs: time.Since(startTime).Milliseconds(),
+				Criteria: map[string]interface{}{
+					"status":   args.Status,
+					"priority": args.Priority,
+					"all":      args.All,
+				},
+			}
+			return &mcp.CallToolResultFor[types.ClearTasksResponse]{
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Preview: %d tasks would be cleared", len(tasksToDelete))},
+				},
+				StructuredContent: response,
+			}, nil
+		}
+
+		// Safety check for dangerous operations
+		if args.All && !args.Force {
+			return nil, types.NewMCPError("CONFIRMATION_REQUIRED", "Clearing all tasks requires confirmation. Use 'force: true' or run with --force flag", map[string]interface{}{
+				"task_count": len(tasksToDelete),
+				"suggestion": "Use 'preview_only: true' first to see what would be cleared",
+			})
+		}
+
+		// Create backup unless disabled
+		var backupFile string
+		if !args.NoBackup {
+			cfg := GetConfig()
+			backupDir := filepath.Join(cfg.Project.RootDir, "backups")
+			
+			if err := os.MkdirAll(backupDir, 0755); err == nil {
+				timestamp := time.Now().Format("2006-01-02_15-04-05")
+				backupFile = filepath.Join(backupDir, fmt.Sprintf("clear_backup_%s.json", timestamp))
+				
+				backupData := struct {
+					Timestamp time.Time     `json:"timestamp"`
+					Operation string        `json:"operation"`
+					TaskCount int           `json:"task_count"`
+					Tasks     []models.Task `json:"tasks"`
+				}{
+					Timestamp: time.Now(),
+					Operation: "clear",
+					TaskCount: len(tasksToDelete),
+					Tasks:     tasksToDelete,
+				}
+
+				if backupErr := writeJSONFile(backupFile, backupData); backupErr != nil {
+					logError(fmt.Errorf("failed to create backup: %w", backupErr))
+					backupFile = ""
+				}
+			}
+		}
+
+		// Perform the clearing
+		cleared := 0
+		failed := 0
+		for _, task := range tasksToDelete {
+			if err := taskStore.DeleteTask(task.ID); err != nil {
+				failed++
+				logError(fmt.Errorf("failed to clear task '%s': %w", task.Title, err))
+			} else {
+				cleared++
+			}
+		}
+
+		// Clear current task if it was deleted
+		currentTaskID := GetCurrentTask()
+		if currentTaskID != "" {
+			for _, task := range tasksToDelete {
+				if task.ID == currentTaskID {
+					if err := ClearCurrentTask(); err != nil {
+						logError(fmt.Errorf("could not clear current task reference: %w", err))
+					}
+					break
+				}
+			}
+		}
+
+		message := fmt.Sprintf("Successfully cleared %d tasks", cleared)
+		if failed > 0 {
+			message += fmt.Sprintf(" (%d failed)", failed)
+		}
+		if backupFile != "" {
+			message += fmt.Sprintf(" (backup created: %s)", filepath.Base(backupFile))
+		}
+
+		response := types.ClearTasksResponse{
+			Preview:       false,
+			TasksCleared:  cleared,
+			TasksFailed:   failed,
+			BackupCreated: backupFile,
+			Message:       message,
+			ExecutionMs:   time.Since(startTime).Milliseconds(),
+			Criteria: map[string]interface{}{
+				"status":   args.Status,
+				"priority": args.Priority,
+				"all":      args.All,
+			},
+		}
+
+		// Get context for enriched response
+		context, _ := BuildTaskContext(taskStore)
+		responseText := message
+		if context != nil {
+			responseText = EnrichToolResponse(responseText, context)
+		}
+
+		return &mcp.CallToolResultFor[types.ClearTasksResponse]{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: responseText},
+			},
+			StructuredContent: response,
+		}, nil
+	}
+}
+

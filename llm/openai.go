@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/josephgoksu/taskwing.app/types"
 )
 
 // OpenAIProvider implements the Provider interface for OpenAI LLMs.
@@ -69,7 +71,7 @@ type OpenAIUsage struct {
 // OpenAITaskResponseWrapper is used to unmarshal the JSON object returned by OpenAI
 // when response_format is json_object and the prompt requests a list of tasks.
 type OpenAITaskResponseWrapper struct {
-	Tasks []TaskOutput `json:"tasks"`
+	Tasks []types.TaskOutput `json:"tasks"`
 }
 
 // openAIEstimationData is used to unmarshal the JSON object returned by OpenAI
@@ -83,7 +85,7 @@ const openAIAPIURL = "https://api.openai.com/v1/chat/completions"
 
 // GenerateTasks for OpenAIProvider.
 // TODO: Implement the actual API call and error handling.
-func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error) {
+func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.TaskOutput, error) {
 	if apiKey == "" {
 		apiKey = p.apiKey // Use provider's key if per-call key is not given
 	}
@@ -168,12 +170,12 @@ func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdCon
 }
 
 // EstimateTaskParameters for OpenAIProvider.
-func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error) {
+func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (types.EstimationOutput, error) {
 	if apiKey == "" {
 		apiKey = p.apiKey // Use provider's key if per-call key is not given
 	}
 	if apiKey == "" {
-		return EstimationOutput{}, fmt.Errorf("OpenAI API key is not set for estimation")
+		return types.EstimationOutput{}, fmt.Errorf("OpenAI API key is not set for estimation")
 	}
 
 	userMessage := fmt.Sprintf("PRD Content:\n---\n%s\n---", prdContent)
@@ -193,12 +195,12 @@ func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPromp
 
 	payloadBytes, err := json.Marshal(requestPayload)
 	if err != nil {
-		return EstimationOutput{}, fmt.Errorf("failed to marshal OpenAI estimation request payload: %w", err)
+		return types.EstimationOutput{}, fmt.Errorf("failed to marshal OpenAI estimation request payload: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
-		return EstimationOutput{}, fmt.Errorf("failed to create OpenAI estimation request: %w", err)
+		return types.EstimationOutput{}, fmt.Errorf("failed to create OpenAI estimation request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -206,27 +208,27 @@ func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPromp
 	client := &http.Client{Timeout: 60 * time.Second} // Shorter timeout for estimation
 	resp, err := client.Do(req)
 	if err != nil {
-		return EstimationOutput{}, fmt.Errorf("failed to send estimation request to OpenAI: %w", err)
+		return types.EstimationOutput{}, fmt.Errorf("failed to send estimation request to OpenAI: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		errorBodyBytes, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
-			return EstimationOutput{}, fmt.Errorf("OpenAI estimation API request failed with status %s (and failed to read error body: %v)", resp.Status, readErr)
+			return types.EstimationOutput{}, fmt.Errorf("OpenAI estimation API request failed with status %s (and failed to read error body: %v)", resp.Status, readErr)
 		}
-		return EstimationOutput{}, fmt.Errorf("OpenAI estimation API request failed with status %s: %s", resp.Status, string(errorBodyBytes))
+		return types.EstimationOutput{}, fmt.Errorf("OpenAI estimation API request failed with status %s: %s", resp.Status, string(errorBodyBytes))
 	}
 
 	var responsePayload OpenAIResponsePayload
 	if err := json.NewDecoder(resp.Body).Decode(&responsePayload); err != nil {
-		return EstimationOutput{}, fmt.Errorf("failed to decode OpenAI estimation response: %w", err)
+		return types.EstimationOutput{}, fmt.Errorf("failed to decode OpenAI estimation response: %w", err)
 	}
 
 	if len(responsePayload.Choices) == 0 {
 		fullResponseBytes, _ := json.Marshal(responsePayload)
 		fmt.Printf("OpenAI estimation response had no choices. Full response: %s\n", string(fullResponseBytes))
-		return EstimationOutput{}, fmt.Errorf("OpenAI estimation response contained no choices")
+		return types.EstimationOutput{}, fmt.Errorf("OpenAI estimation response contained no choices")
 	}
 
 	fmt.Printf("DEBUG OpenAI Estimation Response - First Choice: %+v\n", responsePayload.Choices[0])
@@ -237,10 +239,10 @@ func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPromp
 
 	var estimationData openAIEstimationData
 	if err := json.Unmarshal([]byte(content), &estimationData); err != nil {
-		return EstimationOutput{}, fmt.Errorf("failed to unmarshal estimation JSON from OpenAI response content: %w. Content was: [%s]", err, content)
+		return types.EstimationOutput{}, fmt.Errorf("failed to unmarshal estimation JSON from OpenAI response content: %w. Content was: [%s]", err, content)
 	}
 
-	return EstimationOutput{
+	return types.EstimationOutput{
 		EstimatedTaskCount:  estimationData.EstimatedTaskCount,
 		EstimatedComplexity: estimationData.EstimatedComplexity,
 	}, nil

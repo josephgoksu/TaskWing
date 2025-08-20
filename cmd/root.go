@@ -81,7 +81,7 @@ func GetTaskFilePath() string {
 	return filepath.Join(config.Project.RootDir, config.Project.TasksDir, config.Data.File)
 }
 
-// GetStore initializes and returns the task store using the unified AppConfig.
+// GetStore initializes and returns the task store using the unified types.AppConfig.
 func GetStore() (store.TaskStore, error) {
 	s := store.NewFileTaskStore()
 	config := GetConfig()

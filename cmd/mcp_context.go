@@ -14,10 +14,6 @@ import (
 	"github.com/josephgoksu/taskwing.app/types"
 )
 
-// Type aliases for backward compatibility
-type TaskContext = types.TaskContext
-type ActivityEntry = types.ActivityEntry
-type ProjectMetrics = types.ProjectMetrics
 
 // BuildTaskContext creates a comprehensive context for AI tools
 func BuildTaskContext(taskStore store.TaskStore) (*types.TaskContext, error) {

@@ -24,7 +24,7 @@ func findTaskByTitleHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.
 		logToolCall("find-task-by-title", args)
 
 		if strings.TrimSpace(args.Title) == "" {
-			return nil, NewMCPError("MISSING_TITLE", "Title is required for task search", nil)
+			return nil, types.NewMCPError("MISSING_TITLE", "Title is required for task search", nil)
 		}
 
 		// Set default limit
@@ -80,7 +80,7 @@ func resolveTaskReferenceHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[t
 		logToolCall("resolve-task-reference", args)
 
 		if strings.TrimSpace(args.Reference) == "" {
-			return nil, NewMCPError("MISSING_REFERENCE", "Reference is required for task resolution", nil)
+			return nil, types.NewMCPError("MISSING_REFERENCE", "Reference is required for task resolution", nil)
 		}
 
 		reference := strings.TrimSpace(args.Reference)
@@ -167,7 +167,7 @@ func taskAutocompleteHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		logToolCall("task-autocomplete", args)
 
 		if strings.TrimSpace(args.Input) == "" {
-			return nil, NewMCPError("MISSING_INPUT", "Input is required for autocomplete", nil)
+			return nil, types.NewMCPError("MISSING_INPUT", "Input is required for autocomplete", nil)
 		}
 
 		// Set default limit
@@ -403,19 +403,19 @@ func RegisterTaskResolutionTools(server *mcp.Server, taskStore store.TaskStore) 
 	// Find task by title tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "find-task-by-title",
-		Description: "🔍 ENHANCED: Find tasks using fuzzy title matching. Handles typos and partial matches to eliminate bash fallbacks.",
+		Description: "🔍 BASIC: Find tasks using fuzzy title matching. NOTE: Use 'find-task' for smarter resolution with partial IDs, context awareness, and better error messages.",
 	}, findTaskByTitleHandler(taskStore))
 
 	// Resolve task reference tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "resolve-task-reference",
-		Description: "🎯 SMART: Resolve task references from partial IDs, titles, or descriptions. Eliminates 'task not found' errors.",
+		Description: "🎯 BASIC: Resolve task references from partial IDs, titles, or descriptions. NOTE: Use 'find-task' for intelligent suggestions, current task awareness, and actionable error messages.",
 	}, resolveTaskReferenceHandler(taskStore))
 
 	// Task autocomplete tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "task-autocomplete",
-		Description: "⚡ PREDICTIVE: Get intelligent task suggestions based on partial input and context for faster task management.",
+		Description: "⚡ BASIC: Get task suggestions based on partial input. NOTE: Use 'task-autocomplete-smart' for context-aware suggestions, relevance scoring, and active task prioritization.",
 	}, taskAutocompleteHandler(taskStore))
 
 	return nil

@@ -17,16 +17,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Type aliases for backward compatibility
-type BulkTaskParams = types.BulkTaskParams
-type TaskSearchParams = types.TaskSearchParams
-type TaskCreationRequest = types.TaskCreationRequest
-type BatchCreateTasksParams = types.BatchCreateTasksParams
-type BatchCreateTasksResponse = types.BatchCreateTasksResponse
-type TaskSummaryResponse = types.TaskSummaryResponse
-type BulkOperationResponse = types.BulkOperationResponse
-type SuggestPatternParams = types.SuggestPatternParams
-type SuggestPatternResponse = types.SuggestPatternResponse
 
 // bulkTaskHandler handles bulk operations on multiple tasks
 func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTaskParams, types.BulkOperationResponse] {
@@ -34,7 +24,7 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTas
 		args := params.Arguments
 
 		if len(args.TaskIDs) == 0 {
-			return nil, NewMCPError("NO_TASKS_SPECIFIED", "No task IDs provided for bulk operation", nil)
+			return nil, types.NewMCPError("NO_TASKS_SPECIFIED", "No task IDs provided for bulk operation", nil)
 		}
 
 		response := types.BulkOperationResponse{
@@ -84,7 +74,7 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTas
 			return nil, fmt.Errorf("bulk %s operation failed: %s", args.Action, errorMsg)
 		}
 
-		return &mcp.CallToolResultFor[BulkOperationResponse]{
+		return &mcp.CallToolResultFor[types.BulkOperationResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: resultText},
 			},
@@ -161,7 +151,7 @@ func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, 
 			response.Summary += fmt.Sprintf(". Project health: %s", context.ProjectHealth)
 		}
 
-		return &mcp.CallToolResultFor[TaskSummaryResponse]{
+		return &mcp.CallToolResultFor[types.TaskSummaryResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: response.Summary},
 			},
@@ -176,7 +166,7 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		args := params.Arguments
 
 		if len(args.Tasks) == 0 {
-			return nil, NewMCPError("NO_TASKS_SPECIFIED", "No tasks provided for batch creation", nil)
+			return nil, types.NewMCPError("NO_TASKS_SPECIFIED", "No tasks provided for batch creation", nil)
 		}
 
 		// Pre-validate placeholder IDs but allow TempIDs for parent-child relationships
@@ -274,7 +264,7 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 			return nil, fmt.Errorf("batch task creation failed: %s", errorMsg)
 		}
 
-		return &mcp.CallToolResultFor[BatchCreateTasksResponse]{
+		return &mcp.CallToolResultFor[types.BatchCreateTasksResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: resultText},
 			},
@@ -295,7 +285,7 @@ func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.T
 		if args.DateFrom != "" {
 			dateFrom, err = time.Parse("2006-01-02", args.DateFrom)
 			if err != nil {
-				return nil, NewMCPError("INVALID_DATE", "Invalid date_from format", map[string]interface{}{
+				return nil, types.NewMCPError("INVALID_DATE", "Invalid date_from format", map[string]interface{}{
 					"expected": "YYYY-MM-DD",
 					"provided": args.DateFrom,
 				})
@@ -305,7 +295,7 @@ func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.T
 		if args.DateTo != "" {
 			dateTo, err = time.Parse("2006-01-02", args.DateTo)
 			if err != nil {
-				return nil, NewMCPError("INVALID_DATE", "Invalid date_to format", map[string]interface{}{
+				return nil, types.NewMCPError("INVALID_DATE", "Invalid date_to format", map[string]interface{}{
 					"expected": "YYYY-MM-DD",
 					"provided": args.DateTo,
 				})
@@ -388,7 +378,7 @@ func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.T
 			Count: len(taskResponses),
 		}
 
-		return &mcp.CallToolResultFor[TaskListResponse]{
+		return &mcp.CallToolResultFor[types.TaskListResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{
 					Text: fmt.Sprintf("Found %d tasks matching search criteria", len(tasks)),
@@ -425,7 +415,7 @@ func suggestPatternHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.S
 		args := params.Arguments
 		
 		if args.Description == "" {
-			return nil, NewMCPError("DESCRIPTION_REQUIRED", "Description is required to suggest patterns", nil)
+			return nil, types.NewMCPError("DESCRIPTION_REQUIRED", "Description is required to suggest patterns", nil)
 		}
 		
 		cfg := GetConfig()
@@ -443,7 +433,7 @@ func suggestPatternHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.S
 				},
 			}
 			
-			return &mcp.CallToolResultFor[SuggestPatternResponse]{
+			return &mcp.CallToolResultFor[types.SuggestPatternResponse]{
 				Content: []mcp.Content{
 					&mcp.TextContent{Text: response.Suggestions},
 				},
@@ -461,7 +451,7 @@ func suggestPatternHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.S
 				},
 			}
 			
-			return &mcp.CallToolResultFor[SuggestPatternResponse]{
+			return &mcp.CallToolResultFor[types.SuggestPatternResponse]{
 				Content: []mcp.Content{
 					&mcp.TextContent{Text: response.Suggestions},
 				},
@@ -511,7 +501,7 @@ func suggestPatternHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.S
 		
 		logInfo(fmt.Sprintf("Pattern suggestion for '%s': %d matches found", args.Description, len(suggestions)))
 		
-		return &mcp.CallToolResultFor[SuggestPatternResponse]{
+		return &mcp.CallToolResultFor[types.SuggestPatternResponse]{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: response.Suggestions},
 			},

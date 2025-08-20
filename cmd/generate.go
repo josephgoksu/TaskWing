@@ -4,6 +4,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"github.com/josephgoksu/taskwing.app/types"
 	"context"
 	"encoding/json" // For pretty printing task output for now
 	"errors"
@@ -121,7 +122,7 @@ llm:
 		cmdLLMCfg := appCfg.LLM // This is cmd.LLMConfig
 
 		// Prepare llm.LLMConfig from cmd.LLMConfig, resolving API keys from ENV if necessary.
-		resolvedLLMConfig := llm.LLMConfig{
+		resolvedLLMConfig := types.LLMConfig{
 			Provider:                   cmdLLMCfg.Provider,
 			ModelName:                  cmdLLMCfg.ModelName,
 			APIKey:                     cmdLLMCfg.APIKey,    // Viper already handles ENV overlay for this field from cmd.LLMConfig
@@ -405,7 +406,7 @@ type taskRelationshipMap struct {
 
 // resolveAndBuildTaskCandidates processes LLM outputs into a flat list of models.Task candidates
 // and a map representing their relationships using temporary IDs.
-func resolveAndBuildTaskCandidates(llmOutputs []llm.TaskOutput) ([]models.Task, taskRelationshipMap, error) {
+func resolveAndBuildTaskCandidates(llmOutputs []types.TaskOutput) ([]models.Task, taskRelationshipMap, error) {
 	relMap := taskRelationshipMap{
 		tempParentToChildren: make(map[string][]string),
 		tempChildToParent:    make(map[string]string),
@@ -417,8 +418,8 @@ func resolveAndBuildTaskCandidates(llmOutputs []llm.TaskOutput) ([]models.Task, 
 	tempIDCounter := 0
 
 	// Recursive function to flatten tasks and initial relationships
-	var flatten func(outputs []llm.TaskOutput, parentTempID string) error
-	flatten = func(outputs []llm.TaskOutput, parentTempID string) error {
+	var flatten func(outputs []types.TaskOutput, parentTempID string) error
+	flatten = func(outputs []types.TaskOutput, parentTempID string) error {
 		for _, llmTask := range outputs {
 			tempIDCounter++
 			currentTempID := fmt.Sprintf("%s%d", tempIDPrefix, tempIDCounter)

@@ -91,6 +91,11 @@ func runMCPServer(ctx context.Context) error {
 		return fmt.Errorf("failed to register workflow integration tools: %w", err)
 	}
 
+	// Register intelligent MCP tools with natural language support and smart matching
+	if err := RegisterIntelligentMCPTools(server, taskStore); err != nil {
+		return fmt.Errorf("failed to register intelligent MCP tools: %w", err)
+	}
+
 	// Register MCP resources
 	if err := registerMCPResources(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register MCP resources: %w", err)
@@ -161,6 +166,12 @@ func registerMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
 		Name:        "clear-current-task",
 		Description: "🎯 PREFERRED: Clear TaskWing current task when switching contexts. Use this to reset focus when changing work areas.",
 	}, clearCurrentTaskHandler(taskStore))
+
+	// Clear tasks tool for bulk clearing with safety features
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clear-tasks",
+		Description: "🧹 BULK: Clear tasks from the board with safety features and flexible filtering. Supports clearing by status, priority, or all tasks with confirmation and automatic backup creation.",
+	}, clearTasksHandler(taskStore))
 
 	return nil
 }
@@ -237,44 +248,6 @@ func registerMCPPrompts(server *mcp.Server, taskStore store.TaskStore) error {
 	return nil
 }
 
-// Type aliases for backward compatibility and convenience
-type AddTaskParams = types.AddTaskParams
-type ListTasksParams = types.ListTasksParams
-type UpdateTaskParams = types.UpdateTaskParams
-type DeleteTaskParams = types.DeleteTaskParams
-type MarkDoneParams = types.MarkDoneParams
-type GetTaskParams = types.GetTaskParams
-type TaskResponse = types.TaskResponse
-type TaskListResponse = types.TaskListResponse
-type DeleteTaskResponse = types.DeleteTaskResponse
-
-// Task resolution type aliases
-type FindTaskByTitleParams = types.FindTaskByTitleParams
-type ResolveTaskReferenceParams = types.ResolveTaskReferenceParams
-type TaskAutocompleteParams = types.TaskAutocompleteParams
-type FindTaskByTitleResponse = types.FindTaskByTitleResponse
-type ResolveTaskReferenceResponse = types.ResolveTaskReferenceResponse
-type TaskAutocompleteResponse = types.TaskAutocompleteResponse
-type TaskMatch = types.TaskMatch
-
-// JSON processing type aliases
-type FilterTasksParams = types.FilterTasksParams
-type ExtractTaskIDsParams = types.ExtractTaskIDsParams
-type TaskAnalyticsParams = types.TaskAnalyticsParams
-type FilterTasksResponse = types.FilterTasksResponse
-type ExtractTaskIDsResponse = types.ExtractTaskIDsResponse
-type TaskAnalyticsResponse = types.TaskAnalyticsResponse
-
-// Workflow integration type aliases
-type SmartTaskTransitionParams = types.SmartTaskTransitionParams
-type WorkflowStatusParams = types.WorkflowStatusParams
-type DependencyHealthParams = types.DependencyHealthParams
-type SmartTaskTransitionResponse = types.SmartTaskTransitionResponse
-type WorkflowStatusResponse = types.WorkflowStatusResponse
-type DependencyHealthResponse = types.DependencyHealthResponse
-type TaskTransition = types.TaskTransition
-type ProjectPhase = types.ProjectPhase
-type DependencyIssue = types.DependencyIssue
 
 func taskToResponse(task models.Task) types.TaskResponse {
 	var completedAt *string

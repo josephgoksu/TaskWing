@@ -2,12 +2,13 @@ package llm
 
 import (
 	"fmt"
-	// Ensure no import from "github.com/josephgoksu/taskwing.app/cmd"
+
+	"github.com/josephgoksu/taskwing.app/types"
 )
 
 // NewProvider is a factory function that returns an instance of an llm.Provider
 // based on the provided LLM configuration.
-func NewProvider(config *LLMConfig) (Provider, error) {
+func NewProvider(config *types.LLMConfig) (Provider, error) {
 	if config == nil {
 		return nil, fmt.Errorf("LLM configuration cannot be nil")
 	}

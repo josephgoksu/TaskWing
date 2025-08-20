@@ -4,6 +4,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"github.com/josephgoksu/taskwing.app/types"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -265,7 +266,7 @@ func collectUserInsights() UserInsights {
 	return insights
 }
 
-func saveRetrospective(data RetrospectiveData, cfg *AppConfig) error {
+func saveRetrospective(data RetrospectiveData, cfg *types.AppConfig) error {
 	// Create retrospectives directory
 	retroDir := filepath.Join(cfg.Project.RootDir, "knowledge", "retrospectives")
 	if err := os.MkdirAll(retroDir, 0755); err != nil {
@@ -410,7 +411,7 @@ func generateRetrospectiveMarkdown(data RetrospectiveData) string {
 	return content.String()
 }
 
-func updateKnowledgeBase(data RetrospectiveData, cfg *AppConfig) error {
+func updateKnowledgeBase(data RetrospectiveData, cfg *types.AppConfig) error {
 	// This would update the main KNOWLEDGE.md file with insights from this retrospective
 	// For now, we'll create a simple update - in a full implementation,
 	// this would parse and update the existing knowledge base
@@ -434,7 +435,7 @@ func updateKnowledgeBase(data RetrospectiveData, cfg *AppConfig) error {
 	return os.WriteFile(knowledgePath, []byte(updatedContent), 0644)
 }
 
-func getRetrospectiveFilePath(data RetrospectiveData, cfg *AppConfig) string {
+func getRetrospectiveFilePath(data RetrospectiveData, cfg *types.AppConfig) string {
 	return filepath.Join(cfg.Project.RootDir, "knowledge", "retrospectives",
 		fmt.Sprintf("%s_%s.md", 
 			data.GeneratedAt.Format("2006-01-02"),

@@ -24,7 +24,7 @@ or configuration files specified explicitly via the --config flag if they are ou
 the project's root directory.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Ensure configuration is loaded to get project paths
-		// initConfig() is called by cobra.OnInitialize in root.go, so GlobalAppConfig should be populated.
+		// initConfig() is called by cobra.OnInitialize in root.go, so Globaltypes.AppConfig should be populated.
 		cfg := GetConfig()
 		projectRootDir := cfg.Project.RootDir
 

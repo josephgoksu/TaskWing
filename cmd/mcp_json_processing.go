@@ -26,7 +26,7 @@ func filterTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Filt
 		startTime := time.Now()
 
 		if strings.TrimSpace(args.Filter) == "" && strings.TrimSpace(args.Expression) == "" {
-			return nil, NewMCPError("MISSING_FILTER", "Either filter or expression is required", nil)
+			return nil, types.NewMCPError("MISSING_FILTER", "Either filter or expression is required", nil)
 		}
 
 		// Get all tasks
@@ -47,7 +47,7 @@ func filterTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Filt
 		}
 
 		if err != nil {
-			return nil, NewMCPError("FILTER_ERROR", fmt.Sprintf("Filter execution failed: %v", err), nil)
+			return nil, types.NewMCPError("FILTER_ERROR", fmt.Sprintf("Filter execution failed: %v", err), nil)
 		}
 
 		// Apply limit
@@ -515,7 +515,7 @@ func RegisterJSONProcessingTools(server *mcp.Server, taskStore store.TaskStore) 
 	// Filter tasks tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "filter-tasks",
-		Description: "🔍 JSON REPLACEMENT: Advanced task filtering with JSONPath expressions. Replaces jq usage for complex filtering operations.",
+		Description: "🔍 Advanced task filtering with natural language queries, JSONPath expressions, and fuzzy matching. Supports complex queries like 'high priority unfinished tasks' or 'status:pending priority:urgent'.",
 	}, filterTasksHandler(taskStore))
 
 	// Extract task IDs tool

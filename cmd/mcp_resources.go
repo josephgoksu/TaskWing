@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/taskwing.app/store"
+	"github.com/josephgoksu/taskwing.app/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -25,7 +26,7 @@ func tasksResourceHandler(taskStore store.TaskStore) mcp.ResourceHandler {
 		}
 
 		// Convert to response format
-		taskResponses := make([]TaskResponse, len(tasks))
+		taskResponses := make([]types.TaskResponse, len(tasks))
 		for i, task := range tasks {
 			taskResponses[i] = taskToResponse(task)
 		}
@@ -161,7 +162,7 @@ func knowledgeResourceHandler() mcp.ResourceHandler {
 
 // Helper functions for archive resource
 
-func getArchiveIndex(cfg *AppConfig) (interface{}, string) {
+func getArchiveIndex(cfg *types.AppConfig) (interface{}, string) {
 	indexPath := filepath.Join(cfg.Project.RootDir, "archive", "index.json")
 	
 	data, err := os.ReadFile(indexPath)
@@ -194,7 +195,7 @@ func getArchiveIndex(cfg *AppConfig) (interface{}, string) {
 	return index, fmt.Sprintf("archive index with %v projects", index["statistics"])
 }
 
-func querySpecificArchive(uri string, cfg *AppConfig) (interface{}, string) {
+func querySpecificArchive(uri string, cfg *types.AppConfig) (interface{}, string) {
 	// Parse query parameters from URI
 	// For now, return a specific archive file
 	// In full implementation, would parse ?project=name&date=date parameters
@@ -232,7 +233,7 @@ func querySpecificArchive(uri string, cfg *AppConfig) (interface{}, string) {
 
 // Helper functions for knowledge resource
 
-func getCompleteKnowledgeBase(cfg *AppConfig) (interface{}, string) {
+func getCompleteKnowledgeBase(cfg *types.AppConfig) (interface{}, string) {
 	knowledgeBase := map[string]interface{}{
 		"version": "1.0",
 		"last_updated": "2025-08-19",
@@ -268,7 +269,7 @@ func getCompleteKnowledgeBase(cfg *AppConfig) (interface{}, string) {
 	return knowledgeBase, "complete knowledge base"
 }
 
-func querySpecificKnowledge(uri string, cfg *AppConfig) (interface{}, string) {
+func querySpecificKnowledge(uri string, cfg *types.AppConfig) (interface{}, string) {
 	// Parse query parameters - for now return patterns specifically
 	patterns, err := loadPatterns(cfg)
 	if err != nil {
@@ -281,7 +282,7 @@ func querySpecificKnowledge(uri string, cfg *AppConfig) (interface{}, string) {
 	}, "task patterns"
 }
 
-func loadPatterns(cfg *AppConfig) ([]interface{}, error) {
+func loadPatterns(cfg *types.AppConfig) ([]interface{}, error) {
 	patternsDir := filepath.Join(cfg.Project.RootDir, "knowledge", "patterns")
 	
 	files, err := os.ReadDir(patternsDir)
@@ -310,7 +311,7 @@ func loadPatterns(cfg *AppConfig) ([]interface{}, error) {
 	return patterns, nil
 }
 
-func loadRetrospectives(cfg *AppConfig) ([]interface{}, error) {
+func loadRetrospectives(cfg *types.AppConfig) ([]interface{}, error) {
 	retrospectivesDir := filepath.Join(cfg.Project.RootDir, "knowledge", "retrospectives")
 	
 	files, err := os.ReadDir(retrospectivesDir)
@@ -332,7 +333,7 @@ func loadRetrospectives(cfg *AppConfig) ([]interface{}, error) {
 	return retrospectives, nil
 }
 
-func loadDecisions(cfg *AppConfig) ([]interface{}, error) {
+func loadDecisions(cfg *types.AppConfig) ([]interface{}, error) {
 	decisionsDir := filepath.Join(cfg.Project.RootDir, "knowledge", "decisions")
 	
 	files, err := os.ReadDir(decisionsDir)

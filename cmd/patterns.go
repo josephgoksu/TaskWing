@@ -4,6 +4,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"github.com/josephgoksu/taskwing.app/types"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -380,7 +381,7 @@ func runUpdatePatterns(cmd *cobra.Command, args []string) {
 
 // Helper functions
 
-func loadPatternLibrary(cfg *AppConfig) (*PatternLibrary, error) {
+func loadPatternLibrary(cfg *types.AppConfig) (*PatternLibrary, error) {
 	libPath := filepath.Join(cfg.Project.RootDir, "archive", "patterns.json")
 	
 	data, err := os.ReadFile(libPath)
@@ -396,7 +397,7 @@ func loadPatternLibrary(cfg *AppConfig) (*PatternLibrary, error) {
 	return &library, nil
 }
 
-func savePatternLibrary(library *PatternLibrary, cfg *AppConfig) error {
+func savePatternLibrary(library *PatternLibrary, cfg *types.AppConfig) error {
 	libPath := filepath.Join(cfg.Project.RootDir, "archive", "patterns.json")
 	
 	// Ensure directory exists

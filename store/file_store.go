@@ -435,7 +435,7 @@ func (s *FileTaskStore) UpdateTask(id string, updates map[string]interface{}) (m
 		// Use field name mapping to get correct struct field name
 		fieldName, ok := fieldNameMapping[key]
 		if !ok {
-			// Fallback to capitalizing first letter for backward compatibility
+			// Use exact field name from struct
 			fieldName = strings.Title(key)
 		}
 		

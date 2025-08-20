@@ -6,23 +6,17 @@ import (
 	"github.com/josephgoksu/taskwing.app/types"
 )
 
-// LLMConfig is an alias for the unified types.LLMConfig
-type LLMConfig = types.LLMConfig
-
-// Type aliases for LLM types
-type TaskOutput = types.TaskOutput
-type EstimationOutput = types.EstimationOutput
 
 // Provider defines the interface for interacting with different LLM providers
 // to generate tasks from a document.
 type Provider interface {
 	// GenerateTasks takes a system prompt, the content of a document (e.g., PRD),
 	// model parameters, and returns a list of TaskOutput objects or an error.
-	GenerateTasks(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]TaskOutput, error)
+	GenerateTasks(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.TaskOutput, error)
 
 	// EstimateTaskParameters takes a system prompt, the content of a document and returns an estimation
 	// of task count and complexity. This is used to dynamically adjust parameters for GenerateTasks.
-	EstimateTaskParameters(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (EstimationOutput, error)
+	EstimateTaskParameters(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (types.EstimationOutput, error)
 
 	// ImprovePRD takes a system prompt, the content of a PRD, sends it to an LLM for refinement,
 	// and returns the improved document content as a string.
