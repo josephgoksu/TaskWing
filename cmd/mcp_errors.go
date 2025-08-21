@@ -20,7 +20,6 @@ var (
 	ErrResourceConflict   = errors.New("resource conflict")
 )
 
-
 // ValidateTaskInput validates common task input parameters
 func ValidateTaskInput(title, priority, status string) error {
 	// Title validation
@@ -90,8 +89,8 @@ func ValidateAndSuggestTaskInput(title, priority, status string, availableStatus
 		trimmedTitle := strings.TrimSpace(title)
 		if len(trimmedTitle) < 3 {
 			return CreateUserFriendlyError("INVALID_TITLE", "Task title must be at least 3 characters long", map[string]interface{}{
-				"field": "title",
-				"value": title,
+				"field":      "title",
+				"value":      title,
 				"min_length": 3,
 				"suggestions": []string{
 					"Make titles descriptive: 'Fix login bug' instead of 'Fix'",
@@ -102,10 +101,10 @@ func ValidateAndSuggestTaskInput(title, priority, status string, availableStatus
 		}
 		if len(trimmedTitle) > 255 {
 			return CreateUserFriendlyError("TITLE_TOO_LONG", "Task title must be 255 characters or less", map[string]interface{}{
-				"field": "title",
+				"field":          "title",
 				"current_length": len(trimmedTitle),
-				"max_length": 255,
-				"suggestion": "Consider moving detailed information to the description field",
+				"max_length":     255,
+				"suggestion":     "Consider moving detailed information to the description field",
 			})
 		}
 	}
@@ -141,9 +140,9 @@ func ValidateAndSuggestTaskInput(title, priority, status string, availableStatus
 		}
 		if !validStatuses[strings.ToLower(status)] {
 			errorContext := map[string]interface{}{
-				"field": "status",
-				"value": status,
-				"core_statuses": []string{"todo", "doing", "review", "done"},
+				"field":           "status",
+				"value":           status,
+				"core_statuses":   []string{"todo", "doing", "review", "done"},
 				"legacy_statuses": []string{"pending", "in-progress", "completed", "cancelled", "on-hold", "blocked", "needs-review"},
 			}
 
@@ -246,8 +245,8 @@ func WrapStoreError(err error, operation string, taskID string) error {
 
 	if strings.Contains(errStr, "circular dependency") {
 		return types.NewMCPError("CIRCULAR_DEPENDENCY", "Operation would create a circular dependency", map[string]interface{}{
-			"operation": operation,
-			"task_id":   taskID,
+			"operation":   operation,
+			"task_id":     taskID,
 			"explanation": "Dependencies must form a directed acyclic graph (DAG)",
 			"suggestions": []string{
 				"Remove conflicting dependencies first",

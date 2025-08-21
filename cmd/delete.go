@@ -31,7 +31,11 @@ var deleteCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Error getting task store", err)
 		}
-		defer taskStore.Close()
+		defer func() {
+			if err := taskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		var taskIDToDelete string
 
@@ -68,7 +72,7 @@ func handleSingleDelete(taskStore store.TaskStore, taskID string) {
 	if err != nil {
 		HandleError(fmt.Sprintf("Error: Could not find task with reference '%s'.", taskID), err)
 	}
-	
+
 	task := *resolvedTask
 
 	confirmPrompt := promptui.Prompt{
@@ -98,7 +102,7 @@ func handleRecursiveDelete(taskStore store.TaskStore, rootTaskID string) {
 	if err != nil {
 		HandleError(fmt.Sprintf("Error: Could not find task with reference '%s' to begin recursive delete.", rootTaskID), err)
 	}
-	
+
 	// Use the resolved full UUID for the recursive deletion
 	fullTaskID := resolvedTask.ID
 	tasksToDelete, err := taskStore.GetTaskWithDescendants(fullTaskID)
@@ -182,12 +186,12 @@ func resolveTaskReference(taskStore store.TaskStore, reference string) (*models.
 
 	for _, task := range tasks {
 		titleLower := strings.ToLower(task.Title)
-		
+
 		// Exact title match
 		if titleLower == refLower {
 			return &task, nil
 		}
-		
+
 		// Substring match in title
 		if strings.Contains(titleLower, refLower) {
 			score := 0.9 - (float64(len(titleLower)-len(refLower)) / float64(len(titleLower)) * 0.3)
@@ -213,11 +217,11 @@ func resolveTaskReference(taskStore store.TaskStore, reference string) (*models.
 				if i >= 3 { // Limit to top 3 suggestions
 					break
 				}
-				suggestions = append(suggestions, fmt.Sprintf("  %s - %s", 
+				suggestions = append(suggestions, fmt.Sprintf("  %s - %s",
 					m.task.ID[:8], m.task.Title))
 			}
-			
-			return nil, fmt.Errorf("multiple matches found for '%s'. Did you mean:\n%s\n\nUse a more specific reference or full task ID", 
+
+			return nil, fmt.Errorf("multiple matches found for '%s'. Did you mean:\n%s\n\nUse a more specific reference or full task ID",
 				reference, strings.Join(suggestions, "\n"))
 		}
 	}

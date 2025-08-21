@@ -12,7 +12,16 @@ taskwing
 *.so
 *.dylib
 *.test
+*.out
 dist/
+
+# Test artifacts and coverage reports
+test-results/
+./test-results/
+coverage.out
+coverage.html
+coverage-summary.txt
+integration-tests.log
 
 # Environment and local config
 .env
@@ -39,9 +48,12 @@ Thumbs.db
 .cursorrules
 .claude/
 
-# Test files
+# Test files and temporary test data
 test_*.py
 *_test_*
+*_test.go.tmp
+test_data/
+testdata/tmp/
 
 # Logs
 *.log

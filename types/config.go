@@ -30,7 +30,7 @@ type DataConfig struct {
 
 // LLMConfig holds configuration for LLM integration
 type LLMConfig struct {
-	Provider                   string  `mapstructure:"provider" validate:"omitempty,oneof=openai google"`
+	Provider                   string  `mapstructure:"provider" validate:"omitempty,oneof=openai"`
 	ModelName                  string  `mapstructure:"modelName" validate:"omitempty,min=1"`
 	APIKey                     string  `mapstructure:"apiKey" validate:"omitempty,min=1"`
 	ProjectID                  string  `mapstructure:"projectId" validate:"omitempty,min=1"`

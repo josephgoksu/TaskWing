@@ -3,6 +3,8 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
+// Workflow integration tools: smart transitions, workflow status, dependency health
+
 import (
 	"context"
 	"fmt"
@@ -101,10 +103,9 @@ func workflowStatusHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.W
 			depth = "summary"
 		}
 
-		format := args.Format
-		if format == "" {
-			format = "text"
-		}
+		// format parameter exists but is not currently used in the implementation
+		// Left for future enhancement
+		_ = args.Format
 
 		// Get all tasks
 		tasks, err := taskStore.ListTasks(nil, nil)
@@ -133,7 +134,7 @@ func workflowStatusHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.W
 			Summary:         summary,
 		}
 
-		responseText := fmt.Sprintf("Project status: %s phase (%.1f%% complete). %s", 
+		responseText := fmt.Sprintf("Project status: %s phase (%.1f%% complete). %s",
 			currentPhase.Phase, overallProgress*100, summary)
 
 		return &mcp.CallToolResultFor[types.WorkflowStatusResponse]{
@@ -215,7 +216,7 @@ func dependencyHealthHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 			IssuesFixed:   len(fixedIssues),
 		}
 
-		responseText := fmt.Sprintf("Dependency health: %.1f%% (%d issues found, %d fixed). %s", 
+		responseText := fmt.Sprintf("Dependency health: %.1f%% (%d issues found, %d fixed). %s",
 			healthScore*100, len(issues), len(fixedIssues), summary)
 
 		return &mcp.CallToolResultFor[types.DependencyHealthResponse]{
@@ -270,11 +271,12 @@ func generateTaskTransitionSuggestions(currentTask *models.Task, allTasks []mode
 		suggestions = append(suggestions, generateNextStepSuggestions(currentTask, allTasks)...)
 	default:
 		// General suggestions based on task status
-		if currentTask.Status == models.StatusTodo {
+		switch currentTask.Status {
+		case models.StatusTodo:
 			suggestions = append(suggestions, generateStartSuggestions(currentTask, allTasks)...)
-		} else if currentTask.Status == models.StatusDoing {
+		case models.StatusDoing:
 			suggestions = append(suggestions, generateProgressSuggestions(currentTask, allTasks)...)
-		} else if currentTask.Status == models.StatusReview {
+		case models.StatusReview:
 			suggestions = append(suggestions, generateUnblockingSuggestions(currentTask, allTasks)...)
 		}
 	}
@@ -304,13 +306,13 @@ func generateCompletionSuggestions(task *models.Task, allTasks []models.Task) []
 	for _, otherTask := range allTasks {
 		if containsString(otherTask.Dependencies, task.ID) && otherTask.Status == models.StatusTodo {
 			suggestions = append(suggestions, types.TaskTransition{
-				Action:      "start",
-				TaskID:      otherTask.ID,
-				Title:       otherTask.Title,
-				Description: fmt.Sprintf("Start dependent task: %s", otherTask.Title),
-				Priority:    string(otherTask.Priority),
-				Confidence:  0.8,
-				Reasoning:   "This task was waiting for the current task to complete.",
+				Action:       "start",
+				TaskID:       otherTask.ID,
+				Title:        otherTask.Title,
+				Description:  fmt.Sprintf("Start dependent task: %s", otherTask.Title),
+				Priority:     string(otherTask.Priority),
+				Confidence:   0.8,
+				Reasoning:    "This task was waiting for the current task to complete.",
 				Dependencies: []string{task.ID},
 			})
 		}
@@ -671,7 +673,7 @@ func calculateWorkflowMetrics(tasks []models.Task) map[string]interface{} {
 
 // generateWorkflowSummary creates a human-readable workflow summary
 func generateWorkflowSummary(phase types.ProjectPhase, progress float64, bottleneckCount, totalTasks int) string {
-	summary := fmt.Sprintf("Project in %s phase with %.1f%% completion (%d tasks total)", 
+	summary := fmt.Sprintf("Project in %s phase with %.1f%% completion (%d tasks total)",
 		phase.Phase, progress*100, totalTasks)
 
 	if bottleneckCount > 0 {

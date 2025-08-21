@@ -216,7 +216,7 @@ Example TaskCreationRequest for subtasks:
 // taskWingUsagePromptHandler provides guidance on using TaskWing instead of generic tools
 func taskWingUsagePromptHandler(taskStore store.TaskStore) func(context.Context, *mcp.ServerSession, *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
-		
+
 		// Get current project context
 		context, err := BuildTaskContext(taskStore)
 		if err != nil {

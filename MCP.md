@@ -40,6 +40,27 @@ taskwing mcp -v
 
 ## AI Tool Configuration
 
+### Recommended System Prompt
+
+Use this system prompt to ensure AI tools always leverage TaskWing’s MCP tools correctly:
+
+```
+Use TaskWing MCP tools for all task management. Do not create or maintain separate to-do lists.
+
+- First Steps: Call task-summary, then get-current-task. Set or clear the current task to keep context accurate.
+- Status/Priority: Use only statuses [todo, doing, review, done] and priorities [low, medium, high, urgent].
+- Create: Use add-task for singles; batch-create-tasks for multiple with TempIDs, parentId, dependencies, and acceptanceCriteria.
+- Find/Select: Prefer find-task or query-tasks; use list-tasks for filters. If IDs are partial/ambiguous, use resolve-task-reference or task-autocomplete.
+- Update: Use update-task for fields; use mark-done to complete (sets done + completedAt). Preserve relationships via parentId/dependencies.
+- Bulk Ops: Use bulk-tasks (complete, delete, prioritize). For cleanup, use clear-tasks; default to completed=true. Avoid all+force unless explicitly requested.
+- Search/Filter: Use search-tasks for AND/OR/NOT; filter-tasks for JSONPath-style; extract-task-ids when only IDs are needed.
+- Outputs: Keep responses concise; rely on StructuredContent from tool calls for data.
+- Safety: Never delete tasks with dependents without surfacing the impact. Ask before destructive actions.
+- Scope: Do not reference archive, retrospective, or pattern features.
+
+Always choose the most specific TaskWing MCP tool and pass minimal, precise arguments.
+```
+
 ### Claude Code
 
 Add to your Claude Code MCP configuration file:
@@ -109,32 +130,49 @@ taskwing mcp
 
 ### Basic Task Management
 
-| Tool | Purpose | Required | Optional |
-|------|---------|----------|----------|
-| `add-task` | Create new task | `title` | `description`, `acceptanceCriteria`, `priority`, `dependencies`, `parentId` |
-| `list-tasks` | Query tasks | None | `status`, `priority`, `search`, `parentId`, `sortBy`, `sortOrder` |
-| `get-task` | Get task details | `id` | None |
-| `update-task` | Modify task | `id` | `title`, `description`, `acceptanceCriteria`, `status`, `priority`, `dependencies` |
-| `mark-done` | Complete task | `id` | None |
-| `delete-task` | Remove task | `id` | None |
+| Tool          | Purpose          | Required | Optional                                                                           |
+| ------------- | ---------------- | -------- | ---------------------------------------------------------------------------------- |
+| `add-task`    | Create new task  | `title`  | `description`, `acceptanceCriteria`, `priority`, `dependencies`, `parentId`        |
+| `list-tasks`  | Query tasks      | None     | `status`, `priority`, `search`, `parentId`, `sortBy`, `sortOrder`                  |
+| `get-task`    | Get task details | `id` or `reference` | None                                                             |
+| `update-task` | Modify task      | `id` or `reference` | `title`, `description`, `acceptanceCriteria`, `status`, `priority`, `dependencies` |
+| `mark-done`   | Complete task    | `id` or `reference` | None                                                             |
+| `delete-task` | Remove task      | `id` or `reference` | None                                                             |
 
 ### Current Task Management
 
-| Tool | Purpose | Required | Optional |
-|------|---------|----------|----------|
-| `set-current-task` | Set active task | `id` | None |
-| `get-current-task` | Show current task | None | None |
-| `clear-current-task` | Clear current task | None | None |
+| Tool                 | Purpose            | Required | Optional |
+| -------------------- | ------------------ | -------- | -------- |
+| `set-current-task`   | Set active task    | `id`     | None     |
+| `get-current-task`   | Show current task  | None     | None     |
+| `clear-current-task` | Clear current task | None     | None     |
+
+### Board Tools
+
+| Tool              | Purpose                                   | Required | Optional                   |
+| ----------------- | ----------------------------------------- | -------- | -------------------------- |
+| `board-snapshot`  | Kanban snapshot grouped by status, counts | None     | `limit`, `include_tasks`   |
+| `board-reconcile` | Apply multiple ops and return snapshot     | `ops`    | `dry_run`                  |
+
+Example:
+
+```json
+{
+  "tool": "board-snapshot",
+  "arguments": {"limit": 5}
+}
+```
 
 ### Advanced Tools
 
-| Tool | Purpose | Required | Optional |
-|------|---------|----------|----------|
-| `batch-create-tasks` | 🎯 Create multiple tasks with relationships | `tasks` (array) | None |
-| `bulk-tasks` | 🎯 Bulk operations (complete/cancel/delete/prioritize) | `task_ids`, `action` | `priority` |
-| `search-tasks` | 🎯 Advanced search with logical operators | `query` | `tags`, `date_from`, `date_to`, `has_subtasks` |
-| `task-summary` | 🎯 Project health overview with metrics | None | None |
-| `suggest-patterns` | 🎯 AI-enhanced pattern suggestions | `description` | `projectType`, `complexity` |
+| Tool                 | Purpose                                                | Required             | Optional                                       |
+| -------------------- | ------------------------------------------------------ | -------------------- | ---------------------------------------------- |
+| `batch-create-tasks` | 🎯 Create multiple tasks with relationships            | `tasks` (array)      | None                                           |
+| `bulk-tasks`         | 🎯 Bulk operations (complete/cancel/delete/prioritize) | `task_ids`, `action` | `priority`                                     |
+| `bulk-by-filter`     | 🎯 Bulk ops by filter/expression/query with preview    | `action`            | `priority`, `filter`, `expression`, `query`, `limit`, `preview_only`, `confirm` |
+| `search-tasks`       | 🎯 Advanced search with logical operators              | `query`              | `tags`, `date_from`, `date_to`, `has_subtasks` |
+| `task-summary`       | 🎯 Project health overview with metrics                | None                 | None                                           |
+| `suggest-patterns`   | 🎯 AI-enhanced pattern suggestions                     | `description`        | `projectType`, `complexity`                    |
 
 ### Task Resolution Tools
 
@@ -206,8 +244,37 @@ taskwing mcp
 {
   "tool": "bulk-tasks",
   "arguments": {
-    "task_ids": ["uuid1", "uuid2", "uuid3"],
+    "task_ids": ["uuid1", "Fix Typography and Text Sizing for Mobile", "7b3e4f2a"],
     "action": "complete"
+  }
+}
+```
+
+#### Bulk by Filter (Preview then Confirm)
+
+```json
+{
+  "tool": "bulk-by-filter",
+  "arguments": {
+    "action": "prioritize",
+    "priority": "high",
+    "query": "unfinished",
+    "preview_only": true,
+    "limit": 20
+  }
+}
+```
+
+Then apply:
+
+```json
+{
+  "tool": "bulk-by-filter",
+  "arguments": {
+    "action": "prioritize",
+    "priority": "high",
+    "query": "unfinished",
+    "confirm": true
   }
 }
 ```
@@ -345,16 +412,27 @@ _Show project phase, bottlenecks, and progress metrics_
 
 _Detect and auto-fix circular dependencies_
 
+#### Verify After Mutations
+
+After calling `mark-done`, `update-task`, or `bulk-tasks`, verify the board state:
+
+```json
+{
+  "tool": "board-snapshot",
+  "arguments": {"limit": 5}
+}
+```
+
+This returns grouped counts and (optionally) top tasks per column for visual verification.
+
 ## MCP Resources & Prompts
 
 ### Resources
 
-| Resource | Purpose |
-|----------|----------|
-| `taskwing://tasks` | Read-only access to all tasks in JSON format |
-| `taskwing://config` | TaskWing configuration settings |
-| `taskwing://archive` | Historical project data and metrics |
-| `taskwing://knowledge` | Pattern library and project wisdom |
+| Resource               | Purpose                                      |
+| ---------------------- | -------------------------------------------- |
+| `taskwing://tasks`     | Read-only access to all tasks in JSON format |
+| `taskwing://config`    | TaskWing configuration settings              |
 
 ### Prompts
 

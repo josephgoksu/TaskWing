@@ -28,6 +28,7 @@ type ListTasksParams struct {
 // UpdateTaskParams for updating an existing task
 type UpdateTaskParams struct {
 	ID                 string   `json:"id" mcp:"Task ID to update (required)"`
+	Reference          string   `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
 	Title              string   `json:"title,omitempty" mcp:"New task title"`
 	Description        string   `json:"description,omitempty" mcp:"New task description"`
 	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty" mcp:"New acceptance criteria"`
@@ -39,17 +40,20 @@ type UpdateTaskParams struct {
 
 // DeleteTaskParams for deleting a task
 type DeleteTaskParams struct {
-	ID string `json:"id" mcp:"Task ID to delete (required)"`
+	ID        string `json:"id" mcp:"Task ID to delete (required if no reference)"`
+	Reference string `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
 }
 
 // MarkDoneParams for marking a task as completed
 type MarkDoneParams struct {
-	ID string `json:"id" mcp:"Task ID to mark as done (required)"`
+	ID        string `json:"id" mcp:"Task ID to mark as done (required if no reference)"`
+	Reference string `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
 }
 
 // GetTaskParams for retrieving a specific task
 type GetTaskParams struct {
-	ID string `json:"id" mcp:"Task ID to retrieve (required)"`
+	ID        string `json:"id" mcp:"Task ID to retrieve (required if no reference)"`
+	Reference string `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
 }
 
 // Pattern suggestion types
@@ -120,7 +124,7 @@ type ClearTasksParams struct {
 // BulkTaskParams for bulk operations
 type BulkTaskParams struct {
 	TaskIDs  []string `json:"task_ids" mcp:"List of task IDs to operate on"`
-	Action   string   `json:"action" mcp:"Action to perform: complete, cancel, delete, prioritize"`
+	Action   string   `json:"action" mcp:"Action to perform: complete, delete, prioritize"`
 	Priority string   `json:"priority,omitempty" mcp:"New priority for prioritize action"`
 }
 
@@ -231,19 +235,19 @@ type ClearTasksResponse struct {
 
 // FindTaskByTitleParams for fuzzy title matching
 type FindTaskByTitleParams struct {
-	Title         string `json:"title" mcp:"Task title to search for (partial matches allowed)"`
-	Limit         int    `json:"limit,omitempty" mcp:"Maximum number of results to return (default: 5)"`
-	MinScore      float64 `json:"min_score,omitempty" mcp:"Minimum similarity score (0.0-1.0, default: 0.1)"`
+	Title         string   `json:"title" mcp:"Task title to search for (partial matches allowed)"`
+	Limit         int      `json:"limit,omitempty" mcp:"Maximum number of results to return (default: 5)"`
+	MinScore      float64  `json:"min_score,omitempty" mcp:"Minimum similarity score (0.0-1.0, default: 0.1)"`
 	IncludeStatus []string `json:"include_status,omitempty" mcp:"Only include tasks with these statuses"`
 }
 
 // ResolveTaskReferenceParams for smart task resolution
 type ResolveTaskReferenceParams struct {
-	Reference     string   `json:"reference" mcp:"Task reference - partial ID, title, or description"`
-	Exact         bool     `json:"exact,omitempty" mcp:"Require exact match (default: false for fuzzy matching)"`
-	PreferCurrent bool     `json:"prefer_current,omitempty" mcp:"Prefer current task and related tasks"`
-	MaxSuggestions int     `json:"max_suggestions,omitempty" mcp:"Maximum suggestions if no exact match (default: 5)"`
-	Fields        []string `json:"fields,omitempty" mcp:"Fields to search in: id, title, description (default: all)"`
+	Reference      string   `json:"reference" mcp:"Task reference - partial ID, title, or description"`
+	Exact          bool     `json:"exact,omitempty" mcp:"Require exact match (default: false for fuzzy matching)"`
+	PreferCurrent  bool     `json:"prefer_current,omitempty" mcp:"Prefer current task and related tasks"`
+	MaxSuggestions int      `json:"max_suggestions,omitempty" mcp:"Maximum suggestions if no exact match (default: 5)"`
+	Fields         []string `json:"fields,omitempty" mcp:"Fields to search in: id, title, description (default: all)"`
 }
 
 // TaskAutocompleteParams for predictive suggestions
@@ -318,23 +322,30 @@ type TaskAnalyticsParams struct {
 
 // FilterTasksResponse for filtered task results
 type FilterTasksResponse struct {
-	Tasks         []TaskResponse       `json:"tasks"`
-	Count         int                  `json:"count"`
-	Filter        string               `json:"filter_used"`
-	Fields        []string             `json:"fields_returned,omitempty"`
-	ExecutionMs   int64                `json:"execution_time_ms"`
-	MatchedFields map[string][]string  `json:"matched_fields,omitempty"` // Field -> matched values
-	Suggestions   []string             `json:"suggestions,omitempty"`    // Alternative queries if no results
-	QueryType     string               `json:"query_type"`               // "simple", "complex", "natural"
+	Tasks         []TaskResponse      `json:"tasks"`
+	Count         int                 `json:"count"`
+	Filter        string              `json:"filter_used"`
+	Fields        []string            `json:"fields_returned,omitempty"`
+	ExecutionMs   int64               `json:"execution_time_ms"`
+	MatchedFields map[string][]string `json:"matched_fields,omitempty"` // Field -> matched values
+	Suggestions   []string            `json:"suggestions,omitempty"`    // Alternative queries if no results
+	QueryType     string              `json:"query_type"`               // "simple", "complex", "natural"
 }
 
 // ExtractTaskIDsResponse for bulk ID extraction results
 type ExtractTaskIDsResponse struct {
-	TaskIDs     []string `json:"task_ids"`
-	Count       int      `json:"count"`
-	Format      string   `json:"format"`
-	Criteria    string   `json:"criteria_used"`
-	ExecutionMs int64    `json:"execution_time_ms"`
+	TaskIDs     []string  `json:"task_ids"`
+	Refs        []TaskRef `json:"refs,omitempty"`
+	Count       int       `json:"count"`
+	Format      string    `json:"format"`
+	Criteria    string    `json:"criteria_used"`
+	ExecutionMs int64     `json:"execution_time_ms"`
+}
+
+// TaskRef is a minimal reference pair for ID + Title
+type TaskRef struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 // TaskAnalyticsResponse for aggregation results
@@ -344,6 +355,83 @@ type TaskAnalyticsResponse struct {
 	Groups      map[string]interface{} `json:"groups"`
 	DateRange   string                 `json:"date_range"`
 	ExecutionMs int64                  `json:"execution_time_ms"`
+}
+
+// Board snapshot types
+
+type BoardSnapshotParams struct {
+	Limit        int  `json:"limit,omitempty" mcp:"Max tasks per column (default: 10)"`
+	IncludeTasks bool `json:"include_tasks,omitempty" mcp:"Include task lists in each column (default: true)"`
+}
+
+type BoardColumn struct {
+	Status string         `json:"status"`
+	Count  int            `json:"count"`
+	Tasks  []TaskResponse `json:"tasks,omitempty"`
+}
+
+type BoardSnapshotResponse struct {
+	Total   int           `json:"total"`
+	Columns []BoardColumn `json:"columns"`
+	Summary string        `json:"summary"`
+}
+
+// Board reconcile types
+
+type BoardReconcileOp struct {
+	Reference          string   `json:"reference" mcp:"Task id or reference (partial id/title)"`
+	Action             string   `json:"action" mcp:"Action: complete, delete, prioritize, update"`
+	Priority           string   `json:"priority,omitempty" mcp:"Required for prioritize: low,medium,high,urgent"`
+	Title              string   `json:"title,omitempty"`
+	Description        string   `json:"description,omitempty"`
+	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty"`
+	Status             string   `json:"status,omitempty"`
+	ParentID           string   `json:"parentId,omitempty"`
+	Dependencies       []string `json:"dependencies,omitempty"`
+}
+
+type BoardReconcileParams struct {
+	Ops    []BoardReconcileOp `json:"ops" mcp:"List of operations to apply"`
+	DryRun bool               `json:"dry_run,omitempty" mcp:"Preview only; do not apply changes"`
+}
+
+type BoardReconcileOpResult struct {
+	Reference  string `json:"reference"`
+	ResolvedID string `json:"resolved_id,omitempty"`
+	Success    bool   `json:"success"`
+	Error      string `json:"error,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+type BoardReconcileResponse struct {
+	DryRun    bool                     `json:"dry_run"`
+	Results   []BoardReconcileOpResult `json:"results"`
+	Succeeded int                      `json:"succeeded"`
+	Failed    int                      `json:"failed"`
+	Snapshot  *BoardSnapshotResponse   `json:"snapshot,omitempty"`
+}
+
+// Bulk by filter types
+
+type BulkByFilterParams struct {
+	Action      string `json:"action" mcp:"Action: complete, delete, prioritize"`
+	Priority    string `json:"priority,omitempty" mcp:"Required for prioritize"`
+	Filter      string `json:"filter,omitempty" mcp:"Simple filter: status=todo, priority=high"`
+	Expression  string `json:"expression,omitempty" mcp:"Complex: status=todo AND priority=high"`
+	Query       string `json:"query,omitempty" mcp:"Natural language: 'high priority unfinished'"`
+	Limit       int    `json:"limit,omitempty" mcp:"Limit matched tasks (preview)"`
+	PreviewOnly bool   `json:"preview_only,omitempty" mcp:"Preview matched tasks without applying"`
+	Confirm     bool   `json:"confirm,omitempty" mcp:"Apply changes to matched tasks"`
+}
+
+type BulkByFilterResponse struct {
+	Preview      bool     `json:"preview_only"`
+	Criteria     string   `json:"criteria_used"`
+	Matched      int      `json:"matched"`
+	Acted        int      `json:"acted"`
+	Failed       int      `json:"failed"`
+	UpdatedTasks []string `json:"updated_task_ids,omitempty"`
+	Errors       []string `json:"errors,omitempty"`
 }
 
 // Workflow Integration Tool Types

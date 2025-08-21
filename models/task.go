@@ -17,7 +17,6 @@ const (
 	StatusDoing  TaskStatus = "doing"
 	StatusReview TaskStatus = "review"
 	StatusDone   TaskStatus = "done"
-
 )
 
 // TaskPriority represents the priority levels of a task.
@@ -70,12 +69,12 @@ func ValidateStatusTransition(from, to TaskStatus) bool {
 		StatusReview: {StatusDoing, StatusDone, StatusTodo},
 		StatusDone:   {StatusTodo}, // Allow reopening tasks
 	}
-	
+
 	allowedTransitions, exists := validTransitions[from]
 	if !exists {
 		return false
 	}
-	
+
 	for _, allowed := range allowedTransitions {
 		if allowed == to {
 			return true

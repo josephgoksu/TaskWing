@@ -3,6 +3,8 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
+// JSON processing tools: filter, extract ids, analytics
+
 import (
 	"context"
 	"fmt"
@@ -41,9 +43,32 @@ func filterTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Filt
 
 		if args.Expression != "" {
 			filterUsed = args.Expression
-			filteredTasks, err = applyComplexFilter(tasks, args.Expression)
+			// Prefer enhanced complex filter with helpful errors
+			filteredTasks, _, err = applyEnhancedComplexFilter(tasks, args.Expression)
 		} else {
-			filteredTasks, err = applyJSONPathFilter(tasks, args.Filter)
+			// Support multiple syntaxes: JSONPath ($.field == "value"), simple field=value or field:value,
+			// and compact status==todo (normalize to status=todo)
+			simple := strings.TrimSpace(args.Filter)
+			if strings.Contains(simple, "==") && !strings.Contains(simple, "$.") {
+				simple = strings.ReplaceAll(simple, "==", "=")
+			}
+
+			// Try simple first for common cases like status=todo, priority=high
+			if ft, _, ferr := applyEnhancedSimpleFilter(tasks, simple); ferr == nil {
+				filteredTasks = ft
+				filterUsed = simple
+			} else {
+				// Fallback to JSONPath-style
+				filteredTasks, err = applyJSONPathFilter(tasks, args.Filter)
+				if err != nil {
+					// Provide a more actionable error
+					return nil, types.NewMCPError("FILTER_ERROR",
+						fmt.Sprintf("Filter execution failed: %v", err), map[string]interface{}{
+							"examples": []string{"status=todo", "priority:high", "$.status == 'todo'"},
+							"tip":      "Use field=value or JSONPath (e.g., $.status == 'todo').",
+						})
+				}
+			}
 		}
 
 		if err != nil {
@@ -163,16 +188,21 @@ func extractTaskIDsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.E
 			return nil, WrapStoreError(err, "list", "")
 		}
 
-		// Extract IDs
+		// Extract IDs (and optional refs)
 		taskIDs := make([]string, len(tasks))
+		refs := make([]types.TaskRef, 0, len(tasks))
 		for i, task := range tasks {
 			taskIDs[i] = task.ID
+			if format == "objects" || format == "refs" {
+				refs = append(refs, types.TaskRef{ID: task.ID, Title: task.Title})
+			}
 		}
 
 		executionTime := time.Since(startTime).Milliseconds()
 
 		response := types.ExtractTaskIDsResponse{
 			TaskIDs:     taskIDs,
+			Refs:        refs,
 			Count:       len(taskIDs),
 			Format:      format,
 			Criteria:    strings.Join(criteriaUsed, ", "),
@@ -181,6 +211,9 @@ func extractTaskIDsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.E
 
 		responseText := fmt.Sprintf("Extracted %d task IDs with criteria: %s (executed in %dms)",
 			len(taskIDs), response.Criteria, executionTime)
+		if format == "objects" || format == "refs" {
+			responseText += ". Includes id/title pairs."
+		}
 
 		return &mcp.CallToolResultFor[types.ExtractTaskIDsResponse]{
 			Content: []mcp.Content{
@@ -210,10 +243,9 @@ func taskAnalyticsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Ta
 			dateRange = "all"
 		}
 
-		format := args.Format
-		if format == "" {
-			format = "json"
-		}
+		// format parameter exists but is not currently used in the implementation
+		// Left for future enhancement
+		_ = args.Format
 
 		// Get tasks within date range
 		tasks, err := getTasksInDateRange(taskStore, dateRange)
@@ -285,47 +317,49 @@ func applyJSONPathFilter(tasks []models.Task, filter string) ([]models.Task, err
 }
 
 // applyComplexFilter applies complex expressions with AND/OR logic
-func applyComplexFilter(tasks []models.Task, expression string) ([]models.Task, error) {
-	var filtered []models.Task
-
-	// Simple implementation for AND/OR expressions
-	expression = strings.TrimSpace(expression)
-
-	if strings.Contains(expression, " AND ") {
-		parts := strings.Split(expression, " AND ")
-		for _, task := range tasks {
-			matches := true
-			for _, part := range parts {
-				if !evaluateSimpleExpression(task, strings.TrimSpace(part)) {
-					matches = false
-					break
-				}
-			}
-			if matches {
-				filtered = append(filtered, task)
-			}
-		}
-	} else if strings.Contains(expression, " OR ") {
-		parts := strings.Split(expression, " OR ")
-		for _, task := range tasks {
-			for _, part := range parts {
-				if evaluateSimpleExpression(task, strings.TrimSpace(part)) {
-					filtered = append(filtered, task)
-					break
-				}
-			}
-		}
-	} else {
-		// Single expression
-		for _, task := range tasks {
-			if evaluateSimpleExpression(task, expression) {
-				filtered = append(filtered, task)
-			}
-		}
-	}
-
-	return filtered, nil
-}
+// Currently unused - replaced by applyEnhancedComplexFilter
+// Kept for potential future use with simpler syntax requirements
+// func applyComplexFilter(tasks []models.Task, expression string) ([]models.Task, error) {
+//	var filtered []models.Task
+//
+//	// Simple implementation for AND/OR expressions
+//	expression = strings.TrimSpace(expression)
+//
+//	if strings.Contains(expression, " AND ") {
+//		parts := strings.Split(expression, " AND ")
+//		for _, task := range tasks {
+//			matches := true
+//			for _, part := range parts {
+//				if !evaluateSimpleExpression(task, strings.TrimSpace(part)) {
+//					matches = false
+//					break
+//				}
+//			}
+//			if matches {
+//				filtered = append(filtered, task)
+//			}
+//		}
+//	} else if strings.Contains(expression, " OR ") {
+//		parts := strings.Split(expression, " OR ")
+//		for _, task := range tasks {
+//			for _, part := range parts {
+//				if evaluateSimpleExpression(task, strings.TrimSpace(part)) {
+//					filtered = append(filtered, task)
+//					break
+//				}
+//			}
+//		}
+//	} else {
+//		// Single expression
+//		for _, task := range tasks {
+//			if evaluateSimpleExpression(task, expression) {
+//				filtered = append(filtered, task)
+//			}
+//		}
+//	}
+//
+//	return filtered, nil
+// }
 
 // matchesJSONPathFilter checks if task matches JSONPath filter
 func matchesJSONPathFilter(task models.Task, field, value string) bool {
@@ -346,17 +380,18 @@ func matchesJSONPathFilter(task models.Task, field, value string) bool {
 }
 
 // evaluateSimpleExpression evaluates simple field comparisons
-func evaluateSimpleExpression(task models.Task, expr string) bool {
-	if strings.Contains(expr, "==") {
-		parts := strings.Split(expr, "==")
-		if len(parts) == 2 {
-			field := strings.TrimSpace(parts[0])
-			value := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-			return matchesJSONPathFilter(task, field, value)
-		}
-	}
-	return false
-}
+// Currently unused - replaced by enhanced filtering functions
+// func evaluateSimpleExpression(task models.Task, expr string) bool {
+//	if strings.Contains(expr, "==") {
+//		parts := strings.Split(expr, "==")
+//		if len(parts) == 2 {
+//			field := strings.TrimSpace(parts[0])
+//			value := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+//			return matchesJSONPathFilter(task, field, value)
+//		}
+//	}
+//	return false
+// }
 
 // taskToResponseWithFields converts task to response with specific fields
 func taskToResponseWithFields(task models.Task, fields []string) types.TaskResponse {
@@ -515,19 +550,19 @@ func RegisterJSONProcessingTools(server *mcp.Server, taskStore store.TaskStore) 
 	// Filter tasks tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "filter-tasks",
-		Description: "🔍 Advanced task filtering with natural language queries, JSONPath expressions, and fuzzy matching. Supports complex queries like 'high priority unfinished tasks' or 'status:pending priority:urgent'.",
+		Description: "Filter using JSONPath-style or expressions. Examples: $.status==\"todo\"; status=todo AND priority=urgent. Args: filter, expression, limit, fields.",
 	}, filterTasksHandler(taskStore))
 
 	// Extract task IDs tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "extract-task-ids",
-		Description: "📋 BULK EXTRACTION: Extract task IDs with criteria-based filtering. Eliminates need for bash jq pipelines.",
+		Description: "Extract only task IDs with simple criteria. Args: status, priority, search, format [array|string|newline]. Returns ids+count.",
 	}, extractTaskIDsHandler(taskStore))
 
 	// Task analytics tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "task-analytics",
-		Description: "📊 AGGREGATION: Task data analysis and statistics without external tools. Replaces jq aggregation operations.",
+		Description: "Compute metrics. Args: metrics [count,duration,completion_rate], group_by [status|priority|created_date], date_range [today|week|month|all].",
 	}, taskAnalyticsHandler(taskStore))
 
 	return nil

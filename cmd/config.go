@@ -18,7 +18,6 @@ const (
 	envPrefix  = "TASKWING"
 )
 
-
 // GlobalAppConfig holds the global application configuration instance.
 var GlobalAppConfig types.AppConfig
 
@@ -42,11 +41,8 @@ func validateAppConfig(config *types.AppConfig) error {
 
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig() {
-	// Load .env file first if present
-	if err := godotenv.Load(); err != nil {
-		// It's okay if .env file doesn't exist.
-		// If verbose, we could print a notice, but it's not critical.
-	}
+	// Load .env file first if present (ignore error if file doesn't exist)
+	_ = godotenv.Load()
 
 	// Environment variable handling must be set up BEFORE reading the config file
 	// or checking for cfgFile, so that env vars can influence config loading if needed
@@ -123,7 +119,8 @@ func InitConfig() {
 
 	// Defaults for LLMConfig
 	viper.SetDefault("llm.provider", "openai")
-	viper.SetDefault("llm.modelName", "gpt-5-mini-2025-08-07")
+	// Require explicit model selection by default; prevents accidental bad defaults
+	viper.SetDefault("llm.modelName", "")
 	viper.SetDefault("llm.apiKey", "")
 	viper.SetDefault("llm.projectId", "")
 	viper.SetDefault("llm.maxOutputTokens", 16384)
@@ -187,7 +184,7 @@ func GetConfig() *types.AppConfig {
 func SetCurrentTask(taskID string) error {
 	GlobalAppConfig.Project.CurrentTaskID = taskID
 	viper.Set("project.currentTaskId", taskID)
-	
+
 	// Write the updated configuration to file
 	configFile := viper.ConfigFileUsed()
 	if configFile == "" {
@@ -199,7 +196,7 @@ func SetCurrentTask(taskID string) error {
 		configFile = filepath.Join(projectConfigDir, ".taskwing.yaml")
 		viper.SetConfigFile(configFile)
 	}
-	
+
 	return viper.WriteConfig()
 }
 

@@ -84,7 +84,6 @@ type openAIEstimationData struct {
 const openAIAPIURL = "https://api.openai.com/v1/chat/completions"
 
 // GenerateTasks for OpenAIProvider.
-// TODO: Implement the actual API call and error handling.
 func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.TaskOutput, error) {
 	if apiKey == "" {
 		apiKey = p.apiKey // Use provider's key if per-call key is not given
@@ -125,7 +124,12 @@ func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdCon
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request to OpenAI: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Log but don't fail the request
+			fmt.Printf("Warning: Failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		// Read the body for more detailed error information
@@ -144,25 +148,14 @@ func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdCon
 	}
 
 	if len(responsePayload.Choices) == 0 {
-		// It's good practice to log the full response if choices are empty unexpectedly.
-		fullResponseBytes, _ := json.Marshal(responsePayload) // Best effort marshal
-		fmt.Printf("OpenAI response had no choices. Full response: %s\n", string(fullResponseBytes))
 		return nil, fmt.Errorf("OpenAI response contained no choices")
 	}
 
-	// Log the first choice and usage for debugging before accessing its content.
-	fmt.Printf("DEBUG OpenAI Response - First Choice: %+v\n", responsePayload.Choices[0])
-	fmt.Printf("DEBUG OpenAI Response - Usage: %+v\n", responsePayload.Usage)
-
 	content := responsePayload.Choices[0].Message.Content
-	// Also log the raw content string that will be unmarshalled
-	fmt.Printf("DEBUG OpenAI Raw Content to Unmarshal: [%s]\n", content)
 
 	var responseWrapper OpenAITaskResponseWrapper
 	if err := json.Unmarshal([]byte(content), &responseWrapper); err != nil {
-		// The error message already includes the content, but explicit logging before erroring can be useful.
-		// fmt.Printf("Problematic OpenAI content before error: [%s]\n", content) // This would be redundant given the error format below
-		return nil, fmt.Errorf("failed to unmarshal tasks JSON from OpenAI response content: %w. Content was: [%s]", err, content)
+		return nil, fmt.Errorf("failed to unmarshal tasks JSON from OpenAI response content: %w", err)
 	}
 
 	return responseWrapper.Tasks, nil
@@ -210,7 +203,12 @@ func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPromp
 	if err != nil {
 		return types.EstimationOutput{}, fmt.Errorf("failed to send estimation request to OpenAI: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Log but don't fail the request
+			fmt.Printf("Warning: Failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		errorBodyBytes, readErr := io.ReadAll(resp.Body)
@@ -226,16 +224,10 @@ func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPromp
 	}
 
 	if len(responsePayload.Choices) == 0 {
-		fullResponseBytes, _ := json.Marshal(responsePayload)
-		fmt.Printf("OpenAI estimation response had no choices. Full response: %s\n", string(fullResponseBytes))
 		return types.EstimationOutput{}, fmt.Errorf("OpenAI estimation response contained no choices")
 	}
 
-	fmt.Printf("DEBUG OpenAI Estimation Response - First Choice: %+v\n", responsePayload.Choices[0])
-	fmt.Printf("DEBUG OpenAI Estimation Response - Usage: %+v\n", responsePayload.Usage)
-
 	content := responsePayload.Choices[0].Message.Content
-	fmt.Printf("DEBUG OpenAI Estimation Raw Content to Unmarshal: [%s]\n", content)
 
 	var estimationData openAIEstimationData
 	if err := json.Unmarshal([]byte(content), &estimationData); err != nil {
@@ -288,7 +280,12 @@ func (p *OpenAIProvider) ImprovePRD(ctx context.Context, systemPrompt, prdConten
 	if err != nil {
 		return "", fmt.Errorf("failed to send PRD improvement request to OpenAI: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Log but don't fail the request
+			fmt.Printf("Warning: Failed to close response body: %v\n", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		errorBodyBytes, readErr := io.ReadAll(resp.Body)

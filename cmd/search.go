@@ -20,17 +20,21 @@ var searchCmd = &cobra.Command{
 The search is case-insensitive and supports partial matches.
 
 Examples:
-  taskwing search "authentication"       # Find tasks containing "authentication"
-  taskwing search "urgent API"          # Find tasks containing both "urgent" and "API"
-  taskwing search --json "database"     # Output results in JSON format
-  taskwing search --status pending "fix" # Search only in pending tasks`,
+  taskwing search "authentication"     # Find tasks containing "authentication"
+  taskwing search "urgent API"        # Find tasks containing both "urgent" and "API"
+  taskwing search --json "database"   # Output results in JSON format
+  taskwing search --status todo "fix" # Search only in todo tasks`,
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {
 			HandleError("Error: Could not initialize the task store.", err)
 		}
-		defer taskStore.Close()
+		defer func() {
+			if err := taskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		query := strings.Join(args, " ")
 		statusFilter, _ := cmd.Flags().GetString("status")

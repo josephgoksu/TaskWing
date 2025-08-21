@@ -23,15 +23,24 @@ var addCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Error: Could not initialize the task store.", err)
 		}
-		defer taskStore.Close()
+		defer func() {
+			if err := taskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		// Check if running in non-interactive mode
 		nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
 
-		// Get title from flag or prompt
+		// Get title from positional argument, flag, or prompt
 		title, err := cmd.Flags().GetString("title")
 		if err != nil {
 			HandleError("Error getting title flag", err)
+		}
+
+		// If no title flag provided, check for positional argument
+		if title == "" && len(args) > 0 {
+			title = strings.Join(args, " ")
 		}
 		if title == "" {
 			if nonInteractive {

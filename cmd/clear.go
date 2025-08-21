@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"encoding/json"
-	
+
 	"github.com/josephgoksu/taskwing.app/models"
 	"github.com/josephgoksu/taskwing.app/store"
 	"github.com/manifoldco/promptui"
@@ -19,12 +19,12 @@ import (
 )
 
 var (
-	clearForce      bool
-	clearStatus     string
-	clearPriority   string
-	clearCompleted  bool
-	clearAll        bool
-	clearBackup     bool
+	clearForce     bool
+	clearStatus    string
+	clearPriority  string
+	clearCompleted bool
+	clearAll       bool
+	clearBackup    bool
 )
 
 // clearCmd represents the clear command
@@ -55,11 +55,15 @@ Examples:
 		if err != nil {
 			HandleError("Error getting task store", err)
 		}
-		defer taskStore.Close()
+		defer func() {
+			if err := taskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		// Determine what to clear based on flags
 		filterFn := buildClearFilter(cmd)
-		
+
 		// Get tasks to be cleared
 		tasksToDelete, err := taskStore.ListTasks(filterFn, nil)
 		if err != nil {
@@ -95,7 +99,7 @@ Examples:
 
 		// Perform the clearing
 		cleared, failed := performClear(taskStore, tasksToDelete)
-		
+
 		// Report results
 		fmt.Printf("\n✅ Successfully cleared %d tasks\n", cleared)
 		if failed > 0 {
@@ -185,7 +189,7 @@ func buildClearFilter(cmd *cobra.Command) func(models.Task) bool {
 
 func showClearPreview(tasks []models.Task) {
 	fmt.Printf("\n📋 Tasks to be cleared (%d total):\n\n", len(tasks))
-	
+
 	// Group by status for better overview
 	statusGroups := make(map[models.TaskStatus][]models.Task)
 	for _, task := range tasks {
@@ -208,7 +212,7 @@ func showClearPreview(tasks []models.Task) {
 
 func confirmClear(tasks []models.Task) error {
 	prompt := promptui.Prompt{
-		Label: fmt.Sprintf("Clear %d tasks permanently? This action cannot be undone", len(tasks)),
+		Label:     fmt.Sprintf("Clear %d tasks permanently? This action cannot be undone", len(tasks)),
 		IsConfirm: true,
 	}
 
@@ -222,7 +226,7 @@ func confirmClear(tasks []models.Task) error {
 func createClearBackup(taskStore store.TaskStore, tasksToDelete []models.Task) error {
 	cfg := GetConfig()
 	backupDir := filepath.Join(cfg.Project.RootDir, "backups")
-	
+
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		return fmt.Errorf("failed to create backup directory: %w", err)
 	}
@@ -291,7 +295,12 @@ func writeJSONFile(filename string, data interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			// Log the error but don't override the main error
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", closeErr)
+		}
+	}()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
@@ -300,7 +309,7 @@ func writeJSONFile(filename string, data interface{}) error {
 
 func init() {
 	rootCmd.AddCommand(clearCmd)
-	
+
 	clearCmd.Flags().BoolVarP(&clearForce, "force", "f", false, "Skip confirmation prompt")
 	clearCmd.Flags().StringVar(&clearStatus, "status", "", "Clear tasks by status (comma-separated: todo,doing,review,done)")
 	clearCmd.Flags().StringVar(&clearPriority, "priority", "", "Clear tasks by priority (comma-separated: low,medium,high,urgent)")
@@ -308,7 +317,7 @@ func init() {
 	clearCmd.Flags().BoolVar(&clearAll, "all", false, "Clear all tasks (requires confirmation)")
 	clearCmd.Flags().BoolVar(&clearBackup, "backup", true, "Create backup before clearing (default: true)")
 	clearCmd.Flags().BoolVar(&clearBackup, "no-backup", false, "Skip backup creation")
-	
+
 	// Make --no-backup set backup to false
 	clearCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if cmd.Flag("no-backup").Changed {

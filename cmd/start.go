@@ -8,9 +8,9 @@ import (
 )
 
 var startCmd = &cobra.Command{
-	Use:     "start [task_id]",
-	Short:   "Start working on a task (moves to 'doing' status)",
-	Long:    `Start working on a task by moving it from 'todo' to 'doing' status. If no task ID is provided, you'll be prompted to select from available tasks.`,
+	Use:   "start [task_id]",
+	Short: "Start working on a task (moves to 'doing' status)",
+	Long:  `Start working on a task by moving it from 'todo' to 'doing' status. If no task ID is provided, you'll be prompted to select from available tasks.`,
 	Example: `  taskwing start abc123  # Start specific task
   taskwing start         # Interactive selection`,
 	RunE: func(cmd *cobra.Command, args []string) error {

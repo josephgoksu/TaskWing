@@ -37,7 +37,7 @@ It allows you to initialize a task repository, add, list, update, and delete tas
 	Run: func(cmd *cobra.Command, args []string) {
 		// return help if no args are provided
 		if len(args) == 0 {
-			cmd.Help()
+			_ = cmd.Help()
 			os.Exit(0)
 		}
 
@@ -64,8 +64,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 
 	// Bind persistent flags to Viper
-	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
-	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	_ = viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
+	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

@@ -40,9 +40,12 @@ and ensuring the task data file (e.g., 'tasks.json') can be initialized.`,
 		// Attempt to get the store, which will initialize the data file if it doesn't exist.
 		store, err := GetStore()
 		if err != nil {
-			HandleError(fmt.Sprintf("Error: Could not initialize task store."), err)
+			HandleError("Error: Could not initialize task store.", err)
 		}
-		store.Close() // Close the lock immediately after initialization
+		if err := store.Close(); err != nil {
+			// Log the error but continue with initialization
+			fmt.Fprintf(os.Stderr, "Warning: Failed to close task store: %v\n", err)
+		}
 
 		// Create default config file if it doesn't exist inside the project root dir
 		projectConfigFilePath := filepath.Join(projectRootDir, fmt.Sprintf("%s.yaml", projectConfigName))

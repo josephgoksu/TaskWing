@@ -3,6 +3,8 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
+// MCP server bootstrap and registration (renamed from mcp.go)
+
 import (
 	"context"
 	"fmt"
@@ -53,7 +55,11 @@ func runMCPServer(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize task store: %w", err)
 	}
-	defer taskStore.Close()
+	defer func() {
+		if err := taskStore.Close(); err != nil {
+			logError(fmt.Errorf("failed to close task store: %w", err))
+		}
+	}()
 
 	// Create MCP server
 	impl := &mcp.Implementation{
@@ -96,6 +102,11 @@ func runMCPServer(ctx context.Context) error {
 		return fmt.Errorf("failed to register intelligent MCP tools: %w", err)
 	}
 
+	// Register board tools
+	if err := RegisterBoardTools(server, taskStore); err != nil {
+		return fmt.Errorf("failed to register board tools: %w", err)
+	}
+
 	// Register MCP resources
 	if err := registerMCPResources(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register MCP resources: %w", err)
@@ -118,59 +129,59 @@ func registerMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
 	// Add task tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "add-task",
-		Description: "🎯 PREFERRED: Create TaskWing tasks instead of using generic todo lists. Creates comprehensive tasks with metadata, priority, dependencies, and acceptance criteria. Always use this for task management in this project.",
+		Description: "Create a task. Args: title (required), description, acceptanceCriteria, priority [low|medium|high|urgent], parentId, dependencies[]. Validates and maintains relationships.",
 	}, addTaskHandler(taskStore))
 
 	// List tasks tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list-tasks",
-		Description: "🎯 PREFERRED: View TaskWing tasks with powerful filtering. Shows current task context, project health, and detailed task information. Use this instead of generic task viewers.",
+		Description: "List tasks with filters. Args: status [todo|doing|review|done], priority [low|medium|high|urgent], search, parentId, sortBy [id|title|priority|createdAt|updatedAt], sortOrder [asc|desc]. Returns tasks+count.",
 	}, listTasksHandler(taskStore))
 
 	// Update task tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update-task",
-		Description: "🎯 PREFERRED: Update TaskWing tasks with rich metadata. Supports partial updates and maintains task relationships. Use this instead of generic task editing.",
+		Description: "Update a task by id or reference. Updatable: title, description, acceptanceCriteria, status [todo|doing|review|done], priority, parentId, dependencies[].",
 	}, updateTaskHandler(taskStore))
 
 	// Delete task tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "delete-task",
-		Description: "🎯 PREFERRED: Safely delete TaskWing tasks with dependency checking. Prevents data corruption by validating relationships before deletion.",
+		Description: "Delete a task by id or reference. Blocks if task has dependents or subtasks. Use 'bulk-tasks' or 'clear-tasks' for batch deletes.",
 	}, deleteTaskHandler(taskStore))
 
 	// Mark task done tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mark-done",
-		Description: "🎯 PREFERRED: Complete TaskWing tasks with timestamp tracking. Use this instead of generic task completion to maintain project metrics.",
+		Description: "Complete a task by id or reference (partial ID/title). Sets status=done and completedAt timestamp.",
 	}, markDoneHandler(taskStore))
 
 	// Get task tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get-task",
-		Description: "Retrieve comprehensive details about a specific task including all metadata, relationships, and timestamps. Useful for examining task state before updates.",
+		Description: "Get one task by id or reference (partial ID/title). Returns full metadata, relationships, and timestamps.",
 	}, getTaskHandler(taskStore))
 
 	// Current task management tools
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set-current-task",
-		Description: "🎯 REQUIRED: Set active TaskWing task for context-aware AI assistance. Always set current task when starting work to enable intelligent responses.",
+		Description: "Set active task id used for context-aware responses. Persists in project config.",
 	}, setCurrentTaskHandler(taskStore))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get-current-task",
-		Description: "🎯 PREFERRED: Get current TaskWing task context. Use this to understand what the user is working on before suggesting tasks or actions.",
+		Description: "Return current active task (if set) with full details for context.",
 	}, getCurrentTaskHandler(taskStore))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "clear-current-task",
-		Description: "🎯 PREFERRED: Clear TaskWing current task when switching contexts. Use this to reset focus when changing work areas.",
+		Description: "Clear the active task reference from project config.",
 	}, clearCurrentTaskHandler(taskStore))
 
 	// Clear tasks tool for bulk clearing with safety features
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "clear-tasks",
-		Description: "🧹 BULK: Clear tasks from the board with safety features and flexible filtering. Supports clearing by status, priority, or all tasks with confirmation and automatic backup creation.",
+		Description: "Bulk delete with safety. Args: status (csv), priority (csv), completed (bool), all (bool), force (bool), no_backup (bool). Default clears status=done when no filters.",
 	}, clearTasksHandler(taskStore))
 
 	return nil
@@ -193,21 +204,7 @@ func registerMCPResources(server *mcp.Server, taskStore store.TaskStore) error {
 		MIMEType:    "application/json",
 	}, configResourceHandler())
 
-	// Archive resource - provides access to archived tasks and project history
-	server.AddResource(&mcp.Resource{
-		URI:         "taskwing://archive",
-		Name:        "archive",
-		Description: "Access to archived tasks and project history",
-		MIMEType:    "application/json",
-	}, archiveResourceHandler())
-
-	// Knowledge resource - provides access to knowledge base and patterns
-	server.AddResource(&mcp.Resource{
-		URI:         "taskwing://knowledge",
-		Name:        "knowledge",
-		Description: "Access to knowledge base and patterns",
-		MIMEType:    "application/json",
-	}, knowledgeResourceHandler())
+	// Note: archive and knowledge resources have been removed.
 
 	return nil
 }
@@ -248,7 +245,6 @@ func registerMCPPrompts(server *mcp.Server, taskStore store.TaskStore) error {
 	return nil
 }
 
-
 func taskToResponse(task models.Task) types.TaskResponse {
 	var completedAt *string
 	if task.CompletedAt != nil {
@@ -285,11 +281,13 @@ func logInfo(msg string) {
 	}
 }
 
-func logDebug(msg string) {
-	if viper.GetBool("verbose") {
-		log.Printf("[MCP DEBUG] %s", msg)
-	}
-}
+// logDebug logs debug messages when verbose mode is enabled
+// Currently unused but kept for future debugging needs
+// func logDebug(msg string) {
+// 	if viper.GetBool("verbose") {
+// 		log.Printf("[MCP DEBUG] %s", msg)
+// 	}
+// }
 
 func logToolCall(toolName string, params interface{}) {
 	if viper.GetBool("verbose") {

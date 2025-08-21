@@ -19,7 +19,11 @@ var doneCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Error: Could not initialize the task store.", err)
 		}
-		defer taskStore.Close()
+		defer func() {
+			if err := taskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		var taskToMarkDone models.Task
 

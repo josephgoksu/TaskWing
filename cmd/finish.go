@@ -9,9 +9,9 @@ import (
 )
 
 var finishCmd = &cobra.Command{
-	Use:     "finish [task_id]",
-	Short:   "Finish a task (moves to 'done' status)",
-	Long:    `Complete a task by moving it to 'done' status. Can be used on tasks in any status. If no task ID is provided, you'll be prompted to select from non-done tasks.`,
+	Use:   "finish [task_id]",
+	Short: "Finish a task (moves to 'done' status)",
+	Long:  `Complete a task by moving it to 'done' status. Can be used on tasks in any status. If no task ID is provided, you'll be prompted to select from non-done tasks.`,
 	Example: `  taskwing finish abc123  # Finish specific task
   taskwing finish         # Interactive selection`,
 	RunE: func(cmd *cobra.Command, args []string) error {

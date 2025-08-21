@@ -4,7 +4,6 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
-	"github.com/josephgoksu/taskwing.app/types"
 	"context"
 	"encoding/json" // For pretty printing task output for now
 	"errors"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/taskwing.app/types"
+
 	"github.com/briandowns/spinner"
 	"github.com/google/uuid"                  // For generating final IDs
 	"github.com/josephgoksu/taskwing.app/llm" // Import the new llm package
@@ -23,7 +24,7 @@ import (
 	"github.com/josephgoksu/taskwing.app/store" // For TaskStore interface
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
-	// For direct ENV var check as fallback
+	"github.com/spf13/viper"
 )
 
 // generateCmd represents the generate command
@@ -88,17 +89,23 @@ llm:
 			if err != nil {
 				if err == promptui.ErrAbort {
 					fmt.Println("Task generation cancelled.")
-					taskStore.Close()
+					if closeErr := taskStore.Close(); closeErr != nil {
+						fmt.Printf("Warning: Failed to close task store: %v\n", closeErr)
+					}
 					return
 				}
-				taskStore.Close()
+				if closeErr := taskStore.Close(); closeErr != nil {
+					fmt.Printf("Warning: Failed to close task store: %v\n", closeErr)
+				}
 				HandleError("Error: Could not get confirmation for overwriting tasks.", err)
 			}
 
 			// User confirmed overwrite. Delete existing tasks now.
 			fmt.Println("\nDeleting existing tasks...")
 			if err := taskStore.DeleteAllTasks(); err != nil {
-				taskStore.Close()
+				if closeErr := taskStore.Close(); closeErr != nil {
+					fmt.Printf("Warning: Failed to close task store: %v\n", closeErr)
+				}
 				HandleError("Error: Could not delete the existing tasks.", err)
 			}
 			fmt.Printf("Successfully deleted %d task(s).\n\n", numExisting)
@@ -106,7 +113,9 @@ llm:
 
 		// We are done with pre-checks, we can close the store connection for now.
 		// It will be re-opened later for creation. This avoids holding the lock.
-		taskStore.Close()
+		if closeErr := taskStore.Close(); closeErr != nil {
+			fmt.Printf("Warning: Failed to close task store: %v\n", closeErr)
+		}
 
 		// --- LLM TASK GENERATION ---
 		appCfg := GetConfig()
@@ -136,25 +145,12 @@ llm:
 		}
 
 		// Explicitly check/resolve APIKey from specific ENV vars if still empty after Viper's load
-		if resolvedLLMConfig.APIKey == "" {
-			switch resolvedLLMConfig.Provider {
-			case "openai":
-				apiKeyEnv := os.Getenv("OPENAI_API_KEY")
-				if apiKeyEnv == "" {
-					apiKeyEnv = os.Getenv(envPrefix + "_LLM_APIKEY")
-				}
-				resolvedLLMConfig.APIKey = apiKeyEnv
-			case "google":
-				apiKeyEnv := os.Getenv("GOOGLE_API_KEY")
-				if apiKeyEnv == "" {
-					apiKeyEnv = os.Getenv(envPrefix + "_LLM_APIKEY")
-				}
-				resolvedLLMConfig.APIKey = apiKeyEnv
+		if resolvedLLMConfig.APIKey == "" && resolvedLLMConfig.Provider == "openai" {
+			apiKeyEnv := os.Getenv("OPENAI_API_KEY")
+			if apiKeyEnv == "" {
+				apiKeyEnv = os.Getenv(envPrefix + "_LLM_APIKEY")
 			}
-		}
-		// Resolve ProjectID for Google if still empty
-		if resolvedLLMConfig.Provider == "google" && resolvedLLMConfig.ProjectID == "" {
-			resolvedLLMConfig.ProjectID = os.Getenv(envPrefix + "_LLM_PROJECTID")
+			resolvedLLMConfig.APIKey = apiKeyEnv
 		}
 
 		// Validate essential LLM config after attempting ENV var fallbacks
@@ -167,9 +163,7 @@ llm:
 		if resolvedLLMConfig.Provider == "openai" && resolvedLLMConfig.APIKey == "" {
 			HandleError("Error: OpenAI API key is not configured. Set 'llm.apiKey' in your config or use the TASKWING_LLM_APIKEY or OPENAI_API_KEY environment variables.", nil)
 		}
-		if resolvedLLMConfig.Provider == "google" && resolvedLLMConfig.ProjectID == "" {
-			HandleError("Error: Google Cloud ProjectID is not configured. Set 'llm.projectId' in your config or use the TASKWING_LLM_PROJECTID environment variable.", nil)
-		}
+		// Only OpenAI is supported currently; other providers are rejected by config validation.
 
 		// 4. Instantiate LLM Provider.
 		provider, err := llm.NewProvider(&resolvedLLMConfig)
@@ -339,10 +333,12 @@ llm:
 		// 6. Parse LLM JSON response (already parsed into llmTaskOutputs by the provider method).
 
 		// 7. Resolve parent/child and dependency relationships by title.
-		fmt.Println("\n--- Raw LLM Task Outputs (for debugging) ---")
-		rawOutputBytes, _ := json.MarshalIndent(llmTaskOutputs, "", "  ")
-		fmt.Println(string(rawOutputBytes))
-		fmt.Println("--- End Raw LLM Task Outputs ---")
+		if viper.GetBool("verbose") {
+			fmt.Println("\n--- Raw LLM Task Outputs (debug) ---")
+			rawOutputBytes, _ := json.MarshalIndent(llmTaskOutputs, "", "  ")
+			fmt.Println(string(rawOutputBytes))
+			fmt.Println("--- End Raw LLM Task Outputs ---")
+		}
 
 		taskCandidates, relationshipMap, err := resolveAndBuildTaskCandidates(llmTaskOutputs)
 		if err != nil {
@@ -378,7 +374,11 @@ llm:
 		if finalStoreErr != nil {
 			HandleError("Error: Could not initialize task store for the final step.", finalStoreErr)
 		}
-		defer finalTaskStore.Close()
+		defer func() {
+			if err := finalTaskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		createdCount, creationErrors := createTasksInStore(finalTaskStore, taskCandidates, relationshipMap)
 		fmt.Printf("Successfully created %d tasks.\n", createdCount)
@@ -399,9 +399,9 @@ type taskRelationshipMap struct {
 	tempChildToParent    map[string]string      // tempChildID -> tempParentID
 	tempTaskToDeps       map[string][]string    // tempTaskID -> []tempDependencyID (where dependency is also a tempID)
 	flattenedTasks       map[string]models.Task // tempID -> models.Task (without final ID, ParentID, Dependencies)
-	titleToTempID        map[string]string      // title -> tempID (for resolving deps by title)
-	tempIDToInputID      map[int]string         // input tempId (int) -> internal tempID (string)
-	taskOrder            []string               // tempIDs in a stable order for processing and display
+	// titleToTempID        map[string]string      // title -> tempID (for resolving deps by title) - unused for now
+	tempIDToInputID map[int]string // input tempId (int) -> internal tempID (string)
+	taskOrder       []string       // tempIDs in a stable order for processing and display
 }
 
 // resolveAndBuildTaskCandidates processes LLM outputs into a flat list of models.Task candidates
@@ -429,11 +429,11 @@ func resolveAndBuildTaskCandidates(llmOutputs []types.TaskOutput) ([]models.Task
 				continue
 			}
 			if llmTask.TempID == 0 {
-				return fmt.Errorf("LLM returned a task with a missing or zero tempId: '%s'. Aborting.", llmTask.Title)
+				return fmt.Errorf("LLM returned a task with a missing or zero tempId: '%s' - aborting", llmTask.Title)
 			}
 
 			if _, idExists := relMap.tempIDToInputID[llmTask.TempID]; idExists {
-				return fmt.Errorf("duplicate tempId %d found from LLM output. Each task must have a unique tempId.", llmTask.TempID)
+				return fmt.Errorf("duplicate tempId %d found from LLM output - each task must have a unique tempId", llmTask.TempID)
 			}
 			relMap.tempIDToInputID[llmTask.TempID] = currentTempID
 			relMap.taskOrder = append(relMap.taskOrder, currentTempID)
@@ -479,7 +479,10 @@ func resolveAndBuildTaskCandidates(llmOutputs []types.TaskOutput) ([]models.Task
 		var depTempIDs []string
 		for _, depIntIDStr := range depIntIDs {
 			var depIntID int
-			fmt.Sscanf(depIntIDStr, "%d", &depIntID) // Convert string back to int for lookup
+			if _, err := fmt.Sscanf(depIntIDStr, "%d", &depIntID); err != nil {
+				// If parsing fails, skip this dependency
+				continue
+			}
 
 			if depTargetTempID, exists := relMap.tempIDToInputID[depIntID]; exists {
 				if depTargetTempID == taskTempID {

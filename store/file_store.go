@@ -108,7 +108,7 @@ func (s *FileTaskStore) Initialize(config map[string]string) error {
 			return fmt.Errorf("failed to acquire blocking initial lock for %s: %w", s.filePath, err)
 		}
 	}
-	defer s.flk.Unlock() // Unlock after initialization sequence
+	defer func() { _ = s.flk.Unlock() }() // Unlock after initialization sequence
 
 	s.tasks = make(map[string]models.Task) // Reset tasks map
 	return s.loadTasksFromFileInternal()   // Use internal version that assumes lock is held
@@ -134,7 +134,7 @@ func (s *FileTaskStore) loadTasksFromFileInternal() error {
 			if f, createErr := os.OpenFile(s.filePath, os.O_CREATE|os.O_RDWR, 0644); createErr != nil {
 				return fmt.Errorf("failed to create data file %s: %w", s.filePath, createErr)
 			} else {
-				f.Close()
+				_ = f.Close()
 			}
 			// Create an empty checksum file for a new empty data file
 			if err := os.WriteFile(checksumFilePath, []byte(calculateChecksum([]byte{})), 0644); err != nil {
@@ -150,13 +150,13 @@ func (s *FileTaskStore) loadTasksFromFileInternal() error {
 	if _, err := os.Stat(checksumFilePath); err == nil {
 		expectedChecksumBytes, readErr := os.ReadFile(checksumFilePath)
 		if readErr != nil {
-			return fmt.Errorf("failed to read checksum file %s: %w. Data file might be corrupt or tampered.", checksumFilePath, readErr)
+			return fmt.Errorf("failed to read checksum file %s: %w - data file might be corrupt or tampered", checksumFilePath, readErr)
 		}
 		expectedChecksum := strings.TrimSpace(string(expectedChecksumBytes))
 		actualChecksum := calculateChecksum(data)
 
 		if actualChecksum != expectedChecksum {
-			return fmt.Errorf("checksum mismatch for %s. Expected %s, got %s. File is corrupt or tampered.", s.filePath, expectedChecksum, actualChecksum)
+			return fmt.Errorf("checksum mismatch for %s - expected %s, got %s - file is corrupt or tampered", s.filePath, expectedChecksum, actualChecksum)
 		}
 	} else if !os.IsNotExist(err) {
 		// Some other error trying to stat checksum file (e.g. permission denied)
@@ -236,8 +236,8 @@ func (s *FileTaskStore) saveTasksToFileInternal() error {
 	checksumFilePath := s.filePath + checksumSuffix
 	tempChecksumFilePath := checksumFilePath + ".tmp"
 
-	defer os.Remove(tempFilePath)
-	defer os.Remove(tempChecksumFilePath)
+	defer func() { _ = os.Remove(tempFilePath) }()
+	defer func() { _ = os.Remove(tempChecksumFilePath) }()
 
 	if err := os.WriteFile(tempFilePath, marshaledData, 0644); err != nil {
 		return fmt.Errorf("failed to write to temporary data file %s: %w", tempFilePath, err)
@@ -259,7 +259,7 @@ func (s *FileTaskStore) saveTasksToFileInternal() error {
 		// Attempt to remove the new data file to revert to a potentially more consistent state (old data, old checksum or no checksum)
 		// Or, log prominently and alert. For now, return error and log this potential inconsistency.
 		// A more robust solution might try to write the checksum again, or remove the main file if this fails.
-		return fmt.Errorf("CRITICAL: data file %s updated, but failed to update checksum file %s from %s: %w. Store may be inconsistent.", s.filePath, checksumFilePath, tempChecksumFilePath, err)
+		return fmt.Errorf("CRITICAL: data file %s updated, but failed to update checksum file %s from %s: %w - store may be inconsistent", s.filePath, checksumFilePath, tempChecksumFilePath, err)
 	}
 
 	return nil
@@ -297,7 +297,7 @@ func (s *FileTaskStore) CreateTask(task models.Task) (models.Task, error) {
 	if err := s.flk.Lock(); err != nil {
 		return models.Task{}, fmt.Errorf("could not lock file for create: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	// Reload state from disk to ensure we are working with the latest version
 	// in case of concurrent access, though the lock should serialize operations.
@@ -375,7 +375,7 @@ func (s *FileTaskStore) GetTask(id string) (models.Task, error) {
 	if err := s.flk.Lock(); err != nil { // Using exclusive lock to ensure fresh load and safety
 		return models.Task{}, fmt.Errorf("failed to acquire lock for GetTask: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	if err := s.loadTasksFromFileInternal(); err != nil {
 		return models.Task{}, fmt.Errorf("failed to load tasks for GetTask: %w", err)
@@ -411,7 +411,7 @@ func (s *FileTaskStore) UpdateTask(id string, updates map[string]interface{}) (m
 	if err := s.flk.Lock(); err != nil {
 		return models.Task{}, fmt.Errorf("could not lock file for update: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	if err := s.loadTasksFromFileInternal(); err != nil {
 		return models.Task{}, fmt.Errorf("failed to reload tasks before update: %w", err)
@@ -436,9 +436,12 @@ func (s *FileTaskStore) UpdateTask(id string, updates map[string]interface{}) (m
 		fieldName, ok := fieldNameMapping[key]
 		if !ok {
 			// Use exact field name from struct
-			fieldName = strings.Title(key)
+			// Simple title case conversion for ASCII field names
+			if len(key) > 0 {
+				fieldName = strings.ToUpper(key[:1]) + key[1:]
+			}
 		}
-		
+
 		// Use reflection to set field value.
 		field := reflect.ValueOf(&task).Elem().FieldByName(fieldName)
 		if field.IsValid() && field.CanSet() {
@@ -641,7 +644,7 @@ func (s *FileTaskStore) DeleteTask(id string) error {
 	if err := s.flk.Lock(); err != nil {
 		return fmt.Errorf("could not lock file for delete: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	if err := s.loadTasksFromFileInternal(); err != nil {
 		return fmt.Errorf("failed to reload tasks before delete: %w", err)
@@ -681,7 +684,7 @@ func (s *FileTaskStore) DeleteTask(id string) error {
 
 	// 4. Handle subtasks of the task being deleted. For now, disallow deletion of tasks with subtasks.
 	if len(taskToDelete.SubtaskIDs) > 0 {
-		return fmt.Errorf("cannot delete task '%s': it has subtasks. Please delete or re-assign subtasks first.", taskToDelete.Title)
+		return fmt.Errorf("cannot delete task '%s' - it has subtasks - please delete or re-assign subtasks first", taskToDelete.Title)
 	}
 
 	// Finally, delete the task itself
@@ -702,7 +705,7 @@ func (s *FileTaskStore) DeleteTasks(ids []string) (int, error) {
 	if err := s.flk.Lock(); err != nil {
 		return 0, fmt.Errorf("could not lock file for batch delete: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	if err := s.loadTasksFromFileInternal(); err != nil {
 		return 0, fmt.Errorf("failed to reload tasks before batch delete: %w", err)
@@ -769,7 +772,7 @@ func (s *FileTaskStore) DeleteAllTasks() error {
 	if err := s.flk.Lock(); err != nil {
 		return fmt.Errorf("failed to acquire write lock for DeleteAllTasks: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	// This is a destructive operation. The command layer should have already confirmed with the user.
 	// Here we just perform the action by clearing the in-memory map.
@@ -791,7 +794,7 @@ func (s *FileTaskStore) MarkTaskDone(id string) (models.Task, error) {
 	if err := s.flk.Lock(); err != nil {
 		return models.Task{}, fmt.Errorf("failed to acquire write lock for MarkTaskDone: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	if err := s.loadTasksFromFileInternal(); err != nil {
 		return models.Task{}, fmt.Errorf("failed to load tasks before marking done: %w", err)
@@ -831,7 +834,7 @@ func (s *FileTaskStore) ListTasks(filterFn func(models.Task) bool, sortFn func([
 	if err := s.flk.Lock(); err != nil { // Using exclusive lock for safety during load. Could optimize with RLock if load is safe.
 		return nil, fmt.Errorf("failed to acquire lock for ListTasks: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	if err := s.loadTasksFromFileInternal(); err != nil {
 		return nil, fmt.Errorf("failed to load tasks for ListTasks: %w", err)
@@ -868,7 +871,7 @@ func (s *FileTaskStore) Backup(destinationPath string) error {
 	if err := s.flk.Lock(); err != nil { // Shared lock for reading the data file
 		return fmt.Errorf("failed to acquire read lock for backup: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	input, err := os.ReadFile(s.filePath)
 	if err != nil {
@@ -891,7 +894,7 @@ func (s *FileTaskStore) Restore(sourcePath string) error {
 	if err := s.flk.Lock(); err != nil { // Exclusive lock for writing the data file
 		return fmt.Errorf("failed to acquire lock for restore: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	sourceData, err := os.ReadFile(sourcePath)
 	if err != nil {
@@ -899,7 +902,7 @@ func (s *FileTaskStore) Restore(sourcePath string) error {
 	}
 
 	tempFilePath := s.filePath + ".tmp_restore"
-	defer os.Remove(tempFilePath)
+	defer func() { _ = os.Remove(tempFilePath) }()
 
 	if err = os.WriteFile(tempFilePath, sourceData, 0644); err != nil {
 		return fmt.Errorf("failed to write restored data to temporary file %s: %w", tempFilePath, err)
@@ -922,7 +925,7 @@ func (s *FileTaskStore) GetTaskWithDescendants(rootID string) ([]models.Task, er
 	if err := s.flk.Lock(); err != nil {
 		return nil, fmt.Errorf("could not acquire read lock for GetTaskWithDescendants: %w", err)
 	}
-	defer s.flk.Unlock()
+	defer func() { _ = s.flk.Unlock() }()
 
 	if _, exists := s.tasks[rootID]; !exists {
 		return nil, fmt.Errorf("task with root ID '%s' not found", rootID)

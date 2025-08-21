@@ -6,7 +6,6 @@ import (
 	"github.com/josephgoksu/taskwing.app/types"
 )
 
-
 // Provider defines the interface for interacting with different LLM providers
 // to generate tasks from a document.
 type Provider interface {

@@ -3,6 +3,8 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
+// Basic MCP tools: add, list, get, update, delete, mark-done
+
 import (
 	"context"
 	"fmt"
@@ -200,6 +202,17 @@ func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ListTa
 		// Get context for enriched response
 		context, _ := BuildTaskContext(taskStore)
 		responseText := fmt.Sprintf("Found %d tasks", len(tasks))
+		// Append a compact list of top tasks with short IDs for quick selection
+		maxShow := 5
+		if len(tasks) > 0 {
+			if len(tasks) < maxShow {
+				maxShow = len(tasks)
+			}
+			responseText += "\nTop:"
+			for i := 0; i < maxShow; i++ {
+				responseText += fmt.Sprintf("\n - %s [%s]", tasks[i].Title, shortID(tasks[i].ID))
+			}
+		}
 		if context != nil {
 			responseText = EnrichToolResponse(responseText, context)
 		}
@@ -220,9 +233,9 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Updat
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.UpdateTaskParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 
-		// Validate required fields
-		if strings.TrimSpace(args.ID) == "" {
-			return nil, types.NewMCPError("MISSING_ID", "Task ID is required for update", nil)
+		// Validate required fields (allow reference)
+		if strings.TrimSpace(args.ID) == "" && strings.TrimSpace(args.Reference) == "" {
+			return nil, types.NewMCPError("MISSING_ID", "Task ID or reference is required for update", nil)
 		}
 
 		// Build updates map
@@ -269,10 +282,40 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Updat
 			updates["parentId"] = &args.ParentID
 		}
 
-		// Update task
-		updatedTask, err := taskStore.UpdateTask(args.ID, updates)
+		// Update task (try direct; then resolve reference if needed)
+		id := strings.TrimSpace(args.ID)
+		if id == "" {
+			id = strings.TrimSpace(args.Reference)
+		}
+
+		updatedTask, err := taskStore.UpdateTask(id, updates)
 		if err != nil {
-			return nil, WrapStoreError(err, "update", args.ID)
+			tasks, lerr := taskStore.ListTasks(nil, nil)
+			if lerr == nil {
+				if resolvedID, candidates, ok := resolveReference(id, tasks); ok {
+					if retryTask, retryErr := taskStore.UpdateTask(resolvedID, updates); retryErr == nil {
+						err = nil // Retry succeeded, clear the original error
+						updatedTask = retryTask
+					}
+					// If retry also failed, keep the original error for reporting
+				} else {
+					details := map[string]interface{}{"reference": id}
+					if len(candidates) > 0 {
+						max := len(candidates)
+						if max > 5 {
+							max = 5
+						}
+						details["candidates"] = candidates[:max]
+					}
+					details["next_step"] = "Use 'resolve-task-reference' to obtain a concrete ID."
+					return nil, types.NewMCPError("TASK_NOT_FOUND", "Task reference could not be resolved for update", details)
+				}
+			}
+		}
+
+		// Check if error persists after retry attempt
+		if err != nil {
+			return nil, WrapStoreError(err, "update", id)
 		}
 
 		logInfo(fmt.Sprintf("Updated task: %s", updatedTask.ID))
@@ -300,15 +343,44 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Delet
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.DeleteTaskParams]) (*mcp.CallToolResultFor[types.DeleteTaskResponse], error) {
 		args := params.Arguments
 
-		// Validate required fields
-		if strings.TrimSpace(args.ID) == "" {
-			return nil, types.NewMCPError("MISSING_ID", "Task ID is required for deletion", nil)
+		// Validate required fields (allow reference)
+		if strings.TrimSpace(args.ID) == "" && strings.TrimSpace(args.Reference) == "" {
+			return nil, types.NewMCPError("MISSING_ID", "Task ID or reference is required for deletion", nil)
 		}
 
-		// Get task to check for dependents and for response text
-		task, err := taskStore.GetTask(args.ID)
+		// Resolve to concrete ID if necessary
+		id := strings.TrimSpace(args.ID)
+		if id == "" {
+			id = strings.TrimSpace(args.Reference)
+		}
+		task, err := taskStore.GetTask(id)
 		if err != nil {
-			return nil, WrapStoreError(err, "get_for_delete", args.ID)
+			tasks, lerr := taskStore.ListTasks(nil, nil)
+			if lerr == nil {
+				if resolvedID, candidates, ok := resolveReference(id, tasks); ok {
+					if retryTask, retryErr := taskStore.GetTask(resolvedID); retryErr == nil {
+						err = nil // Retry succeeded, clear the original error
+						task = retryTask
+					}
+					// If retry also failed, keep the original error for reporting
+				} else {
+					details := map[string]interface{}{"reference": id}
+					if len(candidates) > 0 {
+						max := len(candidates)
+						if max > 5 {
+							max = 5
+						}
+						details["candidates"] = candidates[:max]
+					}
+					details["next_step"] = "Use 'resolve-task-reference' to obtain a concrete ID."
+					return nil, types.NewMCPError("TASK_NOT_FOUND", "Task reference could not be resolved for deletion", details)
+				}
+			}
+		}
+
+		// Check if error persists after retry attempt
+		if err != nil {
+			return nil, WrapStoreError(err, "get", id)
 		}
 
 		// Check if task has dependents
@@ -320,11 +392,11 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Delet
 		}
 
 		// Delete task
-		if err := taskStore.DeleteTask(args.ID); err != nil {
-			return nil, WrapStoreError(err, "delete", args.ID)
+		if err := taskStore.DeleteTask(id); err != nil {
+			return nil, WrapStoreError(err, "delete", id)
 		}
 
-		logInfo(fmt.Sprintf("Deleted task: %s", args.ID))
+		logInfo(fmt.Sprintf("Deleted task: %s", id))
 
 		// Get context for enriched response
 		context, _ := BuildTaskContext(taskStore)
@@ -335,7 +407,7 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Delet
 
 		response := types.DeleteTaskResponse{
 			Success: true,
-			TaskID:  args.ID,
+			TaskID:  id,
 			Message: fmt.Sprintf("Task '%s' deleted successfully", task.Title),
 		}
 
@@ -355,13 +427,39 @@ func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.MarkDon
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.MarkDoneParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 
-		// Validate required fields
+		// Validate required fields (allow reference fallback)
 		if strings.TrimSpace(args.ID) == "" {
-			return nil, types.NewMCPError("MISSING_ID", "Task ID is required to mark as done", nil)
+			return nil, types.NewMCPError("MISSING_ID", "Task ID (or reference) is required to mark as done", map[string]interface{}{
+				"tip": "Pass a full/partial ID or title; the server will resolve references.",
+			})
 		}
 
-		// Mark task as done
+		// Try direct mark; if not found, attempt reference resolution
 		completedTask, err := taskStore.MarkTaskDone(args.ID)
+		if err != nil {
+			// Load tasks and try to resolve reference
+			tasks, lerr := taskStore.ListTasks(nil, nil)
+			if lerr == nil {
+				if resolvedID, candidates, ok := resolveReference(args.ID, tasks); ok {
+					completedTask, err = taskStore.MarkTaskDone(resolvedID)
+				} else {
+					// Provide helpful candidates
+					details := map[string]interface{}{
+						"reference": args.ID,
+					}
+					if len(candidates) > 0 {
+						// Include up to 5 candidates
+						max := len(candidates)
+						if max > 5 {
+							max = 5
+						}
+						details["candidates"] = candidates[:max]
+					}
+					details["next_step"] = "Use 'find-task' or 'resolve-task-reference' to obtain a concrete ID."
+					return nil, types.NewMCPError("TASK_NOT_FOUND", "Task reference could not be resolved", details)
+				}
+			}
+		}
 		if err != nil {
 			return nil, WrapStoreError(err, "mark_done", args.ID)
 		}
@@ -391,15 +489,45 @@ func getTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.GetTaskP
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.GetTaskParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 
-		// Validate required fields
-		if strings.TrimSpace(args.ID) == "" {
-			return nil, types.NewMCPError("MISSING_ID", "Task ID is required to get a task", nil)
+		// Validate required fields (allow reference)
+		if strings.TrimSpace(args.ID) == "" && strings.TrimSpace(args.Reference) == "" {
+			return nil, types.NewMCPError("MISSING_ID", "Task ID or reference is required to get a task", nil)
 		}
 
-		// Get task
-		task, err := taskStore.GetTask(args.ID)
+		id := strings.TrimSpace(args.ID)
+		if id == "" {
+			id = strings.TrimSpace(args.Reference)
+		}
+
+		// Get task (with resolution fallback)
+		task, err := taskStore.GetTask(id)
 		if err != nil {
-			return nil, WrapStoreError(err, "get", args.ID)
+			tasks, lerr := taskStore.ListTasks(nil, nil)
+			if lerr == nil {
+				if resolvedID, candidates, ok := resolveReference(id, tasks); ok {
+					if retryTask, retryErr := taskStore.GetTask(resolvedID); retryErr == nil {
+						err = nil // Retry succeeded, clear the original error
+						task = retryTask
+					}
+					// If retry also failed, keep the original error for reporting
+				} else {
+					details := map[string]interface{}{"reference": id}
+					if len(candidates) > 0 {
+						max := len(candidates)
+						if max > 5 {
+							max = 5
+						}
+						details["candidates"] = candidates[:max]
+					}
+					details["next_step"] = "Use 'resolve-task-reference' to obtain a concrete ID."
+					return nil, types.NewMCPError("TASK_NOT_FOUND", "Task reference could not be resolved", details)
+				}
+			}
+		}
+
+		// Check if error persists after retry attempt
+		if err != nil {
+			return nil, WrapStoreError(err, "get", id)
 		}
 
 		logInfo(fmt.Sprintf("Retrieved task: %s", task.ID))
@@ -535,7 +663,7 @@ func getCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.G
 		logToolCall("get-current-task", params.Arguments)
 
 		currentTaskID := GetCurrentTask()
-		
+
 		if currentTaskID == "" {
 			response := types.CurrentTaskResponse{
 				Success: true,
@@ -567,7 +695,7 @@ func getCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.G
 					},
 				},
 				StructuredContent: response,
-				IsError: true,
+				IsError:           true,
 			}, nil
 		}
 
@@ -596,7 +724,7 @@ func clearCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		logToolCall("clear-current-task", params.Arguments)
 
 		currentTaskID := GetCurrentTask()
-		
+
 		if currentTaskID == "" {
 			response := types.CurrentTaskResponse{
 				Success: true,
@@ -658,7 +786,7 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ClearTasksParams]) (*mcp.CallToolResultFor[types.ClearTasksResponse], error) {
 		args := params.Arguments
 		startTime := time.Now()
-		
+
 		logToolCall("clear-tasks", args)
 
 		// Build filter based on parameters
@@ -801,11 +929,11 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 		if !args.NoBackup {
 			cfg := GetConfig()
 			backupDir := filepath.Join(cfg.Project.RootDir, "backups")
-			
+
 			if err := os.MkdirAll(backupDir, 0755); err == nil {
 				timestamp := time.Now().Format("2006-01-02_15-04-05")
 				backupFile = filepath.Join(backupDir, fmt.Sprintf("clear_backup_%s.json", timestamp))
-				
+
 				backupData := struct {
 					Timestamp time.Time     `json:"timestamp"`
 					Operation string        `json:"operation"`
@@ -887,4 +1015,3 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 		}, nil
 	}
 }
-

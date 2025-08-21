@@ -3,6 +3,8 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
+// Bulk and advanced MCP tools: batch create, bulk ops, search, summary
+
 import (
 	"context"
 	"fmt"
@@ -16,7 +18,6 @@ import (
 	"github.com/josephgoksu/taskwing.app/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
 
 // bulkTaskHandler handles bulk operations on multiple tasks
 func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTaskParams, types.BulkOperationResponse] {
@@ -32,25 +33,51 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTas
 			Errors:       []string{},
 		}
 
-		for _, taskID := range args.TaskIDs {
-			var err error
+		// Preload tasks for reference resolution
+		allTasks, _ := taskStore.ListTasks(nil, nil)
 
-			switch strings.ToLower(args.Action) {
+		for _, ref := range args.TaskIDs {
+			var err error
+			taskID := ref
+			// If direct op fails later, we will retry with resolved ID
+
+			action := strings.ToLower(args.Action)
+			if action == "cancel" {
+				return nil, types.NewMCPError("UNSUPPORTED_ACTION", "Bulk action 'cancel' is deprecated. Use 'delete' or update status explicitly.", nil)
+			}
+
+			switch action {
 			case "complete":
-				_, err = taskStore.MarkTaskDone(taskID)
-			case "cancel":
-				_, err = taskStore.UpdateTask(taskID, map[string]interface{}{
-					"status": models.StatusDone,
-				})
+				// Try direct
+				if _, derr := taskStore.MarkTaskDone(taskID); derr != nil {
+					if resolvedID, _, ok := resolveReference(ref, allTasks); ok {
+						_, err = taskStore.MarkTaskDone(resolvedID)
+						taskID = resolvedID
+					} else {
+						err = derr
+					}
+				}
 			case "delete":
-				err = taskStore.DeleteTask(taskID)
+				if derr := taskStore.DeleteTask(taskID); derr != nil {
+					if resolvedID, _, ok := resolveReference(ref, allTasks); ok {
+						err = taskStore.DeleteTask(resolvedID)
+						taskID = resolvedID
+					} else {
+						err = derr
+					}
+				}
 			case "prioritize":
 				if args.Priority == "" {
 					err = fmt.Errorf("priority required for prioritize action")
 				} else {
-					_, err = taskStore.UpdateTask(taskID, map[string]interface{}{
-						"priority": args.Priority,
-					})
+					if _, uerr := taskStore.UpdateTask(taskID, map[string]interface{}{"priority": args.Priority}); uerr != nil {
+						if resolvedID, _, ok := resolveReference(ref, allTasks); ok {
+							_, err = taskStore.UpdateTask(resolvedID, map[string]interface{}{"priority": args.Priority})
+							taskID = resolvedID
+						} else {
+							err = uerr
+						}
+					}
 				}
 			default:
 				err = fmt.Errorf("invalid action: %s", args.Action)
@@ -58,7 +85,7 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTas
 
 			if err != nil {
 				response.Failed++
-				response.Errors = append(response.Errors, fmt.Sprintf("Task %s: %v", taskID, err))
+				response.Errors = append(response.Errors, fmt.Sprintf("Task %s: %v", ref, err))
 			} else {
 				response.Succeeded++
 				response.UpdatedTasks = append(response.UpdatedTasks, taskID)
@@ -175,18 +202,18 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 				// Check if it's a TempID (integer) - these are allowed
 				if _, err := strconv.Atoi(taskReq.ParentID); err != nil {
 					// Not a TempID, check for placeholder patterns
-					if strings.HasPrefix(taskReq.ParentID, "task_") || 
-					   strings.Contains(taskReq.ParentID, "placeholder") ||
-					   !strings.Contains(taskReq.ParentID, "-") { // UUIDs always contain hyphens
+					if strings.HasPrefix(taskReq.ParentID, "task_") ||
+						strings.Contains(taskReq.ParentID, "placeholder") ||
+						!strings.Contains(taskReq.ParentID, "-") { // UUIDs always contain hyphens
 						return nil, fmt.Errorf("task %d (%s): parentId '%s' appears to be a placeholder. Use list-tasks to get real UUID values like '7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b', or use TempID (integer) for batch parent-child relationships", i+1, taskReq.Title, taskReq.ParentID)
 					}
 				}
 			}
 			// Also check dependencies for placeholder patterns
 			for _, depID := range taskReq.Dependencies {
-				if strings.HasPrefix(depID, "task_") || 
-				   strings.Contains(depID, "placeholder") ||
-				   !strings.Contains(depID, "-") {
+				if strings.HasPrefix(depID, "task_") ||
+					strings.Contains(depID, "placeholder") ||
+					!strings.Contains(depID, "-") {
 					return nil, fmt.Errorf("task %d (%s): dependency '%s' appears to be a placeholder. Use list-tasks to get real UUID values", i+1, taskReq.Title, depID)
 				}
 			}
@@ -378,12 +405,21 @@ func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.T
 			Count: len(taskResponses),
 		}
 
+		// Build compact text with top results and short IDs
+		text := fmt.Sprintf("Found %d tasks matching search criteria", len(tasks))
+		if len(response.Tasks) > 0 {
+			maxShow := 5
+			if len(response.Tasks) < maxShow {
+				maxShow = len(response.Tasks)
+			}
+			text += "\nTop:"
+			for i := 0; i < maxShow; i++ {
+				text += fmt.Sprintf("\n - %s [%s]", response.Tasks[i].Title, shortID(response.Tasks[i].ID))
+			}
+		}
+
 		return &mcp.CallToolResultFor[types.TaskListResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
-					Text: fmt.Sprintf("Found %d tasks matching search criteria", len(tasks)),
-				},
-			},
+			Content:           []mcp.Content{&mcp.TextContent{Text: text}},
 			StructuredContent: response,
 		}, nil
 	}
@@ -410,301 +446,131 @@ func createTaskFromRequest(taskStore store.TaskStore, taskReq types.TaskCreation
 }
 
 // suggestPatternHandler suggests task patterns based on description
-func suggestPatternHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.SuggestPatternParams, types.SuggestPatternResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.SuggestPatternParams]) (*mcp.CallToolResultFor[types.SuggestPatternResponse], error) {
-		args := params.Arguments
-		
-		if args.Description == "" {
-			return nil, types.NewMCPError("DESCRIPTION_REQUIRED", "Description is required to suggest patterns", nil)
-		}
-		
-		cfg := GetConfig()
-		
-		// Load pattern library
-		library, err := loadPatternLibrary(cfg)
-		if err != nil {
-			// Return empty suggestions if no pattern library exists
-			response := types.SuggestPatternResponse{
-				MatchingPatterns: []types.PatternSuggestion{},
-				Suggestions:      "No pattern library found. Consider using 'taskwing patterns extract' to build patterns from archived projects.",
-				LibraryStats: map[string]interface{}{
-					"total_patterns": 0,
-					"library_status": "not_found",
-				},
-			}
-			
-			return &mcp.CallToolResultFor[types.SuggestPatternResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: response.Suggestions},
-				},
-				StructuredContent: response,
-			}, nil
-		}
-		
-		if len(library.Patterns) == 0 {
-			response := types.SuggestPatternResponse{
-				MatchingPatterns: []types.PatternSuggestion{},
-				Suggestions:      "Pattern library is empty. Use 'taskwing patterns extract' to analyze archived projects.",
-				LibraryStats: map[string]interface{}{
-					"total_patterns": 0,
-					"library_status": "empty",
-				},
-			}
-			
-			return &mcp.CallToolResultFor[types.SuggestPatternResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: response.Suggestions},
-				},
-				StructuredContent: response,
-			}, nil
-		}
-		
-		// Find matching patterns
-		matches := findMatchingPatternsForMCP(args.Description, library.Patterns)
-		
-		// Convert internal patterns to MCP response format
-		var suggestions []types.PatternSuggestion
-		for _, match := range matches {
-			suggestion := convertPatternToSuggestion(match.Pattern, match.Score)
-			suggestions = append(suggestions, suggestion)
-		}
-		
-		response := types.SuggestPatternResponse{
-			MatchingPatterns: suggestions,
-			LibraryStats: map[string]interface{}{
-				"total_patterns":      len(library.Patterns),
-				"most_used_pattern":   library.Statistics.MostUsedPattern,
-				"average_success_rate": library.Statistics.AverageSuccessRate,
-				"library_status":      "active",
-			},
-		}
-		
-		// Set best match
-		if len(suggestions) > 0 {
-			response.BestMatch = &suggestions[0]
-		}
-		
-		// Generate helpful suggestions text
-		if len(suggestions) == 0 {
-			response.Suggestions = fmt.Sprintf("No patterns match '%s'. Consider these general approaches: %s", 
-				args.Description, generateGeneralSuggestions(library))
-		} else {
-			bestMatch := suggestions[0]
-			response.Suggestions = fmt.Sprintf("Best match: '%s' (%.0f%% confidence, %.0f%% success rate). Typical duration: %.1f hours. Consider following the %d-phase breakdown: %s",
-				bestMatch.Name, 
-				bestMatch.MatchScore*100,
-				bestMatch.SuccessRate,
-				bestMatch.AverageDuration,
-				len(bestMatch.TaskBreakdown),
-				generatePhaseNames(bestMatch.TaskBreakdown))
-		}
-		
-		logInfo(fmt.Sprintf("Pattern suggestion for '%s': %d matches found", args.Description, len(suggestions)))
-		
-		return &mcp.CallToolResultFor[types.SuggestPatternResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: response.Suggestions},
-			},
-			StructuredContent: response,
-		}, nil
-	}
-}
-
-// Helper functions for pattern suggestion
-
-func convertPatternToSuggestion(pattern TaskPattern, score float64) types.PatternSuggestion {
-	suggestion := types.PatternSuggestion{
-		PatternID:       pattern.PatternID,
-		Name:           pattern.Name,
-		MatchScore:     score,
-		Category:       pattern.Category,
-		Description:    pattern.Description,
-		SuccessRate:    pattern.Metrics.SuccessRate,
-		AverageDuration: pattern.Metrics.AverageDurationHours,
-		SuccessFactors: pattern.SuccessFactors,
-		WhenToUse:      pattern.WhenToUse,
-	}
-	
-	// Convert task breakdown
-	for _, phase := range pattern.TaskBreakdown {
-		suggestion.TaskBreakdown = append(suggestion.TaskBreakdown, types.PatternPhase{
-			Phase:                phase.Phase,
-			Tasks:                phase.Tasks,
-			TypicalDurationHours: phase.TypicalDurationHours,
-			Priority:             phase.Priority,
-		})
-	}
-	
-	// Convert AI guidance
-	suggestion.AIGuidance = types.PatternAIGuidance{
-		TaskGenerationHints: pattern.AIGuidance.TaskGenerationHints,
-		PrioritySuggestions: pattern.AIGuidance.PrioritySuggestions,
-		DependencyPatterns:  pattern.AIGuidance.DependencyPatterns,
-	}
-	
-	return suggestion
-}
-
-func findMatchingPatternsForMCP(description string, patterns []TaskPattern) []PatternMatch {
-	// Reuse the pattern matching logic from patterns.go
-	var matches []PatternMatch
-	
-	descLower := strings.ToLower(description)
-	words := strings.Fields(descLower)
-	
-	for _, pattern := range patterns {
-		score := calculatePatternMatchScore(descLower, words, pattern)
-		if score > 0.1 { // Minimum threshold
-			matches = append(matches, PatternMatch{
-				Pattern: pattern,
-				Score:   score,
-			})
-		}
-	}
-	
-	// Sort by score descending
-	for i := 0; i < len(matches)-1; i++ {
-		for j := i + 1; j < len(matches); j++ {
-			if matches[i].Score < matches[j].Score {
-				matches[i], matches[j] = matches[j], matches[i]
-			}
-		}
-	}
-	
-	// Limit to top 5 matches
-	if len(matches) > 5 {
-		matches = matches[:5]
-	}
-	
-	return matches
-}
-
-func calculatePatternMatchScore(description string, words []string, pattern TaskPattern) float64 {
-	score := 0.0
-	maxScore := 0.0
-	
-	// Check name match
-	maxScore += 1.0
-	if strings.Contains(strings.ToLower(pattern.Name), description) {
-		score += 1.0
-	}
-	
-	// Check description match
-	maxScore += 1.0
-	if strings.Contains(strings.ToLower(pattern.Description), description) {
-		score += 1.0
-	}
-	
-	// Check tags
-	maxScore += 1.0
-	for _, tag := range pattern.Tags {
-		if strings.Contains(description, strings.ToLower(tag)) {
-			score += 1.0
-			break
-		}
-	}
-	
-	// Check when to use criteria
-	maxScore += 1.0
-	for _, criteria := range pattern.WhenToUse {
-		if containsAnyWordInText(strings.ToLower(criteria), words) {
-			score += 1.0
-			break
-		}
-	}
-	
-	// Category bonus
-	maxScore += 0.5
-	if strings.Contains(description, strings.ToLower(pattern.Category)) {
-		score += 0.5
-	}
-	
-	if maxScore == 0 {
-		return 0
-	}
-	
-	return score / maxScore
-}
-
-func containsAnyWordInText(text string, words []string) bool {
-	for _, word := range words {
-		if len(word) > 3 && strings.Contains(text, word) {
-			return true
-		}
-	}
-	return false
-}
-
-func generateGeneralSuggestions(library *PatternLibrary) string {
-	if len(library.Patterns) == 0 {
-		return "No patterns available"
-	}
-	
-	// Sort by success rate and show top patterns
-	topPatterns := make([]TaskPattern, len(library.Patterns))
-	copy(topPatterns, library.Patterns)
-	
-	for i := 0; i < len(topPatterns)-1; i++ {
-		for j := i + 1; j < len(topPatterns); j++ {
-			if topPatterns[i].Metrics.SuccessRate < topPatterns[j].Metrics.SuccessRate {
-				topPatterns[i], topPatterns[j] = topPatterns[j], topPatterns[i]
-			}
-		}
-	}
-	
-	suggestions := []string{}
-	limit := 3
-	if len(topPatterns) < limit {
-		limit = len(topPatterns)
-	}
-	
-	for i := 0; i < limit; i++ {
-		pattern := topPatterns[i]
-		suggestions = append(suggestions, fmt.Sprintf("%s (%.0f%% success)", pattern.Name, pattern.Metrics.SuccessRate))
-	}
-	
-	return strings.Join(suggestions, ", ")
-}
-
-func generatePhaseNames(phases []types.PatternPhase) string {
-	names := []string{}
-	for _, phase := range phases {
-		names = append(names, phase.Phase)
-	}
-	return strings.Join(names, " → ")
-}
+// Pattern suggestion functionality removed as part of cleanup.
 
 // RegisterAdvancedMCPTools registers additional MCP tools
 func RegisterAdvancedMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
 	// Batch create tasks tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "batch-create-tasks",
-		Description: "🎯 PREFERRED: Create multiple TaskWing tasks at once with parent-child relationships. Use this for task breakdown instead of creating separate todo items.",
+		Description: "Create many tasks at once. Supports TempID-based parent-child linking, dependencies, and priorities. Returns created_tasks, errors, and success_count.",
 	}, batchCreateTasksHandler(taskStore))
 
 	// Bulk operations tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bulk-tasks",
-		Description: "🎯 PREFERRED: Perform bulk operations on TaskWing tasks (complete, cancel, delete, prioritize). More powerful than generic task operations.",
+		Description: "Bulk operate on task_ids (IDs or references). Actions: complete, delete, prioritize (requires priority [low|medium|high|urgent]). Returns succeeded/failed and updated_task_ids.",
 	}, bulkTaskHandler(taskStore))
+
+	// Bulk by filter tool
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "bulk-by-filter",
+		Description: "Bulk operate by filter/expression/query with preview/confirm. Actions: complete, delete, prioritize (requires priority).",
+	}, bulkByFilterHandler(taskStore))
 
 	// Task summary tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "task-summary",
-		Description: "🎯 ALWAYS USE: Get TaskWing project health summary with metrics and insights. Use this to understand project status before suggesting new tasks.",
+		Description: "Return summary and context: total_tasks, active, completed_today, due_today, blocked. Useful before planning.",
 	}, taskSummaryHandler(taskStore))
 
 	// Advanced search tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search-tasks",
-		Description: "🎯 PREFERRED: Advanced TaskWing search with logical operators and date ranges. More powerful than generic task search tools.",
+		Description: "Advanced search. Args: query (supports AND/OR/NOT), tags[], date_from, date_to, has_subtasks. Returns matching tasks ordered by relevance.",
 	}, advancedSearchHandler(taskStore))
 
-	// Pattern suggestion tool
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "suggest-patterns",
-		Description: "🎯 AI ENHANCED: Suggest task patterns based on work description. Uses TaskWing's pattern library to recommend proven approaches with success rates and task breakdowns.",
-	}, suggestPatternHandler(taskStore))
+	// Note: suggest-patterns tool removed.
 
 	return nil
+}
+
+// bulkByFilterHandler applies bulk operations to tasks matched by filter/expression/query
+func bulkByFilterHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkByFilterParams, types.BulkByFilterResponse] {
+	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.BulkByFilterParams]) (*mcp.CallToolResultFor[types.BulkByFilterResponse], error) {
+		args := params.Arguments
+
+		// Load all tasks
+		all, err := taskStore.ListTasks(nil, nil)
+		if err != nil {
+			return nil, WrapStoreError(err, "list", "")
+		}
+
+		// Reuse enhanced filters
+		var matched []models.Task
+		var ferr error
+		criteria := ""
+		if strings.TrimSpace(args.Query) != "" {
+			matched, _, ferr = applyNaturalLanguageFilter(all, args.Query, true)
+			criteria = "query=" + args.Query
+		} else if strings.TrimSpace(args.Expression) != "" {
+			matched, _, ferr = applyEnhancedComplexFilter(all, args.Expression)
+			criteria = "expression=" + args.Expression
+		} else if strings.TrimSpace(args.Filter) != "" {
+			matched, _, ferr = applyEnhancedSimpleFilter(all, args.Filter)
+			criteria = "filter=" + args.Filter
+		} else {
+			return nil, types.NewMCPError("MISSING_FILTER", "Provide query, expression, or filter", nil)
+		}
+		if ferr != nil {
+			return nil, types.NewMCPError("FILTER_ERROR", ferr.Error(), nil)
+		}
+
+		if args.Limit > 0 && len(matched) > args.Limit {
+			matched = matched[:args.Limit]
+		}
+
+		if args.PreviewOnly || !args.Confirm {
+			resp := types.BulkByFilterResponse{
+				Preview:  true,
+				Criteria: criteria,
+				Matched:  len(matched),
+			}
+			text := fmt.Sprintf("Preview: %d tasks match (%s)", len(matched), criteria)
+			return &mcp.CallToolResultFor[types.BulkByFilterResponse]{Content: []mcp.Content{&mcp.TextContent{Text: text}}, StructuredContent: resp}, nil
+		}
+
+		// Apply action
+		succeeded := 0
+		failed := 0
+		var ids []string
+		var errorsList []string
+
+		for _, t := range matched {
+			var aerr error
+			switch strings.ToLower(args.Action) {
+			case "complete", "done", "mark-done":
+				_, aerr = taskStore.MarkTaskDone(t.ID)
+			case "delete":
+				aerr = taskStore.DeleteTask(t.ID)
+			case "prioritize":
+				if args.Priority == "" {
+					aerr = fmt.Errorf("priority required for prioritize action")
+				} else {
+					_, aerr = taskStore.UpdateTask(t.ID, map[string]interface{}{"priority": args.Priority})
+				}
+			default:
+				aerr = fmt.Errorf("invalid action: %s", args.Action)
+			}
+			if aerr != nil {
+				failed++
+				errorsList = append(errorsList, fmt.Sprintf("%s: %v", t.ID, aerr))
+			} else {
+				succeeded++
+				ids = append(ids, t.ID)
+			}
+		}
+
+		resp := types.BulkByFilterResponse{
+			Preview:      false,
+			Criteria:     criteria,
+			Matched:      len(matched),
+			Acted:        succeeded,
+			Failed:       failed,
+			UpdatedTasks: ids,
+			Errors:       errorsList,
+		}
+		text := fmt.Sprintf("Bulk-by-filter %s: %d acted, %d failed (%s)", args.Action, succeeded, failed, criteria)
+		return &mcp.CallToolResultFor[types.BulkByFilterResponse]{Content: []mcp.Content{&mcp.TextContent{Text: text}}, StructuredContent: resp}, nil
+	}
 }

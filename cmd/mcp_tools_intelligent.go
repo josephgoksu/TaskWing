@@ -3,6 +3,8 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
+// Intelligent MCP tools: query, smart find, suggest
+
 import (
 	"context"
 	"fmt"
@@ -128,6 +130,18 @@ func queryTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Filte
 		// Create informative response text
 		responseText := fmt.Sprintf("Filtered %d tasks using %s query '%s' (executed in %dms)",
 			len(taskResponses), queryType, filterUsed, executionTime)
+
+		// Show a compact list of top matches with short IDs for quick reuse
+		if len(taskResponses) > 0 {
+			maxShow := 5
+			if len(taskResponses) < maxShow {
+				maxShow = len(taskResponses)
+			}
+			responseText += "\nTop:"
+			for i := 0; i < maxShow; i++ {
+				responseText += fmt.Sprintf("\n - %s [%s]", taskResponses[i].Title, shortID(taskResponses[i].ID))
+			}
+		}
 
 		if len(suggestions) > 0 {
 			responseText += fmt.Sprintf(". No results found - try: %s", strings.Join(suggestions, ", "))
@@ -257,16 +271,16 @@ func findTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Resolve
 					// High confidence match
 					response.Match = &uniqueMatches[0]
 					response.Resolved = true
-					response.Message = fmt.Sprintf("✓ High confidence match: %s (%.1f%% confidence, matched by %s)",
-						uniqueMatches[0].Task.Title, uniqueMatches[0].Score*100, uniqueMatches[0].Type)
+					response.Message = fmt.Sprintf("✓ High confidence match: %s [%s] (%.1f%%, matched by %s)",
+						uniqueMatches[0].Task.Title, shortID(uniqueMatches[0].Task.ID), uniqueMatches[0].Score*100, uniqueMatches[0].Type)
 				} else {
 					// Multiple matches or lower confidence
 					if len(uniqueMatches) > maxSuggestions {
 						uniqueMatches = uniqueMatches[:maxSuggestions]
 					}
 					response.Matches = uniqueMatches
-					response.Message = fmt.Sprintf("Found %d potential matches for '%s'. Top match: %s (%.1f%% confidence)",
-						len(uniqueMatches), reference, uniqueMatches[0].Task.Title, uniqueMatches[0].Score*100)
+					response.Message = fmt.Sprintf("Found %d potential matches for '%s'. Top: %s [%s] (%.1f%%)",
+						len(uniqueMatches), reference, uniqueMatches[0].Task.Title, shortID(uniqueMatches[0].Task.ID), uniqueMatches[0].Score*100)
 				}
 			} else {
 				// No matches found - provide helpful suggestions
@@ -330,8 +344,8 @@ func suggestTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Tas
 
 		responseText := fmt.Sprintf("Found %d autocomplete suggestions for '%s'", len(suggestions), args.Input)
 		if len(suggestions) > 0 {
-			responseText += fmt.Sprintf(". Top suggestion: %s (%.1f%% match)",
-				suggestions[0].Task.Title, suggestions[0].Score*100)
+			responseText += fmt.Sprintf(". Top: %s [%s] (%.1f%%)",
+				suggestions[0].Task.Title, shortID(suggestions[0].Task.ID), suggestions[0].Score*100)
 		}
 
 		if args.Context != "" {
@@ -438,7 +452,7 @@ func applyEnhancedSimpleFilter(tasks []models.Task, filter string) ([]models.Tas
 		key = strings.TrimSpace(parts[0])
 		value = strings.TrimSpace(parts[1])
 	} else {
-		return nil, nil, fmt.Errorf("invalid filter format. Use 'field=value' or 'field:value'. Valid fields: %s", 
+		return nil, nil, fmt.Errorf("invalid filter format. Use 'field=value' or 'field:value'. Valid fields: %s",
 			strings.Join([]string{"status", "priority", "title", "description", "id"}, ", "))
 	}
 
@@ -523,39 +537,39 @@ func matchesPattern(query, pattern string) bool {
 
 func calculateAdvancedFuzzyScore(query string, task models.Task, fuzzyMatch bool) float64 {
 	query = strings.ToLower(query)
-	
+
 	// Exact matches get highest score
 	title := strings.ToLower(task.Title)
 	desc := strings.ToLower(task.Description)
-	
+
 	if strings.Contains(title, query) {
 		return 0.9 + (float64(len(query)) / float64(len(title)) * 0.1)
 	}
-	
+
 	if strings.Contains(desc, query) {
 		return 0.7 + (float64(len(query)) / float64(len(desc)) * 0.1)
 	}
-	
+
 	if !fuzzyMatch {
 		return 0
 	}
-	
+
 	// Word-level fuzzy matching
 	queryWords := strings.Fields(query)
 	titleWords := strings.Fields(title)
 	descWords := strings.Fields(desc)
-	
+
 	titleMatches := countWordMatches(queryWords, titleWords)
 	descMatches := countWordMatches(queryWords, descWords)
-	
+
 	if titleMatches > 0 {
 		return 0.5 + (float64(titleMatches) / float64(len(queryWords)) * 0.3)
 	}
-	
+
 	if descMatches > 0 {
 		return 0.3 + (float64(descMatches) / float64(len(queryWords)) * 0.2)
 	}
-	
+
 	return 0
 }
 
@@ -592,14 +606,14 @@ func matchesEnhancedFilter(task models.Task, key, value string) bool {
 func evaluateEnhancedExpression(task models.Task, expr string) bool {
 	// Support multiple comparison operators
 	operators := []string{"==", "=", "!=", "~="}
-	
+
 	for _, op := range operators {
 		if strings.Contains(expr, op) {
 			parts := strings.SplitN(expr, op, 2)
 			if len(parts) == 2 {
 				field := strings.TrimSpace(parts[0])
 				value := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-				
+
 				switch op {
 				case "==", "=":
 					return matchesEnhancedFilter(task, field, value)
@@ -612,7 +626,7 @@ func evaluateEnhancedExpression(task models.Task, expr string) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -645,7 +659,7 @@ func findTaskByExactID(id string, tasks []models.Task) *models.Task {
 func isUUIDFragment(s string) bool {
 	// Check if string looks like a UUID fragment (hex characters and maybe hyphens)
 	for _, r := range s {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F') || r == '-') {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') && r != '-' {
 			return false
 		}
 	}
@@ -655,7 +669,7 @@ func isUUIDFragment(s string) bool {
 func findTasksByPartialID(partialID string, tasks []models.Task) []types.TaskMatch {
 	var matches []types.TaskMatch
 	partialID = strings.ToLower(partialID)
-	
+
 	for _, task := range tasks {
 		taskID := strings.ToLower(task.ID)
 		if strings.HasPrefix(taskID, partialID) {
@@ -667,7 +681,7 @@ func findTasksByPartialID(partialID string, tasks []models.Task) []types.TaskMat
 			})
 		}
 	}
-	
+
 	return matches
 }
 
@@ -743,9 +757,9 @@ func boostCurrentTaskMatches(matches []types.TaskMatch) []types.TaskMatch {
 
 	for i := range matches {
 		if matches[i].Task.ID == currentTaskID {
-			matches[i].Score = math.Min(matches[i].Score * 1.2, 1.0)
+			matches[i].Score = math.Min(matches[i].Score*1.2, 1.0)
 		} else if matches[i].Task.ParentID != nil && *matches[i].Task.ParentID == currentTaskID {
-			matches[i].Score = math.Min(matches[i].Score * 1.1, 1.0)
+			matches[i].Score = math.Min(matches[i].Score*1.1, 1.0)
 		}
 	}
 
@@ -952,7 +966,7 @@ func findSimilarTitles(reference string, tasks []models.Task, limit int) []strin
 func getUniqueStatuses(tasks []models.Task) []string {
 	seen := make(map[string]bool)
 	var statuses []string
-	
+
 	for _, task := range tasks {
 		status := string(task.Status)
 		if !seen[status] {
@@ -960,14 +974,14 @@ func getUniqueStatuses(tasks []models.Task) []string {
 			statuses = append(statuses, status)
 		}
 	}
-	
+
 	return statuses
 }
 
 func getUniquePriorities(tasks []models.Task) []string {
 	seen := make(map[string]bool)
 	var priorities []string
-	
+
 	for _, task := range tasks {
 		priority := string(task.Priority)
 		if !seen[priority] {
@@ -975,7 +989,7 @@ func getUniquePriorities(tasks []models.Task) []string {
 			priorities = append(priorities, priority)
 		}
 	}
-	
+
 	return priorities
 }
 
@@ -1043,25 +1057,24 @@ func min(a, b int) int {
 	return b
 }
 
-
 // RegisterIntelligentMCPTools registers intelligent MCP tools with natural language support
 func RegisterIntelligentMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
 	// Intelligent query tasks tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "query-tasks",
-		Description: "🔍 INTELLIGENT: Query tasks using natural language, complex logic, or simple filters. Supports fuzzy matching and understands queries like 'high priority unfinished tasks' or 'status:todo AND priority:urgent'.",
+		Description: "Natural language or structured query. Examples: 'high priority unfinished', 'status:todo AND priority:urgent'. Supports fuzzy matching; returns tasks with match details.",
 	}, queryTasksHandler(taskStore))
 
-	// Smart task finding tool  
+	// Smart task finding tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "find-task",
-		Description: "🎯 SMART: Find tasks using partial IDs, fuzzy titles, or descriptions. Handles typos, suggests alternatives, and prioritizes your current work context for intelligent task discovery.",
+		Description: "Find a task by partial ID, fuzzy title, or description. Handles typos and prioritizes current task context. Returns best matches first.",
 	}, findTaskHandler(taskStore))
 
 	// Task suggestion tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "suggest-tasks",
-		Description: "⚡ PREDICTIVE: Get intelligent task suggestions based on your input and current work context. Provides relevance scoring and context-aware filtering for faster task selection.",
+		Description: "Suggest likely-relevant tasks from input + current context. Returns ranked suggestions with scores.",
 	}, suggestTasksHandler(taskStore))
 
 	return nil

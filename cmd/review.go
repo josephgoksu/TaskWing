@@ -8,9 +8,9 @@ import (
 )
 
 var reviewCmd = &cobra.Command{
-	Use:     "review [task_id]",
-	Short:   "Move task to review status (ready for validation)",
-	Long:    `Move a task to 'review' status when work is complete and it needs validation. If no task ID is provided, you'll be prompted to select from 'doing' tasks.`,
+	Use:   "review [task_id]",
+	Short: "Move task to review status (ready for validation)",
+	Long:  `Move a task to 'review' status when work is complete and it needs validation. If no task ID is provided, you'll be prompted to select from 'doing' tasks.`,
 	Example: `  taskwing review abc123  # Move specific task to review
   taskwing review         # Interactive selection from doing tasks`,
 	RunE: func(cmd *cobra.Command, args []string) error {

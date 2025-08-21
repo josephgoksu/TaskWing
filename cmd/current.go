@@ -29,13 +29,17 @@ var currentSetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		taskID := args[0]
-		
+
 		// Initialize task store
 		taskStore, err := GetStore()
 		if err != nil {
 			HandleError("Error: Could not initialize the task store.", err)
 		}
-		defer taskStore.Close()
+		defer func() {
+			if err := taskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		// Verify the task exists
 		task, err := taskStore.GetTask(taskID)
@@ -60,7 +64,7 @@ var currentShowCmd = &cobra.Command{
 	Long:  "Display information about the current active task.",
 	Run: func(cmd *cobra.Command, args []string) {
 		currentTaskID := GetCurrentTask()
-		
+
 		if currentTaskID == "" {
 			fmt.Println("No current task set.")
 			fmt.Println("Use 'taskwing current set <task_id>' to set one.")
@@ -72,7 +76,11 @@ var currentShowCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Error: Could not initialize the task store.", err)
 		}
-		defer taskStore.Close()
+		defer func() {
+			if err := taskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		// Get the current task
 		task, err := taskStore.GetTask(currentTaskID)
@@ -103,7 +111,7 @@ var currentClearCmd = &cobra.Command{
 	Long:  "Remove the current active task setting.",
 	Run: func(cmd *cobra.Command, args []string) {
 		currentTaskID := GetCurrentTask()
-		
+
 		if currentTaskID == "" {
 			fmt.Println("No current task is set.")
 			return

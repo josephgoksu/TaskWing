@@ -26,7 +26,11 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Error: could not get the task store", err)
 		}
-		defer taskStore.Close()
+		defer func() {
+			if err := taskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		// Retrieve filter flag values
 		statusFilter, _ := cmd.Flags().GetString("status")
@@ -209,7 +213,7 @@ var listCmd = &cobra.Command{
 		} else {
 			// Show current task information if available
 			showCurrentTaskBanner(taskStore)
-			
+
 			t := table.NewWriter()
 			t.SetOutputMirror(os.Stdout)
 			t.SetStyle(table.StyleLight)
@@ -387,10 +391,9 @@ func printTaskWithIndent(task models.Task, indentLevel int) {
 	prefix := "\u251C\u2500\u2500 "             // ├──
 	if indentLevel == 0 {
 		prefix = ""
-	} else {
-		// This part needs a way to know if it's the last child to use \u2514\u2500\u2500 (└──)
-		// For simplicity, always using ├──. A more complex tree renderer would track siblings.
 	}
+	// Note: For future enhancement, tree rendering could be improved to show
+	// different symbols for last child vs middle child
 	// Display normalized status with indicator
 	statusDisplay := string(task.Status)
 
@@ -425,9 +428,9 @@ func showCurrentTaskBanner(taskStore store.TaskStore) {
 		return
 	}
 
-	fmt.Printf("📌 Current Task: %s - %s (%s, %s)\n\n", 
-		truncateUUID(task.ID), 
-		task.Title, 
-		task.Status, 
+	fmt.Printf("📌 Current Task: %s - %s (%s, %s)\n\n",
+		truncateUUID(task.ID),
+		task.Title,
+		task.Status,
 		task.Priority)
 }

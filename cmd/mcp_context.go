@@ -14,7 +14,6 @@ import (
 	"github.com/josephgoksu/taskwing.app/types"
 )
 
-
 // BuildTaskContext creates a comprehensive context for AI tools
 func BuildTaskContext(taskStore store.TaskStore) (*types.TaskContext, error) {
 	tasks, err := taskStore.ListTasks(nil, nil)

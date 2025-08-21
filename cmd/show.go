@@ -29,7 +29,11 @@ Otherwise, it will present an interactive menu to select a task.`,
 		if err != nil {
 			HandleError("Error: could not get the task store", err)
 		}
-		defer taskStore.Close()
+		defer func() {
+			if err := taskStore.Close(); err != nil {
+				HandleError("Failed to close task store", err)
+			}
+		}()
 
 		var taskToShow models.Task
 		var selectedTaskID string

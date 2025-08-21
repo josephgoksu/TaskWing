@@ -3,6 +3,8 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
+// Resolution tools: resolve references, fuzzy title search, autocomplete
+
 import (
 	"context"
 	"fmt"
@@ -60,8 +62,17 @@ func findTaskByTitleHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.
 
 		responseText := fmt.Sprintf("Found %d tasks matching '%s'", len(matches), args.Title)
 		if len(matches) > 0 {
-			responseText += fmt.Sprintf(". Best match: '%s' (%.1f%% confidence)",
-				matches[0].Task.Title, matches[0].Score*100)
+			responseText += fmt.Sprintf(". Best: '%s' [%s] (%.1f%%)",
+				matches[0].Task.Title, shortID(matches[0].Task.ID), matches[0].Score*100)
+			// Append compact list
+			maxShow := 5
+			if len(matches) < maxShow {
+				maxShow = len(matches)
+			}
+			responseText += "\nTop:"
+			for i := 0; i < maxShow; i++ {
+				responseText += fmt.Sprintf("\n - %s [%s] (%.1f%%)", matches[i].Task.Title, shortID(matches[i].Task.ID), matches[i].Score*100)
+			}
 		}
 
 		return &mcp.CallToolResultFor[types.FindTaskByTitleResponse]{
@@ -134,15 +145,26 @@ func resolveTaskReferenceHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[t
 					// High confidence single match
 					response.Match = &uniqueMatches[0]
 					response.Resolved = true
-					response.Message = fmt.Sprintf("High confidence match found: %s (%.1f%% confidence)",
-						uniqueMatches[0].Task.Title, uniqueMatches[0].Score*100)
+					response.Message = fmt.Sprintf("High confidence: %s [%s] (%.1f%%)",
+						uniqueMatches[0].Task.Title, shortID(uniqueMatches[0].Task.ID), uniqueMatches[0].Score*100)
 				} else {
 					// Multiple matches or lower confidence
 					response.Matches = uniqueMatches
 					if len(uniqueMatches) > 5 {
 						response.Matches = uniqueMatches[:5]
 					}
-					response.Message = fmt.Sprintf("Found %d potential matches", len(response.Matches))
+					// Include compact list of top suggestions
+					msg := fmt.Sprintf("Found %d potential matches", len(response.Matches))
+					maxShow := len(response.Matches)
+					if maxShow > 5 {
+						maxShow = 5
+					}
+					msg += "\nTop:"
+					for i := 0; i < maxShow; i++ {
+						m := response.Matches[i]
+						msg += fmt.Sprintf("\n - %s [%s] (%.1f%%)", m.Task.Title, shortID(m.Task.ID), m.Score*100)
+					}
+					response.Message = msg
 				}
 			} else {
 				response.Message = fmt.Sprintf("No tasks found matching '%s'", reference)
@@ -403,19 +425,19 @@ func RegisterTaskResolutionTools(server *mcp.Server, taskStore store.TaskStore) 
 	// Find task by title tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "find-task-by-title",
-		Description: "🔍 BASIC: Find tasks using fuzzy title matching. NOTE: Use 'find-task' for smarter resolution with partial IDs, context awareness, and better error messages.",
+		Description: "Find tasks by fuzzy title match. Prefer 'find-task' for partial IDs and context-aware ranking.",
 	}, findTaskByTitleHandler(taskStore))
 
 	// Resolve task reference tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "resolve-task-reference",
-		Description: "🎯 BASIC: Resolve task references from partial IDs, titles, or descriptions. NOTE: Use 'find-task' for intelligent suggestions, current task awareness, and actionable error messages.",
+		Description: "Resolve a task ref from partial ID/title/description. Returns a single resolved task or guidance if ambiguous.",
 	}, resolveTaskReferenceHandler(taskStore))
 
 	// Task autocomplete tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "task-autocomplete",
-		Description: "⚡ BASIC: Get task suggestions based on partial input. NOTE: Use 'task-autocomplete-smart' for context-aware suggestions, relevance scoring, and active task prioritization.",
+		Description: "Autocomplete titles by partial input. Returns suggestions; use 'suggest-tasks' for context-aware ranking.",
 	}, taskAutocompleteHandler(taskStore))
 
 	return nil
