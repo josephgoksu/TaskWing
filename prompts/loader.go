@@ -17,6 +17,8 @@ const (
 	KeyEstimateTasks PromptKey = "EstimateTasks"
 	// KeyImprovePRD is the key for the PRD improvement prompt.
 	KeyImprovePRD PromptKey = "ImprovePRD"
+	// KeyEnhanceTask is the key for the single task enhancement prompt.
+	KeyEnhanceTask PromptKey = "EnhanceTask"
 )
 
 // promptConfig defines the default content and filename for a prompt.
@@ -38,6 +40,10 @@ var promptRegistry = map[PromptKey]promptConfig{
 	KeyImprovePRD: {
 		defaultContent: ImprovePRDSystemPrompt,
 		filename:       "improve_prd_prompt.txt",
+	},
+	KeyEnhanceTask: {
+		defaultContent: EnhanceTaskSystemPrompt,
+		filename:       "enhance_task_prompt.txt",
 	},
 }
 

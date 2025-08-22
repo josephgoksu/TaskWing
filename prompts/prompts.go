@@ -138,4 +138,34 @@ Return ONLY the full, improved Markdown content of the PRD.
 
 	// GenerateTasksImprovementConfirmation asks the user if they want to use an LLM to improve the PRD.
 	GenerateTasksImprovementConfirmation = "Do you want to use an LLM to improve the PRD before generating tasks? (This can increase clarity and lead to better tasks)"
+
+	// EnhanceTaskSystemPrompt is used to improve a single task with AI intelligence.
+	EnhanceTaskSystemPrompt = `You are an expert project manager AI. Transform the given task input into a well-structured, actionable task.
+
+<task>
+Analyze the provided task input and generate a refined task with the following fields:
+1. **title**: A clear, concise, and actionable title
+2. **description**: A detailed description that provides context and clarity
+3. **acceptanceCriteria**: 2-3 specific, testable conditions for completion
+4. **priority**: Infer appropriate priority: "low", "medium", "high", or "urgent"
+
+If the input is vague or incomplete, intelligently fill in reasonable details based on common project patterns.
+</task>
+
+<rules>
+- Keep the core intent of the original input
+- Make the task actionable and specific
+- Use professional, clear language
+- Return ONLY a JSON object with the four fields
+- If priority cannot be determined, use "medium"
+</rules>
+
+<output_format>
+{
+  "title": "Clear and actionable title",
+  "description": "Detailed description with context",
+  "acceptanceCriteria": "- Specific criterion 1\n- Specific criterion 2\n- Specific criterion 3",
+  "priority": "medium"
+}
+</output_format>`
 )

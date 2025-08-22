@@ -85,66 +85,66 @@ taskwing search "review"
 
 ### Core Commands
 
-| Command | Purpose | Example |
-|---------|---------|---------|
-| `init` | Initialize TaskWing in current directory | `taskwing init` |
-| `add` | Create a new task | `taskwing add --title "Fix bug"` |
-| `list` | Display tasks with optional filtering | `taskwing list --status pending` |
-| `show` | Show detailed task information | `taskwing show <task-id>` |
-| `update` | Modify an existing task | `taskwing update <task-id>` |
-| `done` | Mark task as completed | `taskwing done <task-id>` |
-| `delete` | Remove a task | `taskwing delete <task-id>` |
-| `search` | Search tasks by text | `taskwing search "authentication"` |
+| Command  | Purpose                                  | Example                            |
+| -------- | ---------------------------------------- | ---------------------------------- |
+| `init`   | Initialize TaskWing in current directory | `taskwing init`                    |
+| `add`    | Create a new task                        | `taskwing add --title "Fix bug"`   |
+| `list`   | Display tasks with optional filtering    | `taskwing list --status pending`   |
+| `show`   | Show detailed task information           | `taskwing show <task-id>`          |
+| `update` | Modify an existing task                  | `taskwing update <task-id>`        |
+| `done`   | Mark task as completed                   | `taskwing done <task-id>`          |
+| `delete` | Remove a task                            | `taskwing delete <task-id>`        |
+| `search` | Search tasks by text                     | `taskwing search "authentication"` |
 
 ### Current Task Management
 
-| Command | Purpose | Example |
-|---------|---------|---------|
-| `current set` | Set the active task you're working on | `taskwing current set <task-id>` |
-| `current show` | Display current active task | `taskwing current show` |
-| `current clear` | Clear current task | `taskwing current clear` |
+| Command         | Purpose                               | Example                          |
+| --------------- | ------------------------------------- | -------------------------------- |
+| `current set`   | Set the active task you're working on | `taskwing current set <task-id>` |
+| `current show`  | Display current active task           | `taskwing current show`          |
+| `current clear` | Clear current task                    | `taskwing current clear`         |
 
 ### Archive & Knowledge Management
 
-| Command | Purpose | Example |
-|---------|---------|---------|
-| `archive` | Archive completed tasks and capture project insights | `taskwing archive` |
-| `retrospective` | Generate retrospective from completed tasks | `taskwing retrospective` |
+| Command         | Purpose                                              | Example                  |
+| --------------- | ---------------------------------------------------- | ------------------------ |
+| `archive`       | Archive completed tasks and capture project insights | `taskwing archive`       |
+| `retrospective` | Generate retrospective from completed tasks          | `taskwing retrospective` |
 
 ### Pattern Library
 
-| Command | Purpose | Example |
-|---------|---------|---------|
-| `patterns extract` | Extract patterns from archived projects | `taskwing patterns extract` |
-| `patterns list` | View all available patterns | `taskwing patterns list` |
-| `patterns match <desc>` | Find patterns matching description | `taskwing patterns match "api refactor"` |
-| `patterns update` | Update patterns with latest archives | `taskwing patterns update` |
+| Command                 | Purpose                                 | Example                                  |
+| ----------------------- | --------------------------------------- | ---------------------------------------- |
+| `patterns extract`      | Extract patterns from archived projects | `taskwing patterns extract`              |
+| `patterns list`         | View all available patterns             | `taskwing patterns list`                 |
+| `patterns match <desc>` | Find patterns matching description      | `taskwing patterns match "api refactor"` |
+| `patterns update`       | Update patterns with latest archives    | `taskwing patterns update`               |
 
 ### Configuration Commands
 
-| Command | Purpose | Example |
-|---------|---------|---------|
+| Command       | Purpose                       | Example                |
+| ------------- | ----------------------------- | ---------------------- |
 | `config show` | Display current configuration | `taskwing config show` |
-| `config path` | Show config file location | `taskwing config path` |
+| `config path` | Show config file location     | `taskwing config path` |
 
 ### MCP Integration
 
-| Command | Purpose | Example |
-|---------|---------|---------|
-| `mcp` | Start MCP server for AI integration | `taskwing mcp` |
+| Command  | Purpose                               | Example           |
+| -------- | ------------------------------------- | ----------------- |
+| `mcp`    | Start MCP server for AI integration   | `taskwing mcp`    |
 | `mcp -v` | Start MCP server with verbose logging | `taskwing mcp -v` |
 
 ## Task Properties
 
-| Property | Description | Values |
-|----------|-------------|--------|
-| **Title** | Short descriptive name (required) | 3-255 characters |
-| **Description** | Detailed explanation | Any text |
-| **Status** | Current task state | `pending`, `in-progress`, `completed`, `cancelled`, `on-hold`, `blocked`, `needs-review` |
-| **Priority** | Task urgency | `low`, `medium`, `high`, `urgent` |
-| **Dependencies** | Tasks that must complete first | Array of task IDs |
-| **Parent/Subtasks** | Hierarchical relationships | Parent ID or subtask IDs |
-| **Acceptance Criteria** | Definition of done | Any text |
+| Property                | Description                       | Values                                                                                   |
+| ----------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Title**               | Short descriptive name (required) | 3-255 characters                                                                         |
+| **Description**         | Detailed explanation              | Any text                                                                                 |
+| **Status**              | Current task state                | `pending`, `in-progress`, `completed`, `cancelled`, `on-hold`, `blocked`, `needs-review` |
+| **Priority**            | Task urgency                      | `low`, `medium`, `high`, `urgent`                                                        |
+| **Dependencies**        | Tasks that must complete first    | Array of task IDs                                                                        |
+| **Parent/Subtasks**     | Hierarchical relationships        | Parent ID or subtask IDs                                                                 |
+| **Acceptance Criteria** | Definition of done                | Any text                                                                                 |
 
 ### Creating Tasks
 
@@ -252,7 +252,7 @@ project:
 
 data:
   file: "tasks.json"
-  format: "json"  # json, yaml, or toml
+  format: "json" # json, yaml, or toml
 ```
 
 ## Common Workflows
@@ -345,6 +345,23 @@ taskwing patterns match "api refactoring"
 # Let AI suggest patterns via MCP (requires Claude Code/Cursor)
 # Use suggest-patterns tool through your AI assistant
 ```
+
+### Automated Planning from a PRD (non-interactive)
+
+```bash
+# Preview only (no changes)
+taskwing generate tasks --file product.xml --preview-only --no-improve
+
+# Create tasks without prompts (clears existing tasks if any)
+taskwing generate tasks --file product.xml --yes --create
+```
+
+Flags:
+
+- `--yes`: accept confirmations (overwrite existing, create)
+- `--no-improve`: skip PRD improvement
+- `--preview-only`: show proposed tasks and exit
+- `--create`: create tasks without interactive confirmation
 
 ### Advanced Pattern Workflows
 
@@ -475,7 +492,7 @@ Each project directory needs its own initialization:
 cd /project1
 taskwing init
 
-cd /project2  
+cd /project2
 taskwing init
 ```
 

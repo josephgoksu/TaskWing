@@ -47,7 +47,7 @@ Safety features:
 Examples:
   taskwing clear                    # Clear completed tasks (safe default)
   taskwing clear --status=todo      # Clear only todo tasks
-  taskwing clear --priority=low     # Clear only low priority tasks  
+  taskwing clear --priority=low     # Clear only low priority tasks
   taskwing clear --all              # Clear all tasks (with confirmation)
   taskwing clear --all --force      # Clear all tasks without confirmation`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -256,6 +256,47 @@ func createClearBackup(taskStore store.TaskStore, tasksToDelete []models.Task) e
 }
 
 func performClear(taskStore store.TaskStore, tasks []models.Task) (int, int) {
+	// If clearing all tasks, use the bulk delete method to avoid dependency issues
+	if clearAll {
+		return performClearAll(taskStore, tasks)
+	}
+
+	// For partial deletion, use dependency-aware deletion
+	return performClearPartial(taskStore, tasks)
+}
+
+// performClearAll uses the bulk delete method to clear all tasks regardless of dependencies
+func performClearAll(taskStore store.TaskStore, tasks []models.Task) (int, int) {
+	if err := taskStore.DeleteAllTasks(); err != nil {
+		fmt.Printf("❌ Failed to clear all tasks: %v\n", err)
+		return 0, len(tasks)
+	}
+	return len(tasks), 0
+}
+
+// performClearPartial attempts to delete tasks while respecting dependencies
+func performClearPartial(taskStore store.TaskStore, tasks []models.Task) (int, int) {
+	if len(tasks) == 0 {
+		return 0, 0
+	}
+
+	// For partial deletion, try batch delete first (which handles dependencies better)
+	taskIDs := make([]string, len(tasks))
+	for i, task := range tasks {
+		taskIDs[i] = task.ID
+	}
+
+	if deleted, err := taskStore.DeleteTasks(taskIDs); err != nil {
+		fmt.Printf("❌ Failed to batch delete tasks: %v\n", err)
+		// Fall back to individual deletion
+		return performClearIndividual(taskStore, tasks)
+	} else {
+		return deleted, len(tasks) - deleted
+	}
+}
+
+// performClearIndividual falls back to individual task deletion with error reporting
+func performClearIndividual(taskStore store.TaskStore, tasks []models.Task) (int, int) {
 	cleared := 0
 	failed := 0
 

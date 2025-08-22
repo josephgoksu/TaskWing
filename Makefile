@@ -52,10 +52,18 @@ test-integration: build
 # Run MCP tools tests
 .PHONY: test-mcp
 test-mcp: build
-	@echo "🎯 Running MCP protocol stdio tests..."
+	@echo "🎯 Running MCP protocol and functional tests..."
 	mkdir -p $(TEST_DIR)
-	go test -v ./cmd -run "TestMCPProtocolStdio" | tee $(TEST_DIR)/mcp-protocol.log
-	@echo "✅ MCP protocol tests complete"
+	go test -v ./cmd -run "TestMCP.*" | tee $(TEST_DIR)/mcp-protocol.log
+	@echo "✅ MCP protocol and functional tests complete"
+
+# Run comprehensive MCP functional tests (all tools)
+.PHONY: test-mcp-functional
+test-mcp-functional: build  
+	@echo "🔧 Running comprehensive MCP functional tests..."
+	mkdir -p $(TEST_DIR)
+	go test -v ./cmd -run "TestMCPAllToolsSmoke" | tee $(TEST_DIR)/mcp-functional.log
+	@echo "✅ MCP functional tests complete"
 
 
 # Generate test coverage

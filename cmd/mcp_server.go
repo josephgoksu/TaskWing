@@ -102,6 +102,11 @@ func runMCPServer(ctx context.Context) error {
 		return fmt.Errorf("failed to register intelligent MCP tools: %w", err)
 	}
 
+	// Register planning tools (document → plan)
+	if err := RegisterPlanningTools(server, taskStore); err != nil {
+		return fmt.Errorf("failed to register planning MCP tools: %w", err)
+	}
+
 	// Register board tools
 	if err := RegisterBoardTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register board tools: %w", err)

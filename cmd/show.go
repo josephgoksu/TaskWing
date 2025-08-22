@@ -134,13 +134,17 @@ func displayTaskDetails(task models.Task, store store.TaskStore) {
 		fmt.Println("Subtasks: None")
 	}
 
-	// Dependencies
+	// Dependencies with status icons
 	if len(task.Dependencies) > 0 {
 		fmt.Println("Depends On (Dependencies):")
 		for _, depID := range task.Dependencies {
 			depTask, err := store.GetTask(depID)
 			if err == nil {
-				fmt.Printf("  - %s (ID: %s, Status: %s)\n", depTask.Title, depID, depTask.Status)
+				icon := "⏱️"
+				if depTask.Status == models.StatusDone {
+					icon = "✅"
+				}
+				fmt.Printf("  %s %s (ID: %s, Status: %s)\n", icon, depTask.Title, depID, depTask.Status)
 			} else {
 				fmt.Printf("  - (ID: %s - Could not fetch details)\n", depID)
 			}

@@ -434,6 +434,37 @@ type BulkByFilterResponse struct {
 	Errors       []string `json:"errors,omitempty"`
 }
 
+// Planning tool types
+
+// PlanFromDocumentParams defines inputs for creating a plan from a PRD or text
+type PlanFromDocumentParams struct {
+	// Provide either inline content or a file URI
+	Content     string  `json:"content,omitempty" mcp:"Inline PRD/requirements text"`
+	URI         string  `json:"uri,omitempty" mcp:"Path to PRD/requirements file (e.g., product.xml, .md)"`
+	SkipImprove bool    `json:"skip_improve,omitempty" mcp:"Skip LLM improvement step (default: false)"`
+	Confirm     bool    `json:"confirm,omitempty" mcp:"If true, create tasks; otherwise, preview only"`
+	Model       string  `json:"model,omitempty" mcp:"Override LLM model name"`
+	Temperature float64 `json:"temperature,omitempty" mcp:"Override generation temperature"`
+}
+
+// ProposedTask provides a compact preview of tasks before creation
+type ProposedTask struct {
+	Title              string `json:"title"`
+	Description        string `json:"description,omitempty"`
+	AcceptanceCriteria string `json:"acceptanceCriteria,omitempty"`
+	Priority           string `json:"priority,omitempty"`
+}
+
+// PlanFromDocumentResponse summarizes the planning result
+type PlanFromDocumentResponse struct {
+	Preview       bool           `json:"preview"`
+	Proposed      []ProposedTask `json:"proposed_tasks,omitempty"`
+	ProposedCount int            `json:"proposed_count"`
+	Created       int            `json:"created_count"`
+	Summary       string         `json:"summary"`
+	ImprovedPRD   string         `json:"improved_prd,omitempty"`
+}
+
 // Workflow Integration Tool Types
 
 // SmartTaskTransitionParams for AI-powered next step suggestions

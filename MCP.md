@@ -130,14 +130,14 @@ taskwing mcp
 
 ### Basic Task Management
 
-| Tool          | Purpose          | Required | Optional                                                                           |
-| ------------- | ---------------- | -------- | ---------------------------------------------------------------------------------- |
-| `add-task`    | Create new task  | `title`  | `description`, `acceptanceCriteria`, `priority`, `dependencies`, `parentId`        |
-| `list-tasks`  | Query tasks      | None     | `status`, `priority`, `search`, `parentId`, `sortBy`, `sortOrder`                  |
-| `get-task`    | Get task details | `id` or `reference` | None                                                             |
+| Tool          | Purpose          | Required            | Optional                                                                           |
+| ------------- | ---------------- | ------------------- | ---------------------------------------------------------------------------------- |
+| `add-task`    | Create new task  | `title`             | `description`, `acceptanceCriteria`, `priority`, `dependencies`, `parentId`        |
+| `list-tasks`  | Query tasks      | None                | `status`, `priority`, `search`, `parentId`, `sortBy`, `sortOrder`                  |
+| `get-task`    | Get task details | `id` or `reference` | None                                                                               |
 | `update-task` | Modify task      | `id` or `reference` | `title`, `description`, `acceptanceCriteria`, `status`, `priority`, `dependencies` |
-| `mark-done`   | Complete task    | `id` or `reference` | None                                                             |
-| `delete-task` | Remove task      | `id` or `reference` | None                                                             |
+| `mark-done`   | Complete task    | `id` or `reference` | None                                                                               |
+| `delete-task` | Remove task      | `id` or `reference` | None                                                                               |
 
 ### Current Task Management
 
@@ -149,38 +149,68 @@ taskwing mcp
 
 ### Board Tools
 
-| Tool              | Purpose                                   | Required | Optional                   |
-| ----------------- | ----------------------------------------- | -------- | -------------------------- |
-| `board-snapshot`  | Kanban snapshot grouped by status, counts | None     | `limit`, `include_tasks`   |
-| `board-reconcile` | Apply multiple ops and return snapshot     | `ops`    | `dry_run`                  |
+| Tool              | Purpose                                   | Required | Optional                 |
+| ----------------- | ----------------------------------------- | -------- | ------------------------ |
+| `board-snapshot`  | Kanban snapshot grouped by status, counts | None     | `limit`, `include_tasks` |
+| `board-reconcile` | Apply multiple ops and return snapshot    | `ops`    | `dry_run`                |
 
 Example:
 
 ```json
 {
   "tool": "board-snapshot",
-  "arguments": {"limit": 5}
+  "arguments": { "limit": 5 }
 }
 ```
 
 ### Advanced Tools
 
-| Tool                 | Purpose                                                | Required             | Optional                                       |
-| -------------------- | ------------------------------------------------------ | -------------------- | ---------------------------------------------- |
-| `batch-create-tasks` | 🎯 Create multiple tasks with relationships            | `tasks` (array)      | None                                           |
-| `bulk-tasks`         | 🎯 Bulk operations (complete/cancel/delete/prioritize) | `task_ids`, `action` | `priority`                                     |
-| `bulk-by-filter`     | 🎯 Bulk ops by filter/expression/query with preview    | `action`            | `priority`, `filter`, `expression`, `query`, `limit`, `preview_only`, `confirm` |
-| `search-tasks`       | 🎯 Advanced search with logical operators              | `query`              | `tags`, `date_from`, `date_to`, `has_subtasks` |
-| `task-summary`       | 🎯 Project health overview with metrics                | None                 | None                                           |
-| `suggest-patterns`   | 🎯 AI-enhanced pattern suggestions                     | `description`        | `projectType`, `complexity`                    |
+| Tool                 | Purpose                                             | Required                             | Optional                                                                        |
+| -------------------- | --------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------- |
+| `batch-create-tasks` | 🎯 Create multiple tasks with relationships         | `tasks` (array)                      | None                                                                            |
+| `bulk-tasks`         | 🎯 Bulk operations (complete/delete/prioritize)     | `task_ids`, `action`                 | `priority`                                                                      |
+| `bulk-by-filter`     | 🎯 Bulk ops by filter/expression/query with preview | `action`                             | `priority`, `filter`, `expression`, `query`, `limit`, `preview_only`, `confirm` |
+| `search-tasks`       | 🎯 Advanced search with logical operators           | `query`                              | `tags`, `date_from`, `date_to`, `has_subtasks`                                  |
+| `query-tasks`        | 🧠 Natural-language or structured query over tasks  | one of `query`/`filter`/`expression` | `fields`, `limit`, `fuzzy_match`                                                |
+| `task-summary`       | 🎯 Project health overview with metrics             | None                                 | None                                                                            |
+
+### Planning Tools
+
+| Tool                 | Purpose                                  | Required Args       | Optional Args                     |
+| -------------------- | ---------------------------------------- | ------------------- | --------------------------------- |
+| `plan-from-document` | Turn PRD/text into a plan (preview/create) | `content` or `uri`   | `skip_improve`, `confirm`, `model`, `temperature` |
+
+Example (preview only):
+
+```json
+{
+  "tool": "plan-from-document",
+  "arguments": {
+    "uri": "product.xml"
+  }
+}
+```
+
+Apply the plan (destructive: clears existing tasks before create):
+
+```json
+{
+  "tool": "plan-from-document",
+  "arguments": {
+    "uri": "product.xml",
+    "confirm": true
+  }
+}
+```
 
 ### Task Resolution Tools
 
-| Tool                     | Purpose                                    | Required Args | Optional Args      |
-| ------------------------ | ------------------------------------------ | ------------- | ------------------ |
-| `find-task-by-title`     | 🔍 Fuzzy title matching with typo handling | `title`       | `limit`            |
-| `resolve-task-reference` | 🎯 Resolve partial IDs/titles/descriptions | `reference`   | `exact`            |
-| `task-autocomplete`      | ⚡ Intelligent task suggestions            | `input`       | `limit`, `context` |
+| Tool                     | Purpose                                    | Required Args | Optional Args                                       |
+| ------------------------ | ------------------------------------------ | ------------- | --------------------------------------------------- |
+| `find-task`              | 🔎 Smart finder (ID/title/description)     | `reference`   | `preferCurrent`, `maxSuggestions`, `searchFields[]` |
+| `find-task-by-title`     | 🔍 Fuzzy title matching with typo handling | `title`       | `limit`                                             |
+| `resolve-task-reference` | 🎯 Resolve partial IDs/titles/descriptions | `reference`   | `exact`                                             |
+| `task-autocomplete`      | ⚡ Intelligent task suggestions            | `input`       | `limit`, `context`                                  |
 
 ### JSON Processing Tools
 
@@ -244,7 +274,11 @@ Example:
 {
   "tool": "bulk-tasks",
   "arguments": {
-    "task_ids": ["uuid1", "Fix Typography and Text Sizing for Mobile", "7b3e4f2a"],
+    "task_ids": [
+      "uuid1",
+      "Fix Typography and Text Sizing for Mobile",
+      "7b3e4f2a"
+    ],
     "action": "complete"
   }
 }
@@ -279,20 +313,20 @@ Then apply:
 }
 ```
 
-#### Pattern-Based Suggestions
+#### Query Tasks
 
 ```json
 {
-  "tool": "suggest-patterns",
+  "tool": "query-tasks",
   "arguments": {
-    "description": "need to consolidate multiple configuration files",
-    "projectType": "refactoring",
-    "complexity": "medium"
+    "query": "high priority unfinished",
+    "limit": 5,
+    "fuzzy_match": true
   }
 }
 ```
 
-**Returns**: Matching patterns with success rates, task breakdowns, and proven approaches from similar projects.
+_Natural-language filtering with match insights and suggestions._
 
 #### Task Resolution Examples
 
@@ -338,13 +372,13 @@ _Suggests completions like "implement user login", "implement user registration"
 {
   "tool": "filter-tasks",
   "arguments": {
-    "expression": "$[?(@.status == 'todo' && @.priority == 'high')]",
+    "expression": "status=todo AND priority=high",
     "fields": "id,title,priority"
   }
 }
 ```
 
-_Advanced JSONPath filtering without external jq dependencies_
+_Complex filtering with simple expressions; also supports JSONPath form like `$.status == 'todo'` for single-field filters._
 
 ```json
 {
@@ -419,7 +453,7 @@ After calling `mark-done`, `update-task`, or `bulk-tasks`, verify the board stat
 ```json
 {
   "tool": "board-snapshot",
-  "arguments": {"limit": 5}
+  "arguments": { "limit": 5 }
 }
 ```
 
@@ -429,10 +463,10 @@ This returns grouped counts and (optionally) top tasks per column for visual ver
 
 ### Resources
 
-| Resource               | Purpose                                      |
-| ---------------------- | -------------------------------------------- |
-| `taskwing://tasks`     | Read-only access to all tasks in JSON format |
-| `taskwing://config`    | TaskWing configuration settings              |
+| Resource            | Purpose                                      |
+| ------------------- | -------------------------------------------- |
+| `taskwing://tasks`  | Read-only access to all tasks in JSON format |
+| `taskwing://config` | TaskWing configuration settings              |
 
 ### Prompts
 

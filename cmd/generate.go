@@ -67,55 +67,11 @@ llm:
 		}
 
 		// --- PRE-GENERATION CHECKS ---
-		// 1. Check for existing tasks and ask for overwrite confirmation BEFORE any expensive operations.
-		taskStore, err := GetStore()
-		if err != nil {
-			HandleError("Error: Could not initialize the task store.", err)
-		}
-
-		existingTasks, err := taskStore.ListTasks(nil, nil)
-		if err != nil {
-			HandleError("Error: Could not check for existing tasks.", err)
-		}
-
-		if len(existingTasks) > 0 {
-			numExisting := len(existingTasks)
-			fmt.Printf("Found %d existing task(s).\n", numExisting)
-			overwritePrompt := promptui.Prompt{
-				Label:     prompts.GenerateTasksOverwriteConfirmation,
-				IsConfirm: true,
-			}
-			_, err := overwritePrompt.Run()
-			if err != nil {
-				if err == promptui.ErrAbort {
-					fmt.Println("Task generation cancelled.")
-					if closeErr := taskStore.Close(); closeErr != nil {
-						fmt.Printf("Warning: Failed to close task store: %v\n", closeErr)
-					}
-					return
-				}
-				if closeErr := taskStore.Close(); closeErr != nil {
-					fmt.Printf("Warning: Failed to close task store: %v\n", closeErr)
-				}
-				HandleError("Error: Could not get confirmation for overwriting tasks.", err)
-			}
-
-			// User confirmed overwrite. Delete existing tasks now.
-			fmt.Println("\nDeleting existing tasks...")
-			if err := taskStore.DeleteAllTasks(); err != nil {
-				if closeErr := taskStore.Close(); closeErr != nil {
-					fmt.Printf("Warning: Failed to close task store: %v\n", closeErr)
-				}
-				HandleError("Error: Could not delete the existing tasks.", err)
-			}
-			fmt.Printf("Successfully deleted %d task(s).\n\n", numExisting)
-		}
-
-		// We are done with pre-checks, we can close the store connection for now.
-		// It will be re-opened later for creation. This avoids holding the lock.
-		if closeErr := taskStore.Close(); closeErr != nil {
-			fmt.Printf("Warning: Failed to close task store: %v\n", closeErr)
-		}
+		// Non-interactive flags
+		autoYes, _ := cmd.Flags().GetBool("yes")
+		skipImprove, _ := cmd.Flags().GetBool("no-improve")
+		previewOnly, _ := cmd.Flags().GetBool("preview-only")
+		createNow, _ := cmd.Flags().GetBool("create")
 
 		// --- LLM TASK GENERATION ---
 		appCfg := GetConfig()
@@ -175,18 +131,22 @@ llm:
 		// Construct the absolute path to the templates directory for the prompt loader.
 		absoluteTemplatesDir := filepath.Join(appCfg.Project.RootDir, appCfg.Project.TemplatesDir)
 
-		improvePrompt := promptui.Prompt{
-			Label:     prompts.GenerateTasksImprovementConfirmation,
-			IsConfirm: true,
-			Default:   "y",
-		}
-		_, err = improvePrompt.Run()
-		if err != nil && err != promptui.ErrAbort {
-			HandleError("Error: Could not get confirmation for PRD improvement.", err)
-			return // Unreachable
+		doImprove := !skipImprove
+		if doImprove && !autoYes {
+			improvePrompt := promptui.Prompt{
+				Label:     prompts.GenerateTasksImprovementConfirmation,
+				IsConfirm: true,
+				Default:   "y",
+			}
+			_, err = improvePrompt.Run()
+			if err != nil && err != promptui.ErrAbort {
+				HandleError("Error: Could not get confirmation for PRD improvement.", err)
+				return // Unreachable
+			}
+			doImprove = (err == nil)
 		}
 
-		if err == nil { // User confirmed "yes"
+		if doImprove {
 			s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
 			s.Suffix = " Improving PRD with LLM... (This may take a moment)"
 			s.Start()
@@ -354,22 +314,31 @@ llm:
 		// 8. Display tasks and ask for final confirmation to create them.
 		fmt.Printf("\n--- Proposed Tasks to Create (%d) ---\n", len(taskCandidates))
 		displayTaskCandidates(taskCandidates, relationshipMap)
-
-		confirmPrompt := promptui.Prompt{
-			Label:     fmt.Sprintf("Do you want to create these %d tasks?", len(taskCandidates)),
-			IsConfirm: true,
+		// Handle preview vs create
+		if previewOnly && !createNow {
+			fmt.Println("\nPreview mode: no changes applied.")
+			return
 		}
-		_, confirmErr := confirmPrompt.Run()
-		if confirmErr != nil {
-			if confirmErr == promptui.ErrAbort {
-				fmt.Println("Task creation cancelled.")
-				return
+
+		confirmed := createNow
+		if !confirmed {
+			confirmPrompt := promptui.Prompt{
+				Label:     fmt.Sprintf("Do you want to create these %d tasks?", len(taskCandidates)),
+				IsConfirm: true,
 			}
-			HandleError("Error: Could not get confirmation to create tasks.", confirmErr)
+			_, confirmErr := confirmPrompt.Run()
+			if confirmErr != nil {
+				if confirmErr == promptui.ErrAbort {
+					fmt.Println("Task creation cancelled.")
+					return
+				}
+				HandleError("Error: Could not get confirmation to create tasks.", confirmErr)
+			}
+			confirmed = true
 		}
 
-		// 9. If confirmed, get a fresh store connection and create tasks.
-		fmt.Println("\nCreating tasks...")
+		// 9. If confirmed, get a fresh store connection, optionally wipe existing tasks, and create
+		fmt.Println("\nPreparing to create tasks...")
 		finalTaskStore, finalStoreErr := GetStore()
 		if finalStoreErr != nil {
 			HandleError("Error: Could not initialize task store for the final step.", finalStoreErr)
@@ -380,6 +349,31 @@ llm:
 			}
 		}()
 
+		// Check existing tasks and clear if user agrees or autoYes
+		existing, lerr := finalTaskStore.ListTasks(nil, nil)
+		if lerr != nil {
+			HandleError("Error: Could not check existing tasks before creating.", lerr)
+		}
+		if len(existing) > 0 {
+			if autoYes {
+				fmt.Printf("Found %d existing tasks. Deleting...\n", len(existing))
+			} else {
+				fmt.Printf("Found %d existing task(s).\n", len(existing))
+				overwritePrompt := promptui.Prompt{Label: prompts.GenerateTasksOverwriteConfirmation, IsConfirm: true}
+				if _, err := overwritePrompt.Run(); err != nil {
+					if err == promptui.ErrAbort {
+						fmt.Println("Task generation cancelled.")
+						return
+					}
+					HandleError("Error: Could not get confirmation for overwriting tasks.", err)
+				}
+			}
+			if err := finalTaskStore.DeleteAllTasks(); err != nil {
+				HandleError("Error: Could not delete the existing tasks.", err)
+			}
+		}
+
+		fmt.Println("Creating tasks...")
 		createdCount, creationErrors := createTasksInStore(finalTaskStore, taskCandidates, relationshipMap)
 		fmt.Printf("Successfully created %d tasks.\n", createdCount)
 		if len(creationErrors) > 0 {
@@ -637,6 +631,10 @@ func init() {
 	generateCmd.AddCommand(generateTasksCmd)
 
 	generateTasksCmd.Flags().StringP("file", "f", "", "Path to the document file (PRD) to generate tasks from.")
+	generateTasksCmd.Flags().Bool("yes", false, "Accept all confirmations (non-interactive)")
+	generateTasksCmd.Flags().Bool("no-improve", false, "Skip PRD improvement step")
+	generateTasksCmd.Flags().Bool("preview-only", false, "Preview proposed tasks without creating")
+	generateTasksCmd.Flags().Bool("create", false, "Create tasks without interactive confirmation")
 	// MarkAsRequired is not strictly necessary if we check it and print help as above
 	// generateTasksCmd.MarkFlagRequired("file")
 }

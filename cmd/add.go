@@ -4,21 +4,30 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/josephgoksu/taskwing.app/llm"
 	"github.com/josephgoksu/taskwing.app/models"
+	"github.com/josephgoksu/taskwing.app/prompts"
+	"github.com/josephgoksu/taskwing.app/store"
+	"github.com/josephgoksu/taskwing.app/types"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
 
 // addCmd represents the add command
 var addCmd = &cobra.Command{
-	Use:   "add",
-	Short: "Add a new task",
-	Long:  `Add a new task to the task manager. Prompts for title, description, priority, tags, dependencies, and optional parent task ID.`,
+	Use:   "add [task description]",
+	Short: "Add a new task with AI enhancement",
+	Long:  `Add a new task with AI-powered enhancement. Automatically improves title, description, acceptance criteria and priority. Use --no-ai to disable AI enhancement.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		ctx := context.Background()
+		
+		// Initialize task store
 		taskStore, err := GetStore()
 		if err != nil {
 			HandleError("Error: Could not initialize the task store.", err)
@@ -29,160 +38,213 @@ var addCmd = &cobra.Command{
 			}
 		}()
 
-		// Check if running in non-interactive mode
+		// Check flags
+		noAI, _ := cmd.Flags().GetBool("no-ai")
 		nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
 
-		// Get title from positional argument, flag, or prompt
-		title, err := cmd.Flags().GetString("title")
-		if err != nil {
-			HandleError("Error getting title flag", err)
-		}
-
-		// If no title flag provided, check for positional argument
-		if title == "" && len(args) > 0 {
-			title = strings.Join(args, " ")
-		}
-		if title == "" {
+		// Get task input from args, flag, or prompt
+		var taskInput string
+		if title, _ := cmd.Flags().GetString("title"); title != "" {
+			taskInput = title
+		} else if len(args) > 0 {
+			taskInput = strings.Join(args, " ")
+		} else {
 			if nonInteractive {
-				HandleError("Title is required in non-interactive mode. Use --title flag.", nil)
+				HandleError("Task input is required in non-interactive mode. Use positional arguments or --title flag.", nil)
 				return
 			}
-			// Interactive prompt for title
-			titlePrompt := promptui.Prompt{
-				Label: "Task Title",
+			// Interactive prompt for task input
+			inputPrompt := promptui.Prompt{
+				Label: "Task description",
 				Validate: func(input string) error {
 					if len(strings.TrimSpace(input)) < 3 {
-						return fmt.Errorf("title must be at least 3 characters long")
+						return fmt.Errorf("task description must be at least 3 characters long")
 					}
 					return nil
 				},
 			}
-			title, err = titlePrompt.Run()
+			taskInput, err = inputPrompt.Run()
 			if err != nil {
 				if err == promptui.ErrInterrupt {
 					fmt.Println("Task addition cancelled.")
 					os.Exit(0)
 				}
-				HandleError("Error: Failed to read task title.", err)
+				HandleError("Error: Failed to read task input.", err)
 			}
 		}
 
-		// Get description from flag or prompt
-		description, err := cmd.Flags().GetString("description")
-		if err != nil {
-			HandleError("Error getting description flag", err)
-		}
-		if description == "" && !nonInteractive {
-			descriptionPrompt := promptui.Prompt{
-				Label: "Task Description (optional)",
-			}
-			description, err = descriptionPrompt.Run()
-			if err != nil && err != promptui.ErrInterrupt {
-				HandleError("Error: Failed to read task description.", err)
-			}
-		}
+		var newTask models.Task
 
-		// ... (similar logic for priority, dependencies, parentID)
-
-		// Get priority from flag or prompt
-		priorityStr, err := cmd.Flags().GetString("priority")
-		if err != nil {
-			HandleError("Error getting priority flag", err)
-		}
-		if priorityStr == "" {
-			if nonInteractive {
-				priorityStr = "medium" // Default priority in non-interactive mode
+		// AI Enhancement (default behavior)
+		if !noAI {
+			enhanced, err := enhanceTaskWithAI(ctx, taskInput, taskStore)
+			if err != nil {
+				fmt.Printf("⚠️  AI enhancement failed: %v\n", err)
+				fmt.Println("Creating task with basic details...")
+				newTask = models.Task{
+					Title:       taskInput,
+					Description: taskInput,
+					Status:      models.StatusTodo,
+					Priority:    models.PriorityMedium,
+				}
 			} else {
-				priorityPrompt := promptui.Select{
-					Label: "Select Priority",
-					Items: []string{"low", "medium", "high", "urgent"},
+				newTask = models.Task{
+					Title:              enhanced.Title,
+					Description:        enhanced.Description,
+					AcceptanceCriteria: enhanced.AcceptanceCriteria,
+					Status:             models.StatusTodo,
+					Priority:           models.TaskPriority(enhanced.Priority),
 				}
-				_, priorityStr, err = priorityPrompt.Run()
-				if err != nil && err != promptui.ErrInterrupt {
-					HandleError("Error: Failed to select priority.", err)
+				fmt.Printf("🤖 AI enhanced task:\n")
+				fmt.Printf("   Title: %s\n", enhanced.Title)
+				fmt.Printf("   Priority: %s\n", enhanced.Priority)
+				if enhanced.AcceptanceCriteria != "" {
+					fmt.Printf("   Acceptance Criteria:\n%s\n", enhanced.AcceptanceCriteria)
 				}
+			}
+		} else {
+			// Manual mode - use basic task creation
+			newTask = models.Task{
+				Title:       taskInput,
+				Description: taskInput,
+				Status:      models.StatusTodo,
+				Priority:    models.PriorityMedium,
 			}
 		}
 
-		// Get dependencies from flag or prompt
-		dependenciesStr, err := cmd.Flags().GetString("dependencies")
-		if err != nil {
-			HandleError("Error getting dependencies flag", err)
-		}
-		if dependenciesStr == "" && !nonInteractive {
-			dependenciesPrompt := promptui.Prompt{
-				Label: "Dependencies (comma-separated task IDs, optional)",
-			}
-			dependenciesStr, err = dependenciesPrompt.Run()
-			if err != nil && err != promptui.ErrInterrupt {
-				HandleError("Error: Failed to read dependencies.", err)
-			}
-		}
-		var dependencies []string
-		if dependenciesStr != "" {
-			dependencies = strings.Split(dependenciesStr, ",")
+		// Handle dependencies and parent ID from flags if provided
+		if dependenciesStr, _ := cmd.Flags().GetString("dependencies"); dependenciesStr != "" {
+			dependencies := strings.Split(dependenciesStr, ",")
 			for i, dep := range dependencies {
 				dependencies[i] = strings.TrimSpace(dep)
 			}
+			newTask.Dependencies = dependencies
 		}
 
-		// Get Parent ID from flag or prompt
-		parentIDStr, err := cmd.Flags().GetString("parentID")
-		if err != nil {
-			HandleError("Error getting parentID flag", err)
-		}
-		if parentIDStr == "" && !nonInteractive {
-			parentSelectPrompt := promptui.Prompt{
-				Label: "Parent Task ID (optional, press Enter to skip)",
-			}
-			parentIDStr, err = parentSelectPrompt.Run()
-			if err != nil && err != promptui.ErrInterrupt {
-				HandleError("Error: Failed to read parent task ID.", err)
-			}
-		}
-		var parentID *string
-		if parentIDStr != "" {
-			parentID = &parentIDStr
+		if parentIDStr, _ := cmd.Flags().GetString("parentID"); parentIDStr != "" {
+			newTask.ParentID = &parentIDStr
 		}
 
-		// Create the new task
-		newTask := models.Task{
-			Title:        title,
-			Description:  description,
-			Status:       models.StatusTodo,
-			Priority:     models.TaskPriority(priorityStr),
-			Dependencies: dependencies,
-			ParentID:     parentID,
-		}
-
+		// Create the task
 		createdTask, err := taskStore.CreateTask(newTask)
 		if err != nil {
 			HandleError("Error: Could not create the new task.", err)
 		}
 
 		fmt.Printf("✅ Task added successfully!\n")
-		fmt.Printf("ID: %s\nTitle: %s\n", createdTask.ID, createdTask.Title)
+		fmt.Printf("ID: %s\n", createdTask.ID[:8]) // Show short ID
 	},
+}
+
+// enhanceTaskWithAI uses AI to improve a basic task input into a well-structured task.
+func enhanceTaskWithAI(ctx context.Context, taskInput string, taskStore store.TaskStore) (types.EnhancedTask, error) {
+	// Get app config and prepare LLM config
+	appCfg := GetConfig()
+	
+	// Resolve LLM configuration
+	resolvedLLMConfig := types.LLMConfig{
+		Provider:                   appCfg.LLM.Provider,
+		ModelName:                  appCfg.LLM.ModelName,
+		APIKey:                     appCfg.LLM.APIKey,
+		ProjectID:                  appCfg.LLM.ProjectID,
+		MaxOutputTokens:            appCfg.LLM.MaxOutputTokens,
+		Temperature:                appCfg.LLM.Temperature,
+		EstimationTemperature:      appCfg.LLM.EstimationTemperature,
+		EstimationMaxOutputTokens:  appCfg.LLM.EstimationMaxOutputTokens,
+		ImprovementTemperature:     appCfg.LLM.ImprovementTemperature,
+		ImprovementMaxOutputTokens: appCfg.LLM.ImprovementMaxOutputTokens,
+	}
+
+	// Resolve API key from environment if needed
+	if resolvedLLMConfig.APIKey == "" && resolvedLLMConfig.Provider == "openai" {
+		if apiKeyEnv := os.Getenv("OPENAI_API_KEY"); apiKeyEnv != "" {
+			resolvedLLMConfig.APIKey = apiKeyEnv
+		} else if apiKeyEnv := os.Getenv(envPrefix + "_LLM_APIKEY"); apiKeyEnv != "" {
+			resolvedLLMConfig.APIKey = apiKeyEnv
+		}
+	}
+
+	// Validate LLM config
+	if resolvedLLMConfig.Provider == "" || resolvedLLMConfig.ModelName == "" {
+		return types.EnhancedTask{}, fmt.Errorf("LLM provider or model not configured")
+	}
+	if resolvedLLMConfig.Provider == "openai" && resolvedLLMConfig.APIKey == "" {
+		return types.EnhancedTask{}, fmt.Errorf("OpenAI API key not configured")
+	}
+
+	// Create LLM provider
+	provider, err := llm.NewProvider(&resolvedLLMConfig)
+	if err != nil {
+		return types.EnhancedTask{}, fmt.Errorf("failed to create LLM provider: %w", err)
+	}
+
+	// Get system prompt
+	templatesDir := filepath.Join(appCfg.Project.RootDir, appCfg.Project.TemplatesDir)
+	systemPrompt, err := prompts.GetPrompt(prompts.KeyEnhanceTask, templatesDir)
+	if err != nil {
+		return types.EnhancedTask{}, fmt.Errorf("failed to load enhancement prompt: %w", err)
+	}
+
+	// Build simple context info
+	contextInfo := buildTaskContext(taskStore)
+
+	// Call AI enhancement
+	enhanced, err := provider.EnhanceTask(
+		ctx,
+		systemPrompt,
+		taskInput,
+		contextInfo,
+		resolvedLLMConfig.ModelName,
+		resolvedLLMConfig.APIKey,
+		resolvedLLMConfig.ProjectID,
+		1024, // Max tokens for single task enhancement
+		0.3,  // Lower temperature for consistency
+	)
+
+	if err != nil {
+		return types.EnhancedTask{}, fmt.Errorf("AI enhancement failed: %w", err)
+	}
+
+	return enhanced, nil
+}
+
+// buildTaskContext creates simple context information for AI task enhancement.
+func buildTaskContext(taskStore store.TaskStore) string {
+	context := "Project context:\n"
+	
+	// Get current task
+	if currentTaskID := GetCurrentTask(); currentTaskID != "" {
+		if currentTask, err := taskStore.GetTask(currentTaskID); err == nil {
+			context += fmt.Sprintf("- Current task: %s\n", currentTask.Title)
+		}
+	}
+
+	// Get recent tasks count
+	if tasks, err := taskStore.ListTasks(nil, nil); err == nil {
+		todoCount := 0
+		doingCount := 0
+		for _, task := range tasks {
+			if task.Status == models.StatusTodo {
+				todoCount++
+			} else if task.Status == models.StatusDoing {
+				doingCount++
+			}
+		}
+		context += fmt.Sprintf("- Project has %d todo tasks and %d in-progress tasks\n", todoCount, doingCount)
+	}
+
+	return context
 }
 
 func init() {
 	rootCmd.AddCommand(addCmd)
 
-	// Here you will define your flags and configuration settings.
-	addCmd.Flags().String("title", "", "Title of the task")
-	addCmd.Flags().String("description", "", "Description of the task")
-	addCmd.Flags().String("priority", "medium", "Priority of the task (low, medium, high, urgent)")
+	// AI-native flags
+	addCmd.Flags().Bool("no-ai", false, "Disable AI enhancement (create basic task)")
+	addCmd.Flags().String("title", "", "Task input (alternative to positional arguments)")
 	addCmd.Flags().String("dependencies", "", "Comma-separated task IDs that this task depends on")
 	addCmd.Flags().String("parentID", "", "ID of the parent task")
-	addCmd.Flags().Bool("non-interactive", false, "Run in non-interactive mode (requires --title flag)")
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// addCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// addCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	addCmd.Flags().Bool("non-interactive", false, "Run in non-interactive mode (requires task input)")
 }
 
 // getStore was moved to root.go or a central cmd utility file

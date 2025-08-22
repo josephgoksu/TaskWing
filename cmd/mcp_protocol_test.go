@@ -233,144 +233,176 @@ func TestMCPProtocolStdio(t *testing.T) {
 
 // TestMCPAllToolsSmoke enumerates tools and calls each with minimal valid params
 func TestMCPAllToolsSmoke(t *testing.T) {
-    suite := SetupMCPIntegrationTest(t)
-    defer suite.Cleanup()
+	suite := SetupMCPIntegrationTest(t)
+	defer suite.Cleanup()
 
-    // Ensure project-scoped config exists
-    cfgDir := suite.tempDir + "/.taskwing"
-    _ = exec.Command("mkdir", "-p", cfgDir).Run()
-    _ = exec.Command("bash", "-lc", ": > '"+cfgDir+"/.taskwing.yaml' ").Run()
+	// Ensure project-scoped config exists
+	cfgDir := suite.tempDir + "/.taskwing"
+	_ = exec.Command("mkdir", "-p", cfgDir).Run()
+	_ = exec.Command("bash", "-lc", ": > '"+cfgDir+"/.taskwing.yaml' ").Run()
 
-    // Start MCP server
-    cmd := exec.Command(suite.binaryPath, "mcp")
-    cmd.Dir = suite.tempDir
-    stdin, err := cmd.StdinPipe()
-    if err != nil { t.Fatalf("stdin pipe: %v", err) }
-    stdout, err := cmd.StdoutPipe()
-    if err != nil { t.Fatalf("stdout pipe: %v", err) }
-    var stderr bytes.Buffer
-    cmd.Stderr = &stderr
-    if err := cmd.Start(); err != nil { t.Fatalf("start mcp: %v", err) }
-    reader := bufio.NewReader(stdout)
+	// Start MCP server
+	cmd := exec.Command(suite.binaryPath, "mcp")
+	cmd.Dir = suite.tempDir
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("stdin pipe: %v", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start mcp: %v", err)
+	}
+	reader := bufio.NewReader(stdout)
 
-    // Init
-    initParams := map[string]interface{}{
-        "protocolVersion": "2024-11-05",
-        "capabilities": map[string]interface{}{},
-        "clientInfo": map[string]interface{}{"name":"smoke","version":"0"},
-    }
-    if resp, _, err := sendRPC(t, stdin, reader, 1, "initialize", initParams); err != nil || resp.Error != nil {
-        t.Fatalf("initialize failed: %v %+v; stderr=%s", err, resp.Error, stderr.String())
-    }
-    sendNotification(t, stdin, "initialized", map[string]interface{}{})
+	// Init
+	initParams := map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{},
+		"clientInfo":      map[string]interface{}{"name": "smoke", "version": "0"},
+	}
+	if resp, _, err := sendRPC(t, stdin, reader, 1, "initialize", initParams); err != nil || resp.Error != nil {
+		t.Fatalf("initialize failed: %v %+v; stderr=%s", err, resp.Error, stderr.String())
+	}
+	sendNotification(t, stdin, "initialized", map[string]interface{}{})
 
-    // Seed tasks so tools have data to operate on
-    add := func(title string) {
-        params := map[string]interface{}{"name":"add-task","arguments":map[string]interface{}{"title": title, "description":"seed"}}
-        if resp, raw, err := sendRPC(t, stdin, reader, 2, "tools/call", params); err != nil || (resp.Error != nil) {
-            t.Fatalf("seed add-task failed: %v %+v (%s)", err, resp.Error, string(raw))
-        }
-    }
-    add("Smoke Task One")
-    add("Smoke Task Two")
+	// Seed tasks so tools have data to operate on
+	add := func(title string) {
+		params := map[string]interface{}{"name": "add-task", "arguments": map[string]interface{}{"title": title, "description": "seed"}}
+		if resp, raw, err := sendRPC(t, stdin, reader, 2, "tools/call", params); err != nil || (resp.Error != nil) {
+			t.Fatalf("seed add-task failed: %v %+v (%s)", err, resp.Error, string(raw))
+		}
+	}
+	add("Smoke Task One")
+	add("Smoke Task Two")
 
-    // Local struct to parse structured list
-    type typesTask struct { ID string `json:"id"`; Title string `json:"title"` }
-    type typesTaskListResponse struct { Tasks []typesTask `json:"tasks"`; Count int `json:"count"` }
-    // Helper to list tasks and return first ID
-    getFirstTaskID := func() string {
-        params := map[string]interface{}{"name":"list-tasks","arguments":map[string]interface{}{}}
-        resp, raw, err := sendRPC(t, stdin, reader, 3, "tools/call", params)
-        if err != nil || resp.Error != nil || resp.Result == nil { t.Fatalf("list-tasks failed: %v %+v (%s)", err, resp.Error, string(raw)) }
-        var decoded struct {
-            Content []interface{} `json:"content"`
-            Structured json.RawMessage `json:"structuredContent"`
-        }
-        if err := json.Unmarshal(*resp.Result, &decoded); err != nil { t.Fatalf("unmarshal list result: %v", err) }
-        var list typesTaskListResponse
-        if len(decoded.Structured) == 0 { return "" }
-        if err := json.Unmarshal(decoded.Structured, &list); err != nil { t.Fatalf("unmarshal structured list: %v (%s)", err, string(decoded.Structured)) }
-        if list.Count > 0 && len(list.Tasks) > 0 { return list.Tasks[0].ID }
-        return ""
-    }
+	// Local struct to parse structured list
+	type typesTask struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	}
+	type typesTaskListResponse struct {
+		Tasks []typesTask `json:"tasks"`
+		Count int         `json:"count"`
+	}
+	// Helper to list tasks and return first ID
+	getFirstTaskID := func() string {
+		params := map[string]interface{}{"name": "list-tasks", "arguments": map[string]interface{}{}}
+		resp, raw, err := sendRPC(t, stdin, reader, 3, "tools/call", params)
+		if err != nil || resp.Error != nil || resp.Result == nil {
+			t.Fatalf("list-tasks failed: %v %+v (%s)", err, resp.Error, string(raw))
+		}
+		var decoded struct {
+			Content    []interface{}   `json:"content"`
+			Structured json.RawMessage `json:"structuredContent"`
+		}
+		if err := json.Unmarshal(*resp.Result, &decoded); err != nil {
+			t.Fatalf("unmarshal list result: %v", err)
+		}
+		var list typesTaskListResponse
+		if len(decoded.Structured) == 0 {
+			return ""
+		}
+		if err := json.Unmarshal(decoded.Structured, &list); err != nil {
+			t.Fatalf("unmarshal structured list: %v (%s)", err, string(decoded.Structured))
+		}
+		if list.Count > 0 && len(list.Tasks) > 0 {
+			return list.Tasks[0].ID
+		}
+		return ""
+	}
 
-    firstID := getFirstTaskID()
-    if firstID == "" { t.Fatalf("no tasks found after seeding") }
+	firstID := getFirstTaskID()
+	if firstID == "" {
+		t.Fatalf("no tasks found after seeding")
+	}
 
-    // Fetch tools list
-    listResp, listRaw, err := sendRPC(t, stdin, reader, 4, "tools/list", map[string]interface{}{})
-    if err != nil || listResp.Error != nil || listResp.Result == nil {
-        t.Fatalf("tools/list failed: %v %+v (%s)", err, listResp.Error, string(listRaw))
-    }
-    var tools struct{ Tools []struct{ Name string `json:"name"` } `json:"tools"` }
-    if err := json.Unmarshal(*listResp.Result, &tools); err != nil { t.Fatalf("parse tools: %v", err) }
+	// Fetch tools list
+	listResp, listRaw, err := sendRPC(t, stdin, reader, 4, "tools/list", map[string]interface{}{})
+	if err != nil || listResp.Error != nil || listResp.Result == nil {
+		t.Fatalf("tools/list failed: %v %+v (%s)", err, listResp.Error, string(listRaw))
+	}
+	var tools struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(*listResp.Result, &tools); err != nil {
+		t.Fatalf("parse tools: %v", err)
+	}
 
-    // Minimal argument mapping per tool
-    args := map[string]map[string]interface{}{
-        "add-task":               {"title":"Smoke Extra Task"},
-        "list-tasks":             {},
-        "get-task":               {"reference":"Smoke Task One"},
-        "update-task":            {"reference":"Smoke Task One","priority":"high"},
-        "delete-task":            {"reference":"Smoke Task Two"},
-        "mark-done":              {"reference":"Smoke Task One"},
-        "search-tasks":           {"query":"Smoke"},
-        "task-summary":           {},
-        "batch-create-tasks":     {"tasks": []map[string]interface{}{{"title":"Batch A","description":"d"},{"title":"Batch B","description":"d"}}},
-        "bulk-tasks":             {"action":"complete","task_ids": []string{"Smoke Task One"}},
-        "bulk-by-filter":         {"action":"complete","filter":"status=todo","preview_only": true},
-        "set-current-task":       {"id": firstID},
-        "get-current-task":       {},
-        "clear-current-task":     {},
-        "board-snapshot":         {"limit": 1, "include_tasks": false},
-        "workflow-status":        {},
-        "extract-task-ids":       {},
-        "task-analytics":         {},
-        "suggest-tasks":          {},
-        "task-autocomplete":      {"input":"Sm"},
-        "smart-task-transition":  {"task_id": firstID},
-        "find-task-by-title":     {"title":"Smoke"},
-        "resolve-task-reference": {"reference":"Smoke Task One"},
-        "find-task":              {"reference":"Smoke Task One"},
-        "filter-tasks":           {"filter":"status=todo","limit": 1},
-        "query-tasks":            {"query":"Smoke"},
-        "board-reconcile":        {"dry_run": true, "ops": []map[string]interface{}{{"reference":"Smoke Task One","action":"update","priority":"high"}}},
-        "dependency-health":      {},
-        "clear-tasks":            {"status":"done","preview_only": true},
-    }
+	// Minimal argument mapping per tool
+	args := map[string]map[string]interface{}{
+		"add-task":               {"title": "Smoke Extra Task"},
+		"list-tasks":             {},
+		"get-task":               {"reference": "Smoke Task One"},
+		"update-task":            {"reference": "Smoke Task One", "priority": "high"},
+		"delete-task":            {"reference": "Smoke Task Two"},
+		"mark-done":              {"reference": "Smoke Task One"},
+		"search-tasks":           {"query": "Smoke"},
+		"task-summary":           {},
+		"batch-create-tasks":     {"tasks": []map[string]interface{}{{"title": "Batch A", "description": "d"}, {"title": "Batch B", "description": "d"}}},
+		"bulk-tasks":             {"action": "complete", "task_ids": []string{"Smoke Task One"}},
+		"bulk-by-filter":         {"action": "complete", "filter": "status=todo", "preview_only": true},
+		"set-current-task":       {"id": firstID},
+		"get-current-task":       {},
+		"clear-current-task":     {},
+		"board-snapshot":         {"limit": 1, "include_tasks": false},
+		"workflow-status":        {},
+		"extract-task-ids":       {},
+		"task-analytics":         {},
+		"suggest-tasks":          {},
+		"task-autocomplete":      {"input": "Sm"},
+		"smart-task-transition":  {"task_id": firstID},
+		"find-task-by-title":     {"title": "Smoke"},
+		"resolve-task-reference": {"reference": "Smoke Task One"},
+		"find-task":              {"reference": "Smoke Task One"},
+		"filter-tasks":           {"filter": "status=todo", "limit": 1},
+		"query-tasks":            {"query": "Smoke"},
+		"board-reconcile":        {"dry_run": true, "ops": []map[string]interface{}{{"reference": "Smoke Task One", "action": "update", "priority": "high"}}},
+		"dependency-health":      {},
+		"clear-tasks":            {"status": "done", "preview_only": true},
+	}
 
-    // Call each tool found with mapped arguments when available
-    failed := 0
-    for _, tl := range tools.Tools {
-        name := tl.Name
-        a, ok := args[name]
-        if !ok {
-            // Not covered yet; skip but log for visibility
-            t.Logf("[skip] no smoke args for tool: %s", name)
-            continue
-        }
-        params := map[string]interface{}{"name": name, "arguments": a}
-        resp, raw, callErr := sendRPC(t, stdin, reader, 1000+failed, "tools/call", params)
-        if callErr != nil || (resp != nil && resp.Error != nil) {
-            failed++
-            t.Errorf("tool %s failed: err=%v rpcErr=%+v raw=%s", name, callErr, resp.Error, string(raw))
-        } else {
-            t.Logf("[ok] %s", name)
-        }
-    }
+	// Call each tool found with mapped arguments when available
+	failed := 0
+	for _, tl := range tools.Tools {
+		name := tl.Name
+		a, ok := args[name]
+		if !ok {
+			// Not covered yet; skip but log for visibility
+			t.Logf("[skip] no smoke args for tool: %s", name)
+			continue
+		}
+		params := map[string]interface{}{"name": name, "arguments": a}
+		resp, raw, callErr := sendRPC(t, stdin, reader, 1000+failed, "tools/call", params)
+		if callErr != nil || (resp != nil && resp.Error != nil) {
+			failed++
+			t.Errorf("tool %s failed: err=%v rpcErr=%+v raw=%s", name, callErr, resp.Error, string(raw))
+		} else {
+			t.Logf("[ok] %s", name)
+		}
+	}
 
-    // Shutdown
-    _ = stdin.Close()
-    done := make(chan error, 1)
-    go func() { done <- cmd.Wait() }()
-    select {
-    case <-time.After(2 * time.Second):
-        _ = cmd.Process.Kill()
-        t.Fatalf("mcp server did not exit in time; stderr=%s", stderr.String())
-    case err := <-done:
-        if err != nil { t.Fatalf("mcp server exit err: %v; stderr=%s", err, stderr.String()) }
-    }
+	// Shutdown
+	_ = stdin.Close()
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-time.After(2 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("mcp server did not exit in time; stderr=%s", stderr.String())
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("mcp server exit err: %v; stderr=%s", err, stderr.String())
+		}
+	}
 
-    if failed > 0 {
-        t.Fatalf("%d MCP tools failed smoke test", failed)
-    }
+	if failed > 0 {
+		t.Fatalf("%d MCP tools failed smoke test", failed)
+	}
 }

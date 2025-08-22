@@ -45,6 +45,13 @@ var listCmd = &cobra.Command{
 		renderAsTree, _ := cmd.Flags().GetBool("tree")
 		showAllTasks, _ := cmd.Flags().GetBool("all")
 		jsonOutput, _ := cmd.Flags().GetBool("json")
+		readyOnly, _ := cmd.Flags().GetBool("ready")
+		blockedOnly, _ := cmd.Flags().GetBool("blocked")
+
+		if readyOnly && blockedOnly {
+			fmt.Fprintln(os.Stderr, "Error: --ready and --blocked flags cannot be used together.")
+			os.Exit(1)
+		}
 
 		// Retrieve sorting flag values
 		sortBy, _ := cmd.Flags().GetString("sort-by")
@@ -191,6 +198,41 @@ var listCmd = &cobra.Command{
 			HandleError("Failed to list tasks with filters/sorting", err)
 		}
 
+		// Apply readiness filters post-fetch if requested
+		if readyOnly || blockedOnly {
+			all, err := taskStore.ListTasks(nil, nil)
+			if err != nil {
+				HandleError("Failed to list all tasks for readiness evaluation", err)
+			}
+			byID := make(map[string]models.Task, len(all))
+			for _, t := range all {
+				byID[t.ID] = t
+			}
+			isReady := func(t models.Task) bool {
+				if t.Status != models.StatusTodo && t.Status != models.StatusDoing {
+					return false
+				}
+				for _, depID := range t.Dependencies {
+					dep, ok := byID[depID]
+					if !ok || dep.Status != models.StatusDone {
+						return false
+					}
+				}
+				return true
+			}
+			filtered := make([]models.Task, 0, len(tasks))
+			for _, t := range tasks {
+				r := isReady(t)
+				if readyOnly && r {
+					filtered = append(filtered, t)
+				}
+				if blockedOnly && !r && (t.Status == models.StatusTodo || t.Status == models.StatusDoing) {
+					filtered = append(filtered, t)
+				}
+			}
+			tasks = filtered
+		}
+
 		if len(tasks) == 0 {
 			if jsonOutput {
 				fmt.Println("[]")
@@ -217,10 +259,20 @@ var listCmd = &cobra.Command{
 			t := table.NewWriter()
 			t.SetOutputMirror(os.Stdout)
 			t.SetStyle(table.StyleLight)
-			t.AppendHeader(table.Row{"ID", "Title", "Status", "Priority", "ParentID", "Dependencies", "Dependents"})
+			t.AppendHeader(table.Row{"ID", "Title", "Status", "Priority", "ParentID", "Deps", "Dependents"})
+
+			// Prepare lookup for dependency status summary
+			allForDeps, err := taskStore.ListTasks(nil, nil)
+			if err != nil {
+				HandleError("Failed to list all tasks for dependency summary", err)
+			}
+			depByID := make(map[string]models.Task, len(allForDeps))
+			for _, tsk := range allForDeps {
+				depByID[tsk.ID] = tsk
+			}
 
 			for _, task := range tasks {
-				dependenciesStr := truncateUUIDList(task.Dependencies)
+				dependenciesStr := dependencySummaryIcons(task, depByID)
 				dependentsStr := truncateUUIDList(task.Dependents)
 
 				parentIDStr := "-"
@@ -268,6 +320,10 @@ func init() {
 
 	// Output format flags
 	listCmd.Flags().Bool("json", false, "Output results in JSON format for automation and scripting")
+
+	// Readiness filters
+	listCmd.Flags().Bool("ready", false, "Show only tasks that are ready (all dependencies done; status todo/doing)")
+	listCmd.Flags().Bool("blocked", false, "Show only tasks that are blocked (some dependencies not done; status todo/doing)")
 }
 
 // displayTasksAsTree recursively prints tasks in a tree structure.
@@ -433,4 +489,22 @@ func showCurrentTaskBanner(taskStore store.TaskStore) {
 		task.Title,
 		task.Status,
 		task.Priority)
+}
+
+// dependencySummaryIcons returns compact dependency readiness like "✅ x/y" or "⏱️ x/y"; "-" when none.
+func dependencySummaryIcons(task models.Task, byID map[string]models.Task) string {
+	if len(task.Dependencies) == 0 {
+		return "-"
+	}
+	total := len(task.Dependencies)
+	done := 0
+	for _, id := range task.Dependencies {
+		if dep, ok := byID[id]; ok && dep.Status == models.StatusDone {
+			done++
+		}
+	}
+	if done == total {
+		return fmt.Sprintf("✅ %d/%d", done, total)
+	}
+	return fmt.Sprintf("⏱️ %d/%d", done, total)
 }

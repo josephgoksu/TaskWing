@@ -20,4 +20,7 @@ type Provider interface {
 	// ImprovePRD takes a system prompt, the content of a PRD, sends it to an LLM for refinement,
 	// and returns the improved document content as a string.
 	ImprovePRD(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForImprovement int, temperatureForImprovement float64) (string, error)
+
+	// EnhanceTask takes a system prompt, task input, and returns an enhanced task with improved details.
+	EnhanceTask(ctx context.Context, systemPrompt, taskInput, contextInfo string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) (types.EnhancedTask, error)
 }

@@ -20,3 +20,11 @@ type EstimationOutput struct {
 	EstimatedTaskCount  int    `json:"estimatedTaskCount"`
 	EstimatedComplexity string `json:"estimatedComplexity"` // e.g., "low", "medium", "high"
 }
+
+// EnhancedTask holds the AI-enhanced task details for single task creation.
+type EnhancedTask struct {
+	Title              string `json:"title"`
+	Description        string `json:"description"`
+	AcceptanceCriteria string `json:"acceptanceCriteria"`
+	Priority           string `json:"priority"` // e.g., "high", "medium", "low", "urgent"
+}

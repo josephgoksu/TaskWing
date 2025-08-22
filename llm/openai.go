@@ -81,7 +81,9 @@ type openAIEstimationData struct {
 	EstimatedComplexity string `json:"estimatedComplexity"` // e.g., "low", "medium", "high"
 }
 
-const openAIAPIURL = "https://api.openai.com/v1/chat/completions"
+const (
+	openAIResponsesURL = "https://api.openai.com/v1/responses"
+)
 
 // GenerateTasks for OpenAIProvider.
 func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.TaskOutput, error) {
@@ -94,64 +96,10 @@ func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdCon
 
 	userMessage := fmt.Sprintf("PRD Content:\n---\n%s\n---", prdContent)
 
-	requestPayload := OpenAIRequestPayload{
-		Model: modelName,
-		Messages: []OpenAIMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userMessage},
-		},
-		ResponseFormat: &OpenAIResponseFormat{Type: "json_object"},
-	}
-
-	// Use standard parameters for all models
-	requestPayload.MaxTokens = maxTokens
-	requestPayload.Temperature = temperature
-
-	payloadBytes, err := json.Marshal(requestPayload)
+	content, err := p.callOpenAIAndExtract(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal OpenAI request payload: %w", err)
+		return nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create OpenAI request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 90 * time.Second} // Increased timeout
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request to OpenAI: %w", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			// Log but don't fail the request
-			fmt.Printf("Warning: Failed to close response body: %v\n", err)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		// Read the body for more detailed error information
-		errorBodyBytes, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			// If reading the body fails, return the original status error
-			return nil, fmt.Errorf("OpenAI API request failed with status %s (and failed to read error body: %v)", resp.Status, readErr)
-		}
-		// Return the status error along with the body content
-		return nil, fmt.Errorf("OpenAI API request failed with status %s: %s", resp.Status, string(errorBodyBytes))
-	}
-
-	var responsePayload OpenAIResponsePayload
-	if err := json.NewDecoder(resp.Body).Decode(&responsePayload); err != nil {
-		return nil, fmt.Errorf("failed to decode OpenAI response: %w", err)
-	}
-
-	if len(responsePayload.Choices) == 0 {
-		return nil, fmt.Errorf("OpenAI response contained no choices")
-	}
-
-	content := responsePayload.Choices[0].Message.Content
 
 	var responseWrapper OpenAITaskResponseWrapper
 	if err := json.Unmarshal([]byte(content), &responseWrapper); err != nil {
@@ -173,61 +121,10 @@ func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPromp
 
 	userMessage := fmt.Sprintf("PRD Content:\n---\n%s\n---", prdContent)
 
-	requestPayload := OpenAIRequestPayload{
-		Model: modelName,
-		Messages: []OpenAIMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userMessage},
-		},
-		ResponseFormat: &OpenAIResponseFormat{Type: "json_object"},
-	}
-
-	// Use standard parameters for all models
-	requestPayload.MaxTokens = maxTokensForEstimation
-	requestPayload.Temperature = temperatureForEstimation
-
-	payloadBytes, err := json.Marshal(requestPayload)
+	content, err := p.callOpenAIAndExtract(ctx, apiKey, modelName, systemPrompt, userMessage, temperatureForEstimation, maxTokensForEstimation)
 	if err != nil {
-		return types.EstimationOutput{}, fmt.Errorf("failed to marshal OpenAI estimation request payload: %w", err)
+		return types.EstimationOutput{}, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		return types.EstimationOutput{}, fmt.Errorf("failed to create OpenAI estimation request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 60 * time.Second} // Shorter timeout for estimation
-	resp, err := client.Do(req)
-	if err != nil {
-		return types.EstimationOutput{}, fmt.Errorf("failed to send estimation request to OpenAI: %w", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			// Log but don't fail the request
-			fmt.Printf("Warning: Failed to close response body: %v\n", err)
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		errorBodyBytes, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return types.EstimationOutput{}, fmt.Errorf("OpenAI estimation API request failed with status %s (and failed to read error body: %v)", resp.Status, readErr)
-		}
-		return types.EstimationOutput{}, fmt.Errorf("OpenAI estimation API request failed with status %s: %s", resp.Status, string(errorBodyBytes))
-	}
-
-	var responsePayload OpenAIResponsePayload
-	if err := json.NewDecoder(resp.Body).Decode(&responsePayload); err != nil {
-		return types.EstimationOutput{}, fmt.Errorf("failed to decode OpenAI estimation response: %w", err)
-	}
-
-	if len(responsePayload.Choices) == 0 {
-		return types.EstimationOutput{}, fmt.Errorf("OpenAI estimation response contained no choices")
-	}
-
-	content := responsePayload.Choices[0].Message.Content
 
 	var estimationData openAIEstimationData
 	if err := json.Unmarshal([]byte(content), &estimationData); err != nil {
@@ -251,59 +148,117 @@ func (p *OpenAIProvider) ImprovePRD(ctx context.Context, systemPrompt, prdConten
 
 	userMessage := fmt.Sprintf("Please improve the following PRD content:\n---\n%s\n---", prdContent)
 
-	requestPayload := OpenAIRequestPayload{
-		Model: modelName, // GPT-5 Mini is the default model
-		Messages: []OpenAIMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userMessage},
-		},
+	content, err := p.callOpenAIAndExtract(ctx, apiKey, modelName, systemPrompt, userMessage, temperatureForImprovement, maxTokensForImprovement)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(content), nil
+}
+
+// EnhanceTask sends task input to OpenAI for AI-powered enhancement and returns structured task details.
+func (p *OpenAIProvider) EnhanceTask(ctx context.Context, systemPrompt, taskInput, contextInfo string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) (types.EnhancedTask, error) {
+	if apiKey == "" {
+		apiKey = p.apiKey
+	}
+	if apiKey == "" {
+		return types.EnhancedTask{}, fmt.Errorf("OpenAI API key is not set for task enhancement")
 	}
 
-	// Use standard parameters for all models
-	requestPayload.MaxTokens = maxTokensForImprovement
-	requestPayload.Temperature = temperatureForImprovement
-
-	payloadBytes, err := json.Marshal(requestPayload)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal OpenAI PRD improvement request payload: %w", err)
+	// Build user message with task input and context
+	userMessage := fmt.Sprintf("Task input: %s", taskInput)
+	if contextInfo != "" {
+		userMessage += fmt.Sprintf("\n\nContext: %s", contextInfo)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", openAIAPIURL, bytes.NewBuffer(payloadBytes))
+	content, err := p.callOpenAIAndExtract(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
 	if err != nil {
-		return "", fmt.Errorf("failed to create OpenAI PRD improvement request: %w", err)
+		return types.EnhancedTask{}, err
+	}
+
+	var enhancedTask types.EnhancedTask
+	if err := json.Unmarshal([]byte(content), &enhancedTask); err != nil {
+		return types.EnhancedTask{}, fmt.Errorf("failed to unmarshal enhanced task JSON from OpenAI response: %w. Content was: [%s]", err, content)
+	}
+
+	return enhancedTask, nil
+}
+
+// callOpenAIAndExtract tries Responses API first, then Chat Completions, and extracts the text content.
+func (p *OpenAIProvider) callOpenAIAndExtract(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
+	// Only use the Responses API per project preference
+	return p.callResponsesAPI(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
+}
+
+func (p *OpenAIProvider) callResponsesAPI(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
+	payload := map[string]interface{}{
+		"model":             modelName,
+		"input":             []map[string]string{{"role": "system", "content": systemPrompt}, {"role": "user", "content": userMessage}},
+		"max_output_tokens": maxTokens,
+		// Use text.format for Responses API JSON output with correct type
+		"text": map[string]interface{}{"format": map[string]interface{}{"type": "json_object"}},
+	}
+
+	// Some models don't support temperature parameter - exclude it for safer compatibility
+	// Skip temperature for o1 models and any unknown/unsupported models
+	modelLower := strings.ToLower(modelName)
+	supportsTemperature := strings.Contains(modelLower, "gpt-4") ||
+		strings.Contains(modelLower, "gpt-3.5") ||
+		strings.Contains(modelLower, "text-davinci") ||
+		strings.Contains(modelLower, "gpt-4o")
+
+	if supportsTemperature && !strings.Contains(modelLower, "o1") {
+		payload["temperature"] = temperature
+	}
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, "POST", openAIResponsesURL, bytes.NewBuffer(body))
+	if err != nil {
+		return "", fmt.Errorf("failed to create responses request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 120 * time.Second} // Longer timeout for potentially large rewrites
+	client := &http.Client{Timeout: 90 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to send PRD improvement request to OpenAI: %w", err)
+		return "", fmt.Errorf("failed to call responses: %w", err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			// Log but don't fail the request
-			fmt.Printf("Warning: Failed to close response body: %v\n", err)
+			// Log error but don't fail the request for this
 		}
 	}()
-
 	if resp.StatusCode != http.StatusOK {
-		errorBodyBytes, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			return "", fmt.Errorf("OpenAI PRD improvement API request failed with status %s (and failed to read error body: %v)", resp.Status, readErr)
+		b, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("responses status %s: %s", resp.Status, string(b))
+	}
+	raw, _ := io.ReadAll(resp.Body)
+
+	// Try choices-like first
+	var cc OpenAIResponsePayload
+	if err := json.Unmarshal(raw, &cc); err == nil && len(cc.Choices) > 0 && cc.Choices[0].Message.Content != "" {
+		return cc.Choices[0].Message.Content, nil
+	}
+	// Parse OpenAI Responses API format
+	var generic map[string]interface{}
+	if err := json.Unmarshal(raw, &generic); err == nil {
+		if out, ok := generic["output"].([]interface{}); ok && len(out) > 0 {
+			// Look for message type outputs with content
+			for _, output := range out {
+				if outputObj, ok := output.(map[string]interface{}); ok {
+					if outputType, ok := outputObj["type"].(string); ok && outputType == "message" {
+						if contents, ok := outputObj["content"].([]interface{}); ok && len(contents) > 0 {
+							if c0, ok := contents[0].(map[string]interface{}); ok {
+								if txt, ok := c0["text"].(string); ok && txt != "" {
+									return txt, nil
+								}
+							}
+						}
+					}
+				}
+			}
 		}
-		return "", fmt.Errorf("OpenAI PRD improvement API request failed with status %s: %s", resp.Status, string(errorBodyBytes))
+		if txt, ok := generic["content"].(string); ok && txt != "" {
+			return txt, nil
+		}
 	}
-
-	var responsePayload OpenAIResponsePayload
-	if err := json.NewDecoder(resp.Body).Decode(&responsePayload); err != nil {
-		return "", fmt.Errorf("failed to decode OpenAI PRD improvement response: %w", err)
-	}
-
-	if len(responsePayload.Choices) == 0 {
-		return "", fmt.Errorf("OpenAI PRD improvement response contained no choices")
-	}
-
-	improvedContent := responsePayload.Choices[0].Message.Content
-	return strings.TrimSpace(improvedContent), nil
+	return "", fmt.Errorf("failed to extract content from responses body")
 }
