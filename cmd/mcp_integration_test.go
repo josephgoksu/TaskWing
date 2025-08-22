@@ -157,7 +157,7 @@ func TestBasicTaskOperations(t *testing.T) {
 
 	// Test add command
 	suite.RunTest("add-task", "Should be able to add a task", func() error {
-		cmd := exec.Command(suite.binaryPath, "add", "Test Task", "--description", "Test description", "--non-interactive")
+		cmd := exec.Command(suite.binaryPath, "add", "Test Task", "--non-interactive", "--no-ai")
 		cmd.Dir = suite.tempDir
 		output, err := cmd.Output()
 		if err != nil {

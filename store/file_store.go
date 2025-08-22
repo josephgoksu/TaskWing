@@ -789,7 +789,7 @@ func (s *FileTaskStore) DeleteAllTasks() error {
 }
 
 // MarkTaskDone marks a task as completed.
-// Note: This does not currently automatically update statuses of dependent tasks.
+// Automatically cascades completion to all subtasks when a parent task is marked done.
 func (s *FileTaskStore) MarkTaskDone(id string) (models.Task, error) {
 	if err := s.flk.Lock(); err != nil {
 		return models.Task{}, fmt.Errorf("failed to acquire write lock for MarkTaskDone: %w", err)
@@ -818,6 +818,17 @@ func (s *FileTaskStore) MarkTaskDone(id string) (models.Task, error) {
 	}
 
 	s.tasks[id] = task
+
+	// Automatically complete all subtasks when parent task is marked done
+	for _, subtaskID := range task.SubtaskIDs {
+		if subtask, exists := s.tasks[subtaskID]; exists && subtask.Status != models.StatusDone {
+			subtask.Status = models.StatusDone
+			subtask.CompletedAt = &now
+			subtask.UpdatedAt = now
+			s.tasks[subtaskID] = subtask
+		}
+	}
+
 	if err := s.saveTasksToFileInternal(); err != nil {
 		s.tasks[id] = originalTask // Revert
 		return models.Task{}, fmt.Errorf("failed to save task %s after marking done: %w", id, err)

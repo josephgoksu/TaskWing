@@ -49,7 +49,7 @@ taskwing done <task-id>
 taskwing mcp
 ```
 
-See [MCP Setup Guide](MCP.md#quick-setup) for AI tool configuration.
+See [MCP Setup Guide](MCP.md#quick-setup) for AI tool configuration and [AI Interaction Examples](EXAMPLES.md) for common usage patterns.
 
 ## Core Features
 
@@ -63,11 +63,12 @@ For complete command reference, see [User Guide](DOCS.md#commands-reference).
 
 ## Documentation
 
-| Document | Purpose |
-|----------|----------|
-| **[DOCS.md](DOCS.md)** | User guide - Installation, commands, workflows |
-| **[MCP.md](MCP.md)** | AI integration - Setup and tool reference |
-| **[CLAUDE.md](CLAUDE.md)** | Developer guide - Architecture and contributing |
+| Document                       | Purpose                                         |
+| ------------------------------ | ----------------------------------------------- |
+| **[DOCS.md](DOCS.md)**         | User guide - Installation, commands, workflows  |
+| **[MCP.md](MCP.md)**           | AI integration - Setup and tool reference       |
+| **[EXAMPLES.md](EXAMPLES.md)** | AI interaction examples - Common usage patterns |
+| **[CLAUDE.md](CLAUDE.md)**     | Developer guide - Architecture and contributing |
 
 ## Architecture Overview
 

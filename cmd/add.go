@@ -26,7 +26,7 @@ var addCmd = &cobra.Command{
 	Long:  `Add a new task with AI-powered enhancement. Automatically improves title, description, acceptance criteria and priority. Use --no-ai to disable AI enhancement.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
-		
+
 		// Initialize task store
 		taskStore, err := GetStore()
 		if err != nil {
@@ -140,7 +140,7 @@ var addCmd = &cobra.Command{
 func enhanceTaskWithAI(ctx context.Context, taskInput string, taskStore store.TaskStore) (types.EnhancedTask, error) {
 	// Get app config and prepare LLM config
 	appCfg := GetConfig()
-	
+
 	// Resolve LLM configuration
 	resolvedLLMConfig := types.LLMConfig{
 		Provider:                   appCfg.LLM.Provider,
@@ -211,7 +211,7 @@ func enhanceTaskWithAI(ctx context.Context, taskInput string, taskStore store.Ta
 // buildTaskContext creates simple context information for AI task enhancement.
 func buildTaskContext(taskStore store.TaskStore) string {
 	context := "Project context:\n"
-	
+
 	// Get current task
 	if currentTaskID := GetCurrentTask(); currentTaskID != "" {
 		if currentTask, err := taskStore.GetTask(currentTaskID); err == nil {
