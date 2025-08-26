@@ -1,5 +1,6 @@
 # GoReleaser configuration for TaskWing
 # Documentation: https://goreleaser.com
+version: 2
 
 # Pre-release hooks
 before:
@@ -144,7 +145,7 @@ release:
 
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser) 🚀
 
-# Homebrew tap
+# Homebrew formula
 brews:
   - name: taskwing
     description: "AI-assisted CLI task manager for developers"

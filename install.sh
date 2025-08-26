@@ -44,12 +44,10 @@ fi
 
 echo "📦 Latest version: $LATEST_VERSION"
 
-# Construct download URL
-ARCHIVE_NAME="${BINARY_NAME}.app_${OS}_${ARCH}"
-if [ "$OS" = "Linux" ]; then
-    ARCHIVE_NAME="${ARCHIVE_NAME}.tar.gz"
-else
-    ARCHIVE_NAME="${ARCHIVE_NAME}.tar.gz"
+# Construct download URL  
+ARCHIVE_NAME="taskwing.app_${OS}_${ARCH}.tar.gz"
+if [ "$OS" = "Windows" ]; then
+    ARCHIVE_NAME="taskwing.app_${OS}_${ARCH}.zip"
 fi
 
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_VERSION/$ARCHIVE_NAME"
