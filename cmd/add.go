@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/josephgoksu/taskwing.app/llm"
-	"github.com/josephgoksu/taskwing.app/models"
-	"github.com/josephgoksu/taskwing.app/prompts"
-	"github.com/josephgoksu/taskwing.app/store"
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/llm"
+	"github.com/josephgoksu/TaskWing/models"
+	"github.com/josephgoksu/TaskWing/prompts"
+	"github.com/josephgoksu/TaskWing/store"
+	"github.com/josephgoksu/TaskWing/types"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -224,9 +224,10 @@ func buildTaskContext(taskStore store.TaskStore) string {
 		todoCount := 0
 		doingCount := 0
 		for _, task := range tasks {
-			if task.Status == models.StatusTodo {
+			switch task.Status {
+			case models.StatusTodo:
 				todoCount++
-			} else if task.Status == models.StatusDoing {
+			case models.StatusDoing:
 				doingCount++
 			}
 		}

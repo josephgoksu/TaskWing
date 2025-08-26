@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/types"
 )
 
 // OpenAIProvider implements the Provider interface for OpenAI LLMs.
@@ -224,6 +224,7 @@ func (p *OpenAIProvider) callResponsesAPI(ctx context.Context, apiKey, modelName
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
 			// Log error but don't fail the request for this
+			fmt.Printf("Warning: failed to close response body: %v\n", err)
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {

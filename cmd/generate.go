@@ -14,14 +14,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/types"
 
 	"github.com/briandowns/spinner"
-	"github.com/google/uuid"                  // For generating final IDs
-	"github.com/josephgoksu/taskwing.app/llm" // Import the new llm package
-	"github.com/josephgoksu/taskwing.app/models"
-	"github.com/josephgoksu/taskwing.app/prompts"
-	"github.com/josephgoksu/taskwing.app/store" // For TaskStore interface
+	"github.com/google/uuid"              // For generating final IDs
+	"github.com/josephgoksu/TaskWing/llm" // Import the new llm package
+	"github.com/josephgoksu/TaskWing/models"
+	"github.com/josephgoksu/TaskWing/prompts"
+	"github.com/josephgoksu/TaskWing/store" // For TaskStore interface
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -334,7 +334,6 @@ llm:
 				}
 				HandleError("Error: Could not get confirmation to create tasks.", confirmErr)
 			}
-			confirmed = true
 		}
 
 		// 9. If confirmed, get a fresh store connection, optionally wipe existing tasks, and create

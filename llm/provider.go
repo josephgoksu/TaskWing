@@ -3,7 +3,7 @@ package llm
 import (
 	"context"
 
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/types"
 )
 
 // Provider defines the interface for interacting with different LLM providers

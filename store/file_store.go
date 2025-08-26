@@ -18,7 +18,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
-	"github.com/josephgoksu/taskwing.app/models"
+	"github.com/josephgoksu/TaskWing/models"
 	"gopkg.in/yaml.v3"
 )
 

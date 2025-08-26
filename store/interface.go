@@ -1,6 +1,6 @@
 package store
 
-import "github.com/josephgoksu/taskwing.app/models"
+import "github.com/josephgoksu/TaskWing/models"
 
 // TaskStore defines the interface for task persistence.
 // It outlines the contract for managing tasks, including CRUD operations,

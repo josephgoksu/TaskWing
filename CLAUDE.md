@@ -60,7 +60,7 @@ store.DeleteTask(id)      // Checks dependencies first
 All shared types in `types/` package:
 
 ```go
-import "github.com/josephgoksu/taskwing.app/types"
+import "github.com/josephgoksu/TaskWing/types"
 type AddTaskParams = types.AddTaskParams  // Use type aliases
 ```
 

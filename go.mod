@@ -1,4 +1,4 @@
-module github.com/josephgoksu/taskwing.app
+module github.com/josephgoksu/TaskWing
 
 go 1.24.3
 

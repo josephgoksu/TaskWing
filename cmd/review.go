@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/josephgoksu/taskwing.app/models"
+	"github.com/josephgoksu/TaskWing/models"
 	"github.com/spf13/cobra"
 )
 

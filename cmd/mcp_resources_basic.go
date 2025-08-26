@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/josephgoksu/taskwing.app/store"
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/store"
+	"github.com/josephgoksu/TaskWing/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

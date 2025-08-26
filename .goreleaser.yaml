@@ -30,9 +30,9 @@ builds:
         goarch: arm
     ldflags:
       - -s -w
-      - -X github.com/josephgoksu/taskwing.app/cmd.version={{.Version}}
-      - -X github.com/josephgoksu/taskwing.app/cmd.commit={{.Commit}}
-      - -X github.com/josephgoksu/taskwing.app/cmd.date={{.Date}}
+      - -X github.com/josephgoksu/TaskWing/cmd.version={{.Version}}
+      - -X github.com/josephgoksu/TaskWing/cmd.commit={{.Commit}}
+      - -X github.com/josephgoksu/TaskWing/cmd.date={{.Date}}
 
 # Archive configuration
 archives:
@@ -136,8 +136,8 @@ release:
 
     **From Source:**
     ```bash
-    git clone https://github.com/josephgoksu/taskwing.app
-    cd taskwing.app
+    git clone https://github.com/josephgoksu/TaskWing
+    cd TaskWing
     go build -o taskwing main.go
     ```
 
@@ -149,7 +149,7 @@ release:
 brews:
   - name: taskwing
     description: "AI-assisted CLI task manager for developers"
-    homepage: "https://github.com/josephgoksu/taskwing.app"
+    homepage: "https://github.com/josephgoksu/TaskWing"
     license: "MIT"
     repository:
       owner: josephgoksu
@@ -165,7 +165,7 @@ brews:
 scoops:
   - name: taskwing
     description: "AI-assisted CLI task manager for developers"
-    homepage: "https://github.com/josephgoksu/taskwing.app"
+    homepage: "https://github.com/josephgoksu/TaskWing"
     license: "MIT"
     repository:
       owner: josephgoksu

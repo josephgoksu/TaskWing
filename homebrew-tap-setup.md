@@ -54,11 +54,11 @@ GoReleaser will automatically generate a formula similar to:
 ```ruby
 class Taskwing < Formula
   desc "AI-assisted CLI task manager for developers"
-  homepage "https://github.com/josephgoksu/taskwing.app"
+  homepage "https://github.com/josephgoksu/TaskWing"
   license "MIT"
 
   # Auto-populated with release info
-  url "https://github.com/josephgoksu/taskwing.app/releases/download/v1.0.0/taskwing.app_Darwin_arm64.tar.gz"
+  url "https://github.com/josephgoksu/TaskWing/releases/download/v1.0.0/taskwing.app_Darwin_arm64.tar.gz"
   sha256 "..."
 
   def install

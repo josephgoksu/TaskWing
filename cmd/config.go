@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

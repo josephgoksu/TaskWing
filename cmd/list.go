@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/josephgoksu/taskwing.app/models"
-	"github.com/josephgoksu/taskwing.app/store"
+	"github.com/josephgoksu/TaskWing/models"
+	"github.com/josephgoksu/TaskWing/store"
 	"github.com/spf13/cobra"
 )
 

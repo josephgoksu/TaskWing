@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/josephgoksu/taskwing.app/llm"
-	"github.com/josephgoksu/taskwing.app/prompts"
-	"github.com/josephgoksu/taskwing.app/store"
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/llm"
+	"github.com/josephgoksu/TaskWing/prompts"
+	"github.com/josephgoksu/TaskWing/store"
+	"github.com/josephgoksu/TaskWing/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -109,7 +109,8 @@ func planFromDocumentHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		}
 		estimate, err := provider.EstimateTaskParameters(ctx, estSys, improved, resolved.ModelName, resolved.APIKey, resolved.ProjectID, resolved.EstimationMaxOutputTokens, resolved.EstimationTemperature)
 		if err != nil {
-			// continue; use configured tokens
+			// Log the error but continue with configured tokens
+			logInfo("Failed to estimate task parameters: " + err.Error())
 		}
 
 		genSys, perr := prompts.GetPrompt(prompts.KeyGenerateTasks, templatesDir)

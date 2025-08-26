@@ -8,18 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+
 - Unified and simplified documentation structure
 - Consolidated 8 documentation files into 4 focused guides
 - Enhanced MCP integration guide with comprehensive testing section
 - Improved developer onboarding with contributing guidelines
 
 ### Removed
+
 - Redundant documentation files (QUICKSTART.md, MCP_GUIDE.md, etc.)
 - Duplicate installation and setup instructions
 
 ## [Previous Releases]
 
 ### Added in Recent Versions
+
 - Model Context Protocol (MCP) server integration
 - Current task management with `taskwing current` commands
 - Batch task creation and bulk operations
@@ -30,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive AI tool integration
 
 ### Core Features
+
 - CLI task management with CRUD operations
 - Local file-based storage with integrity checks
 - Project-specific task organization
@@ -39,4 +43,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-**Note**: This changelog was created as part of the documentation unification effort. For detailed commit history, see the [GitHub repository](https://github.com/josephgoksu/taskwing.app/commits).
+**Note**: This changelog was created as part of the documentation unification effort. For detailed commit history, see the [GitHub repository](https://github.com/josephgoksu/TaskWing/commits).

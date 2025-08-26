@@ -5,8 +5,8 @@ package cmd
 import (
 	"strings"
 
-	"github.com/josephgoksu/taskwing.app/models"
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/models"
+	"github.com/josephgoksu/TaskWing/types"
 )
 
 // shortID returns a compact 8-char prefix of a UUID for display.

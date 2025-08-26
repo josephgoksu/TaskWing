@@ -1,6 +1,6 @@
 package cmd
 
-import "github.com/josephgoksu/taskwing.app/models"
+import "github.com/josephgoksu/TaskWing/models"
 
 // Helper to convert priority to an integer for sorting
 func priorityToInt(p models.TaskPriority) int {

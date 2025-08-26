@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/josephgoksu/taskwing.app/models"
-	"github.com/josephgoksu/taskwing.app/store"
+	"github.com/josephgoksu/TaskWing/models"
+	"github.com/josephgoksu/TaskWing/store"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )

@@ -3,7 +3,7 @@ package llm
 import (
 	"fmt"
 
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/types"
 )
 
 // NewProvider is a factory function that returns an instance of an llm.Provider

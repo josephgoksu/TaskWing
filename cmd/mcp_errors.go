@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/josephgoksu/taskwing.app/types"
+	"github.com/josephgoksu/TaskWing/types"
 )
 
 // MCP error types for better error categorization
