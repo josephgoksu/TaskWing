@@ -2,9 +2,9 @@
 set -e
 
 # TaskWing Installation Script
-# Usage: curl -sSfL https://raw.githubusercontent.com/josephgoksu/taskwing.app/main/install.sh | sh
+# Usage: curl -sSfL https://raw.githubusercontent.com/josephgoksu/TaskWing/main/install.sh | sh
 
-REPO="josephgoksu/taskwing.app"
+REPO="josephgoksu/TaskWing"
 BINARY_NAME="taskwing"
 
 # Detect platform
@@ -38,16 +38,16 @@ if [ -z "$LATEST_VERSION" ]; then
     echo ""
     echo "Or build from source:"
     echo "   git clone https://github.com/$REPO"
-    echo "   cd taskwing-app && go build -o taskwing main.go"
+    echo "   cd TaskWing && go build -o taskwing main.go"
     exit 1
 fi
 
 echo "📦 Latest version: $LATEST_VERSION"
 
 # Construct download URL  
-ARCHIVE_NAME="taskwing.app_${OS}_${ARCH}.tar.gz"
+ARCHIVE_NAME="TaskWing_${OS}_${ARCH}.tar.gz"
 if [ "$OS" = "Windows" ]; then
-    ARCHIVE_NAME="taskwing.app_${OS}_${ARCH}.zip"
+    ARCHIVE_NAME="TaskWing_${OS}_${ARCH}.zip"
 fi
 
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_VERSION/$ARCHIVE_NAME"

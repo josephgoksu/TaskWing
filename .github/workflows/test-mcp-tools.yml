@@ -12,8 +12,8 @@ on:
 
 jobs:
   test-mcp-tools:
-    name: Test MCP Tools
-    runs-on: ubuntu-latest
+    name: Test MCP Tools (${{ matrix.go-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
@@ -73,7 +73,7 @@ jobs:
         run: make coverage
 
       - name: Upload test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results-${{ matrix.os }}-go${{ matrix.go-version }}
@@ -160,7 +160,7 @@ jobs:
           echo "See test-results/mcp-protocol.log for details." >> comprehensive-report.md
 
       - name: Upload comprehensive report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: comprehensive-mcp-test-report
           path: |

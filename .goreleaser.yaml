@@ -88,7 +88,7 @@ changelog:
 release:
   github:
     owner: josephgoksu
-    name: taskwing.app
+    name: TaskWing
   draft: false
   prerelease: auto
   mode: replace

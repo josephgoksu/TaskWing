@@ -22,10 +22,10 @@ TaskWing integrates directly with Claude Code, Cursor, and other AI tools via th
 
 ```bash
 # One-liner install (recommended)
-curl -sSfL https://raw.githubusercontent.com/josephgoksu/taskwing.app/main/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/josephgoksu/TaskWing/main/install.sh | sh
 
 # Or via Go
-go install github.com/josephgoksu/taskwing.app@latest
+go install github.com/josephgoksu/TaskWing@latest
 ```
 
 For other installation methods, see [Installation Guide](DOCS.md#installation).

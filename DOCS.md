@@ -19,20 +19,20 @@ Comprehensive guide for using TaskWing CLI task manager.
 
 ```bash
 # One-liner install (recommended)
-curl -sSfL https://raw.githubusercontent.com/josephgoksu/taskwing.app/main/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/josephgoksu/TaskWing/main/install.sh | sh
 
 # Via Go (requires Go 1.24+)
-go install github.com/josephgoksu/taskwing.app@latest
+go install github.com/josephgoksu/TaskWing@latest
 ```
 
 ### Other Methods
 
-- **Download Binary**: Get pre-built binaries from [GitHub Releases](https://github.com/josephgoksu/taskwing.app/releases)
+- **Download Binary**: Get pre-built binaries from [GitHub Releases](https://github.com/josephgoksu/TaskWing/releases)
 - **Build from Source**:
 
   ```bash
-  git clone https://github.com/josephgoksu/taskwing.app
-  cd taskwing-app && go build -o taskwing main.go
+  git clone https://github.com/josephgoksu/TaskWing
+  cd TaskWing && go build -o taskwing main.go
   ```
 
 - **Homebrew** (coming soon): `brew install josephgoksu/tap/taskwing`
@@ -512,6 +512,6 @@ taskwing --version
 
 ### Still Need Help?
 
-1. Check the [GitHub Issues](https://github.com/josephgoksu/taskwing.app/issues)
+1. Check the [GitHub Issues](https://github.com/josephgoksu/TaskWing/issues)
 2. Review [CLAUDE.md](CLAUDE.md) for development details
 3. For AI integration issues, see [MCP.md](MCP.md)
