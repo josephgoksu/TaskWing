@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/go-playground/validator/v10"
+	validator "github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 	"github.com/josephgoksu/TaskWing/types"
 	"github.com/spf13/cobra"

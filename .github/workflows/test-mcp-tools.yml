@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         go-version: ["1.24.x"]
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - name: Checkout code
@@ -32,27 +32,38 @@ jobs:
       # Python setup removed (no Python tests)
 
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
+            ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
             ${{ runner.os }}-go-
 
       - name: Install dependencies
         run: |
           go mod tidy
           go mod download
+          go mod verify
+          go list -m all
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: v1.54.2
-          skip-cache: true
-          skip-pkg-cache: true
-          skip-build-cache: true
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.4.0
+
+      - name: Debug module info
+        run: |
+          echo "=== Go Environment ==="
+          go env
+          echo "=== Module info ==="
+          go list -m
+          echo "=== All dependencies ==="
+          go list -m -f '{{.Path}} {{.Version}}' all | grep -E "(validator|yaml)"
+          echo "=== Current directory ==="
+          pwd
+          ls -la
 
       - name: Run linting
         run: make lint

@@ -46,9 +46,6 @@ echo "📦 Latest version: $LATEST_VERSION"
 
 # Construct download URL  
 ARCHIVE_NAME="TaskWing_${OS}_${ARCH}.tar.gz"
-if [ "$OS" = "Windows" ]; then
-    ARCHIVE_NAME="TaskWing_${OS}_${ARCH}.zip"
-fi
 
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_VERSION/$ARCHIVE_NAME"
 

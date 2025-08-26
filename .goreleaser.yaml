@@ -18,16 +18,11 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
-      - windows
       - darwin
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-      - goos: windows
-        goarch: arm
+    ignore: []
     ldflags:
       - -s -w
       - -X github.com/josephgoksu/TaskWing/cmd.version={{.Version}}
@@ -44,9 +39,7 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        format: zip
+    format_overrides: []
     files:
       - README.md
       - MCP.md
@@ -161,21 +154,7 @@ brews:
     commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
     skip_upload: true # Will be enabled after homebrew-tap repo is created
 
-# Scoop bucket for Windows (future)
-scoops:
-  - name: taskwing
-    description: "AI-assisted CLI task manager for developers"
-    homepage: "https://github.com/josephgoksu/TaskWing"
-    license: "MIT"
-    repository:
-      owner: josephgoksu
-      name: scoop-bucket
-    directory: bucket
-    commit_author:
-      name: goreleaserbot
-      email: bot@goreleaser.com
-    commit_msg_template: "Scoop update for {{ .ProjectName }} version {{ .Tag }}"
-    skip_upload: true # Enable when scoop-bucket repo is ready
+# Scoop bucket for Windows removed - focusing on Linux/macOS only
 
 # Docker images (disabled - uncomment when ready)
 # dockers:
