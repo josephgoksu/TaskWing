@@ -15,10 +15,11 @@ import (
 
 // updateCmd represents the update command
 var updateCmd = &cobra.Command{
-	Use:   "update [task_id]",
-	Short: "Update an existing task",
-	Long:  `Update an existing task. If task_id is provided, it attempts to update that task directly. Otherwise, it presents an interactive list to choose a task. Allows updating title, description, priority, status, tags, and dependencies.`,
-	Args:  cobra.MaximumNArgs(1),
+	Use:     "update [task_id]",
+	Aliases: []string{"edit", "modify"},
+	Short:   "Update an existing task",
+	Long:    `Update an existing task. If task_id is provided, it attempts to update that task directly. Otherwise, it presents an interactive list to choose a task. Allows updating title, description, priority, status, tags, and dependencies.`,
+	Args:    cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {

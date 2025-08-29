@@ -160,6 +160,39 @@ Test results in `test-results/`:
 3. Add to `rootCmd` in init()
 4. Follow interactive patterns from existing commands
 
+## CLI User Experience Improvements
+
+Recent CLI enhancements for better usability:
+
+### New Commands
+- `quickstart` - Interactive getting started guide for new users
+- `interactive` (aliases: `menu`, `ui`) - Menu-driven interface for all operations
+
+### Command Aliases
+Common operations now have short aliases:
+- `ls` for `list`
+- `mk`, `create` for `add`
+- `rm`, `remove` for `delete`
+- `get`, `view` for `show`
+- `edit`, `modify` for `update`
+- `begin`, `work` for `start`
+- `finish` for `done` (alias)
+
+### Command Organization
+Help output is organized into logical categories:
+- **Getting Started**: `quickstart`, `interactive`
+- **Core Tasks**: `add`, `list`, `show`, `update`, `delete`
+- **Workflow**: `start`, `review`, `done`, `current`
+- **Discovery & Planning**: `search`, `next`, `expand`, `clear`
+- **Project Setup**: `init`, `reset`, `config`
+- **System & Utilities**: `mcp`, `generate`, `completion`, `version`, `help`
+
+### Discovery Hints
+Commands now provide "What's next?" suggestions:
+- After creating tasks: suggests `start`, `show`, `list`
+- After starting tasks: suggests `done`, `update`, `current`
+- After completing tasks: suggests `add`, `next`, `list`
+
 ## MCP System Prompt
 
 For AI tools using TaskWing MCP:
@@ -174,4 +207,9 @@ Use TaskWing MCP tools for all task management. Do not create separate lists.
 - Update: update-task for fields, mark-done to complete
 - Bulk: bulk-tasks or clear-tasks (default: completed=true)
 - Search: search-tasks (AND/OR/NOT), filter-tasks (JSONPath)
+
+NEW USER GUIDANCE:
+- For CLI help: Recommend 'taskwing quickstart' or 'taskwing interactive'
+- Command aliases available: ls, mk, rm, get, edit, begin
+- Organized help with 'taskwing --help' shows grouped commands
 ```

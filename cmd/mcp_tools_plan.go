@@ -63,8 +63,6 @@ func planFromDocumentHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 			ProjectID:                  appCfg.LLM.ProjectID,
 			MaxOutputTokens:            appCfg.LLM.MaxOutputTokens,
 			Temperature:                appCfg.LLM.Temperature,
-			EstimationTemperature:      appCfg.LLM.EstimationTemperature,
-			EstimationMaxOutputTokens:  appCfg.LLM.EstimationMaxOutputTokens,
 			ImprovementTemperature:     appCfg.LLM.ImprovementTemperature,
 			ImprovementMaxOutputTokens: appCfg.LLM.ImprovementMaxOutputTokens,
 		}
@@ -102,33 +100,13 @@ func planFromDocumentHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 			}
 		}
 
-		// 5) Estimate and generate
-		estSys, perr := prompts.GetPrompt(prompts.KeyEstimateTasks, templatesDir)
-		if perr != nil {
-			return nil, types.NewMCPError("PROMPT_ERROR", "failed to load estimation prompt", map[string]interface{}{"error": perr.Error()})
-		}
-		estimate, err := provider.EstimateTaskParameters(ctx, estSys, improved, resolved.ModelName, resolved.APIKey, resolved.ProjectID, resolved.EstimationMaxOutputTokens, resolved.EstimationTemperature)
-		if err != nil {
-			// Log the error but continue with configured tokens
-			logInfo("Failed to estimate task parameters: " + err.Error())
-		}
-
+		// 5) Generate tasks
 		genSys, perr := prompts.GetPrompt(prompts.KeyGenerateTasks, templatesDir)
 		if perr != nil {
 			return nil, types.NewMCPError("PROMPT_ERROR", "failed to load generation prompt", map[string]interface{}{"error": perr.Error()})
 		}
 
 		maxTokens := resolved.MaxOutputTokens
-		if estimate.EstimatedTaskCount > 0 {
-			calc := (estimate.EstimatedTaskCount * 200) + 2048
-			if calc < 4096 {
-				calc = 4096
-			}
-			if calc > 32768 {
-				calc = 32768
-			}
-			maxTokens = calc
-		}
 
 		outputs, err := provider.GenerateTasks(ctx, genSys, improved, resolved.ModelName, resolved.APIKey, resolved.ProjectID, maxTokens, resolved.Temperature)
 		if err != nil {

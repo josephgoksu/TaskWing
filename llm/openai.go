@@ -74,11 +74,86 @@ type OpenAITaskResponseWrapper struct {
 	Tasks []types.TaskOutput `json:"tasks"`
 }
 
-// openAIEstimationData is used to unmarshal the JSON object returned by OpenAI
-// for the estimation call.
-type openAIEstimationData struct {
-	EstimatedTaskCount  int    `json:"estimatedTaskCount"`
-	EstimatedComplexity string `json:"estimatedComplexity"` // e.g., "low", "medium", "high"
+// buildTasksSchema returns a JSON Schema for an object with a required 'tasks' array.
+func buildTasksSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"tasks": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type":                 "object",
+					"additionalProperties": false,
+					"properties": map[string]interface{}{
+						"title":       map[string]interface{}{"type": "string"},
+						"description": map[string]interface{}{"type": "string"},
+						"acceptanceCriteria": map[string]interface{}{
+							"type":        "string",
+							"description": "Acceptance criteria for the task (single or newline-separated list)",
+						},
+						"priority": map[string]interface{}{"type": "string"},
+						"tempId":   map[string]interface{}{"type": "integer"},
+					},
+					"required": []string{"title", "description", "acceptanceCriteria", "priority", "tempId"},
+				},
+			},
+		},
+		"required": []string{"tasks"},
+		"strict":   true,
+	}
+}
+
+// buildEnhancedTaskSchema returns a JSON Schema for a single enhanced task object.
+func buildEnhancedTaskSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"title":              map[string]interface{}{"type": "string"},
+			"description":        map[string]interface{}{"type": "string"},
+			"acceptanceCriteria": map[string]interface{}{"type": "string"},
+			"priority":           map[string]interface{}{"type": "string"},
+		},
+		"required": []string{"title", "description", "acceptanceCriteria", "priority"},
+		"strict":   true,
+	}
+}
+
+// parseEnhancedTaskFallback makes a best-effort to build an EnhancedTask from free-form text.
+func parseEnhancedTaskFallback(text, defaultTitle string) types.EnhancedTask {
+	et := types.EnhancedTask{}
+	lines := strings.Split(text, "\n")
+	for _, l := range lines {
+		line := strings.TrimSpace(l)
+		lower := strings.ToLower(line)
+		switch {
+		case strings.HasPrefix(lower, "title:"):
+			et.Title = strings.TrimSpace(line[len("title:"):])
+		case strings.HasPrefix(lower, "description:"):
+			et.Description = strings.TrimSpace(line[len("description:"):])
+		case strings.HasPrefix(lower, "acceptance criteria:"):
+			et.AcceptanceCriteria = strings.TrimSpace(line[len("acceptance criteria:"):])
+		case strings.HasPrefix(lower, "acceptancecriteria:"):
+			et.AcceptanceCriteria = strings.TrimSpace(line[len("acceptancecriteria:"):])
+		case strings.HasPrefix(lower, "priority:"):
+			et.Priority = strings.TrimSpace(line[len("priority:"):])
+		}
+	}
+	// If we didn't find structured labels, treat the whole text as description
+	if et.Title == "" {
+		et.Title = defaultTitle
+	}
+	if et.Description == "" {
+		et.Description = strings.TrimSpace(text)
+		if et.Description == "" {
+			et.Description = defaultTitle
+		}
+	}
+	if et.Priority == "" {
+		et.Priority = "medium"
+	}
+	return et
 }
 
 const (
@@ -94,7 +169,7 @@ func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdCon
 		return nil, fmt.Errorf("OpenAI API key is not set")
 	}
 
-	userMessage := fmt.Sprintf("PRD Content:\n---\n%s\n---", prdContent)
+	userMessage := fmt.Sprintf("Please analyze this PRD content and return a JSON response with the requested format:\n---\n%s\n---", prdContent)
 
 	content, err := p.callOpenAIAndExtract(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
 	if err != nil {
@@ -103,38 +178,13 @@ func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdCon
 
 	var responseWrapper OpenAITaskResponseWrapper
 	if err := json.Unmarshal([]byte(content), &responseWrapper); err != nil {
+		// Debug: show the actual content that failed to unmarshal
+		fmt.Printf("DEBUG: Failed to unmarshal JSON content: %s\n", content)
 		return nil, fmt.Errorf("failed to unmarshal tasks JSON from OpenAI response content: %w", err)
 	}
 
 	return responseWrapper.Tasks, nil
 	// return nil, fmt.Errorf("OpenAI GenerateTasks not yet fully implemented")
-}
-
-// EstimateTaskParameters for OpenAIProvider.
-func (p *OpenAIProvider) EstimateTaskParameters(ctx context.Context, systemPrompt, prdContent string, modelName string, apiKey string, projectID string, maxTokensForEstimation int, temperatureForEstimation float64) (types.EstimationOutput, error) {
-	if apiKey == "" {
-		apiKey = p.apiKey // Use provider's key if per-call key is not given
-	}
-	if apiKey == "" {
-		return types.EstimationOutput{}, fmt.Errorf("OpenAI API key is not set for estimation")
-	}
-
-	userMessage := fmt.Sprintf("PRD Content:\n---\n%s\n---", prdContent)
-
-	content, err := p.callOpenAIAndExtract(ctx, apiKey, modelName, systemPrompt, userMessage, temperatureForEstimation, maxTokensForEstimation)
-	if err != nil {
-		return types.EstimationOutput{}, err
-	}
-
-	var estimationData openAIEstimationData
-	if err := json.Unmarshal([]byte(content), &estimationData); err != nil {
-		return types.EstimationOutput{}, fmt.Errorf("failed to unmarshal estimation JSON from OpenAI response content: %w. Content was: [%s]", err, content)
-	}
-
-	return types.EstimationOutput{
-		EstimatedTaskCount:  estimationData.EstimatedTaskCount,
-		EstimatedComplexity: estimationData.EstimatedComplexity,
-	}, nil
 }
 
 // ImprovePRD sends the PRD content to OpenAI with a prompt to refine and improve it.
@@ -146,9 +196,9 @@ func (p *OpenAIProvider) ImprovePRD(ctx context.Context, systemPrompt, prdConten
 		return "", fmt.Errorf("OpenAI API key is not set for PRD improvement")
 	}
 
-	userMessage := fmt.Sprintf("Please improve the following PRD content:\n---\n%s\n---", prdContent)
+	userMessage := fmt.Sprintf("Please improve the following PRD content and return the enhanced version:\n---\n%s\n---", prdContent)
 
-	content, err := p.callOpenAIAndExtract(ctx, apiKey, modelName, systemPrompt, userMessage, temperatureForImprovement, maxTokensForImprovement)
+	content, err := p.callOpenAIAndExtractText(ctx, apiKey, modelName, systemPrompt, userMessage, temperatureForImprovement, maxTokensForImprovement)
 	if err != nil {
 		return "", err
 	}
@@ -170,36 +220,74 @@ func (p *OpenAIProvider) EnhanceTask(ctx context.Context, systemPrompt, taskInpu
 		userMessage += fmt.Sprintf("\n\nContext: %s", contextInfo)
 	}
 
-	content, err := p.callOpenAIAndExtract(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
+	// Use a schema tailored for a single enhanced task output
+	content, err := p.callOpenAIAndExtractEnhanced(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
 	if err != nil {
 		return types.EnhancedTask{}, err
 	}
 
 	var enhancedTask types.EnhancedTask
 	if err := json.Unmarshal([]byte(content), &enhancedTask); err != nil {
-		return types.EnhancedTask{}, fmt.Errorf("failed to unmarshal enhanced task JSON from OpenAI response: %w. Content was: [%s]", err, content)
+		// Fallback: try to coerce from a text response
+		coerced := parseEnhancedTaskFallback(content, taskInput)
+		// Ensure at least a title is present
+		if strings.TrimSpace(coerced.Title) == "" {
+			coerced.Title = taskInput
+		}
+		if strings.TrimSpace(coerced.Description) == "" {
+			coerced.Description = taskInput
+		}
+		return coerced, nil
 	}
 
 	return enhancedTask, nil
 }
 
-// callOpenAIAndExtract tries Responses API first, then Chat Completions, and extracts the text content.
+// callOpenAIAndExtract sends a JSON-schema constrained request (for tasks array) and returns content.
 func (p *OpenAIProvider) callOpenAIAndExtract(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
-	// Only use the Responses API per project preference
-	return p.callResponsesAPI(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
+	return p.callResponsesAPIWithSchema(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens, "task_generation", buildTasksSchema(), true)
 }
 
-func (p *OpenAIProvider) callResponsesAPI(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
+// callOpenAIAndExtractText calls the API without JSON formatting for plain text responses
+func (p *OpenAIProvider) callOpenAIAndExtractText(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
+	// Use the Responses API without JSON format
+	return p.callResponsesAPIWithSchema(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens, "", nil, false)
+}
+
+// callOpenAIAndExtractEnhanced requests a single enhanced task using a tailored schema.
+func (p *OpenAIProvider) callOpenAIAndExtractEnhanced(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
+	return p.callResponsesAPIWithSchema(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens, "enhanced_task", buildEnhancedTaskSchema(), true)
+}
+
+func (p *OpenAIProvider) callResponsesAPIWithSchema(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int, schemaName string, schema map[string]interface{}, useJsonFormat bool) (string, error) {
+	// Build the Responses API payload using simple string content
 	payload := map[string]interface{}{
-		"model":             modelName,
-		"input":             []map[string]string{{"role": "system", "content": systemPrompt}, {"role": "user", "content": userMessage}},
-		"max_output_tokens": maxTokens,
-		// Use text.format for Responses API JSON output with correct type
-		"text": map[string]interface{}{"format": map[string]interface{}{"type": "json_object"}},
+		"model": modelName,
+		"input": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": userMessage},
+		},
 	}
 
-	// Some models don't support temperature parameter - exclude it for safer compatibility
-	// Skip temperature for o1 models and any unknown/unsupported models
+	// Only set max_output_tokens if explicitly provided (>0)
+	if maxTokens > 0 {
+		payload["max_output_tokens"] = maxTokens
+	}
+
+	// Configure text.format per the Responses API
+	textConfig := map[string]interface{}{}
+	if useJsonFormat && schema != nil {
+		textConfig["format"] = map[string]interface{}{
+			"type":   "json_schema",
+			"name":   schemaName,
+			"schema": schema,
+		}
+	} else {
+		textConfig["format"] = map[string]interface{}{"type": "text"}
+	}
+	payload["text"] = textConfig
+
+	// Add temperature for supported models
 	modelLower := strings.ToLower(modelName)
 	supportsTemperature := strings.Contains(modelLower, "gpt-4") ||
 		strings.Contains(modelLower, "gpt-3.5") ||
@@ -216,9 +304,15 @@ func (p *OpenAIProvider) callResponsesAPI(ctx context.Context, apiKey, modelName
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 90 * time.Second}
+	// Use longer timeout for complex document processing
+	timeout := 180 * time.Second // 3 minutes
+	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
+		// Check for timeout errors and provide helpful message
+		if strings.Contains(err.Error(), "context deadline exceeded") || strings.Contains(err.Error(), "Client.Timeout exceeded") {
+			return "", fmt.Errorf("OpenAI API request timed out after %v. This may be due to a complex request or network issues. Try with a smaller document or check your connection", timeout)
+		}
 		return "", fmt.Errorf("failed to call responses: %w", err)
 	}
 	defer func() {
@@ -233,18 +327,25 @@ func (p *OpenAIProvider) callResponsesAPI(ctx context.Context, apiKey, modelName
 	}
 	raw, _ := io.ReadAll(resp.Body)
 
-	// Try choices-like first
-	var cc OpenAIResponsePayload
-	if err := json.Unmarshal(raw, &cc); err == nil && len(cc.Choices) > 0 && cc.Choices[0].Message.Content != "" {
-		return cc.Choices[0].Message.Content, nil
-	}
 	// Parse OpenAI Responses API format
 	var generic map[string]interface{}
 	if err := json.Unmarshal(raw, &generic); err == nil {
-		if out, ok := generic["output"].([]interface{}); ok && len(out) > 0 {
-			// Look for message type outputs with content
-			for _, output := range out {
+		// 1) Try aggregated output_text first if present
+		if ot, ok := generic["output_text"].(string); ok && strings.TrimSpace(ot) != "" {
+			return ot, nil
+		}
+
+		// 2) Try the "output" array format
+		if outputs, ok := generic["output"].([]interface{}); ok && len(outputs) > 0 {
+			for _, output := range outputs {
 				if outputObj, ok := output.(map[string]interface{}); ok {
+					// Look for text type output
+					if outputType, ok := outputObj["type"].(string); ok && outputType == "text" {
+						if txt, ok := outputObj["text"].(string); ok && txt != "" {
+							return txt, nil
+						}
+					}
+					// Also check for message type outputs
 					if outputType, ok := outputObj["type"].(string); ok && outputType == "message" {
 						if contents, ok := outputObj["content"].([]interface{}); ok && len(contents) > 0 {
 							if c0, ok := contents[0].(map[string]interface{}); ok {
@@ -257,9 +358,32 @@ func (p *OpenAIProvider) callResponsesAPI(ctx context.Context, apiKey, modelName
 				}
 			}
 		}
+
+		// 3) If still nothing and the response is incomplete due to token limit, retry once without schema in text mode
+		if status, ok := generic["status"].(string); ok && status == "incomplete" {
+			if details, ok := generic["incomplete_details"].(map[string]interface{}); ok {
+				if reason, ok := details["reason"].(string); ok && reason == "max_output_tokens" {
+					// Retry with text format and without explicit token cap
+					if useJsonFormat {
+						return p.callResponsesAPIWithSchema(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, 0, "", nil, false)
+					}
+				}
+			}
+		}
+
+		// Fallback: try choices format (for backwards compatibility)
+		var cc OpenAIResponsePayload
+		if err := json.Unmarshal(raw, &cc); err == nil && len(cc.Choices) > 0 && cc.Choices[0].Message.Content != "" {
+			return cc.Choices[0].Message.Content, nil
+		}
+
+		// Try direct content access
 		if txt, ok := generic["content"].(string); ok && txt != "" {
 			return txt, nil
 		}
+
+		// Debug log the raw response structure for troubleshooting
+		fmt.Printf("Debug: Raw API response structure: %+v\n", generic)
 	}
-	return "", fmt.Errorf("failed to extract content from responses body")
+	return "", fmt.Errorf("failed to extract content from responses body. Raw response: %s", string(raw))
 }

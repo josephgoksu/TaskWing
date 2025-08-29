@@ -123,11 +123,9 @@ func InitConfig() {
 	viper.SetDefault("llm.modelName", "")
 	viper.SetDefault("llm.apiKey", "")
 	viper.SetDefault("llm.projectId", "")
-	viper.SetDefault("llm.maxOutputTokens", 16384)
+	viper.SetDefault("llm.maxOutputTokens", 131072)  // 128K tokens - no more limits!
 	viper.SetDefault("llm.temperature", 0.7)
-	viper.SetDefault("llm.estimationMaxOutputTokens", 1024)
-	viper.SetDefault("llm.estimationTemperature", 0.5)
-	viper.SetDefault("llm.improvementMaxOutputTokens", 2048)
+	viper.SetDefault("llm.improvementMaxOutputTokens", 131072)  // 128K tokens for improvements too
 	viper.SetDefault("llm.improvementTemperature", 0.3)
 
 	// After all sources are configured, unmarshal into GlobalAppConfig

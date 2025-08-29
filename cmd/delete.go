@@ -20,10 +20,11 @@ var (
 
 // deleteCmd represents the delete command
 var deleteCmd = &cobra.Command{
-	Use:   "delete [task_id]",
-	Short: "Delete a task",
-	Long:  `Delete a task by its ID. If no ID is provided, an interactive list is shown. A confirmation prompt is always displayed before deletion.`,
-	Args:  cobra.MaximumNArgs(1), // Allow 0 or 1 argument
+	Use:     "delete [task_id]",
+	Aliases: []string{"rm", "remove"},
+	Short:   "Delete a task",
+	Long:    `Delete a task by its ID. If no ID is provided, an interactive list is shown. A confirmation prompt is always displayed before deletion.`,
+	Args:    cobra.MaximumNArgs(1), // Allow 0 or 1 argument
 	Run: func(cmd *cobra.Command, args []string) {
 		recursive, _ = cmd.Flags().GetBool("recursive")
 

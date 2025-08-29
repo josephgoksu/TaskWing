@@ -8,9 +8,10 @@ import (
 )
 
 var startCmd = &cobra.Command{
-	Use:   "start [task_id]",
-	Short: "Start working on a task (moves to 'doing' status)",
-	Long:  `Start working on a task by moving it from 'todo' to 'doing' status. If no task ID is provided, you'll be prompted to select from available tasks.`,
+	Use:     "start [task_id]",
+	Aliases: []string{"begin", "work"},
+	Short:   "Start working on a task (moves to 'doing' status)",
+	Long:    `Start working on a task by moving it from 'todo' to 'doing' status. If no task ID is provided, you'll be prompted to select from available tasks.`,
 	Example: `  taskwing start abc123  # Start specific task
   taskwing start         # Interactive selection`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -62,6 +63,13 @@ var startCmd = &cobra.Command{
 
 		fmt.Printf("✅ Started task: %s\n", updatedTask.Title)
 		fmt.Printf("📌 Set as current task\n")
+
+		// Command discovery hints
+		fmt.Printf("\n💡 What's next?\n")
+		fmt.Printf("   • Mark complete:  taskwing done %s\n", updatedTask.ID[:8])
+		fmt.Printf("   • Update task:    taskwing update %s\n", updatedTask.ID[:8])
+		fmt.Printf("   • View current:   taskwing current\n")
+
 		return nil
 	},
 }

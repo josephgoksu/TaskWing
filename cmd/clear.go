@@ -49,7 +49,10 @@ Examples:
   taskwing clear --status=todo      # Clear only todo tasks
   taskwing clear --priority=low     # Clear only low priority tasks
   taskwing clear --all              # Clear all tasks (with confirmation)
-  taskwing clear --all --force      # Clear all tasks without confirmation`,
+  taskwing clear --all --force      # Clear all tasks without confirmation
+
+Note: To delete a specific task, use 'taskwing delete <task_id>' instead.`,
+	Args: cobra.NoArgs, // Don't accept any arguments
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {

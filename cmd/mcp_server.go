@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
@@ -67,8 +68,15 @@ func runMCPServer(ctx context.Context) error {
 		Version: version,
 	}
 
-	// Create server options
-	serverOpts := &mcp.ServerOptions{}
+	// Create server options with notification handlers
+	serverOpts := &mcp.ServerOptions{
+		InitializedHandler: func(ctx context.Context, session *mcp.ServerSession, params *mcp.InitializedParams) {
+			// Client has completed initialization - this is a notification, no response needed
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "MCP client initialization complete\n")
+			}
+		},
+	}
 
 	server := mcp.NewServer(impl, serverOpts)
 

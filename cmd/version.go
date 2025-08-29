@@ -15,7 +15,16 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of TaskWing",
 	Long:  `All software has versions. This is TaskWing's.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("TaskWing CLI version %s\n", version)
+		fmt.Printf(`
+ ████████╗ █████╗ ███████╗██╗  ██╗██╗    ██╗██╗███╗   ██╗ ██████╗ 
+ ╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝██║    ██║██║████╗  ██║██╔════╝ 
+    ██║   ███████║███████╗█████╔╝ ██║ █╗ ██║██║██╔██╗ ██║██║  ███╗
+    ██║   ██╔══██║╚════██║██╔═██╗ ██║███╗██║██║██║╚██╗██║██║   ██║
+    ██║   ██║  ██║███████║██║  ██╗╚███╔███╔╝██║██║ ╚████║╚██████╔╝
+    ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+
+TaskWing CLI version %s
+`, version)
 	},
 }
 

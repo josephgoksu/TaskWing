@@ -10,10 +10,11 @@ import (
 
 // doneCmd represents the done command
 var doneCmd = &cobra.Command{
-	Use:   "done [task_id]",
-	Short: "Mark a task as done",
-	Long:  `Mark a task as completed. If task_id is provided, it attempts to mark that task directly. Otherwise, it presents an interactive list to choose a task.`,
-	Args:  cobra.MaximumNArgs(1),
+	Use:     "done [task_id]",
+	Aliases: []string{"finish"},
+	Short:   "Mark a task as done",
+	Long:    `Mark a task as completed. If task_id is provided, it attempts to mark that task directly. Otherwise, it presents an interactive list to choose a task.`,
+	Args:    cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {
@@ -62,7 +63,21 @@ var doneCmd = &cobra.Command{
 			HandleError(fmt.Sprintf("Error: Failed to mark task '%s' as done.", taskToMarkDone.Title), err)
 		}
 
-		fmt.Printf("Task '%s' (ID: %s) marked as done successfully!\n", updatedTask.Title, updatedTask.ID)
+		// Clear current task if this was the current one
+		currentTaskID := GetCurrentTask()
+		if currentTaskID == taskToMarkDone.ID {
+			if err := ClearCurrentTask(); err != nil {
+				fmt.Printf("Warning: failed to clear current task: %v\n", err)
+			}
+		}
+
+		fmt.Printf("🎉 Task '%s' (ID: %s) marked as done successfully!\n", updatedTask.Title, updatedTask.ID)
+
+		// Command discovery hints
+		fmt.Printf("\n💡 What's next?\n")
+		fmt.Printf("   • Add new task:   taskwing add \"Your next task\"\n")
+		fmt.Printf("   • Find next task: taskwing next\n")
+		fmt.Printf("   • View all tasks: taskwing list\n")
 	},
 }
 

@@ -94,8 +94,6 @@ llm:
 			ProjectID:                  cmdLLMCfg.ProjectID, // Viper already handles ENV overlay
 			MaxOutputTokens:            cmdLLMCfg.MaxOutputTokens,
 			Temperature:                cmdLLMCfg.Temperature,
-			EstimationTemperature:      cmdLLMCfg.EstimationTemperature,
-			EstimationMaxOutputTokens:  cmdLLMCfg.EstimationMaxOutputTokens,
 			ImprovementTemperature:     cmdLLMCfg.ImprovementTemperature,     // Added
 			ImprovementMaxOutputTokens: cmdLLMCfg.ImprovementMaxOutputTokens, // Added
 		}
@@ -109,15 +107,9 @@ llm:
 			resolvedLLMConfig.APIKey = apiKeyEnv
 		}
 
-		// Validate essential LLM config after attempting ENV var fallbacks
-		if resolvedLLMConfig.Provider == "" {
-			HandleError("Error: LLM provider is not configured. Set 'llm.provider' in your config or use the TASKWING_LLM_PROVIDER environment variable.", nil)
-		}
-		if resolvedLLMConfig.ModelName == "" {
-			HandleError("Error: LLM model name is not configured. Set 'llm.modelName' in your config or use the TASKWING_LLM_MODELNAME environment variable.", nil)
-		}
-		if resolvedLLMConfig.Provider == "openai" && resolvedLLMConfig.APIKey == "" {
-			HandleError("Error: OpenAI API key is not configured. Set 'llm.apiKey' in your config or use the TASKWING_LLM_APIKEY or OPENAI_API_KEY environment variables.", nil)
+		// Validate essential LLM config and provide helpful guidance
+		if err := validateAndGuideLLMConfig(&resolvedLLMConfig); err != nil {
+			HandleError("", err)
 		}
 		// Only OpenAI is supported currently; other providers are rejected by config validation.
 
@@ -196,61 +188,8 @@ llm:
 			fmt.Println("Skipping PRD improvement. Proceeding with original content.")
 		}
 
-		// Attempt to estimate task parameters to dynamically set maxOutputTokens
-		s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
-		s.Suffix = fmt.Sprintf(" Estimating task parameters from document using %s provider and model %s...", resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
-		s.Start()
-
-		estimateSystemPrompt, promptErr := prompts.GetPrompt(prompts.KeyEstimateTasks, absoluteTemplatesDir)
-		if promptErr != nil {
-			s.Stop()
-			HandleError("Error loading task estimation prompt.", promptErr)
-		}
-		estimationOutput, estimationErr := provider.EstimateTaskParameters(
-			ctx, // Pass the cancellable context
-			estimateSystemPrompt,
-			prdContent,
-			resolvedLLMConfig.ModelName,
-			resolvedLLMConfig.APIKey,
-			resolvedLLMConfig.ProjectID,
-			resolvedLLMConfig.EstimationMaxOutputTokens, // Use configured estimation tokens
-			resolvedLLMConfig.EstimationTemperature,     // Use configured estimation temperature
-		)
-		s.Stop()
-		fmt.Println() // Newline after spinner stops
-
-		currentMaxOutputTokens := resolvedLLMConfig.MaxOutputTokens // Fallback to configured value
-		const minDynamicTokens = 4096                               // Absolute minimum if we calculate dynamically below this.
-		const maxSensibleDynamicTokens = 32768                      // Cap for dynamically calculated tokens
-
-		if estimationErr != nil {
-			if errors.Is(estimationErr, context.Canceled) {
-				fmt.Println("\nOperation cancelled by user.")
-				os.Exit(130)
-			}
-			fmt.Fprintf(os.Stderr, "Warning: Failed to estimate task parameters, will use configured maxOutputTokens (%d). Error: %v\n", currentMaxOutputTokens, estimationErr)
-		} else {
-			fmt.Printf("LLM Estimation - Estimated Task Count: %d, Complexity: %s\n", estimationOutput.EstimatedTaskCount, estimationOutput.EstimatedComplexity)
-			if estimationOutput.EstimatedTaskCount > 0 {
-				calculatedTokens := (estimationOutput.EstimatedTaskCount * 200) + 2048 // Heuristic: 200 tokens/task + 2048 buffer
-
-				// Ensure dynamic tokens are not excessively low or high
-				if calculatedTokens < minDynamicTokens {
-					dynamicMaxOutputTokens := minDynamicTokens
-					fmt.Printf("Calculated dynamic tokens (%d) is below minimum (%d), using minimum.\n", calculatedTokens, minDynamicTokens)
-					currentMaxOutputTokens = dynamicMaxOutputTokens
-				} else if calculatedTokens > maxSensibleDynamicTokens {
-					dynamicMaxOutputTokens := maxSensibleDynamicTokens
-					fmt.Printf("Calculated dynamic tokens (%d) exceeds sensible cap (%d), using cap.\n", calculatedTokens, maxSensibleDynamicTokens)
-					currentMaxOutputTokens = dynamicMaxOutputTokens
-				} else {
-					currentMaxOutputTokens = calculatedTokens
-				}
-				fmt.Printf("Using dynamically determined maxOutputTokens: %d\n", currentMaxOutputTokens)
-			} else {
-				fmt.Printf("LLM estimated 0 tasks. Using configured maxOutputTokens: %d\n", currentMaxOutputTokens)
-			}
-		}
+		// Use configured max output tokens directly
+		currentMaxOutputTokens := resolvedLLMConfig.MaxOutputTokens
 
 		genSpinner := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
 		genSpinner.Suffix = fmt.Sprintf(" Generating tasks from '%s' (max output tokens: %d) using %s provider and model %s...", docPath, currentMaxOutputTokens, resolvedLLMConfig.Provider, resolvedLLMConfig.ModelName)
@@ -434,7 +373,7 @@ func resolveAndBuildTaskCandidates(llmOutputs []types.TaskOutput) ([]models.Task
 			candidateTask := models.Task{
 				Title:              llmTask.Title,
 				Description:        llmTask.Description,
-				AcceptanceCriteria: llmTask.AcceptanceCriteria,
+				AcceptanceCriteria: llmTask.GetAcceptanceCriteriaAsString(),
 				Priority:           mapLLMPriority(llmTask.Priority),
 				Status:             models.StatusTodo,
 			}
@@ -512,6 +451,87 @@ func mapLLMPriority(llmPriority string) models.TaskPriority {
 		fmt.Fprintf(os.Stderr, "Warning: Unknown LLM priority '%s', defaulting to Medium.\n", llmPriority)
 		return models.PriorityMedium
 	}
+}
+
+// validateAndGuideLLMConfig checks LLM configuration and provides helpful setup guidance
+func validateAndGuideLLMConfig(config *types.LLMConfig) error {
+	// Check if this is the first time setup (no configuration at all)
+	isFirstSetup := config.Provider == "" && config.ModelName == "" && config.APIKey == ""
+
+	if isFirstSetup {
+		fmt.Println("\n🚀 Welcome to TaskWing AI Features!")
+		fmt.Println("=====================================")
+		fmt.Println("\nTo use AI-powered task generation, you need to configure an LLM provider.")
+		fmt.Println("\n📝 Quick Setup Guide:")
+		fmt.Println("\n1️⃣  Choose your LLM provider (currently OpenAI is supported)")
+		fmt.Println("\n2️⃣  Get your API key:")
+		fmt.Println("   • OpenAI: Visit https://platform.openai.com/api-keys")
+		fmt.Println("   • Create a new API key and copy it")
+		fmt.Println("\n3️⃣  Configure TaskWing (choose one method):")
+		fmt.Println("\n   Option A: Environment Variables (Recommended for security)")
+		fmt.Println("   ─────────────────────────────────────────────────────────")
+		fmt.Println("   export OPENAI_API_KEY=\"your-api-key-here\"")
+		fmt.Println("   export TASKWING_LLM_PROVIDER=\"openai\"")
+		fmt.Println("   export TASKWING_LLM_MODELNAME=\"gpt-4o-mini\"")
+		fmt.Println("\n   Option B: Configuration File")
+		fmt.Println("   ─────────────────────────────────────────────────────────")
+		fmt.Println("   Edit .taskwing/.taskwing.yaml and uncomment the llm section:")
+		fmt.Println("\n   llm:")
+		fmt.Println("     provider: \"openai\"")
+		fmt.Println("     modelName: \"gpt-4o-mini\"")
+		fmt.Println("     # apiKey: \"\" # Set via environment variable for security")
+		fmt.Println("\n   Option C: Use .env file (create in project root)")
+		fmt.Println("   ─────────────────────────────────────────────────────────")
+		fmt.Println("   OPENAI_API_KEY=your-api-key-here")
+		fmt.Println("   TASKWING_LLM_PROVIDER=openai")
+		fmt.Println("   TASKWING_LLM_MODELNAME=gpt-5-mini")
+		fmt.Println("\n💡 Available Models (Recommended First):")
+		fmt.Println("   • gpt-5-mini (Next-gen GPT-5 Mini - Recommended)")
+		fmt.Println("   • gpt-5-nano (Ultra-fast GPT-5 Nano)")
+		fmt.Println("   • gpt-5 (Full GPT-5 model)")
+		fmt.Println("   • gpt-4o-mini, gpt-4o (GPT-4 Omni series)")
+		fmt.Println("   • gpt-4.1, gpt-4.1-mini (Newest GPT-4.1 series)")
+		fmt.Println("   • o1, o1-mini, o3-mini (Advanced reasoning models)")
+		fmt.Println("   • chatgpt-4o-latest (ChatGPT optimized)")
+		fmt.Println("\n📚 Full documentation: https://github.com/josephgoksu/TaskWing")
+		fmt.Println("=====================================")
+
+		return fmt.Errorf("LLM configuration required. Please follow the setup guide above")
+	}
+
+	// Individual checks with specific guidance
+	if config.Provider == "" {
+		fmt.Println("\n❌ Missing LLM Provider")
+		fmt.Println("────────────────────────")
+		fmt.Println("Set one of the following:")
+		fmt.Println("• Environment: export TASKWING_LLM_PROVIDER=\"openai\"")
+		fmt.Println("• Config file: llm.provider: \"openai\"")
+		return fmt.Errorf("LLM provider not configured")
+	}
+
+	if config.ModelName == "" {
+		fmt.Println("\n❌ Missing Model Name")
+		fmt.Println("────────────────────────")
+		fmt.Println("Set one of the following:")
+		fmt.Println("• Environment: export TASKWING_LLM_MODELNAME=\"gpt-5-mini\"")
+		fmt.Println("• Config file: llm.modelName: \"gpt-5-mini\"")
+		fmt.Println("\nAvailable models: gpt-5-mini, gpt-5-nano, gpt-5, gpt-4o-mini, gpt-4o, gpt-4.1, o1, o3-mini")
+		return fmt.Errorf("LLM model name not configured")
+	}
+
+	if config.Provider == "openai" && config.APIKey == "" {
+		fmt.Println("\n❌ Missing OpenAI API Key")
+		fmt.Println("────────────────────────")
+		fmt.Println("1. Get your API key from: https://platform.openai.com/api-keys")
+		fmt.Println("2. Set it using ONE of these methods:")
+		fmt.Println("   • Environment: export OPENAI_API_KEY=\"your-key\"")
+		fmt.Println("   • Environment: export TASKWING_LLM_APIKEY=\"your-key\"")
+		fmt.Println("   • .env file: OPENAI_API_KEY=your-key")
+		fmt.Println("\n⚠️  Never commit API keys to version control!")
+		return fmt.Errorf("OpenAI API key not configured")
+	}
+
+	return nil
 }
 
 func displayTaskCandidates(tasks []models.Task, relMap taskRelationshipMap) {

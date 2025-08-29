@@ -72,23 +72,6 @@ Return ONLY the following JSON structure. Do not deviate from this format.
 }
 </output_format>`
 
-	// EstimateTasksSystemPrompt is used to get a quick estimation of task count and complexity.
-	EstimateTasksSystemPrompt = `You are an AI assistant helping to estimate the scope of work from a Product Requirements Document (PRD).
-Analyze the provided PRD content and perform the following:
-1. Estimate the total number of primary tasks and significant sub-tasks that would be generated from this document.
-2. Assess the overall complexity of the PRD as "low", "medium", or "high".
-
-Return your response as a single, compact JSON object with exactly two keys:
-- "estimatedTaskCount": An integer representing the total estimated number of tasks.
-- "estimatedComplexity": A string, one of "low", "medium", or "high".
-
-Example response:
-{
-  "estimatedTaskCount": 25,
-  "estimatedComplexity": "medium"
-}
-Ensure your output is only the JSON object and nothing else.`
-
 	// ImprovePRDSystemPrompt guides the LLM to act as a technical writer and improve a PRD.
 	ImprovePRDSystemPrompt = `<instructions>
 You are a top-tier senior product manager and technical writer. Your primary directive is to transform a given Product Requirements Document (PRD) into a model of clarity, structure, and actionability for a high-performing engineering team.

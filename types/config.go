@@ -36,8 +36,6 @@ type LLMConfig struct {
 	ProjectID                  string  `mapstructure:"projectId" validate:"omitempty,min=1"`
 	MaxOutputTokens            int     `mapstructure:"maxOutputTokens" validate:"omitempty,min=1"`
 	Temperature                float64 `mapstructure:"temperature" validate:"omitempty,min=0,max=2"`
-	EstimationTemperature      float64 `mapstructure:"estimationTemperature" validate:"omitempty,min=0,max=2"`
-	EstimationMaxOutputTokens  int     `mapstructure:"estimationMaxOutputTokens" validate:"omitempty,min=1"`
 	ImprovementTemperature     float64 `mapstructure:"improvementTemperature" validate:"omitempty,min=0,max=2"`
 	ImprovementMaxOutputTokens int     `mapstructure:"improvementMaxOutputTokens" validate:"omitempty,min=1"`
 }

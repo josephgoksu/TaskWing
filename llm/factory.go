@@ -2,6 +2,7 @@ package llm
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/josephgoksu/TaskWing/types"
 )
@@ -14,8 +15,9 @@ func NewProvider(config *types.LLMConfig) (Provider, error) {
 	}
 
 	apiKey := config.APIKey
+	provider := strings.ToLower(strings.TrimSpace(config.Provider))
 
-	switch config.Provider {
+	switch provider {
 	case "openai":
 		if apiKey == "" {
 			return nil, fmt.Errorf("OpenAI provider selected but API key is missing")

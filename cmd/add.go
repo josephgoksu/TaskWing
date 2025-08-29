@@ -21,9 +21,10 @@ import (
 
 // addCmd represents the add command
 var addCmd = &cobra.Command{
-	Use:   "add [task description]",
-	Short: "Add a new task with AI enhancement",
-	Long:  `Add a new task with AI-powered enhancement. Automatically improves title, description, acceptance criteria and priority. Use --no-ai to disable AI enhancement.`,
+	Use:     "add [task description]",
+	Aliases: []string{"mk", "create"},
+	Short:   "Add a new task with AI enhancement",
+	Long:    `Add a new task with AI-powered enhancement. Automatically improves title, description, acceptance criteria and priority. Use --no-ai to disable AI enhancement.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 
@@ -133,6 +134,12 @@ var addCmd = &cobra.Command{
 
 		fmt.Printf("✅ Task added successfully!\n")
 		fmt.Printf("ID: %s\n", createdTask.ID[:8]) // Show short ID
+
+		// Command discovery hints
+		fmt.Printf("\n💡 What's next?\n")
+		fmt.Printf("   • Start working: taskwing start %s\n", createdTask.ID[:8])
+		fmt.Printf("   • View details:  taskwing show %s\n", createdTask.ID[:8])
+		fmt.Printf("   • List all tasks: taskwing list\n")
 	},
 }
 
@@ -149,8 +156,6 @@ func enhanceTaskWithAI(ctx context.Context, taskInput string, taskStore store.Ta
 		ProjectID:                  appCfg.LLM.ProjectID,
 		MaxOutputTokens:            appCfg.LLM.MaxOutputTokens,
 		Temperature:                appCfg.LLM.Temperature,
-		EstimationTemperature:      appCfg.LLM.EstimationTemperature,
-		EstimationMaxOutputTokens:  appCfg.LLM.EstimationMaxOutputTokens,
 		ImprovementTemperature:     appCfg.LLM.ImprovementTemperature,
 		ImprovementMaxOutputTokens: appCfg.LLM.ImprovementMaxOutputTokens,
 	}
@@ -164,12 +169,9 @@ func enhanceTaskWithAI(ctx context.Context, taskInput string, taskStore store.Ta
 		}
 	}
 
-	// Validate LLM config
-	if resolvedLLMConfig.Provider == "" || resolvedLLMConfig.ModelName == "" {
-		return types.EnhancedTask{}, fmt.Errorf("LLM provider or model not configured")
-	}
-	if resolvedLLMConfig.Provider == "openai" && resolvedLLMConfig.APIKey == "" {
-		return types.EnhancedTask{}, fmt.Errorf("OpenAI API key not configured")
+	// Validate LLM config with helpful guidance
+	if err := validateAndGuideLLMConfig(&resolvedLLMConfig); err != nil {
+		return types.EnhancedTask{}, err
 	}
 
 	// Create LLM provider

@@ -60,7 +60,6 @@ type GetTaskParams struct {
 type SuggestPatternParams struct {
 	Description string `json:"description" mcp:"Description of work to find patterns for (required)"`
 	ProjectType string `json:"projectType,omitempty" mcp:"Type of project (e.g., documentation, development, refactoring)"`
-	Complexity  string `json:"complexity,omitempty" mcp:"Project complexity: simple, medium, complex"`
 }
 
 type PatternSuggestion struct {

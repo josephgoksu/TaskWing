@@ -18,9 +18,10 @@ import (
 
 // listCmd represents the list command
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "Lists tasks with filtering and sorting options",
-	Long:  `Lists tasks with various filtering (status, priority, text, tags) and sorting capabilities.`,
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "Lists tasks with filtering and sorting options",
+	Long:    `Lists tasks with various filtering (status, priority, text, tags) and sorting capabilities.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {
@@ -238,6 +239,12 @@ var listCmd = &cobra.Command{
 				fmt.Println("[]")
 			} else {
 				fmt.Println("No tasks found matching your criteria.")
+
+				// Command discovery hints for empty results
+				fmt.Printf("\n💡 Get started:\n")
+				fmt.Printf("   • Create a task:     taskwing add \"Your task description\"\n")
+				fmt.Printf("   • Interactive mode:  taskwing interactive\n")
+				fmt.Printf("   • Quick start:       taskwing quickstart\n")
 			}
 			return
 		}

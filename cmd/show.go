@@ -16,8 +16,9 @@ import (
 
 // showCmd represents the show command
 var showCmd = &cobra.Command{
-	Use:   "show [task_id]",
-	Short: "Show details for a specific task",
+	Use:     "show [task_id]",
+	Aliases: []string{"get", "view"},
+	Short:   "Show details for a specific task",
 	Long: `Displays detailed information about a single task, including its description,
 status, priority, dependencies, parent, and subtasks.
 
