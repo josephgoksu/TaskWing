@@ -16,6 +16,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// test seam: allow overriding provider factory in tests
+var newLLMProvider = llm.NewProvider
+
 // RegisterPlanningTools registers the document→plan tool
 func RegisterPlanningTools(server *mcp.Server, taskStore store.TaskStore) error {
 	mcp.AddTool(server, &mcp.Tool{
@@ -78,7 +81,7 @@ func planFromDocumentHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 			return nil, types.NewMCPError("LLM_CONFIG_MISSING", "LLM provider/model/apikey not configured", map[string]interface{}{"provider": resolved.Provider, "model": resolved.ModelName})
 		}
 
-		provider, err := llm.NewProvider(&resolved)
+		provider, err := newLLMProvider(&resolved)
 		if err != nil {
 			return nil, types.NewMCPError("LLM_PROVIDER_ERROR", "failed to create LLM provider", map[string]interface{}{"error": err.Error()})
 		}

@@ -8,7 +8,7 @@ package types
 type TaskOutput struct {
 	Title              string       `json:"title"`
 	Description        string       `json:"description"`
-	AcceptanceCriteria string `json:"acceptanceCriteria"`
+	AcceptanceCriteria string       `json:"acceptanceCriteria"`
 	Priority           string       `json:"priority"` // e.g., "high", "medium", "low", "urgent"
 	TempID             int          `json:"tempId"`   // A temporary, unique ID for this task within the generation context.
 	Subtasks           []TaskOutput `json:"subtasks,omitempty"`

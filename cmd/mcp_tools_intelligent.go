@@ -23,7 +23,7 @@ import (
 func queryTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.FilterTasksParams, types.FilterTasksResponse] {
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.FilterTasksParams]) (*mcp.CallToolResultFor[types.FilterTasksResponse], error) {
 		args := params.Arguments
-		logToolCall("filter-tasks", args)
+		logToolCall("query-tasks", args)
 
 		startTime := time.Now()
 

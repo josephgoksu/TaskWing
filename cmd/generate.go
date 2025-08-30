@@ -639,7 +639,9 @@ func createTasksInStore(store store.TaskStore, taskCandidates []models.Task, rel
 			errors = append(errors, fmt.Errorf("failed to create task '%s' (ID: %s): %w", taskToSave.Title, taskToSave.ID, err))
 		} else {
 			createdCount++
-			fmt.Printf("  Created task: %s (ID: %s)\n", createdTask.Title, createdTask.ID)
+			if viper.GetBool("verbose") {
+				fmt.Printf("  Created task: %s (ID: %s)\n", createdTask.Title, createdTask.ID)
+			}
 		}
 	}
 	return createdCount, errors

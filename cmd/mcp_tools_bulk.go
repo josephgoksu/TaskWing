@@ -196,25 +196,30 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 			return nil, types.NewMCPError("NO_TASKS_SPECIFIED", "No tasks provided for batch creation", nil)
 		}
 
-		// Pre-validate placeholder IDs but allow TempIDs for parent-child relationships
+		// Pre-validate placeholders; allow TempIDs (integers) for parent/dependencies
 		for i, taskReq := range args.Tasks {
 			if taskReq.ParentID != "" {
 				// Check if it's a TempID (integer) - these are allowed
 				if _, err := strconv.Atoi(taskReq.ParentID); err != nil {
 					// Not a TempID, check for placeholder patterns
-					if strings.HasPrefix(taskReq.ParentID, "task_") ||
-						strings.Contains(taskReq.ParentID, "placeholder") ||
-						!strings.Contains(taskReq.ParentID, "-") { // UUIDs always contain hyphens
-						return nil, fmt.Errorf("task %d (%s): parentId '%s' appears to be a placeholder. Use list-tasks to get real UUID values like '7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b', or use TempID (integer) for batch parent-child relationships", i+1, taskReq.Title, taskReq.ParentID)
-					}
+                    if strings.HasPrefix(taskReq.ParentID, "task_") ||
+                        strings.Contains(taskReq.ParentID, "placeholder") ||
+                        (!strings.Contains(taskReq.ParentID, "-") && func() bool { _, err := uuid.Parse(taskReq.ParentID); return err != nil }()) { // allow valid UUIDs
+                        return nil, fmt.Errorf("task %d (%s): parentId '%s' appears to be a placeholder. Use list-tasks to get real UUID values like '7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b', or use TempID (integer) for batch parent-child relationships", i+1, taskReq.Title, taskReq.ParentID)
+                    }
 				}
 			}
 			// Also check dependencies for placeholder patterns
 			for _, depID := range taskReq.Dependencies {
-				if strings.HasPrefix(depID, "task_") ||
-					strings.Contains(depID, "placeholder") ||
-					!strings.Contains(depID, "-") {
-					return nil, fmt.Errorf("task %d (%s): dependency '%s' appears to be a placeholder. Use list-tasks to get real UUID values", i+1, taskReq.Title, depID)
+				// Allow TempID (integer) or a valid UUID; reject obvious placeholders
+				if _, err := strconv.Atoi(depID); err == nil {
+					continue
+				}
+				if _, err := uuid.Parse(depID); err == nil {
+					continue
+				}
+				if strings.HasPrefix(depID, "task_") || strings.Contains(depID, "placeholder") {
+					return nil, fmt.Errorf("task %d (%s): dependency '%s' appears to be a placeholder. Use tempId integers within the batch or real UUID values", i+1, taskReq.Title, depID)
 				}
 			}
 		}
@@ -258,6 +263,7 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 					}
 				}
 
+				// Create without dependencies first; we'll apply dependencies after all tasks exist
 				createdTask, err := createTaskFromRequest(taskStore, taskReq, parentID)
 				if err != nil {
 					response.Failed = append(response.Failed, taskReq.Title)
@@ -280,6 +286,72 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 				break
 			}
 			tasksToCreate = remainingTasks
+		}
+
+		// Post-pass: resolve and apply dependencies using TempID mapping (and UUIDs when provided)
+		for _, taskReq := range args.Tasks {
+			if len(taskReq.Dependencies) == 0 {
+				continue
+			}
+			// Resolve the created task's final ID
+			var targetID string
+			if taskReq.TempID != 0 {
+				if id, ok := tempIDToFinalID[taskReq.TempID]; ok {
+					targetID = id
+				} else {
+					response.Failed = append(response.Failed, taskReq.Title)
+					response.Errors = append(response.Errors, fmt.Sprintf("could not resolve final ID for tempId %d", taskReq.TempID))
+					continue
+				}
+			} else {
+				// Fallback by matching title among created tasks (best-effort, may be ambiguous)
+				matchCount := 0
+				for _, ct := range response.CreatedTasks {
+					if ct.Title == taskReq.Title {
+						targetID = ct.ID
+						matchCount++
+					}
+				}
+				if targetID == "" || matchCount > 1 {
+					response.Failed = append(response.Failed, taskReq.Title)
+					if matchCount > 1 {
+						response.Errors = append(response.Errors, fmt.Sprintf("ambiguous title '%s' for dependency resolution; provide tempId", taskReq.Title))
+					} else {
+						response.Errors = append(response.Errors, fmt.Sprintf("could not resolve created task ID for title '%s'", taskReq.Title))
+					}
+					continue
+				}
+			}
+
+			// Build final dependency IDs list
+			var finalDeps []string
+			depErr := false
+			for _, dep := range taskReq.Dependencies {
+				if n, err := strconv.Atoi(dep); err == nil {
+					if fid, ok := tempIDToFinalID[n]; ok {
+						finalDeps = append(finalDeps, fid)
+					} else {
+						response.Errors = append(response.Errors, fmt.Sprintf("dependency tempId %d not found for task '%s'", n, taskReq.Title))
+						depErr = true
+					}
+					continue
+				}
+				if _, err := uuid.Parse(dep); err == nil {
+					finalDeps = append(finalDeps, dep)
+					continue
+				}
+				response.Errors = append(response.Errors, fmt.Sprintf("invalid dependency reference '%s' for task '%s'", dep, taskReq.Title))
+				depErr = true
+			}
+			if depErr {
+				response.Failed = append(response.Failed, taskReq.Title)
+				continue
+			}
+
+			if _, err := taskStore.UpdateTask(targetID, map[string]interface{}{"dependencies": finalDeps}); err != nil {
+				response.Failed = append(response.Failed, taskReq.Title)
+				response.Errors = append(response.Errors, fmt.Sprintf("failed to set dependencies for '%s': %v", taskReq.Title, err))
+			}
 		}
 
 		resultText := fmt.Sprintf("Batch task creation: %d succeeded, %d failed",
@@ -433,7 +505,8 @@ func createTaskFromRequest(taskStore store.TaskStore, taskReq types.TaskCreation
 		Status:             models.StatusTodo,
 		ParentID:           parentID,
 		SubtaskIDs:         []string{},
-		Dependencies:       taskReq.Dependencies,
+		// Create without dependencies; apply after all tasks created
+		Dependencies: []string{},
 	}
 
 	if taskReq.Priority != "" {
