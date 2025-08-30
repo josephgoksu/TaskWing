@@ -70,9 +70,20 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTas
 				if args.Priority == "" {
 					err = fmt.Errorf("priority required for prioritize action")
 				} else {
-					if _, uerr := taskStore.UpdateTask(taskID, map[string]interface{}{"priority": args.Priority}); uerr != nil {
+					// Normalize priority before applying
+					canon := args.Priority
+					if np, nerr := normalizePriorityString(canon); nerr == nil {
+						canon = np
+					} else {
+						err = types.NewMCPError("INVALID_PRIORITY", nerr.Error(), map[string]interface{}{
+							"value":        args.Priority,
+							"valid_values": []string{"low", "medium", "high", "urgent"},
+						})
+						break
+					}
+					if _, uerr := taskStore.UpdateTask(taskID, map[string]interface{}{"priority": canon}); uerr != nil {
 						if resolvedID, _, ok := resolveReference(ref, allTasks); ok {
-							_, err = taskStore.UpdateTask(resolvedID, map[string]interface{}{"priority": args.Priority})
+							_, err = taskStore.UpdateTask(resolvedID, map[string]interface{}{"priority": canon})
 							taskID = resolvedID
 						} else {
 							err = uerr
@@ -202,11 +213,11 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 				// Check if it's a TempID (integer) - these are allowed
 				if _, err := strconv.Atoi(taskReq.ParentID); err != nil {
 					// Not a TempID, check for placeholder patterns
-                    if strings.HasPrefix(taskReq.ParentID, "task_") ||
-                        strings.Contains(taskReq.ParentID, "placeholder") ||
-                        (!strings.Contains(taskReq.ParentID, "-") && func() bool { _, err := uuid.Parse(taskReq.ParentID); return err != nil }()) { // allow valid UUIDs
-                        return nil, fmt.Errorf("task %d (%s): parentId '%s' appears to be a placeholder. Use list-tasks to get real UUID values like '7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b', or use TempID (integer) for batch parent-child relationships", i+1, taskReq.Title, taskReq.ParentID)
-                    }
+					if strings.HasPrefix(taskReq.ParentID, "task_") ||
+						strings.Contains(taskReq.ParentID, "placeholder") ||
+						(!strings.Contains(taskReq.ParentID, "-") && func() bool { _, err := uuid.Parse(taskReq.ParentID); return err != nil }()) { // allow valid UUIDs
+						return nil, fmt.Errorf("task %d (%s): parentId '%s' appears to be a placeholder. Use list-tasks to get real UUID values like '7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b', or use TempID (integer) for batch parent-child relationships", i+1, taskReq.Title, taskReq.ParentID)
+					}
 				}
 			}
 			// Also check dependencies for placeholder patterns

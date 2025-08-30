@@ -438,15 +438,39 @@ func resolveAndBuildTaskCandidates(llmOutputs []types.TaskOutput) ([]models.Task
 }
 
 func mapLLMPriority(llmPriority string) models.TaskPriority {
-	switch strings.ToLower(strings.TrimSpace(llmPriority)) {
-	case "urgent":
+	raw := strings.ToLower(strings.TrimSpace(llmPriority))
+	// Reuse normalization where possible
+	if canon, err := normalizePriorityString(raw); err == nil && canon != "" {
+		switch canon {
+		case "urgent":
+			return models.PriorityUrgent
+		case "high":
+			return models.PriorityHigh
+		case "medium":
+			return models.PriorityMedium
+		case "low":
+			return models.PriorityLow
+		}
+	}
+
+	// Fallback explicit aliases
+	switch raw {
+	case "critical", "asap", "emergency":
 		return models.PriorityUrgent
-	case "high":
+	case "important", "importantn", "hi", "h":
 		return models.PriorityHigh
-	case "medium", "med", "": // Treat empty as medium
+	case "med", "normal", "regular", "":
 		return models.PriorityMedium
+	case "lo", "minor":
+		return models.PriorityLow
 	case "low":
 		return models.PriorityLow
+	case "medium":
+		return models.PriorityMedium
+	case "high":
+		return models.PriorityHigh
+	case "urgent":
+		return models.PriorityUrgent
 	default:
 		fmt.Fprintf(os.Stderr, "Warning: Unknown LLM priority '%s', defaulting to Medium.\n", llmPriority)
 		return models.PriorityMedium

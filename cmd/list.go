@@ -73,10 +73,19 @@ var listCmd = &cobra.Command{
 		}
 
 		if priorityFilter != "" {
-			priorities := strings.Split(strings.ToLower(priorityFilter), ",")
+			raw := strings.Split(priorityFilter, ",")
 			prioSet := make(map[models.TaskPriority]bool)
-			for _, p := range priorities {
-				prioSet[models.TaskPriority(p)] = true
+			for _, p := range raw {
+				p = strings.TrimSpace(p)
+				if p == "" {
+					continue
+				}
+				if canon, err := normalizePriorityString(p); err == nil {
+					prioSet[models.TaskPriority(canon)] = true
+				} else {
+					// Also try literal value for backward-compat in case of new values
+					prioSet[models.TaskPriority(strings.ToLower(p))] = true
+				}
 			}
 			filterFns = append(filterFns, func(t models.Task) bool {
 				return prioSet[models.TaskPriority(strings.ToLower(string(t.Priority)))]

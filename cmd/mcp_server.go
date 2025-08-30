@@ -294,14 +294,6 @@ func logInfo(msg string) {
 	}
 }
 
-// logDebug logs debug messages when verbose mode is enabled
-// Currently unused but kept for future debugging needs
-// func logDebug(msg string) {
-// 	if viper.GetBool("verbose") {
-// 		log.Printf("[MCP DEBUG] %s", msg)
-// 	}
-// }
-
 func logToolCall(toolName string, params interface{}) {
 	if viper.GetBool("verbose") {
 		log.Printf("[MCP TOOL] %s called with params: %+v", toolName, params)

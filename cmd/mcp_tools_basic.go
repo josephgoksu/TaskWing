@@ -34,15 +34,28 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskP
 			})
 		}
 
-		// Validate input
-		if err := ValidateTaskInput(args.Title, args.Priority, ""); err != nil {
+		// Normalize and validate priority input
+		normalizedPriority := strings.TrimSpace(args.Priority)
+		if normalizedPriority != "" {
+			if canon, nerr := normalizePriorityString(normalizedPriority); nerr == nil {
+				normalizedPriority = canon
+			} else {
+				return nil, types.NewMCPError("INVALID_PRIORITY", nerr.Error(), map[string]interface{}{
+					"value":        args.Priority,
+					"valid_values": []string{"low", "medium", "high", "urgent"},
+				})
+			}
+		}
+
+		// Validate input (use normalized priority)
+		if err := ValidateTaskInput(args.Title, normalizedPriority, ""); err != nil {
 			return nil, err
 		}
 
 		// Set priority with default
 		priority := models.PriorityMedium
-		if args.Priority != "" {
-			switch strings.ToLower(args.Priority) {
+		if normalizedPriority != "" {
+			switch normalizedPriority {
 			case "low":
 				priority = models.PriorityLow
 			case "medium":
@@ -261,10 +274,21 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Updat
 		}
 
 		if args.Priority != "" {
-			if err := ValidateTaskInput("", args.Priority, ""); err != nil {
+			// Normalize and validate priority
+			canon := args.Priority
+			if np, nerr := normalizePriorityString(canon); nerr == nil {
+				canon = np
+			} else {
+				return nil, types.NewMCPError("INVALID_PRIORITY", nerr.Error(), map[string]interface{}{
+					"value":        args.Priority,
+					"valid_values": []string{"low", "medium", "high", "urgent"},
+				})
+			}
+
+			if err := ValidateTaskInput("", canon, ""); err != nil {
 				return nil, err
 			}
-			updates["priority"] = models.TaskPriority(args.Priority)
+			updates["priority"] = models.TaskPriority(canon)
 		}
 
 		if args.Dependencies != nil {

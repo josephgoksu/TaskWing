@@ -3,6 +3,7 @@ package cmd
 // Shared helpers for MCP tools (reference resolution, text formatting)
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/models"
@@ -70,4 +71,37 @@ func resolveReference(reference string, tasks []models.Task) (string, []types.Ta
 		return best.Task.ID, all, true
 	}
 	return "", all, false
+}
+
+// normalizePriorityString maps various inputs and common typos to canonical priorities.
+// Returns canonical one of: low, medium, high, urgent.
+func normalizePriorityString(input string) (string, error) {
+	s := strings.ToLower(strings.TrimSpace(input))
+	if s == "" {
+		return "", nil
+	}
+
+	switch s {
+	// Canonical
+	case "low", "medium", "high", "urgent":
+		return s, nil
+
+	// Low synonyms/typos
+	case "lo", "l", "minor":
+		return "low", nil
+
+	// Medium synonyms/typos
+	case "med", "m", "normal", "regular":
+		return "medium", nil
+
+	// High synonyms/typos
+	case "hi", "h", "important", "importantn", "imp", "prio-high", "high-priority":
+		return "high", nil
+
+	// Urgent synonyms/typos
+	case "urg", "u", "critical", "asap", "emergency", "prio-urgent", "urgent!":
+		return "urgent", nil
+	}
+
+	return "", fmt.Errorf("unknown priority '%s'", input)
 }

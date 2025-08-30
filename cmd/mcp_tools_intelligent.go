@@ -591,6 +591,9 @@ func matchesEnhancedFilter(task models.Task, key, value string) bool {
 	case "status":
 		return strings.EqualFold(string(task.Status), value)
 	case "priority":
+		if canon, err := normalizePriorityString(value); err == nil && canon != "" {
+			return string(task.Priority) == canon
+		}
 		return strings.EqualFold(string(task.Priority), value)
 	case "title":
 		return strings.Contains(strings.ToLower(task.Title), strings.ToLower(value))

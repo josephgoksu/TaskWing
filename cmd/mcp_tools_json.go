@@ -140,6 +140,16 @@ func extractTaskIDsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.E
 
 		// Build filter criteria
 		var criteriaUsed []string
+		// Pre-normalize priority if provided
+		normalizedPrio := ""
+		if args.Priority != "" {
+			if canon, err := normalizePriorityString(args.Priority); err == nil {
+				normalizedPrio = canon
+			} else {
+				normalizedPrio = strings.ToLower(args.Priority)
+			}
+		}
+
 		filterFn := func(task models.Task) bool {
 			// Status filter
 			if args.Status != "" {
@@ -150,7 +160,7 @@ func extractTaskIDsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.E
 
 			// Priority filter
 			if args.Priority != "" {
-				if string(task.Priority) != args.Priority {
+				if strings.ToLower(string(task.Priority)) != normalizedPrio {
 					return false
 				}
 			}
@@ -173,7 +183,11 @@ func extractTaskIDsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.E
 			criteriaUsed = append(criteriaUsed, fmt.Sprintf("status=%s", args.Status))
 		}
 		if args.Priority != "" {
-			criteriaUsed = append(criteriaUsed, fmt.Sprintf("priority=%s", args.Priority))
+			crit := normalizedPrio
+			if crit == "" {
+				crit = args.Priority
+			}
+			criteriaUsed = append(criteriaUsed, fmt.Sprintf("priority=%s", crit))
 		}
 		if args.Search != "" {
 			criteriaUsed = append(criteriaUsed, fmt.Sprintf("search=%s", args.Search))
@@ -367,7 +381,10 @@ func matchesJSONPathFilter(task models.Task, field, value string) bool {
 	case "status":
 		return string(task.Status) == value
 	case "priority":
-		return string(task.Priority) == value
+		if canon, err := normalizePriorityString(value); err == nil && canon != "" {
+			return string(task.Priority) == canon
+		}
+		return strings.EqualFold(string(task.Priority), value)
 	case "title":
 		return strings.Contains(strings.ToLower(task.Title), strings.ToLower(value))
 	case "description":

@@ -162,6 +162,9 @@ func buildClearFilter(cmd *cobra.Command) func(models.Task) bool {
 			priorityMatch := false
 			for _, priority := range priorityList {
 				priority = strings.TrimSpace(priority)
+				if canon, err := normalizePriorityString(priority); err == nil {
+					priority = canon
+				}
 				switch priority {
 				case "low":
 					if task.Priority == models.PriorityLow {
