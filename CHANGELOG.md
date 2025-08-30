@@ -7,17 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2025-08-30
+
 ### Changed
 
 - Unified and simplified documentation structure
-- Consolidated 8 documentation files into 4 focused guides
-- Enhanced MCP integration guide with comprehensive testing section
-- Improved developer onboarding with contributing guidelines
+- Consolidated redundant documentation files into 4 focused guides:
+  - README.md: Enhanced with better badges, examples, and developer experience
+  - DOCS.md: Completely rewritten with current commands and workflows
+  - MCP.md: Streamlined AI integration guide with practical examples
+  - EXAMPLES.md: Comprehensive AI interaction examples and use cases
+- Enhanced CLI user experience with organized help categories and command aliases
+- Improved installation instructions with PATH setup guidance
+- Added professional badges to README for better project credibility
 
 ### Removed
 
-- Redundant documentation files (QUICKSTART.md, MCP_GUIDE.md, etc.)
-- Duplicate installation and setup instructions
+- Redundant documentation files (MCP_IMPROVEMENTS.md, MCP_USAGE_EXAMPLES.md, ARCHIVE.md, KNOWLEDGE.md, AGENTS.md, homebrew-tap-setup.md)
+- Outdated commands and concepts from documentation
+- Duplicate installation and setup instructions across files
+
+### Fixed
+
+- Version number updated to 0.9.2 across all references
+- Cross-references between documentation files
+- Markdown formatting and linting issues
 
 ## [Previous Releases]
 

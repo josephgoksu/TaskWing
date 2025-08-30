@@ -1,16 +1,16 @@
 # TaskWing User Guide
 
-Comprehensive guide for using TaskWing CLI task manager.
+Comprehensive guide for using TaskWing CLI task manager with AI integration.
 
 ## Table of Contents
 
 - [Installation](#installation)
 - [Getting Started](#getting-started)
 - [Commands Reference](#commands-reference)
-- [Task Properties](#task-properties)
+- [Task Management](#task-management)
+- [AI Integration](#ai-integration)
 - [Configuration](#configuration)
 - [Common Workflows](#common-workflows)
-- [Automation & Scripting](#automation--scripting)
 - [Troubleshooting](#troubleshooting)
 
 ## Installation
@@ -25,187 +25,161 @@ curl -sSfL https://raw.githubusercontent.com/josephgoksu/TaskWing/main/install.s
 go install github.com/josephgoksu/TaskWing@latest
 ```
 
-### Other Methods
-
-- **Download Binary**: Get pre-built binaries from [GitHub Releases](https://github.com/josephgoksu/TaskWing/releases)
-- **Build from Source**:
-
-  ```bash
-  git clone https://github.com/josephgoksu/TaskWing
-  cd TaskWing && go build -o taskwing main.go
-  ```
-
-- **Homebrew** (coming soon): `brew install josephgoksu/tap/taskwing`
-
 ### Verify Installation
 
 ```bash
-taskwing --version
+taskwing version
+```
+
+### PATH Setup
+
+If `taskwing` is not found after installation, add to your PATH:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
 
 ## Getting Started
 
-### Initialize TaskWing
+### New to TaskWing?
 
-Run this in your project directory:
+Start with the interactive guide:
 
 ```bash
+taskwing quickstart
+```
+
+### Initialize Project
+
+```bash
+# Initialize in your project directory
 taskwing init
 ```
 
-This creates a `.taskwing/` directory with your task storage. TaskWing works on a per-project basis.
+This creates a `.taskwing/` directory with local task storage.
 
 ### Your First Task
 
 ```bash
-# Interactive mode (guided prompts)
-taskwing add
+# Interactive menu (great for exploration)
+taskwing interactive
 
-# Non-interactive mode
-taskwing add --title "Review pull requests" --priority high --description "Review open PRs for security issues"
-```
+# Quick task creation
+taskwing add "Fix authentication bug"
 
-### View Tasks
-
-```bash
-# List all tasks
-taskwing list
-
-# Filter by status
-taskwing list --status pending
-
-# Filter by priority
-taskwing list --priority high,urgent
-
-# Search tasks
-taskwing search "review"
+# Detailed task creation
+taskwing add "Implement OAuth2" --priority high
 ```
 
 ## Commands Reference
 
-### Core Commands
+### Getting Started Commands
 
-| Command  | Purpose                                  | Example                            |
-| -------- | ---------------------------------------- | ---------------------------------- |
-| `init`   | Initialize TaskWing in current directory | `taskwing init`                    |
-| `add`    | Create a new task                        | `taskwing add --title "Fix bug"`   |
-| `list`   | Display tasks with optional filtering    | `taskwing list --status pending`   |
-| `show`   | Show detailed task information           | `taskwing show <task-id>`          |
-| `update` | Modify an existing task                  | `taskwing update <task-id>`        |
-| `done`   | Mark task as completed                   | `taskwing done <task-id>`          |
-| `delete` | Remove a task                            | `taskwing delete <task-id>`        |
-| `search` | Search tasks by text                     | `taskwing search "authentication"` |
+| Command       | Purpose                           | Example                |
+| ------------- | --------------------------------- | ---------------------- |
+| `quickstart`  | Interactive getting started guide | `taskwing quickstart`  |
+| `interactive` | Menu-driven interface             | `taskwing interactive` |
+| `init`        | Initialize project                | `taskwing init`        |
 
-### Current Task Management
+### Core Task Commands
 
-| Command         | Purpose                               | Example                          |
-| --------------- | ------------------------------------- | -------------------------------- |
-| `current set`   | Set the active task you're working on | `taskwing current set <task-id>` |
-| `current show`  | Display current active task           | `taskwing current show`          |
-| `current clear` | Clear current task                    | `taskwing current clear`         |
+| Command  | Aliases          | Purpose              | Example                        |
+| -------- | ---------------- | -------------------- | ------------------------------ |
+| `add`    | `mk`, `create`   | Create a new task    | `taskwing add "Fix login bug"` |
+| `list`   | `ls`             | List tasks           | `taskwing ls --status todo`    |
+| `show`   | `get`, `view`    | Show task details    | `taskwing show <task-id>`      |
+| `update` | `edit`, `modify` | Update existing task | `taskwing update <task-id>`    |
+| `delete` | `rm`, `remove`   | Delete a task        | `taskwing delete <task-id>`    |
 
-### Archive & Knowledge Management
+### Workflow Commands
 
-| Command         | Purpose                                              | Example                  |
-| --------------- | ---------------------------------------------------- | ------------------------ |
-| `archive`       | Archive completed tasks and capture project insights | `taskwing archive`       |
-| `retrospective` | Generate retrospective from completed tasks          | `taskwing retrospective` |
+| Command   | Aliases         | Purpose                    | Example                     |
+| --------- | --------------- | -------------------------- | --------------------------- |
+| `start`   | `begin`, `work` | Start working on task      | `taskwing start <task-id>`  |
+| `review`  |                 | Move task to review status | `taskwing review <task-id>` |
+| `done`    | `finish`        | Mark task complete         | `taskwing done <task-id>`   |
+| `current` |                 | Manage current active task | `taskwing current`          |
 
-### Pattern Library
+### Discovery Commands
 
-| Command                 | Purpose                                 | Example                                  |
-| ----------------------- | --------------------------------------- | ---------------------------------------- |
-| `patterns extract`      | Extract patterns from archived projects | `taskwing patterns extract`              |
-| `patterns list`         | View all available patterns             | `taskwing patterns list`                 |
-| `patterns match <desc>` | Find patterns matching description      | `taskwing patterns match "api refactor"` |
-| `patterns update`       | Update patterns with latest archives    | `taskwing patterns update`               |
+| Command  | Purpose                  | Example                        |
+| -------- | ------------------------ | ------------------------------ |
+| `search` | Search tasks by text     | `taskwing search "auth"`       |
+| `next`   | Get AI task suggestions  | `taskwing next`                |
+| `expand` | Break task into subtasks | `taskwing expand <task-id>`    |
+| `clear`  | Clear completed tasks    | `taskwing clear --status done` |
 
 ### Configuration Commands
 
-| Command       | Purpose                       | Example                |
-| ------------- | ----------------------------- | ---------------------- |
-| `config show` | Display current configuration | `taskwing config show` |
-| `config path` | Show config file location     | `taskwing config path` |
+| Command  | Purpose              | Example           |
+| -------- | -------------------- | ----------------- |
+| `config` | Manage configuration | `taskwing config` |
+| `reset`  | Reset project data   | `taskwing reset`  |
 
-### MCP Integration
+### AI Integration Commands
 
-| Command  | Purpose                               | Example           |
-| -------- | ------------------------------------- | ----------------- |
-| `mcp`    | Start MCP server for AI integration   | `taskwing mcp`    |
-| `mcp -v` | Start MCP server with verbose logging | `taskwing mcp -v` |
+| Command | Purpose                 | Example        |
+| ------- | ----------------------- | -------------- |
+| `mcp`   | Start MCP server for AI | `taskwing mcp` |
 
-## Task Properties
+### Utility Commands
 
-| Property                | Description                       | Values                                                                                   |
-| ----------------------- | --------------------------------- | ---------------------------------------------------------------------------------------- |
-| **Title**               | Short descriptive name (required) | 3-255 characters                                                                         |
-| **Description**         | Detailed explanation              | Any text                                                                                 |
-| **Status**              | Current task state                | `pending`, `in-progress`, `completed`, `cancelled`, `on-hold`, `blocked`, `needs-review` |
-| **Priority**            | Task urgency                      | `low`, `medium`, `high`, `urgent`                                                        |
-| **Dependencies**        | Tasks that must complete first    | Array of task IDs                                                                        |
-| **Parent/Subtasks**     | Hierarchical relationships        | Parent ID or subtask IDs                                                                 |
-| **Acceptance Criteria** | Definition of done                | Any text                                                                                 |
+| Command      | Purpose                    | Example                   |
+| ------------ | -------------------------- | ------------------------- |
+| `generate`   | Generate project artifacts | `taskwing generate`       |
+| `completion` | Shell completion           | `taskwing completion zsh` |
+| `version`    | Show version information   | `taskwing version`        |
+
+## Task Management
+
+### Task Properties
+
+- **Title**: Short description (required)
+- **Description**: Detailed explanation
+- **Status**: `todo`, `doing`, `review`, `done`
+- **Priority**: `low`, `medium`, `high`, `urgent`
+- **Dependencies**: Other tasks that must complete first
+- **Acceptance Criteria**: Definition of done
 
 ### Creating Tasks
 
-#### Interactive Mode
-
 ```bash
-taskwing add
-# Follow the prompts to enter task details
-```
+# Simple task
+taskwing add "Fix login issue"
 
-#### Non-Interactive Mode
+# Task with details
+taskwing add "Implement OAuth2" --priority high --description "Add Google and GitHub OAuth support"
 
-```bash
-# Basic task
-taskwing add --title "Implement user login"
-
-# Task with full details
-taskwing add \
-  --title "Implement user authentication" \
-  --description "Add login and registration functionality" \
-  --priority high \
-  --acceptance-criteria "Users can log in, register, and reset passwords"
-```
-
-#### Tasks with Dependencies
-
-```bash
-# Add task that depends on others
-taskwing add --title "Deploy to production" --dependencies "task-id-1,task-id-2"
+# Task with dependencies
+taskwing add "Deploy feature" --dependencies <task-id-1>,<task-id-2>
 ```
 
 ### Managing Task Status
 
 ```bash
-# Mark task as done
-taskwing done <task-id>
+# Workflow progression
+taskwing start <task-id>    # todo -> doing
+taskwing review <task-id>   # doing -> review
+taskwing done <task-id>     # any -> done
 
-# Update task status
-taskwing update <task-id>  # Interactive mode
-taskwing update <task-id> --status in-progress
+# Direct status update
+taskwing update <task-id> --status doing
 ```
 
 ### Filtering and Searching
 
 ```bash
 # Filter by status
-taskwing list --status pending,in-progress
+taskwing ls --status todo,doing
 
 # Filter by priority
-taskwing list --priority high,urgent
+taskwing ls --priority high,urgent
 
-# Sort tasks
-taskwing list --sort-by priority
-taskwing list --sort-by created-at --sort-order desc
-
-# Search in titles and descriptions
+# Search in titles/descriptions
 taskwing search "authentication"
-taskwing search "bug fix"
 
-# Combine filters
-taskwing list --status pending --priority high --search "api"
+# Combined filtering
+taskwing ls --status todo --priority high
 ```
 
 ### Working with Task IDs
@@ -213,35 +187,67 @@ taskwing list --status pending --priority high --search "api"
 TaskWing uses short UUID prefixes for convenience:
 
 ```bash
-# Full UUID: 7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b
-# Short form: 7b3e4f2a
+# Full: 7b3e4f2a-8c9d-4e5f-b0a1-2c3d4e5f6a7b
+# Short: 7b3e4f2a
 
 taskwing show 7b3e4f2a
 taskwing done 7b3e4f2a
 ```
 
+## AI Integration
+
+### Quick Setup for Claude Code
+
+1. Start MCP server:
+
+   ```bash
+   taskwing mcp
+   ```
+
+2. Add to Claude Code config:
+
+   ```json
+   {
+     "mcpServers": {
+       "taskwing": {
+         "command": "taskwing",
+         "args": ["mcp"]
+       }
+     }
+   }
+   ```
+
+3. Ask Claude: _"What tasks do I have?"_ or _"Create a task for the auth feature"_
+
+### AI Capabilities
+
+- **Task Management**: Create, read, update, delete tasks
+- **Intelligent Suggestions**: Get next task recommendations
+- **Project Planning**: Break down features into tasks
+- **Context Awareness**: AI knows your current task
+- **Bulk Operations**: Handle multiple tasks efficiently
+
+See [MCP.md](MCP.md) for detailed AI integration setup.
+
 ## Configuration
 
-### Configuration Hierarchy
+### Configuration Files
 
-TaskWing loads configuration in this order (highest priority first):
+TaskWing loads config in this order:
 
-1. Command line flags
-2. Environment variables (`TASKWING_*` prefix)
+1. Command flags
+2. Environment variables (`TASKWING_*`)
 3. Project config (`.taskwing/.taskwing.yaml`)
-4. Directory config (`./.taskwing.yaml`)
-5. Global config (`$HOME/.taskwing.yaml`)
-6. Built-in defaults
+4. Global config (`$HOME/.taskwing.yaml`)
 
 ### Environment Variables
 
 ```bash
-export TASKWING_PROJECT_ROOTDIR="/custom/path/.taskwing"
-export TASKWING_DATA_FORMAT="yaml"  # json, yaml, or toml
-export TASKWING_PROJECT_TASKSDIR="my-tasks"
+export TASKWING_DATA_FORMAT="yaml"     # json, yaml, toml
+export TASKWING_PROJECT_ROOTDIR="/custom/path"
 ```
 
-### Config File Example
+### Example Config
 
 Create `.taskwing/.taskwing.yaml`:
 
@@ -252,266 +258,99 @@ project:
 
 data:
   file: "tasks.json"
-  format: "json" # json, yaml, or toml
+  format: "json"
 ```
 
 ## Common Workflows
 
-### Daily Task Management
+### Daily Development
 
 ```bash
-# Morning: Check high-priority tasks
-taskwing list --priority high,urgent
+# Morning: Check current work
+taskwing current
+taskwing ls --priority high,urgent
 
 # Add urgent task
-taskwing add --title "Fix production issue" --priority urgent
+taskwing add "Fix production bug" --priority urgent
 
-# Set current task
-taskwing current set <task-id>
+# Start work
+taskwing start <task-id>
 
-# Throughout day: Update progress
-taskwing update <task-id> --status in-progress
+# Mark complete
 taskwing done <task-id>
-
-# Evening: Review remaining tasks
-taskwing list --status pending
 ```
 
 ### Project Planning
 
 ```bash
-# Create main project tasks
-taskwing add --title "Design API architecture" --priority high
-taskwing add --title "Implement core endpoints" --dependencies <design-task-id>
-taskwing add --title "Write integration tests" --dependencies <implement-task-id>
-taskwing add --title "Deploy to staging" --dependencies <tests-task-id>
+# Create main tasks
+taskwing add "Design API" --priority high
+taskwing add "Implement endpoints" --dependencies <design-id>
+taskwing add "Write tests" --dependencies <implement-id>
 
 # View project structure
-taskwing list --sort-by created-at
+taskwing ls --sort created
 ```
 
-### Sprint Management
+### AI-Enhanced Planning
 
 ```bash
-# Plan sprint tasks
-taskwing list --status pending --priority high
-taskwing add --title "Sprint goal: User management features"
+# Start MCP server
+taskwing mcp
 
-# Track progress
-taskwing list --status in-progress
-taskwing current show
-
-# Sprint review
-taskwing list --status completed --since "1 week ago"
+# Then ask Claude:
+# "Break down this user story into development tasks"
+# "What should I work on next based on dependencies?"
+# "Create tasks from this GitHub issue URL"
 ```
-
-### Bug Tracking
-
-```bash
-# Add bug report
-taskwing add \
-  --title "Login fails with OAuth" \
-  --description "Users cannot log in using Google OAuth" \
-  --priority urgent \
-  --acceptance-criteria "OAuth login works for all providers"
-
-# Track investigation
-taskwing update <bug-id> --status in-progress
-taskwing current set <bug-id>
-
-# Close when fixed
-taskwing done <bug-id>
-```
-
-### Project Completion & Knowledge Capture
-
-```bash
-# When finishing a project, capture insights for future use
-taskwing archive                     # Archive completed tasks
-taskwing retrospective              # Generate project retrospective
-
-# Extract patterns for AI assistance
-taskwing patterns extract           # Build pattern library
-taskwing patterns list             # Review available patterns
-```
-
-### AI-Enhanced Task Planning
-
-```bash
-# Use patterns to plan similar work
-taskwing patterns match "documentation cleanup"
-taskwing patterns match "api refactoring"
-
-# Let AI suggest patterns via MCP (requires Claude Code/Cursor)
-# Use suggest-patterns tool through your AI assistant
-```
-
-### Automated Planning from a PRD (non-interactive)
-
-```bash
-# Preview only (no changes)
-taskwing generate tasks --file product.xml --preview-only --no-improve
-
-# Create tasks without prompts (clears existing tasks if any)
-taskwing generate tasks --file product.xml --yes --create
-```
-
-Flags:
-
-- `--yes`: accept confirmations (overwrite existing, create)
-- `--no-improve`: skip PRD improvement
-- `--preview-only`: show proposed tasks and exit
-- `--create`: create tasks without interactive confirmation
-
-### Advanced Pattern Workflows
-
-```bash
-# Keep pattern library current
-taskwing patterns update            # Refresh with latest archives
-
-# View pattern details for planning
-taskwing patterns list              # Show all patterns with metrics
-
-# Apply patterns manually
-taskwing patterns match "system implementation"
-# Follow suggested task breakdown from pattern
-```
-
-## Automation & Scripting
-
-### JSON Output
-
-All commands support `--json` flag for machine-readable output:
-
-```bash
-taskwing list --json
-taskwing show <task-id> --json
-```
-
-### Script Integration
-
-```bash
-#!/bin/bash
-# Batch task creation
-while IFS= read -r line; do
-  taskwing add --title "$line" --priority medium
-done < task-list.txt
-
-# CI/CD integration
-if [ "$CI_PIPELINE_STATUS" = "failed" ]; then
-  taskwing add --title "Fix CI failure" --priority high
-fi
-```
-
-### Data Export
-
-```bash
-# Backup tasks
-taskwing list --json > backup-$(date +%Y%m%d).json
-```
-
-**Note**: For advanced automation with AI tools, see [MCP Integration Guide](MCP.md).
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### TaskWing Not Found
+#### Command Not Found
 
 ```bash
-# Check if installed
+# Check installation
 which taskwing
 
-# Check Go bin path
-echo $GOPATH/bin
-ls $GOPATH/bin/taskwing
-
-# Add to PATH if needed
-export PATH=$PATH:$(go env GOPATH)/bin
+# Add to PATH
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
-#### No Tasks Directory
+#### Not Initialized
 
 ```bash
-# Ensure TaskWing is initialized
+# Initialize project
 taskwing init
 
-# Check if directory exists
+# Verify setup
 ls -la .taskwing/
 ```
 
-#### Permission Issues
-
-```bash
-# Check directory permissions
-ls -la .taskwing/
-chmod 755 .taskwing/
-chmod 644 .taskwing/tasks/tasks.json
-```
-
-#### Config File Not Found
-
-```bash
-# Show config location
-taskwing config path
-
-# Show current config
-taskwing config show
-
-# Create minimal config
-echo "project:\n  rootDir: .taskwing" > .taskwing/.taskwing.yaml
-```
-
-### Verbose Output
-
-Use `--verbose` flag for detailed logging:
+#### Verbose Logging
 
 ```bash
 taskwing --verbose list
-taskwing --verbose add --title "Debug task"
-```
-
-### Data File Issues
-
-#### Corrupted Task File
-
-```bash
-# Backup current file
-cp .taskwing/tasks/tasks.json .taskwing/tasks/tasks.json.backup
-
-# Initialize new file
-rm .taskwing/tasks/tasks.json
-taskwing init
-```
-
-#### Multiple Projects
-
-Each project directory needs its own initialization:
-
-```bash
-cd /project1
-taskwing init
-
-cd /project2
-taskwing init
+taskwing mcp -v
 ```
 
 ### Getting Help
 
 ```bash
-# General help
+# Command help
 taskwing --help
-
-# Command-specific help
 taskwing add --help
-taskwing list --help
 
-# Version information
-taskwing --version
+# Interactive guidance
+taskwing quickstart
+taskwing interactive
 ```
 
 ### Still Need Help?
 
-1. Check the [GitHub Issues](https://github.com/josephgoksu/TaskWing/issues)
-2. Review [CLAUDE.md](CLAUDE.md) for development details
-3. For AI integration issues, see [MCP.md](MCP.md)
+- [GitHub Issues](https://github.com/josephgoksu/TaskWing/issues)
+- [MCP Integration Guide](MCP.md)
+- [AI Examples](EXAMPLES.md)
+- [Developer Guide](CLAUDE.md)

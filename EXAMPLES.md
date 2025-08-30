@@ -1,257 +1,413 @@
-# TaskWing AI Interactions Examples
+# TaskWing AI Interaction Examples
 
-Here are common interactions with AI tools (Claude Code, Cursor, etc.) when using TaskWing via the Model Context Protocol (MCP):
+Practical examples of using TaskWing with AI assistants (Claude Code, Cursor, etc.) via MCP.
 
-## Starting a New Project
+## Getting Started Examples
 
-```
-I've just initialized a new project with TaskWing. I have a project requirements document at docs/requirements.md.
-Can you help me parse it and set up the initial tasks?
-```
+### First-Time Setup
 
-```
-Create a project plan from my PRD document and break it down into manageable tasks with dependencies.
-```
+**You**: I just installed TaskWing. Can you help me set it up and create my first task?
 
-## Task Discovery and Planning
+**AI**: I'll help you get started with TaskWing! Let me check if you have any existing tasks and help you create your first one.
 
-```
-What's the next task I should work on? Please consider dependencies and priorities.
-```
+_[AI uses task-summary, then guides through initialization and task creation]_
 
-```
-Can you analyze my current tasks and suggest what I should focus on today?
-```
+**Result**:
 
-```
-Show me all high-priority tasks that are ready to start (no blocking dependencies).
-```
+- Project initialized with `.taskwing/` directory
+- First task created with proper title and priority
+- Current task context set for future interactions
 
-## Working with Specific Tasks
+### Project Initialization
 
-```
-I'd like to work on task abc123. Can you show me the details and any dependencies?
-```
+**You**: I'm starting a new React app project. Can you help me plan the initial tasks?
 
-```
-Set task xyz789 as my current active task and show me what needs to be done.
-```
+**AI**: I'll create a comprehensive task breakdown for your React app project.
 
-```
-I'm implementing the user authentication system. Can you find the related task and set it as current?
-```
+_[AI uses batch-create-tasks to create related tasks with dependencies]_
 
-## Viewing Multiple Tasks
+**Tasks Created**:
 
-```
-Can you show me tasks related to the API implementation so I can understand their relationships?
 ```
+✅ Project setup and configuration (high priority)
+├── Initialize React app with TypeScript
+├── Set up ESLint and Prettier
+├── Configure CI/CD pipeline
+└── Set up testing framework
 
-```
-Show me all tasks that depend on the database schema task.
-```
+🎨 UI Development (depends on setup)
+├── Create component library
+├── Implement responsive layout
+├── Add routing with React Router
+└── Style with Tailwind CSS
 
+🔐 Authentication (high priority)
+├── Set up auth context
+├── Implement login/logout
+├── Add protected routes
+└── Handle token management
 ```
-Display all subtasks under the "Frontend Implementation" parent task.
-```
 
-## Managing Task Status and Progress
+## Daily Development Workflow
 
-```
-I've finished implementing the login functionality. Mark the current task as done and suggest what to work on next.
-```
+### Morning Check-in
 
-```
-Move the authentication task to review status - it's ready for code review.
-```
+**You**: What should I work on today?
 
-```
-I'm starting work on the payment integration task. Update its status to 'doing'.
-```
+**AI**: Let me check your current project status and suggest priorities.
 
-## Creating and Managing Tasks
+_[AI uses get-current-task, task-summary, suggest-tasks]_
 
-```
-Add a new urgent task: "Fix memory leak in payment processor" with acceptance criteria for performance benchmarks.
-```
+**Response**:
 
-```
-Create a task for implementing user profile pictures with dependencies on the user management system.
 ```
+📊 Project Status:
+• Current Task: "Implement user authentication" (in progress)
+• Completed This Week: 7/12 tasks
+• High Priority Ready: 3 tasks
 
-```
-I need to add several tasks for the mobile app feature. Can you create them with proper priorities and dependencies?
+🎯 Today's Recommendations:
+1. **Continue**: "Implement user authentication" (80% complete)
+2. **Next**: "Set up protected routes" (depends on auth, high priority)
+3. **Quick Win**: "Add loading states" (no dependencies, 30min)
+
+Would you like me to update your current task or create any additional tasks?
 ```
 
-## Task Relationships and Dependencies
+### Task Progress Update
 
-```
-The API authentication task should be completed before the frontend login task. Can you set up this dependency?
-```
+**You**: I finished the authentication implementation. What's next?
 
-```
-Check if there are any circular dependencies in my current task graph and suggest fixes.
-```
+**AI**: Great progress! Let me mark that complete and suggest what to work on next.
 
-## Bulk Operations and Organization
+_[AI uses mark-done, set-current-task, suggest-tasks]_
 
-```
-Mark all completed tasks as done and archive them.
-```
+**Actions Taken**:
 
-```
-Show me all tasks that have been in 'doing' status for more than a week.
-```
+- ✅ Marked "Implement user authentication" as done
+- 🎯 Set current task to "Set up protected routes"
+- 📋 Updated 3 dependent tasks from "blocked" to "ready"
+- 🎉 Project is now 75% complete for this sprint
 
-```
-Update all API-related tasks to high priority since we're prioritizing backend work this sprint.
-```
+### End of Day Review
 
-## Board View and Project Overview
+**You**: Can you show me what I accomplished today?
 
-```
-Show me a kanban-style view of all my tasks organized by status.
-```
+**AI**: Here's your daily progress summary:
 
-```
-Give me a project summary with task counts by status and priority.
-```
+_[AI uses task-analytics with date filtering]_
 
-```
-What's the overall progress on this project? Show me completion statistics.
+**Today's Accomplishments**:
+
 ```
+✅ Completed Tasks (3):
+• Implement OAuth2 authentication
+• Add login form validation
+• Set up JWT token handling
 
-## Search and Filtering
+🔄 In Progress (1):
+• Set up protected routes (75% complete)
 
-```
-Find all tasks related to "authentication" or "login" functionality.
-```
+⏱️ Time Breakdown:
+• Authentication: 4.5 hours
+• UI components: 1.5 hours
+• Bug fixes: 0.5 hours
 
-```
-Show me all urgent tasks that are currently blocked by dependencies.
+📈 Sprint Progress: 9/12 tasks complete (75%)
 ```
 
-```
-List all tasks assigned to the database implementation with their current status.
-```
+## Project Planning Examples
 
-## Smart Task Management
+### Feature Breakdown
 
-```
-Suggest which tasks I should tackle next based on my current progress and dependencies.
-```
+**You**: I need to add a commenting system to my blog app. Can you break this down into tasks?
 
-```
-Analyze my task completion patterns and recommend optimizations.
-```
+**AI**: I'll break down the commenting system into manageable development tasks.
 
-```
-What are the critical path tasks that could block other work if delayed?
-```
+_[AI uses batch-create-tasks with proper dependencies]_
 
-## Planning and Documentation
+**Task Breakdown**:
 
 ```
-Generate a project plan from my requirements document and create tasks automatically.
-```
+💾 Backend (High Priority):
+├── Design comment database schema
+├── Create comment API endpoints
+├── Add comment validation
+├── Implement comment moderation
+└── Add email notifications
 
-```
-Create a development roadmap from my current tasks showing the logical sequence.
-```
+🎨 Frontend (Depends on Backend):
+├── Create comment component
+├── Add comment form with validation
+├── Implement real-time updates
+├── Add moderation interface
+└── Style comment threads
 
-```
-Export my current task list as a markdown report for stakeholder review.
+🧪 Testing & Polish:
+├── Write API tests
+├── Add component tests
+├── Performance testing
+└── Accessibility audit
 ```
 
-## Integration Workflows
+### Sprint Planning
 
-```
-I'm about to start a new sprint. Can you help me select and prioritize tasks for the next two weeks?
-```
+**You**: We have a 2-week sprint starting Monday. Can you help me plan based on our current tasks?
 
-```
-We're having a planning meeting. Show me all unestimated tasks so we can size them.
-```
+**AI**: I'll analyze your current tasks and create an optimal 2-week sprint plan.
 
-```
-I just merged a feature branch. Mark all related tasks as complete and suggest the next feature to work on.
-```
+_[AI uses workflow-status, task-analytics, board-snapshot]_
 
-## Problem Solving and Debugging
+**Sprint Plan**:
 
-```
-I'm stuck on the WebSocket implementation task. Can you show me the task details and suggest breaking it into smaller subtasks?
 ```
+📅 Week 1 Focus (High-value features):
+• Complete user management system (3 tasks remaining)
+• Implement payment processing (new feature)
+• Fix 2 critical bugs in production
 
-```
-This task is taking longer than expected. Help me break it down into more manageable pieces.
-```
+📅 Week 2 Focus (Polish & prep):
+• Add comprehensive testing
+• Optimize performance
+• Prepare deployment pipeline
+• Documentation updates
 
-```
-I need to pivot our approach for the caching system. Update the related tasks to reflect using Redis instead of in-memory caching.
+🎯 Sprint Goals:
+• ✅ 15 planned tasks
+• 🎯 2 major features shipped
+• 🐛 0 critical bugs remaining
+• 📊 Target: 85% task completion rate
+
+⚠️ Risks Identified:
+• Payment API integration may need extra time
+• Dependency on external design review
 ```
 
-## Current Task Context
+## Problem-Solving Examples
 
-```
-What am I currently working on? Show me my active task and its progress.
-```
+### Bug Tracking
 
-```
-Clear my current task - I need to switch to something more urgent.
-```
+**You**: We found a critical bug in production. Help me track the investigation and fix.
 
-```
-Set the database migration task as my current focus and show me what's required.
-```
+**AI**: I'll create tasks to systematically investigate and fix this production issue.
 
-## Advanced Task Operations
+_[AI uses add-task with urgent priority and proper structure]_
 
-```
-Batch create tasks for implementing the user dashboard: user profile, settings, activity log, and notifications.
-```
+**Bug Investigation Plan**:
 
 ```
-Find and resolve any dependency conflicts in my task graph.
+🚨 Critical Bug: User login fails intermittently
+
+🔍 Investigation Tasks:
+├── Analyze server logs for error patterns (urgent)
+├── Reproduce bug in staging environment (urgent)
+├── Check database connection stability
+└── Review recent authentication changes
+
+🛠️ Fix Tasks (created after investigation):
+├── Implement proper error handling
+├── Add retry logic for API calls
+├── Update monitoring and alerting
+└── Deploy hotfix to production
+
+📋 Follow-up:
+├── Post-mortem analysis
+├── Improve testing coverage
+└── Update deployment checklist
 ```
+
+### Technical Debt
 
+**You**: Our codebase has accumulated technical debt. Help me prioritize what to tackle first.
+
+**AI**: I'll help you create a systematic approach to addressing technical debt.
+
+_[AI analyzes project context and creates prioritized technical debt tasks]_
+
+**Technical Debt Roadmap**:
+
 ```
-Create a task template for bug fixes that includes standard acceptance criteria.
+🔥 High Impact (Do First):
+├── Refactor authentication module (security risk)
+├── Fix memory leaks in dashboard (performance)
+├── Update deprecated dependencies (compatibility)
+└── Add error boundaries (user experience)
+
+⚡ Medium Impact (Next Sprint):
+├── Consolidate duplicate API calls
+├── Improve component reusability
+├── Add proper TypeScript types
+└── Optimize bundle size
+
+🧹 Low Impact (Background work):
+├── Update code comments
+├── Standardize naming conventions
+├── Remove unused code
+└── Improve file organization
+
+📊 Effort vs Impact Analysis:
+• High-impact items: 32 hours estimated
+• Quick wins available: 6 tasks under 2 hours each
+• Long-term payoff: Reduced maintenance by 40%
 ```
+
+## Advanced Usage Examples
 
-## AI-Powered Insights
+### Cross-Project Dependencies
 
+**You**: I'm working on multiple projects that depend on each other. How can TaskWing help?
+
+**AI**: I'll help you manage cross-project dependencies using TaskWing's linking features.
+
+_[AI creates tasks across projects with external dependencies]_
+
+**Project Structure**:
+
 ```
-Analyze my task completion velocity and predict when this project will be finished.
+📁 Shared Component Library:
+├── Build design system components (blocks: API project)
+├── Publish to npm registry
+├── Create documentation site
+└── Set up automated testing
+
+📁 API Backend:
+├── Design API schema (ready)
+├── Implement core endpoints (depends on: auth service)
+├── Add rate limiting
+└── Deploy to staging (blocks: frontend)
+
+📁 Frontend App:
+├── Integrate component library (depends on: library v1.0)
+├── Connect to API endpoints (depends on: API staging)
+├── Add user authentication
+└── Production deployment (depends on: all above)
+
+🔗 Dependency Chain:
+Auth Service → API Backend → Frontend → User Testing
+             ↘ Component Library ↗
 ```
+
+### Team Coordination
 
+**You**: Our team of 4 developers needs to coordinate on a large feature. Help us organize the work.
+
+**AI**: I'll create a coordinated task breakdown that accounts for team dependencies and parallel work.
+
+_[AI uses batch-create-tasks with team assignments and dependencies]_
+
+**Team Coordination Plan**:
+
 ```
-Suggest which tasks might be over-scoped based on their descriptions.
+👨‍💻 Alice (Backend Lead):
+├── Design database migrations
+├── Implement core API endpoints
+├── Set up authentication middleware
+└── Create API documentation
+
+👩‍💻 Bob (Frontend Lead):
+├── Create UI component library
+├── Implement state management
+├── Build user interface (depends on: API)
+└── Add responsive design
+
+🧪 Charlie (QA Engineer):
+├── Write API integration tests
+├── Create frontend test suite
+├── Set up automated testing
+└── Performance testing (depends on: full feature)
+
+🚀 Dana (DevOps):
+├── Set up staging environment
+├── Configure CI/CD pipeline
+├── Implement monitoring
+└── Plan production deployment
+
+📅 Timeline Coordination:
+Week 1: Alice & Dana (infrastructure)
+Week 2: Alice & Bob (parallel development)
+Week 3: Charlie (testing), Dana (deployment prep)
+Week 4: Full team (integration & launch)
 ```
 
+## Troubleshooting Examples
+
+### Context Recovery
+
+**You**: I lost track of what I was working on. Can you help me figure out where I left off?
+
+**AI**: Let me analyze your recent activity and current project state to help you get back on track.
+
+_[AI uses get-current-task, task-summary, recent activity analysis]_
+
+**Context Recovery**:
+
 ```
-Recommend task groupings for more efficient development workflow.
+🎯 Your Last Session:
+• Working on: "Implement password reset flow"
+• Status: 60% complete (in review)
+• Last update: 2 hours ago
+• Blocked by: Email service integration
+
+📋 What You Completed Recently:
+✅ Set up email templates (yesterday)
+✅ Added form validation (yesterday)
+✅ Created password reset API (2 days ago)
+
+🚀 Recommended Next Steps:
+1. **Continue**: Finish email service integration (30min)
+2. **Test**: Validate password reset flow end-to-end
+3. **Deploy**: Push to staging for team review
+
+🔍 Context Clues Found:
+• Branch: feature/password-reset (3 commits ahead)
+• Draft email in Gmail about email service setup
+• Slack message asking about SMTP configuration
 ```
+
+### Project Recovery
+
+**You**: I haven't worked on this project in 3 weeks. Help me get back up to speed.
+
+**AI**: I'll help you understand the current state and what needs attention after your break.
 
-## Getting Started with AI Integration
+_[AI provides comprehensive project status and reentry plan]_
 
-To use these examples:
+**Project Reentry Brief**:
 
-1. **Start the MCP server**: Run `taskwing mcp` in your project directory
-2. **Connect your AI tool**: Configure Claude Code, Cursor, or your preferred AI assistant to use TaskWing's MCP server
-3. **Natural interaction**: Use natural language - the AI will translate your requests into the appropriate TaskWing MCP tool calls
+```
+📊 Project Status (3-week summary):
+• Total Tasks: 45 (was 38 when you left)
+• Completed: 28 (+8 since you left)
+• In Progress: 6 (3 were blocked, now unblocked)
+• New: 7 tasks added by team
+
+🏆 Major Accomplishments (while away):
+✅ Authentication system completed
+✅ Payment integration shipped
+✅ Mobile responsive design finished
+✅ Performance optimizations deployed
 
-## Available MCP Tools
+🎯 Your Previous Work:
+• Last worked on: "User dashboard analytics"
+• Status: 75% complete, ready to resume
+• Dependencies resolved: API endpoints now available
+• Tests written: Ready for implementation
 
-TaskWing provides 30+ MCP tools including:
+⚠️ Attention Needed:
+• 2 bugs assigned to you (low priority)
+• 1 code review pending your input
+• Database migration needs your approval
 
-- **Basic Operations**: add-task, get-task, update-task, delete-task, mark-done
-- **Bulk Operations**: batch-create-tasks, bulk-tasks, bulk-by-filter, clear-tasks
-- **Search & Filter**: list-tasks, search-tasks, query-tasks, filter-tasks, find-task
-- **Board Management**: board-snapshot, board-reconcile
-- **Context Management**: set/get/clear-current-task, task-summary
-- **Smart Features**: suggest-tasks, smart-task-transition, dependency-health
-- **Planning**: plan-from-document, workflow-status
-- **Analytics**: task-analytics, extract-task-ids
+📋 Recommended Reentry Plan:
+Day 1: Review code changes, understand new architecture
+Day 2: Resume dashboard analytics work
+Day 3: Address pending reviews and minor bugs
+Day 4+: Continue with planned feature development
+
+💡 What Changed:
+• New team member joined (handling mobile development)
+• Architecture simplified (removed microservice complexity)
+• Design system updated (new components available)
+```
 
-The AI tools handle the complexity - you just describe what you want to accomplish!
+These examples show how TaskWing with AI integration becomes a powerful project management and development workflow tool, adapting to different scenarios and providing intelligent assistance throughout the development lifecycle.
