@@ -8,6 +8,10 @@ TEST_DIR=./test-results
 COVERAGE_FILE=$(TEST_DIR)/coverage.out
 COVERAGE_HTML=$(TEST_DIR)/coverage.html
 
+# Use local workspace cache/temp to work in sandboxed environments
+GOENV := GOCACHE=$(PWD)/$(TEST_DIR)/go-build GOTMPDIR=$(PWD)/$(TEST_DIR)/tmp
+GO := env $(GOENV) go
+
 # Default target
 .PHONY: all
 all: clean build test
@@ -16,8 +20,9 @@ all: clean build test
 .PHONY: build
 build:
 	@echo "🔨 Building TaskWing..."
-	go generate ./...
-	go build -o $(BINARY_NAME) main.go
+	mkdir -p $(TEST_DIR) $(TEST_DIR)/go-build $(TEST_DIR)/tmp
+	$(GO) generate ./...
+	$(GO) build -o $(BINARY_NAME) main.go
 	@echo "✅ Build complete: $(BINARY_NAME)"
 
 # Clean build artifacts
@@ -26,7 +31,7 @@ clean:
 	@echo "🧹 Cleaning build artifacts..."
 	rm -f $(BINARY_NAME)
 	rm -rf $(TEST_DIR)
-	go clean -cache
+	# Avoid cleaning global cache to respect sandbox
 	@echo "✅ Clean complete"
 
 # Run all tests
@@ -38,7 +43,7 @@ test: test-unit test-integration test-mcp
 test-unit:
 	@echo "🧪 Running unit tests..."
 	mkdir -p $(TEST_DIR)
-	go test -v ./... | tee $(TEST_DIR)/unit-tests.log
+	$(GO) test -v ./... | tee $(TEST_DIR)/unit-tests.log
 	@echo "✅ Unit tests complete"
 
 # Run integration tests
@@ -46,7 +51,7 @@ test-unit:
 test-integration: build
 	@echo "🔧 Running integration tests..."
 	mkdir -p $(TEST_DIR)
-	go test -v ./cmd -run "TestMCP|TestTaskWing|TestBasic" | tee $(TEST_DIR)/integration-tests.log
+	$(GO) test -v ./cmd -run "TestMCP|TestTaskWing|TestBasic" | tee $(TEST_DIR)/integration-tests.log
 	@echo "✅ Integration tests complete"
 
 # Run MCP tools tests
@@ -54,7 +59,7 @@ test-integration: build
 test-mcp: build
 	@echo "🎯 Running MCP protocol and functional tests..."
 	mkdir -p $(TEST_DIR)
-	go test -v ./cmd -run "TestMCP.*" | tee $(TEST_DIR)/mcp-protocol.log
+	$(GO) test -v ./cmd -run "TestMCP.*" | tee $(TEST_DIR)/mcp-protocol.log
 	@echo "✅ MCP protocol and functional tests complete"
 
 # Run comprehensive MCP functional tests (all tools)
@@ -71,7 +76,7 @@ test-mcp-functional: build
 coverage:
 	@echo "📊 Generating test coverage..."
 	mkdir -p $(TEST_DIR)
-	go test -coverprofile=$(COVERAGE_FILE) ./...
+	$(GO) test -coverprofile=$(COVERAGE_FILE) ./...
 	go tool cover -html=$(COVERAGE_FILE) -o $(COVERAGE_HTML)
 	go tool cover -func=$(COVERAGE_FILE) | grep "total:" | tee $(TEST_DIR)/coverage-summary.txt
 	@echo "✅ Coverage report generated: $(COVERAGE_HTML)"
@@ -80,7 +85,7 @@ coverage:
 .PHONY: lint
 lint:
 	@echo "🔍 Running linting and formatting..."
-	go fmt ./...
+	$(GO) fmt ./...
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run; \
 	else \
@@ -99,16 +104,16 @@ test-all: clean build lint coverage test-integration test-mcp
 test-quick: build
 	@echo "⚡ Running quick tests..."
 	mkdir -p $(TEST_DIR)
-	go test ./...
-	go test -v ./cmd -run "TestMCPProtocolStdio"
+	$(GO) test ./...
+	$(GO) test -v ./cmd -run "TestMCPProtocolStdio"
 	@echo "✅ Quick tests complete"
 
 # Development setup
 .PHONY: dev-setup
 dev-setup:
 	@echo "🛠️  Setting up development environment..."
-	go mod tidy
-	go generate ./...
+	$(GO) mod tidy
+	$(GO) generate ./...
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
 		echo "📦 Installing golangci-lint..."; \
 		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.54.2; \

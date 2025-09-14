@@ -17,6 +17,14 @@ const (
 	KeyImprovePRD PromptKey = "ImprovePRD"
 	// KeyEnhanceTask is the key for the single task enhancement prompt.
 	KeyEnhanceTask PromptKey = "EnhanceTask"
+	// KeyGenerateNextWorkItem is the key for iterative, one-at-a-time generation with context.
+	KeyGenerateNextWorkItem PromptKey = "GenerateNextWorkItem"
+	// KeyBreakdownTask is the key for task breakdown into subtasks.
+	KeyBreakdownTask PromptKey = "BreakdownTask"
+	// KeySuggestNextTask is the key for context-aware next task suggestions.
+	KeySuggestNextTask PromptKey = "SuggestNextTask"
+	// KeyDetectDependencies is the key for smart dependency detection.
+	KeyDetectDependencies PromptKey = "DetectDependencies"
 )
 
 // promptConfig defines the default content and filename for a prompt.
@@ -38,6 +46,22 @@ var promptRegistry = map[PromptKey]promptConfig{
 	KeyEnhanceTask: {
 		defaultContent: EnhanceTaskSystemPrompt,
 		filename:       "enhance_task_prompt.txt",
+	},
+	KeyGenerateNextWorkItem: {
+		defaultContent: GenerateNextWorkItemSystemPrompt,
+		filename:       "generate_next_work_item_prompt.txt",
+	},
+	KeyBreakdownTask: {
+		defaultContent: BreakdownTaskSystemPrompt,
+		filename:       "breakdown_task_prompt.txt",
+	},
+	KeySuggestNextTask: {
+		defaultContent: SuggestNextTaskSystemPrompt,
+		filename:       "suggest_next_task_prompt.txt",
+	},
+	KeyDetectDependencies: {
+		defaultContent: DetectDependenciesSystemPrompt,
+		filename:       "detect_dependencies_prompt.txt",
 	},
 }
 

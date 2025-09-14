@@ -23,9 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Redundant documentation files (MCP_IMPROVEMENTS.md, MCP_USAGE_EXAMPLES.md, ARCHIVE.md, KNOWLEDGE.md, AGENTS.md, homebrew-tap-setup.md)
-- Outdated commands and concepts from documentation
-- Duplicate installation and setup instructions across files
+- Redundant and outdated documentation references
+- Duplicate installation/setup snippets
 
 ### Fixed
 
@@ -57,4 +56,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-**Note**: This changelog was created as part of the documentation unification effort. For detailed commit history, see the [GitHub repository](https://github.com/josephgoksu/TaskWing/commits).
+Note: For detailed history, see `git log` in this repository.

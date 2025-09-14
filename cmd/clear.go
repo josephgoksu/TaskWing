@@ -4,13 +4,12 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"encoding/json"
 
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
@@ -52,8 +51,12 @@ Examples:
   taskwing clear --all --force      # Clear all tasks without confirmation
 
 Note: To delete a specific task, use 'taskwing delete <task_id>' instead.`,
-	Args: cobra.NoArgs, // Don't accept any arguments
+	Args: cobra.ArbitraryArgs, // Provide friendlier guidance when args are supplied
 	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) > 0 {
+			fmt.Println("'clear' does not take a task ID. Use 'taskwing delete <id> [--recursive]' to remove a specific task, or filters like 'taskwing clear --status=done'.")
+			return
+		}
 		taskStore, err := GetStore()
 		if err != nil {
 			HandleError("Error getting task store", err)
@@ -233,7 +236,7 @@ func createClearBackup(taskStore store.TaskStore, tasksToDelete []models.Task) e
 	cfg := GetConfig()
 	backupDir := filepath.Join(cfg.Project.RootDir, "backups")
 
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create backup directory: %w", err)
 	}
 

@@ -552,16 +552,10 @@ func RegisterAdvancedMCPTools(server *mcp.Server, taskStore store.TaskStore) err
 		Description: "Bulk operate by filter/expression/query with preview/confirm. Actions: complete, delete, prioritize (requires priority).",
 	}, bulkByFilterHandler(taskStore))
 
-	// Task summary tool
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "task-summary",
-		Description: "Return summary and context: total_tasks, active, completed_today, due_today, blocked. Useful before planning.",
-	}, taskSummaryHandler(taskStore))
-
 	// Advanced search tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search-tasks",
-		Description: "Advanced search. Args: query (supports AND/OR/NOT), tags[], date_from, date_to, has_subtasks. Returns matching tasks ordered by relevance.",
+		Description: "🔍 ADVANCED SEARCH (use for complex queries): Boolean operators (AND/OR/NOT), date ranges, tags. Example: '(urgent OR high) AND NOT done'. Best for power users.",
 	}, advancedSearchHandler(taskStore))
 
 	// Note: suggest-patterns tool removed.
@@ -620,30 +614,33 @@ func bulkByFilterHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Bul
 		var ids []string
 		var errorsList []string
 
-		for _, t := range matched {
-			var aerr error
-			switch strings.ToLower(args.Action) {
-			case "complete", "done", "mark-done":
-				_, aerr = taskStore.MarkTaskDone(t.ID)
-			case "delete":
-				aerr = taskStore.DeleteTask(t.ID)
-			case "prioritize":
-				if args.Priority == "" {
-					aerr = fmt.Errorf("priority required for prioritize action")
-				} else {
-					_, aerr = taskStore.UpdateTask(t.ID, map[string]interface{}{"priority": args.Priority})
-				}
-			default:
-				aerr = fmt.Errorf("invalid action: %s", args.Action)
-			}
-			if aerr != nil {
-				failed++
-				errorsList = append(errorsList, fmt.Sprintf("%s: %v", t.ID, aerr))
-			} else {
-				succeeded++
-				ids = append(ids, t.ID)
-			}
-		}
+        for _, t := range matched {
+            var aerr error
+            acted := false
+            switch strings.ToLower(args.Action) {
+            case "complete", "done", "mark-done":
+                if t.Status != models.StatusDone {
+                    if _, aerr = taskStore.MarkTaskDone(t.ID); aerr == nil { acted = true }
+                }
+            case "delete":
+                if err := taskStore.DeleteTask(t.ID); err != nil { aerr = err } else { acted = true }
+            case "prioritize":
+                if args.Priority == "" {
+                    aerr = fmt.Errorf("priority required for prioritize action")
+                } else {
+                    if _, aerr = taskStore.UpdateTask(t.ID, map[string]interface{}{"priority": args.Priority}); aerr == nil { acted = true }
+                }
+            default:
+                aerr = fmt.Errorf("invalid action: %s", args.Action)
+            }
+            if aerr != nil {
+                failed++
+                errorsList = append(errorsList, fmt.Sprintf("%s: %v", t.ID, aerr))
+            } else if acted {
+                succeeded++
+                ids = append(ids, t.ID)
+            }
+        }
 
 		resp := types.BulkByFilterResponse{
 			Preview:      false,

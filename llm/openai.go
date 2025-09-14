@@ -1,12 +1,14 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -15,13 +17,17 @@ import (
 
 // OpenAIProvider implements the Provider interface for OpenAI LLMs.
 type OpenAIProvider struct {
-	apiKey string
-	// Potentially add http.Client for custom timeouts, etc.
+	apiKey  string
+	timeout time.Duration
+	debug   bool
 }
 
-// NewOpenAIProvider creates a new OpenAIProvider.
-func NewOpenAIProvider(apiKey string) *OpenAIProvider {
-	return &OpenAIProvider{apiKey: apiKey}
+// NewOpenAIProvider creates a new OpenAIProvider with options.
+func NewOpenAIProvider(apiKey string, timeout time.Duration, debug bool) *OpenAIProvider {
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+	return &OpenAIProvider{apiKey: apiKey, timeout: timeout, debug: debug}
 }
 
 // OpenAIRequestPayload defines the structure for the OpenAI API request.
@@ -76,31 +82,66 @@ type OpenAITaskResponseWrapper struct {
 
 // buildTasksSchema returns a JSON Schema for an object with a required 'tasks' array.
 func buildTasksSchema() map[string]interface{} {
+	// Define a base task object
+	requiredFields := []string{"title", "description", "acceptanceCriteria", "priority", "tempId", "subtasks", "dependsOnIds"}
+	baseTask := map[string]interface{}{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"title":              map[string]interface{}{"type": "string"},
+			"description":        map[string]interface{}{"type": "string"},
+			"acceptanceCriteria": map[string]interface{}{"type": "string"},
+			"priority":           map[string]interface{}{"type": "string"},
+			"tempId":             map[string]interface{}{"type": "integer", "minimum": 1},
+			"dependsOnIds": map[string]interface{}{
+				"type":  "array",
+				"items": map[string]interface{}{"type": "integer"},
+			},
+		},
+		"required": requiredFields,
+	}
+	// Define a shallow subtask object (one level) using the same fields and no deep recursion
+	shallowSubtask := map[string]interface{}{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"title":              map[string]interface{}{"type": "string"},
+			"description":        map[string]interface{}{"type": "string"},
+			"acceptanceCriteria": map[string]interface{}{"type": "string"},
+			"priority":           map[string]interface{}{"type": "string"},
+			"tempId":             map[string]interface{}{"type": "integer", "minimum": 1},
+			"dependsOnIds": map[string]interface{}{
+				"type":  "array",
+				"items": map[string]interface{}{"type": "integer"},
+			},
+			// Allow nested 'subtasks' but constrain inner objects to have no free-form properties
+			"subtasks": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type":                 "object",
+					"additionalProperties": false,
+					"properties":           map[string]interface{}{},
+				},
+			},
+		},
+		"required": requiredFields,
+	}
+	// Attach shallow subtasks to base task
+	baseTask["properties"].(map[string]interface{})["subtasks"] = map[string]interface{}{
+		"type":  "array",
+		"items": shallowSubtask,
+	}
+
 	return map[string]interface{}{
 		"type":                 "object",
 		"additionalProperties": false,
 		"properties": map[string]interface{}{
 			"tasks": map[string]interface{}{
-				"type": "array",
-				"items": map[string]interface{}{
-					"type":                 "object",
-					"additionalProperties": false,
-					"properties": map[string]interface{}{
-						"title":       map[string]interface{}{"type": "string"},
-						"description": map[string]interface{}{"type": "string"},
-						"acceptanceCriteria": map[string]interface{}{
-							"type":        "string",
-							"description": "Acceptance criteria for the task (single or newline-separated list)",
-						},
-						"priority": map[string]interface{}{"type": "string"},
-						"tempId":   map[string]interface{}{"type": "integer"},
-					},
-					"required": []string{"title", "description", "acceptanceCriteria", "priority", "tempId"},
-				},
+				"type":  "array",
+				"items": baseTask,
 			},
 		},
 		"required": []string{"tasks"},
-		"strict":   true,
 	}
 }
 
@@ -116,7 +157,95 @@ func buildEnhancedTaskSchema() map[string]interface{} {
 			"priority":           map[string]interface{}{"type": "string"},
 		},
 		"required": []string{"title", "description", "acceptanceCriteria", "priority"},
-		"strict":   true,
+	}
+}
+
+// buildSubtasksSchema returns a JSON Schema for an array of subtask objects.
+func buildSubtasksSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"subtasks": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type":                 "object",
+					"additionalProperties": false,
+					"properties": map[string]interface{}{
+						"title":              map[string]interface{}{"type": "string"},
+						"description":        map[string]interface{}{"type": "string"},
+						"acceptanceCriteria": map[string]interface{}{"type": "string"},
+						"priority":           map[string]interface{}{"type": "string"},
+					},
+					"required": []string{"title", "description", "acceptanceCriteria", "priority"},
+				},
+				"minItems": 3,
+				"maxItems": 7,
+			},
+		},
+		"required": []string{"subtasks"},
+	}
+}
+
+// buildSuggestionsSchema returns a JSON Schema for task suggestion objects.
+func buildSuggestionsSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"suggestions": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type":                 "object",
+					"additionalProperties": false,
+					"properties": map[string]interface{}{
+						"taskId":          map[string]interface{}{"type": "string"},
+						"reasoning":       map[string]interface{}{"type": "string"},
+						"confidenceScore": map[string]interface{}{"type": "number", "minimum": 0.0, "maximum": 1.0},
+						"estimatedEffort": map[string]interface{}{"type": "string"},
+						"projectPhase":    map[string]interface{}{"type": "string"},
+						"recommendedActions": map[string]interface{}{
+							"type":     "array",
+							"items":    map[string]interface{}{"type": "string"},
+							"minItems": 1,
+							"maxItems": 5,
+						},
+					},
+					"required": []string{"taskId", "reasoning", "confidenceScore", "estimatedEffort", "projectPhase", "recommendedActions"},
+				},
+				"minItems": 0,
+				"maxItems": 5,
+			},
+		},
+		"required": []string{"suggestions"},
+	}
+}
+
+// buildDependenciesSchema returns a JSON Schema for dependency suggestion objects.
+func buildDependenciesSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"dependencies": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type":                 "object",
+					"additionalProperties": false,
+					"properties": map[string]interface{}{
+						"sourceTaskId":    map[string]interface{}{"type": "string"},
+						"targetTaskId":    map[string]interface{}{"type": "string"},
+						"reasoning":       map[string]interface{}{"type": "string"},
+						"confidenceScore": map[string]interface{}{"type": "number", "minimum": 0.0, "maximum": 1.0},
+						"dependencyType":  map[string]interface{}{"type": "string", "enum": []string{"technical", "logical", "sequential"}},
+					},
+					"required": []string{"sourceTaskId", "targetTaskId", "reasoning", "confidenceScore", "dependencyType"},
+				},
+				"minItems": 0,
+				"maxItems": 5,
+			},
+		},
+		"required": []string{"dependencies"},
 	}
 }
 
@@ -178,9 +307,7 @@ func (p *OpenAIProvider) GenerateTasks(ctx context.Context, systemPrompt, prdCon
 
 	var responseWrapper OpenAITaskResponseWrapper
 	if err := json.Unmarshal([]byte(content), &responseWrapper); err != nil {
-		// Debug: show the actual content that failed to unmarshal
-		fmt.Printf("DEBUG: Failed to unmarshal JSON content: %s\n", content)
-		return nil, fmt.Errorf("failed to unmarshal tasks JSON from OpenAI response content: %w", err)
+		return nil, fmt.Errorf("failed to parse tasks JSON from AI response: %w", err)
 	}
 
 	return responseWrapper.Tasks, nil
@@ -243,6 +370,88 @@ func (p *OpenAIProvider) EnhanceTask(ctx context.Context, systemPrompt, taskInpu
 	return enhancedTask, nil
 }
 
+// BreakdownTask analyzes a task and suggests relevant subtasks
+func (p *OpenAIProvider) BreakdownTask(ctx context.Context, systemPrompt, taskTitle, taskDescription, acceptanceCriteria, contextInfo string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.EnhancedTask, error) {
+	if apiKey == "" {
+		apiKey = p.apiKey
+	}
+	if apiKey == "" {
+		return nil, fmt.Errorf("OpenAI API key is not set for task breakdown")
+	}
+
+	// Build user message with task details and context
+	userMessage := "Analyze this task and suggest 3-7 relevant subtasks:\n\n"
+	userMessage += fmt.Sprintf("Title: %s\n", taskTitle)
+	if taskDescription != "" && taskDescription != taskTitle {
+		userMessage += fmt.Sprintf("Description: %s\n", taskDescription)
+	}
+	if acceptanceCriteria != "" {
+		userMessage += fmt.Sprintf("Acceptance Criteria: %s\n", acceptanceCriteria)
+	}
+	if contextInfo != "" {
+		userMessage += fmt.Sprintf("\nContext: %s", contextInfo)
+	}
+
+	// Use a schema tailored for an array of enhanced tasks
+	content, err := p.callOpenAIAndExtractSubtasks(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
+	if err != nil {
+		return nil, err
+	}
+
+	var subtaskWrapper struct {
+		Subtasks []types.EnhancedTask `json:"subtasks"`
+	}
+	if err := json.Unmarshal([]byte(content), &subtaskWrapper); err != nil {
+		return nil, fmt.Errorf("failed to parse subtasks JSON from AI response: %w", err)
+	}
+
+	return subtaskWrapper.Subtasks, nil
+}
+
+// SuggestNextTask provides context-aware suggestions for which task to work on next
+func (p *OpenAIProvider) SuggestNextTask(ctx context.Context, systemPrompt, contextInfo string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.TaskSuggestion, error) {
+	// Build user message with context info
+	userMessage := fmt.Sprintf("Analyze the current project context and suggest the most strategic tasks to work on next:\n\n%s", contextInfo)
+
+	// Call OpenAI API with task suggestions schema
+	content, err := p.callOpenAIAndExtractSuggestions(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call OpenAI for task suggestions: %w", err)
+	}
+
+	// Parse the JSON response
+	var suggestionsWrapper struct {
+		Suggestions []types.TaskSuggestion `json:"suggestions"`
+	}
+	if err := json.Unmarshal([]byte(content), &suggestionsWrapper); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal task suggestions response: %w (content: %s)", err, content)
+	}
+
+	return suggestionsWrapper.Suggestions, nil
+}
+
+// DetectDependencies analyzes tasks and suggests dependency relationships
+func (p *OpenAIProvider) DetectDependencies(ctx context.Context, systemPrompt, taskInfo, contextInfo string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.DependencySuggestion, error) {
+	// Build user message with task and context info
+	userMessage := fmt.Sprintf("Analyze this task for potential dependencies:\n\n%s\n\nProject Context:\n%s", taskInfo, contextInfo)
+
+	// Call OpenAI API with dependencies schema
+	content, err := p.callOpenAIAndExtractDependencies(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call OpenAI for dependency detection: %w", err)
+	}
+
+	// Parse the JSON response
+	var dependenciesWrapper struct {
+		Dependencies []types.DependencySuggestion `json:"dependencies"`
+	}
+	if err := json.Unmarshal([]byte(content), &dependenciesWrapper); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal dependencies response: %w (content: %s)", err, content)
+	}
+
+	return dependenciesWrapper.Dependencies, nil
+}
+
 // callOpenAIAndExtract sends a JSON-schema constrained request (for tasks array) and returns content.
 func (p *OpenAIProvider) callOpenAIAndExtract(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
 	return p.callResponsesAPIWithSchema(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens, "task_generation", buildTasksSchema(), true)
@@ -259,13 +468,34 @@ func (p *OpenAIProvider) callOpenAIAndExtractEnhanced(ctx context.Context, apiKe
 	return p.callResponsesAPIWithSchema(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens, "enhanced_task", buildEnhancedTaskSchema(), true)
 }
 
+// callOpenAIAndExtractSubtasks requests an array of subtasks using a tailored schema.
+func (p *OpenAIProvider) callOpenAIAndExtractSubtasks(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
+	return p.callResponsesAPIWithSchema(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens, "subtask_breakdown", buildSubtasksSchema(), true)
+}
+
+// callOpenAIAndExtractSuggestions requests an array of task suggestions using a tailored schema.
+func (p *OpenAIProvider) callOpenAIAndExtractSuggestions(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
+	return p.callResponsesAPIWithSchema(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens, "task_suggestions", buildSuggestionsSchema(), true)
+}
+
+// callOpenAIAndExtractDependencies requests an array of dependency suggestions using a tailored schema.
+func (p *OpenAIProvider) callOpenAIAndExtractDependencies(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int) (string, error) {
+	return p.callResponsesAPIWithSchema(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens, "dependency_detection", buildDependenciesSchema(), true)
+}
+
 func (p *OpenAIProvider) callResponsesAPIWithSchema(ctx context.Context, apiKey, modelName, systemPrompt, userMessage string, temperature float64, maxTokens int, schemaName string, schema map[string]interface{}, useJsonFormat bool) (string, error) {
-	// Build the Responses API payload using simple string content
+	// Build the Responses API payload using structured content blocks
 	payload := map[string]interface{}{
 		"model": modelName,
-		"input": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": userMessage},
+		"input": []map[string]interface{}{
+			{
+				"role":    "system",
+				"content": []map[string]interface{}{{"type": "input_text", "text": systemPrompt}},
+			},
+			{
+				"role":    "user",
+				"content": []map[string]interface{}{{"type": "input_text", "text": userMessage}},
+			},
 		},
 	}
 
@@ -275,57 +505,217 @@ func (p *OpenAIProvider) callResponsesAPIWithSchema(ctx context.Context, apiKey,
 	}
 
 	// Configure text.format per the Responses API
-	textConfig := map[string]interface{}{}
 	if useJsonFormat && schema != nil {
-		textConfig["format"] = map[string]interface{}{
-			"type":   "json_schema",
-			"name":   schemaName,
-			"schema": schema,
+		payload["text"] = map[string]interface{}{
+			"format": map[string]interface{}{
+				"type":   "json_schema",
+				"name":   schemaName,
+				"schema": schema,
+				"strict": true,
+			},
 		}
 	} else {
-		textConfig["format"] = map[string]interface{}{"type": "text"}
+		payload["text"] = map[string]interface{}{
+			"format": map[string]interface{}{"type": "text"},
+		}
 	}
-	payload["text"] = textConfig
 
 	// Add temperature for supported models
 	modelLower := strings.ToLower(modelName)
-	supportsTemperature := strings.Contains(modelLower, "gpt-4") ||
+	supportsTemperature := (strings.Contains(modelLower, "gpt-5") && !strings.Contains(modelLower, "gpt-5-nano")) ||
+		strings.Contains(modelLower, "gpt-4.1") ||
+		strings.Contains(modelLower, "gpt-4") ||
 		strings.Contains(modelLower, "gpt-3.5") ||
 		strings.Contains(modelLower, "text-davinci") ||
 		strings.Contains(modelLower, "gpt-4o")
 
-	if supportsTemperature && !strings.Contains(modelLower, "o1") {
-		payload["temperature"] = temperature
-	}
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, "POST", openAIResponsesURL, bytes.NewBuffer(body))
-	if err != nil {
-		return "", fmt.Errorf("failed to create responses request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	// Use longer timeout for complex document processing
-	timeout := 180 * time.Second // 3 minutes
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		// Check for timeout errors and provide helpful message
-		if strings.Contains(err.Error(), "context deadline exceeded") || strings.Contains(err.Error(), "Client.Timeout exceeded") {
-			return "", fmt.Errorf("OpenAI API request timed out after %v. This may be due to a complex request or network issues. Try with a smaller document or check your connection", timeout)
+	if supportsTemperature && !strings.Contains(modelLower, "o1") &&
+		!strings.Contains(modelLower, "o3") && !strings.Contains(modelLower, "o4") {
+		// Only include temperature if the caller actually set a non-default value
+		if temperature > 0 {
+			payload["temperature"] = temperature
 		}
-		return "", fmt.Errorf("failed to call responses: %w", err)
 	}
+
+	// Helper to send a request with the given payload
+	send := func(pl map[string]interface{}) (*http.Response, []byte, error) {
+		body, _ := json.Marshal(pl)
+		req, err := http.NewRequestWithContext(ctx, "POST", openAIResponsesURL, bytes.NewBuffer(body))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create responses request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("Content-Type", "application/json")
+		client := &http.Client{Timeout: p.timeout}
+		start := time.Now()
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, nil, err
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		if p.debug {
+			dur := time.Since(start)
+			fmt.Printf("[LLM] OpenAI Responses %s in %v (status %s, bytes %d)\n", modelName, dur, resp.Status, len(raw))
+		}
+		return resp, raw, nil
+	}
+
+	// Enable SSE streaming in debug mode to surface partial progress
+	enableStream := p.debug
+	if enableStream {
+		payload["stream"] = true
+		if p.debug {
+			fmt.Printf("[LLM] Sending STREAM request to OpenAI: model=%s schema=%t max_tokens=%v temp=%v timeout=%s\n",
+				modelName, useJsonFormat && schema != nil, payload["max_output_tokens"], payload["temperature"], p.timeout)
+		}
+		// Build and send request for streaming
+		body, _ := json.Marshal(payload)
+		req, err := http.NewRequestWithContext(ctx, "POST", openAIResponsesURL, bytes.NewBuffer(body))
+		if err != nil {
+			return "", fmt.Errorf("failed to create responses request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "text/event-stream")
+		client := &http.Client{Timeout: p.timeout}
+		resp, err := client.Do(req)
+		if err != nil {
+			if strings.Contains(err.Error(), "context deadline exceeded") || strings.Contains(err.Error(), "Client.Timeout exceeded") {
+				return "", fmt.Errorf("OpenAI API request timed out after %v. This may be due to a complex request or network issues. Try with a smaller document or check your connection", p.timeout)
+			}
+			return "", fmt.Errorf("failed to call responses (stream): %w", err)
+		}
+		defer func() {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+		}()
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
+			return "", fmt.Errorf("OpenAI API error (%s): %s", resp.Status, strings.TrimSpace(string(b)))
+		}
+
+		ct := resp.Header.Get("Content-Type")
+		if !strings.Contains(ct, "text/event-stream") {
+			// Fallback: not streaming; read whole body and continue below
+			raw, _ := io.ReadAll(resp.Body)
+			// Simulate non-stream parsing path
+			// Parse generic as below
+			var generic map[string]interface{}
+			if err := json.Unmarshal(raw, &generic); err == nil {
+				if ot, ok := generic["output_text"].(string); ok && strings.TrimSpace(ot) != "" {
+					return ot, nil
+				}
+			}
+			// As last resort return raw as string
+			return string(raw), nil
+		}
+
+		// Stream parse SSE events; accumulate output_text deltas
+		scanner := bufio.NewScanner(resp.Body)
+		// allow large frames
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, 10*1024*1024)
+		var builder strings.Builder
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "[DONE]" || data == "{}" || data == "null" {
+				continue
+			}
+			var ev map[string]interface{}
+			if err := json.Unmarshal([]byte(data), &ev); err != nil {
+				// ignore non-JSON keepalive lines
+				continue
+			}
+			if t, ok := ev["type"].(string); ok {
+				switch t {
+				case "response.output_text.delta":
+					if d, ok := ev["delta"].(string); ok && d != "" {
+						builder.WriteString(d)
+						// Stream to stderr for visibility
+						fmt.Fprint(os.Stderr, d)
+					}
+				case "response.completed":
+					// done event, break loop
+					// Add newline after stream for readability
+					fmt.Fprintln(os.Stderr)
+					return builder.String(), nil
+				case "response.error":
+					// Attempt to surface message
+					if em, ok := ev["error"].(map[string]interface{}); ok {
+						if msg, ok := em["message"].(string); ok {
+							return "", fmt.Errorf("OpenAI stream error: %s", msg)
+						}
+					}
+					return "", fmt.Errorf("OpenAI stream error")
+				}
+			}
+		}
+		// End of stream without explicit completed; return accumulated
+		fmt.Fprintln(os.Stderr)
+		return builder.String(), nil
+	}
+
+	// Non-stream fallback path
+	if p.debug {
+		fmt.Printf("[LLM] Sending request to OpenAI: model=%s schema=%t max_tokens=%v temp=%v timeout=%s\n",
+			modelName, useJsonFormat && schema != nil, payload["max_output_tokens"], payload["temperature"], p.timeout)
+	}
+	resp, raw, err := send(payload)
+	if err != nil {
+		// Check for timeout errors and attempt one fallback retry with fewer tokens
+		if strings.Contains(err.Error(), "context deadline exceeded") || strings.Contains(err.Error(), "Client.Timeout exceeded") {
+			// Reduce the max tokens and retry once to encourage faster completion
+			fallbackTokens := 1024
+			if maxTokens > 0 {
+				fallbackTokens = maxTokens / 2
+				if fallbackTokens < 256 {
+					fallbackTokens = 256
+				}
+			}
+			payload["max_output_tokens"] = fallbackTokens
+
+			resp, raw, err = send(payload)
+			if err != nil {
+				if strings.Contains(err.Error(), "context deadline exceeded") || strings.Contains(err.Error(), "Client.Timeout exceeded") {
+					return "", fmt.Errorf("OpenAI API request timed out after %v even after reducing tokens to %d. Try with a smaller document or lower llm.maxOutputTokens", p.timeout, fallbackTokens)
+				}
+				return "", fmt.Errorf("failed to call responses (retry with %d tokens): %w", fallbackTokens, err)
+			}
+		} else {
+			return "", fmt.Errorf("failed to call responses: %w", err)
+		}
+	}
+	// Retry once without temperature if model rejects it
+	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(raw), "Unsupported parameter: 'temperature'") {
+		// Remove temperature and retry once
+		delete(payload, "temperature")
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		resp, raw, err = send(payload)
+		if err != nil {
+			if strings.Contains(err.Error(), "context deadline exceeded") || strings.Contains(err.Error(), "Client.Timeout exceeded") {
+				return "", fmt.Errorf("OpenAI API request timed out after %v. This may be due to a complex request or network issues. Try with a smaller document or check your connection", p.timeout)
+			}
+			return "", fmt.Errorf("failed to call responses (retry without temperature): %w", err)
+		}
+	}
+
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			// Log error but don't fail the request for this
-			fmt.Printf("Warning: failed to close response body: %v\n", err)
+		if resp != nil && resp.Body != nil {
+			if err := resp.Body.Close(); err != nil {
+				fmt.Printf("Warning: failed to close response body: %v\n", err)
+			}
 		}
 	}()
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("responses status %s: %s", resp.Status, string(b))
+		return "", fmt.Errorf("OpenAI API error (%s): %s", resp.Status, strings.TrimSpace(string(raw)))
 	}
-	raw, _ := io.ReadAll(resp.Body)
 
 	// Parse OpenAI Responses API format
 	var generic map[string]interface{}
@@ -382,8 +772,7 @@ func (p *OpenAIProvider) callResponsesAPIWithSchema(ctx context.Context, apiKey,
 			return txt, nil
 		}
 
-		// Debug log the raw response structure for troubleshooting
-		fmt.Printf("Debug: Raw API response structure: %+v\n", generic)
+		// No recognizable content fields found; fallthrough to detailed raw error
 	}
 	return "", fmt.Errorf("failed to extract content from responses body. Raw response: %s", string(raw))
 }

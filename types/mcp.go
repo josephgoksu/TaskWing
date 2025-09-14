@@ -98,7 +98,8 @@ type SuggestPatternResponse struct {
 
 // SetCurrentTaskParams for setting the current active task
 type SetCurrentTaskParams struct {
-	ID string `json:"id" mcp:"Task ID to set as current (required)"`
+	ID        string `json:"id" mcp:"Task ID to set as current (or provide 'reference')"`
+	Reference string `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
 }
 
 // GetCurrentTaskParams for retrieving the current active task
@@ -213,9 +214,82 @@ type BulkOperationResponse struct {
 
 // CurrentTaskResponse for current task operations
 type CurrentTaskResponse struct {
-	CurrentTask *TaskResponse `json:"current_task,omitempty"`
-	Message     string        `json:"message"`
-	Success     bool          `json:"success"`
+    CurrentTask *TaskResponse `json:"current_task,omitempty"`
+    Message     string        `json:"message"`
+    Success     bool          `json:"success"`
+}
+
+// Archive tool param/response types
+
+type ArchiveListParams struct{}
+
+type ArchiveIndexItem struct {
+    ID       string   `json:"id"`
+    Date     string   `json:"date"`
+    Title    string   `json:"title"`
+    Tags     []string `json:"tags,omitempty"`
+    FilePath string   `json:"filePath,omitempty"`
+}
+
+type ArchiveListResponse struct {
+    Items []ArchiveIndexItem `json:"items"`
+    Count int                `json:"count"`
+}
+
+type ArchiveSearchParams struct {
+    Query string   `json:"query" mcp:"Search text for title/description/lessons"`
+    From  string   `json:"from,omitempty" mcp:"YYYY-MM-DD start date"`
+    To    string   `json:"to,omitempty" mcp:"YYYY-MM-DD end date"`
+    Tags  []string `json:"tags,omitempty" mcp:"Filter by tags (any)"`
+}
+
+type ArchiveViewParams struct {
+    ID string `json:"id" mcp:"Archive id (full or prefix)"`
+}
+
+type ArchiveEntryResponse struct {
+    ID             string   `json:"id"`
+    TaskID         string   `json:"taskId"`
+    Title          string   `json:"title"`
+    Description    string   `json:"description"`
+    LessonsLearned string   `json:"lessonsLearned"`
+    Tags           []string `json:"tags"`
+    ArchivedAt     string   `json:"archivedAt"`
+    FilePath       string   `json:"filePath,omitempty"`
+}
+
+type ArchiveRestoreParams struct {
+    ID string `json:"id" mcp:"Archive id (full/prefix) to restore"`
+}
+
+type ArchiveRestoreResponse struct {
+    Restored TaskResponse `json:"restored"`
+}
+
+type ArchiveAddParams struct {
+    Reference string   `json:"reference" mcp:"Task id, partial id, or title"`
+    Lessons   string   `json:"lessons,omitempty"`
+    Tags      []string `json:"tags,omitempty"`
+    AISuggest bool     `json:"ai_suggest,omitempty"`
+    AIAuto    bool     `json:"ai_auto,omitempty"`
+    AIFix     bool     `json:"ai_fix,omitempty"`
+}
+
+type ArchiveExportParams struct {
+    File    string `json:"file" mcp:"Destination bundle path"`
+    Encrypt bool   `json:"encrypt,omitempty"`
+    Key     string `json:"key,omitempty"`
+}
+
+type ArchiveImportParams struct {
+    File    string `json:"file" mcp:"Source bundle path"`
+    Decrypt bool   `json:"decrypt,omitempty"`
+    Key     string `json:"key,omitempty"`
+}
+
+type ArchivePurgeParams struct {
+    OlderThan string `json:"olderThan,omitempty" mcp:"e.g., 720h for 30 days"`
+    DryRun    bool   `json:"dryRun,omitempty"`
 }
 
 // ClearTasksResponse for clear operations results
@@ -462,6 +536,45 @@ type PlanFromDocumentResponse struct {
 	Created       int            `json:"created_count"`
 	Summary       string         `json:"summary"`
 	ImprovedPRD   string         `json:"improved_prd,omitempty"`
+}
+
+// Simple Plan Tool Types
+
+type GeneratePlanParams struct {
+	TaskID  string `json:"task_id"`
+	Preview bool   `json:"preview,omitempty"`
+	Confirm bool   `json:"confirm,omitempty"`
+	Count   int    `json:"count,omitempty"`
+}
+
+type GeneratePlanResponse struct {
+	Preview       bool           `json:"preview"`
+	Proposed      []ProposedTask `json:"proposed_tasks,omitempty"`
+	ProposedCount int            `json:"proposed_count"`
+	Created       int            `json:"created_count"`
+	ParentTask    string         `json:"parent_task,omitempty"`
+	ParentTaskID  string         `json:"parent_task_id,omitempty"`
+	NextSteps     []string       `json:"next_steps,omitempty"`
+	CreatedTasks  []TaskResponse `json:"created_tasks,omitempty"`
+}
+
+type IteratePlanStepParams struct {
+	TaskID  string `json:"task_id"`
+	StepID  string `json:"step_id"`
+	Prompt  string `json:"prompt,omitempty"`
+	Split   bool   `json:"split,omitempty"`
+	Preview bool   `json:"preview,omitempty"`
+	Confirm bool   `json:"confirm,omitempty"`
+}
+
+type IteratePlanStepResponse struct {
+	Preview      bool           `json:"preview"`
+	Proposed     []ProposedTask `json:"proposed_tasks,omitempty"`
+	ParentTask   string         `json:"parent_task,omitempty"`
+	TargetStep   string         `json:"target_step,omitempty"`
+	Operation    string         `json:"operation,omitempty"` // "refine" or "split"
+	NextSteps    []string       `json:"next_steps,omitempty"`
+	CreatedTasks []TaskResponse `json:"created_tasks,omitempty"`
 }
 
 // Workflow Integration Tool Types

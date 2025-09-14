@@ -10,7 +10,7 @@ import (
 )
 
 func TestBatchCreate_WithTempIDs_ResolvesDependenciesAndParents(t *testing.T) {
-	_ = setupTestProject(t)
+	_ = SetupTestProject(t)
 	st, err := GetStore()
 	if err != nil {
 		t.Fatalf("store: %v", err)
@@ -98,7 +98,7 @@ func TestBatchCreate_WithTempIDs_ResolvesDependenciesAndParents(t *testing.T) {
 }
 
 func TestBatchCreate_RejectsPlaceholderDependency(t *testing.T) {
-	_ = setupTestProject(t)
+	_ = SetupTestProject(t)
 	st, err := GetStore()
 	if err != nil {
 		t.Fatalf("store: %v", err)
@@ -122,7 +122,7 @@ func TestBatchCreate_RejectsPlaceholderDependency(t *testing.T) {
 }
 
 func TestBatchCreate_WithUUIDDependenciesAndParent(t *testing.T) {
-	_ = setupTestProject(t)
+	_ = SetupTestProject(t)
 	st, err := GetStore()
 	if err != nil {
 		t.Fatalf("store: %v", err)

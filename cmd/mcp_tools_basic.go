@@ -225,6 +225,7 @@ func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ListTa
 			for i := 0; i < maxShow; i++ {
 				responseText += fmt.Sprintf("\n - %s [%s]", tasks[i].Title, shortID(tasks[i].ID))
 			}
+			responseText += "\nTip: Use set-current-task with id:'<8+ char ID>' or reference:'<title>'"
 		}
 		if context != nil {
 			responseText = EnrichToolResponse(responseText, context)
@@ -613,41 +614,58 @@ func setCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.S
 		args := params.Arguments
 		logToolCall("set-current-task", args)
 
-		// Validate required fields
-		if strings.TrimSpace(args.ID) == "" {
+		// Accept either ID or Reference
+		if strings.TrimSpace(args.ID) == "" && strings.TrimSpace(args.Reference) == "" {
 			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
 				Content: []mcp.Content{
 					&mcp.TextContent{
-						Text: "Task ID is required",
+						Text: "Task ID or reference is required",
 					},
 				},
 				StructuredContent: types.CurrentTaskResponse{
 					Success: false,
-					Message: "Task ID is required",
+					Message: "Task ID or reference is required",
 				},
 				IsError: true,
 			}, nil
 		}
 
-		// Verify the task exists
-		task, err := taskStore.GetTask(args.ID)
+		// Determine lookup key
+		ref := strings.TrimSpace(args.ID)
+		if ref == "" {
+			ref = strings.TrimSpace(args.Reference)
+		}
+
+		// Verify the task exists (with resolution fallback)
+		task, err := taskStore.GetTask(ref)
 		if err != nil {
-			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{
-						Text: fmt.Sprintf("Task '%s' not found", args.ID),
-					},
-				},
-				StructuredContent: types.CurrentTaskResponse{
-					Success: false,
-					Message: fmt.Sprintf("Task '%s' not found", args.ID),
-				},
-				IsError: true,
-			}, nil
+			// Try to resolve reference against all tasks
+			if tasks, lerr := taskStore.ListTasks(nil, nil); lerr == nil {
+				if resolvedID, candidates, ok := resolveReference(ref, tasks); ok {
+					if retryTask, retryErr := taskStore.GetTask(resolvedID); retryErr == nil {
+						task = retryTask
+						err = nil
+					}
+				} else {
+					details := map[string]interface{}{"reference": ref}
+					if len(candidates) > 0 {
+						max := len(candidates)
+						if max > 5 {
+							max = 5
+						}
+						details["candidates"] = candidates[:max]
+					}
+					details["next_step"] = "Use 'resolve-task-reference' to obtain a concrete ID."
+					return nil, types.NewMCPError("TASK_NOT_FOUND", "Task reference could not be resolved", details)
+				}
+			}
+			if err != nil {
+				return nil, WrapStoreError(err, "get", ref)
+			}
 		}
 
 		// Set the current task
-		if err := SetCurrentTask(args.ID); err != nil {
+		if err := SetCurrentTask(task.ID); err != nil {
 			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
 				Content: []mcp.Content{
 					&mcp.TextContent{
@@ -954,7 +972,7 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 			cfg := GetConfig()
 			backupDir := filepath.Join(cfg.Project.RootDir, "backups")
 
-			if err := os.MkdirAll(backupDir, 0755); err == nil {
+			if err := os.MkdirAll(backupDir, 0o755); err == nil {
 				timestamp := time.Now().Format("2006-01-02_15-04-05")
 				backupFile = filepath.Join(backupDir, fmt.Sprintf("clear_backup_%s.json", timestamp))
 
@@ -977,16 +995,15 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 			}
 		}
 
-		// Perform the clearing
-		cleared := 0
-		failed := 0
-		for _, task := range tasksToDelete {
-			if err := taskStore.DeleteTask(task.ID); err != nil {
-				failed++
-				logError(fmt.Errorf("failed to clear task '%s': %w", task.Title, err))
-			} else {
-				cleared++
-			}
+		// Perform the clearing using batch delete for better relationship handling
+		ids := make([]string, 0, len(tasksToDelete))
+		for _, t := range tasksToDelete {
+			ids = append(ids, t.ID)
+		}
+		cleared, berr := taskStore.DeleteTasks(ids)
+		failed := len(tasksToDelete) - cleared
+		if berr != nil {
+			logError(fmt.Errorf("batch clear error: %w", berr))
 		}
 
 		// Clear current task if it was deleted

@@ -41,6 +41,9 @@ func validateAppConfig(config *types.AppConfig) error {
 
 // InitConfig reads in config file and ENV variables if set.
 func InitConfig() {
+	// Preserve any previously configured project root (e.g., tests set it before executing commands)
+	prevRootDir := GlobalAppConfig.Project.RootDir
+
 	// Load .env file first if present (ignore error if file doesn't exist)
 	_ = godotenv.Load()
 
@@ -128,6 +131,10 @@ func InitConfig() {
 	viper.SetDefault("llm.temperature", 0.7)
 	viper.SetDefault("llm.improvementMaxOutputTokens", 0)
 	viper.SetDefault("llm.improvementTemperature", 0.3)
+	// UX-focused defaults for LLM network behavior
+	viper.SetDefault("llm.requestTimeoutSeconds", 120)
+	viper.SetDefault("llm.maxRetries", 1)
+	viper.SetDefault("llm.debug", false)
 
 	// After all sources are configured, unmarshal into GlobalAppConfig
 	if err := viper.Unmarshal(&GlobalAppConfig); err != nil {
@@ -172,6 +179,13 @@ func InitConfig() {
 		os.Exit(1) // Exit if validation fails
 	}
 
+	// If a config file path was explicitly provided (via env/flag) but it did not specify
+	// project.rootDir, prefer any previously-set RootDir (commonly from test setup).
+	// This avoids wiping an in-memory configured test root with the default ".taskwing".
+	if prevRootDir != "" && viper.GetString("config") != "" {
+		GlobalAppConfig.Project.RootDir = prevRootDir
+	}
+
 	// The verbose and config values are bound from flags directly to Viper.
 	// When Unmarshal runs, it will populate GlobalAppConfig.Verbose and GlobalAppConfig.Config
 	// if those fields exist in the struct and are mapped.
@@ -193,7 +207,7 @@ func SetCurrentTask(taskID string) error {
 	if configFile == "" {
 		// No config file exists, create a project-specific one
 		projectConfigDir := GlobalAppConfig.Project.RootDir
-		if err := os.MkdirAll(projectConfigDir, 0755); err != nil {
+		if err := os.MkdirAll(projectConfigDir, 0o755); err != nil {
 			return fmt.Errorf("failed to create config directory: %w", err)
 		}
 		configFile = filepath.Join(projectConfigDir, ".taskwing.yaml")

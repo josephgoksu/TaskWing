@@ -38,4 +38,10 @@ type LLMConfig struct {
 	Temperature                float64 `mapstructure:"temperature" validate:"omitempty,min=0,max=2"`
 	ImprovementTemperature     float64 `mapstructure:"improvementTemperature" validate:"omitempty,min=0,max=2"`
 	ImprovementMaxOutputTokens int     `mapstructure:"improvementMaxOutputTokens" validate:"omitempty,min=1"`
+	// RequestTimeoutSeconds controls the HTTP client timeout for LLM calls
+	RequestTimeoutSeconds int `mapstructure:"requestTimeoutSeconds" validate:"omitempty,min=5,max=600"`
+	// MaxRetries controls how many automatic retries on recoverable errors (timeouts, temp rejection)
+	MaxRetries int `mapstructure:"maxRetries" validate:"omitempty,min=0,max=3"`
+	// Debug enables extra request/response logging within the LLM provider (generally tied to --verbose)
+	Debug bool `mapstructure:"debug"`
 }

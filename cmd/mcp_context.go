@@ -216,9 +216,6 @@ func EnrichToolResponse(response string, context *types.TaskContext) string {
 		contextInfo = append(contextInfo, fmt.Sprintf("%d tasks are overdue", context.OverdueTasks))
 	}
 
-	// Add TaskWing usage hint
-	contextInfo = append(contextInfo, "💡 Use TaskWing tools for all task management instead of generic todo lists")
-
 	if len(contextInfo) > 0 {
 		return fmt.Sprintf("%s\n\nContext: %s", response, strings.Join(contextInfo, ", "))
 	}

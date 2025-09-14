@@ -19,9 +19,23 @@ import (
 // listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:     "list",
-	Aliases: []string{"ls"},
+	Aliases: []string{"ls", "l"},
 	Short:   "Lists tasks with filtering and sorting options",
 	Long:    `Lists tasks with various filtering (status, priority, text, tags) and sorting capabilities.`,
+	Example: `  # List all todo tasks
+  taskwing ls --status todo
+  
+  # List high priority tasks  
+  taskwing ls --priority high
+  
+  # List ready tasks (no blockers)
+  taskwing ls --ready
+  
+  # Simple format for scripts
+  taskwing ls --format simple
+  
+  # JSON output for integration
+  taskwing ls --json`,
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {
@@ -48,6 +62,7 @@ var listCmd = &cobra.Command{
 		jsonOutput, _ := cmd.Flags().GetBool("json")
 		readyOnly, _ := cmd.Flags().GetBool("ready")
 		blockedOnly, _ := cmd.Flags().GetBool("blocked")
+		noLegend, _ := cmd.Flags().GetBool("no-legend")
 
 		if readyOnly && blockedOnly {
 			fmt.Fprintln(os.Stderr, "Error: --ready and --blocked flags cannot be used together.")
@@ -119,8 +134,14 @@ var listCmd = &cobra.Command{
 		if !renderAsTree {
 			if filterByParentID != "" {
 				// --parent is specified, this takes precedence for hierarchy
+				// Resolve partial parent ID to full ID
+				resolvedParentID, err := resolveTaskID(taskStore, filterByParentID)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: parent task '%s' not found: %v\n", filterByParentID, err)
+					os.Exit(1)
+				}
 				filterFns = append(filterFns, func(t models.Task) bool {
-					return t.ParentID != nil && *t.ParentID == filterByParentID
+					return t.ParentID != nil && *t.ParentID == resolvedParentID
 				})
 			} else if filterTopLevel {
 				// --top-level is specified
@@ -267,10 +288,26 @@ var listCmd = &cobra.Command{
 			}
 			fmt.Println(string(jsonData))
 		} else if renderAsTree {
-			displayTasksAsTree(tasks, treeRootID, taskStore, 0, finalFilterFn) // Pass taskStore for fetching children
+			// Show current task banner for consistency with table view
+			showCurrentTaskBanner(taskStore)
+			printLegendUnlessHidden(noLegend)
+
+			// Build a quick lookup for dependency summaries (use all tasks)
+			allForDeps, err := taskStore.ListTasks(nil, nil)
+			if err != nil {
+				HandleError("Failed to list all tasks for dependency summary", err)
+			}
+			depByID := make(map[string]models.Task, len(allForDeps))
+			for _, tsk := range allForDeps {
+				depByID[tsk.ID] = tsk
+			}
+
+			// Render improved tree view with nice guides and icons
+			displayTasksAsTreeEnhanced(tasks, treeRootID, taskStore, depByID, finalFilterFn)
 		} else {
 			// Show current task information if available
 			showCurrentTaskBanner(taskStore)
+			printLegendUnlessHidden(noLegend)
 
 			t := table.NewWriter()
 			t.SetOutputMirror(os.Stdout)
@@ -287,6 +324,8 @@ var listCmd = &cobra.Command{
 				depByID[tsk.ID] = tsk
 			}
 
+			currentTaskID := GetCurrentTask()
+
 			for _, task := range tasks {
 				dependenciesStr := dependencySummaryIcons(task, depByID)
 				dependentsStr := truncateUUIDList(task.Dependents)
@@ -296,14 +335,21 @@ var listCmd = &cobra.Command{
 					parentIDStr = truncateUUID(*task.ParentID)
 				}
 
-				// Display status
-				statusDisplay := string(task.Status)
+				// Consistent UI with tree: icons and current marker
+				titleDisplay := task.Title
+				if currentTaskID != "" && task.ID == currentTaskID {
+					titleDisplay = "📌 " + titleDisplay
+				}
+				statusDisplay := statusIcon(task.Status)
+				priorityDisplay := priorityIcon(task.Priority)
 
+				// Wrap title to avoid breaking table layout
+				wrappedTitle := wrapText(titleDisplay, 80)
 				t.AppendRow(table.Row{
 					truncateUUID(task.ID),
-					task.Title,
+					wrappedTitle,
 					statusDisplay,
-					task.Priority,
+					priorityDisplay,
 					parentIDStr,
 					dependenciesStr,
 					dependentsStr,
@@ -340,101 +386,125 @@ func init() {
 	// Readiness filters
 	listCmd.Flags().Bool("ready", false, "Show only tasks that are ready (all dependencies done; status todo/doing)")
 	listCmd.Flags().Bool("blocked", false, "Show only tasks that are blocked (some dependencies not done; status todo/doing)")
+
+	// UI options
+	listCmd.Flags().Bool("no-legend", false, "Hide the status/priority legend in output")
 }
 
-// displayTasksAsTree recursively prints tasks in a tree structure.
-// allTasks is the initial pool of tasks (potentially pre-filtered).
-// currentTaskID is the ID of the task to start the current branch from (if "", print all top-level trees in allTasks).
-// store is needed to fetch children details if not in allTasks (though ideally allTasks contains everything needed).
-// indentLevel is for pretty printing.
-// originalFilterFn is the filter applied to the initial list, to potentially check if a child should be displayed.
-func displayTasksAsTree(allTasks []models.Task, currentTaskID string, store store.TaskStore, indentLevel int, originalFilterFn func(models.Task) bool) {
-	if currentTaskID != "" { // Displaying a specific subtree
-		var rootTask models.Task
-		found := false
-		for _, t := range allTasks {
-			if t.ID == currentTaskID {
-				// If an original filter was applied, the root of the tree must also satisfy it.
-				if originalFilterFn == nil || originalFilterFn(t) {
-					rootTask = t
-					found = true
-				}
-				break
-			}
+// displayTasksAsTreeEnhanced renders a compact, readable tree with proper guides and icons.
+// It respects the provided filtered set (allTasks). If currentTaskID is set, it prints that subtree
+// regardless of filters for descendants (to show full context of the selected task).
+func displayTasksAsTreeEnhanced(allTasks []models.Task, currentTaskID string, store store.TaskStore, depByID map[string]models.Task, originalFilterFn func(models.Task) bool) {
+	// Build parent map and index of tasks in scope
+	byID := make(map[string]models.Task, len(allTasks))
+	parentMap := make(map[string][]models.Task)
+	top := make([]models.Task, 0)
+	for _, t := range allTasks {
+		// Respect original filter for the general tree view
+		if originalFilterFn != nil && !originalFilterFn(t) {
+			continue
 		}
-		if !found {
-			// If the specified root ID was not found in the filtered list, try to fetch it directly.
-			// This allows `list <id> --tree` even if `<id>` itself doesn't match other filters (e.g. --status), showing its subtree.
-			fetchedRoot, err := store.GetTask(currentTaskID)
-			if err == nil {
-				rootTask = fetchedRoot
-				found = true
-			} else {
-				HandleError(fmt.Sprintf("Error: Task ID %s specified for tree view not found.", currentTaskID), err)
-				return // Unreachable due to HandleError exiting, but good practice.
-			}
-		}
-		if found {
-			printTaskWithIndent(rootTask, indentLevel)
-			for _, subID := range rootTask.SubtaskIDs {
-				displayTasksAsTree(allTasks, subID, store, indentLevel+1, originalFilterFn)
-			}
-		}
-	} else { // Displaying all top-level tasks in the provided list as trees
-		parentMap := make(map[string][]models.Task)
-		topLevelTasks := []models.Task{}
-
-		for _, task := range allTasks {
-			if originalFilterFn != nil && !originalFilterFn(task) {
-				continue // Skip tasks that don't match the main filter
-			}
-			if task.ParentID == nil || *task.ParentID == "" {
-				topLevelTasks = append(topLevelTasks, task)
-			} else {
-				parentMap[*task.ParentID] = append(parentMap[*task.ParentID], task)
-			}
-		}
-
-		// A simple sort for top-level tasks, e.g., by CreatedAt or Title, can be added here if needed.
-		// sort.Slice(topLevelTasks, func(i, j int) bool { return topLevelTasks[i].CreatedAt.Before(topLevelTasks[j].CreatedAt) })
-
-		for _, rootTask := range topLevelTasks {
-			printTaskWithIndent(rootTask, indentLevel)
-			recursivelyPrintChildren(rootTask, parentMap, store, indentLevel+1, originalFilterFn)
+		byID[t.ID] = t
+		if t.ParentID == nil || *t.ParentID == "" {
+			top = append(top, t)
+		} else {
+			parentMap[*t.ParentID] = append(parentMap[*t.ParentID], t)
 		}
 	}
-}
 
-// recursivelyPrintChildren is a helper for displayTasksAsTree when starting from all top-level tasks.
-// It uses a pre-built parentMap for efficiency within the initial filtered list.
-func recursivelyPrintChildren(parentTask models.Task, parentMap map[string][]models.Task, store store.TaskStore, indentLevel int, originalFilterFn func(models.Task) bool) {
-	// Children directly from parentMap (already filtered by originalFilterFn during map construction)
-	if children, ok := parentMap[parentTask.ID]; ok {
-		// Can sort children here if needed, e.g. by title or creation date
-		for _, childTask := range children {
-			printTaskWithIndent(childTask, indentLevel)
-			recursivelyPrintChildren(childTask, parentMap, store, indentLevel+1, originalFilterFn)
-		}
-	} else if len(parentTask.SubtaskIDs) > 0 {
-		// If children were not in parentMap (e.g. not matching original filter, or --tree <id> scenario)
-		// but SubtaskIDs exist, fetch them directly. This path is more for the specific treeRootID scenario.
-		// In the all-tasks tree, parentMap should be comprehensive for tasks matching the filter.
-		for _, subID := range parentTask.SubtaskIDs {
-			// This part could be complex if we need to re-evaluate originalFilterFn for lazily fetched children.
-			// For now, if we are in this branch for the general tree, it implies these children were not in the initial `allTasks` that matched the filter.
-			// We might decide not to print them, or fetch and print them regardless of the original filter.
-			// For --tree <id>, this is how we fetch the entire subtree.
-			subTask, err := store.GetTask(subID) // This assumes store.GetTask is efficient enough.
-			if err == nil {
-				// Decide if originalFilterFn should apply to these dynamically fetched children.
-				// If --tree <id> is used, we typically want the whole subtree of <id>.
-				// If --tree is used with general filters, children not matching filter might be skipped.
-				// Current logic for all-tasks tree relies on parentMap, which respects originalFilterFn.
-				// This else-if branch is more for the `currentTaskID != ""` path of displayTasksAsTree.
-				printTaskWithIndent(subTask, indentLevel)
-				recursivelyPrintChildren(subTask, parentMap, store, indentLevel+1, originalFilterFn) // parentMap won't be used for these
+	// Helper to sort siblings for a pleasant order: priority desc, then status, then title
+	sortSiblings := func(list []models.Task) {
+		sort.SliceStable(list, func(i, j int) bool {
+			li, lj := list[i], list[j]
+			pi, pj := priorityToInt(li.Priority), priorityToInt(lj.Priority)
+			if pi != pj {
+				return pi > pj // higher priority first
 			}
+			si, sj := statusToInt(li.Status), statusToInt(lj.Status)
+			if si != sj {
+				return si < sj // workflow order
+			}
+			return strings.ToLower(li.Title) < strings.ToLower(lj.Title)
+		})
+	}
+	sortSiblings(top)
+	for k := range parentMap {
+		sortSiblings(parentMap[k])
+	}
+
+	// Current task marker
+	current := GetCurrentTask()
+
+	// Node printer using classic guide drawing algorithm
+	var printNode func(t models.Task, prefix string, isLast bool, useParentMap bool)
+	printNode = func(t models.Task, prefix string, isLast bool, useParentMap bool) {
+		// Line guide
+		connector := "├── "
+		nextPrefix := prefix + "│   "
+		if isLast {
+			connector = "└── "
+			nextPrefix = prefix + "    "
 		}
+
+		// Left gutter (omit connector for the very first printed root when prefix == "")
+		left := prefix
+		if prefix != "" || connector == "└── " || connector == "├── " {
+			left += connector
+		}
+
+		// Compose badges and content
+		curMark := ""
+		if current != "" && t.ID == current {
+			curMark = "📌 "
+		}
+		status := statusIcon(t.Status)
+		prio := priorityIcon(t.Priority)
+
+		deps := dependencySummaryIcons(t, depByID)
+		depPart := ""
+		if deps != "-" {
+			depPart = "  deps: " + deps
+		}
+
+		fmt.Printf("%s%s%s [%s] %s  %s%s\n", left, curMark, status, truncateUUID(t.ID), t.Title, prio, depPart)
+
+		// Children
+		var children []models.Task
+		if useParentMap {
+			children = parentMap[t.ID]
+		} else {
+			// Subtree mode: fetch via SubtaskIDs (full subtree for a specific root)
+			for _, cid := range t.SubtaskIDs {
+				if ct, ok := byID[cid]; ok {
+					children = append(children, ct)
+				} else if fetched, err := store.GetTask(cid); err == nil {
+					children = append(children, fetched)
+				}
+			}
+			sortSiblings(children)
+		}
+		for i, c := range children {
+			printNode(c, nextPrefix, i == len(children)-1, useParentMap)
+		}
+	}
+
+	if currentTaskID != "" {
+		// Subtree mode: start at the specified root (try filtered set, then store)
+		if r, ok := byID[currentTaskID]; ok {
+			printNode(r, "", true, false)
+			return
+		}
+		if fetched, err := store.GetTask(currentTaskID); err == nil {
+			printNode(fetched, "", true, false)
+			return
+		}
+		HandleError(fmt.Sprintf("Error: Task ID %s specified for tree view not found.", currentTaskID), fmt.Errorf("not found"))
+		return
+	}
+
+	// General tree: print all top-level tasks within filtered set
+	for i, r := range top {
+		printNode(r, "", i == len(top)-1, true)
 	}
 }
 
@@ -458,33 +528,39 @@ func truncateUUIDList(ids []string) string {
 	return strings.Join(truncated, ", ")
 }
 
-func printTaskWithIndent(task models.Task, indentLevel int) {
-	indent := strings.Repeat("  ", indentLevel) // 2 spaces per indent level
-	prefix := "\u251C\u2500\u2500 "             // ├──
-	if indentLevel == 0 {
-		prefix = ""
-	}
-	// Note: For future enhancement, tree rendering could be improved to show
-	// different symbols for last child vs middle child
-	// Display normalized status with indicator
-	statusDisplay := string(task.Status)
+// Legacy helper removed in favor of enhanced tree renderer.
 
-	fmt.Printf("%s%s[%s] %s (%s) Subtasks: %d, Parent: %s\n",
-		indent,
-		prefix,
-		truncateUUID(task.ID),
-		task.Title,
-		statusDisplay,
-		len(task.SubtaskIDs),
-		printParentID(task.ParentID),
-	)
-}
-
-func printParentID(parentID *string) string {
-	if parentID == nil || *parentID == "" {
-		return "none"
+// wrapText wraps the input string to the specified width using spaces as breakpoints.
+// It preserves existing newlines and returns a multi-line string suitable for table cells.
+func wrapText(s string, width int) string {
+	if width <= 0 || len(s) <= width {
+		return s
 	}
-	return *parentID
+	var out []string
+	for _, para := range strings.Split(s, "\n") {
+		line := ""
+		for _, word := range strings.Fields(para) {
+			if line == "" {
+				line = word
+				continue
+			}
+			if len(line)+1+len(word) <= width {
+				line += " " + word
+			} else {
+				out = append(out, line)
+				// If a single word is longer than width, hard-break it
+				for len(word) > width {
+					out = append(out, word[:width])
+					word = word[width:]
+				}
+				line = word
+			}
+		}
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // showCurrentTaskBanner displays current task information if set
@@ -523,4 +599,13 @@ func dependencySummaryIcons(task models.Task, byID map[string]models.Task) strin
 		return fmt.Sprintf("✅ %d/%d", done, total)
 	}
 	return fmt.Sprintf("⏱️ %d/%d", done, total)
+}
+
+// printLegendUnlessHidden prints a compact legend for icons if not suppressed
+func printLegendUnlessHidden(noLegend bool) {
+	if noLegend {
+		return
+	}
+	fmt.Println("Legend: ⭕ todo  🔄 doing  🔍 review  ✅ done | 🟩 low  🟨 medium  🟧 high  🟥 urgent | deps: ✅ x/y (done/total) | 📌 current task")
+	fmt.Println("")
 }

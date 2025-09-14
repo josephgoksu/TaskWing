@@ -9,8 +9,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// seedTasks adds sample tasks for intelligent MCP tests
-func seedTasks(t *testing.T) {
+// seedIntelligentTasks adds sample tasks for intelligent MCP tests
+func seedIntelligentTasks(t *testing.T) {
 	t.Helper()
 	st, err := GetStore()
 	if err != nil {
@@ -33,8 +33,8 @@ func seedTasks(t *testing.T) {
 }
 
 func TestQueryTasks_NaturalLanguage(t *testing.T) {
-	_ = setupTestProject(t)
-	seedTasks(t)
+	_ = SetupTestProject(t)
+	seedIntelligentTasks(t)
 
 	st, _ := GetStore()
 	defer func() { _ = st.Close() }()
@@ -56,8 +56,8 @@ func TestQueryTasks_NaturalLanguage(t *testing.T) {
 }
 
 func TestResolveTaskReference_ExactAndFuzzy(t *testing.T) {
-	_ = setupTestProject(t)
-	seedTasks(t)
+	_ = SetupTestProject(t)
+	seedIntelligentTasks(t)
 
 	// Fetch a task ID by listing tasks
 	st, _ := GetStore()

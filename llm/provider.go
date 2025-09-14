@@ -19,4 +19,13 @@ type Provider interface {
 
 	// EnhanceTask takes a system prompt, task input, and returns an enhanced task with improved details.
 	EnhanceTask(ctx context.Context, systemPrompt, taskInput, contextInfo string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) (types.EnhancedTask, error)
+
+	// BreakdownTask analyzes a task and suggests relevant subtasks
+	BreakdownTask(ctx context.Context, systemPrompt, taskTitle, taskDescription, acceptanceCriteria, contextInfo string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.EnhancedTask, error)
+
+	// SuggestNextTask provides context-aware suggestions for which task to work on next
+	SuggestNextTask(ctx context.Context, systemPrompt, contextInfo string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.TaskSuggestion, error)
+
+	// DetectDependencies analyzes tasks and suggests dependency relationships
+	DetectDependencies(ctx context.Context, systemPrompt, taskInfo, contextInfo string, modelName string, apiKey string, projectID string, maxTokens int, temperature float64) ([]types.DependencySuggestion, error)
 }

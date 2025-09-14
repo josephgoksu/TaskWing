@@ -201,28 +201,21 @@ func promptForInput(label, defaultValue string) string {
 
 // runCommand executes a TaskWing command programmatically
 func runCommand(cmdName string, args []string) error {
-	// Find the command in the root command tree
-	targetCmd, _, err := rootCmd.Find([]string{cmdName})
-	if err != nil {
-		return fmt.Errorf("command '%s' not found: %w", cmdName, err)
+	// Create a new root command instance to avoid state pollution
+	cmd := &cobra.Command{Use: "taskwing"}
+
+	// Add all the same subcommands that rootCmd has
+	for _, subCmd := range rootCmd.Commands() {
+		cmd.AddCommand(subCmd)
 	}
 
-	// Save and restore original args
-	originalArgs := os.Args
-	defer func() { os.Args = originalArgs }()
+	// Construct the full command line
+	fullArgs := append([]string{cmdName}, args...)
 
-	// Set up the command context with args
-	os.Args = append([]string{os.Args[0], cmdName}, args...)
+	// Set the arguments and execute
+	cmd.SetArgs(fullArgs)
 
-	// Call the command's Run function directly
-	if targetCmd.RunE != nil {
-		return targetCmd.RunE(targetCmd, args)
-	} else if targetCmd.Run != nil {
-		targetCmd.Run(targetCmd, args)
-		return nil
-	}
-
-	return fmt.Errorf("command '%s' has no run function", cmdName)
+	return cmd.Execute()
 }
 
 // showNextSteps shows what the user should do next based on where they stopped
@@ -261,7 +254,8 @@ func showCompletionMessage() {
 	fmt.Println("   • taskwing search   → Find specific tasks")
 	fmt.Println("   • taskwing next     → Get AI task suggestions")
 	fmt.Println("   • taskwing current  → Manage active work")
-	fmt.Println("   • taskwing expand   → Break tasks into subtasks")
+	fmt.Println("   • taskwing plan     → Generate a concise plan (subtasks)")
+	fmt.Println("   • taskwing iterate  → Refine or split a specific step")
 	fmt.Println()
 	fmt.Println("🤖 Pro tip: Try AI-enhanced task creation by running 'taskwing add' without --no-ai!")
 	fmt.Println("Happy task managing! 🚀")
