@@ -86,7 +86,9 @@ coverage:
 lint:
 	@echo "🔍 Running linting and formatting..."
 	$(GO) fmt ./...
-	@if command -v golangci-lint >/dev/null 2>&1; then \
+	@if [ -n "$(SKIP_GOLANGCI)" ]; then \
+		echo "⏭️  SKIP_GOLANGCI set; skipping golangci-lint"; \
+	elif command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run; \
 	else \
 		echo "⚠️  golangci-lint not installed, skipping linting"; \
@@ -115,8 +117,8 @@ dev-setup:
 	$(GO) mod tidy
 	$(GO) generate ./...
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
-		echo "📦 Installing golangci-lint..."; \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.54.2; \
+		echo "📦 Installing golangci-lint from source..."; \
+		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0; \
 	fi
 	@echo "✅ Development setup complete"
 

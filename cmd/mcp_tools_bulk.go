@@ -614,33 +614,41 @@ func bulkByFilterHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Bul
 		var ids []string
 		var errorsList []string
 
-        for _, t := range matched {
-            var aerr error
-            acted := false
-            switch strings.ToLower(args.Action) {
-            case "complete", "done", "mark-done":
-                if t.Status != models.StatusDone {
-                    if _, aerr = taskStore.MarkTaskDone(t.ID); aerr == nil { acted = true }
-                }
-            case "delete":
-                if err := taskStore.DeleteTask(t.ID); err != nil { aerr = err } else { acted = true }
-            case "prioritize":
-                if args.Priority == "" {
-                    aerr = fmt.Errorf("priority required for prioritize action")
-                } else {
-                    if _, aerr = taskStore.UpdateTask(t.ID, map[string]interface{}{"priority": args.Priority}); aerr == nil { acted = true }
-                }
-            default:
-                aerr = fmt.Errorf("invalid action: %s", args.Action)
-            }
-            if aerr != nil {
-                failed++
-                errorsList = append(errorsList, fmt.Sprintf("%s: %v", t.ID, aerr))
-            } else if acted {
-                succeeded++
-                ids = append(ids, t.ID)
-            }
-        }
+		for _, t := range matched {
+			var aerr error
+			acted := false
+			switch strings.ToLower(args.Action) {
+			case "complete", "done", "mark-done":
+				if t.Status != models.StatusDone {
+					if _, aerr = taskStore.MarkTaskDone(t.ID); aerr == nil {
+						acted = true
+					}
+				}
+			case "delete":
+				if err := taskStore.DeleteTask(t.ID); err != nil {
+					aerr = err
+				} else {
+					acted = true
+				}
+			case "prioritize":
+				if args.Priority == "" {
+					aerr = fmt.Errorf("priority required for prioritize action")
+				} else {
+					if _, aerr = taskStore.UpdateTask(t.ID, map[string]interface{}{"priority": args.Priority}); aerr == nil {
+						acted = true
+					}
+				}
+			default:
+				aerr = fmt.Errorf("invalid action: %s", args.Action)
+			}
+			if aerr != nil {
+				failed++
+				errorsList = append(errorsList, fmt.Sprintf("%s: %v", t.ID, aerr))
+			} else if acted {
+				succeeded++
+				ids = append(ids, t.ID)
+			}
+		}
 
 		resp := types.BulkByFilterResponse{
 			Preview:      false,

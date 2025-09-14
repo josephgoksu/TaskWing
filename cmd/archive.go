@@ -31,7 +31,7 @@ var archiveListCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Failed to init archive store", err)
 		}
-		defer s.Close()
+		defer func() { _ = s.Close() }()
 		items, err := s.List()
 		if err != nil {
 			HandleError("Failed to list archives", err)
@@ -47,30 +47,30 @@ var archiveListCmd = &cobra.Command{
 }
 
 var archiveViewCmd = &cobra.Command{
-    Use:     "view <id>",
-    Aliases: []string{"show"},
-    Short:   "View archived entry",
-    Args:    cobra.ExactArgs(1),
-    Run: func(cmd *cobra.Command, args []string) {
-        id := args[0]
-        s, err := getArchiveStore()
-        if err != nil {
-            HandleError("Failed to init archive store", err)
-        }
-        defer s.Close()
-        e, path, err := s.GetByID(id)
-        if err != nil {
-            // Provide actionable guidance with specific steps
-            fmt.Printf("❌ Archive entry not found for '%s'\n", id)
-            fmt.Printf("\n💡 Tips:\n")
-            fmt.Printf("   • Use 'taskwing archive list' to see all archived tasks\n")
-            fmt.Printf("   • Archive IDs can be used as full UUID or 8-char prefix\n")
-            fmt.Printf("   • This command expects an archive ID, not a task ID\n")
-            os.Exit(1)
-        }
-        fmt.Printf("ID: %s\nTitle: %s\nArchivedAt: %s\nFile: %s\n\nDescription:\n%s\n\nLessons Learned:\n%s\n",
-            e.ID, e.Title, e.ArchivedAt.Format(time.RFC3339), path, e.Description, e.LessonsLearned)
-    },
+	Use:     "view <id>",
+	Aliases: []string{"show"},
+	Short:   "View archived entry",
+	Args:    cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		id := args[0]
+		s, err := getArchiveStore()
+		if err != nil {
+			HandleError("Failed to init archive store", err)
+		}
+		defer func() { _ = s.Close() }()
+		e, path, err := s.GetByID(id)
+		if err != nil {
+			// Provide actionable guidance with specific steps
+			fmt.Printf("❌ Archive entry not found for '%s'\n", id)
+			fmt.Printf("\n💡 Tips:\n")
+			fmt.Printf("   • Use 'taskwing archive list' to see all archived tasks\n")
+			fmt.Printf("   • Archive IDs can be used as full UUID or 8-char prefix\n")
+			fmt.Printf("   • This command expects an archive ID, not a task ID\n")
+			os.Exit(1)
+		}
+		fmt.Printf("ID: %s\nTitle: %s\nArchivedAt: %s\nFile: %s\n\nDescription:\n%s\n\nLessons Learned:\n%s\n",
+			e.ID, e.Title, e.ArchivedAt.Format(time.RFC3339), path, e.Description, e.LessonsLearned)
+	},
 }
 
 var (
@@ -90,7 +90,7 @@ var archiveSearchCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Failed to init archive store", err)
 		}
-		defer s.Close()
+		defer func() { _ = s.Close() }()
 		var fromPtr, toPtr *time.Time
 		if filterFrom != "" {
 			t, err := time.Parse("2006-01-02", filterFrom)
@@ -127,16 +127,16 @@ var (
 )
 
 var archiveAddCmd = &cobra.Command{
-    Use:   "add <task-id-or-ref>",
-    Short: "Archive an existing task on-demand",
-    Args:  cobra.ExactArgs(1),
-    Run: func(cmd *cobra.Command, args []string) {
-        ref := args[0]
-        tasks, err := GetStore()
-        if err != nil {
-            HandleError("Failed to init task store", err)
-        }
-        defer tasks.Close()
+	Use:   "add <task-id-or-ref>",
+	Short: "Archive an existing task on-demand",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		ref := args[0]
+		tasks, err := GetStore()
+		if err != nil {
+			HandleError("Failed to init task store", err)
+		}
+		defer func() { _ = tasks.Close() }()
 
 		t, err := resolveTaskReference(tasks, ref)
 		if err != nil {
@@ -172,59 +172,60 @@ var archiveAddCmd = &cobra.Command{
 			}
 		}
 
-        arch := store.NewFileArchiveStore()
-        if err := arch.Initialize(map[string]string{"archiveDir": getArchiveDir()}); err != nil {
-            HandleError("Failed to init archive store", err)
-        }
-        defer arch.Close()
+		arch := store.NewFileArchiveStore()
+		if err := arch.Initialize(map[string]string{"archiveDir": getArchiveDir()}); err != nil {
+			HandleError("Failed to init archive store", err)
+		}
+		defer func() { _ = arch.Close() }()
 
-        if addAIFix && strings.TrimSpace(lessons) != "" {
-            if polished, ok := aiPolishLessons(lessons); ok {
-                lessons = polished
-            }
-        }
+		if addAIFix && strings.TrimSpace(lessons) != "" {
+			if polished, ok := aiPolishLessons(lessons); ok {
+				lessons = polished
+			}
+		}
 
-        var entries []models.ArchiveEntry
-        var err error
+		var entries []models.ArchiveEntry
 
-        if addKeepTask {
-            // Archive without deleting - only archive the parent task for simplicity
-            entry, archiveErr := arch.CreateFromTask(*t, lessons, tags)
-            if archiveErr != nil {
-                HandleError("Failed to archive task", archiveErr)
-            }
-            entries = []models.ArchiveEntry{entry}
-        } else {
-            // Archive and delete the entire subtree (parent + descendants)
-            entries, err = archiveAndDeleteSubtree(tasks, arch, *t, lessons, tags)
-            if err != nil {
-                HandleError("Failed to archive task subtree", err)
-            }
-        }
+		if addKeepTask {
+			// Archive without deleting - only archive the parent task for simplicity
+			entry, archiveErr := arch.CreateFromTask(*t, lessons, tags)
+			if archiveErr != nil {
+				HandleError("Failed to archive task", archiveErr)
+			}
+			entries = []models.ArchiveEntry{entry}
+		} else {
+			// Archive and delete the entire subtree (parent + descendants)
+			entries, err = archiveAndDeleteSubtree(tasks, arch, *t, lessons, tags)
+			if err != nil {
+				HandleError("Failed to archive task subtree", err)
+			}
+		}
 
-        // Output summary based on the parent entry (first) plus count
-        if len(entries) > 0 {
-            parent := entries[0]
-            _, path, err := arch.GetByID(parent.ID)
-            if err != nil {
-                fmt.Printf("Warning: could not get archive path: %v\n", err)
-                path = ""
-            }
-            short := shortID(parent.ID)
-            if !addKeepTask {
-                fmt.Printf("✅ Task removed from active list\n")
-            } else {
-                fmt.Printf("📌 Task kept on active list (--keep flag used)\n")
-            }
-            fmt.Printf("🗄️  Archived: %s (archive-id: %s)\n", parent.Title, short)
-            if path != "" { fmt.Printf("     ↳ %s\n", path) }
-            if len(entries) > 1 {
-                fmt.Printf("     + %d related subtask(s) archived\n", len(entries)-1)
-            }
-            fmt.Printf("     View:   taskwing archive view %s\n", short)
-            fmt.Printf("     Search: taskwing archive search \"%s\"\n", parent.Title)
-        }
-    },
+		// Output summary based on the parent entry (first) plus count
+		if len(entries) > 0 {
+			parent := entries[0]
+			_, path, err := arch.GetByID(parent.ID)
+			if err != nil {
+				fmt.Printf("Warning: could not get archive path: %v\n", err)
+				path = ""
+			}
+			short := shortID(parent.ID)
+			if !addKeepTask {
+				fmt.Printf("✅ Task removed from active list\n")
+			} else {
+				fmt.Printf("📌 Task kept on active list (--keep flag used)\n")
+			}
+			fmt.Printf("🗄️  Archived: %s (archive-id: %s)\n", parent.Title, short)
+			if path != "" {
+				fmt.Printf("     ↳ %s\n", path)
+			}
+			if len(entries) > 1 {
+				fmt.Printf("     + %d related subtask(s) archived\n", len(entries)-1)
+			}
+			fmt.Printf("     View:   taskwing archive view %s\n", short)
+			fmt.Printf("     Search: taskwing archive search \"%s\"\n", parent.Title)
+		}
+	},
 }
 
 var archiveRestoreCmd = &cobra.Command{
@@ -237,12 +238,12 @@ var archiveRestoreCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Failed to init archive store", err)
 		}
-		defer arch.Close()
+		defer func() { _ = arch.Close() }()
 		tasks, err := GetStore()
 		if err != nil {
 			HandleError("Failed to init task store", err)
 		}
-		defer tasks.Close()
+		defer func() { _ = tasks.Close() }()
 		t, err := arch.RestoreToTaskStore(id, tasks)
 		if err != nil {
 			HandleError("Restore failed", err)
@@ -261,7 +262,7 @@ var archiveExportCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Failed to init archive store", err)
 		}
-		defer s.Close()
+		defer func() { _ = s.Close() }()
 		// Export to a temp file first
 		tmp := out + ".tmp"
 		_ = os.Remove(tmp)
@@ -299,7 +300,7 @@ var archiveImportCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Failed to init archive store", err)
 		}
-		defer s.Close()
+		defer func() { _ = s.Close() }()
 		src := in
 		tmp := ""
 		if importDecrypt {
@@ -335,7 +336,7 @@ var archivePurgeCmd = &cobra.Command{
 		if err != nil {
 			HandleError("Failed to init archive store", err)
 		}
-		defer s.Close()
+		defer func() { _ = s.Close() }()
 		var older *time.Duration
 		if purgeOlderThan != "" {
 			d, err := time.ParseDuration(purgeOlderThan)
@@ -389,9 +390,9 @@ func init() {
 
 	archiveAddCmd.Flags().StringVar(&addLessons, "lessons", "", "Lessons learned text (optional)")
 	archiveAddCmd.Flags().StringVar(&addTags, "tags", "", "Comma-separated tags (optional)")
-    // Default to no-AI to minimize token usage; users can opt-in per run
-    archiveAddCmd.Flags().BoolVar(&addAISuggest, "ai-suggest", false, "Use AI to propose lessons learned suggestions (default: false)")
-    archiveAddCmd.Flags().BoolVar(&addAIFix, "ai-fix", false, "Use AI to polish/grammar-fix lessons text (default: false)")
+	// Default to no-AI to minimize token usage; users can opt-in per run
+	archiveAddCmd.Flags().BoolVar(&addAISuggest, "ai-suggest", false, "Use AI to propose lessons learned suggestions (default: false)")
+	archiveAddCmd.Flags().BoolVar(&addAIFix, "ai-fix", false, "Use AI to polish/grammar-fix lessons text (default: false)")
 	archiveAddCmd.Flags().BoolVar(&addAIAuto, "ai-auto", false, "Auto-pick the first AI suggestion without prompting")
 	archiveAddCmd.Flags().BoolVar(&addKeepTask, "keep", false, "Keep task on active list after archiving (default: remove)")
 	// Provide a clean, archive-specific help template so root-level examples don't appear here

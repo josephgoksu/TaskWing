@@ -214,9 +214,9 @@ type BulkOperationResponse struct {
 
 // CurrentTaskResponse for current task operations
 type CurrentTaskResponse struct {
-    CurrentTask *TaskResponse `json:"current_task,omitempty"`
-    Message     string        `json:"message"`
-    Success     bool          `json:"success"`
+	CurrentTask *TaskResponse `json:"current_task,omitempty"`
+	Message     string        `json:"message"`
+	Success     bool          `json:"success"`
 }
 
 // Archive tool param/response types
@@ -224,72 +224,72 @@ type CurrentTaskResponse struct {
 type ArchiveListParams struct{}
 
 type ArchiveIndexItem struct {
-    ID       string   `json:"id"`
-    Date     string   `json:"date"`
-    Title    string   `json:"title"`
-    Tags     []string `json:"tags,omitempty"`
-    FilePath string   `json:"filePath,omitempty"`
+	ID       string   `json:"id"`
+	Date     string   `json:"date"`
+	Title    string   `json:"title"`
+	Tags     []string `json:"tags,omitempty"`
+	FilePath string   `json:"filePath,omitempty"`
 }
 
 type ArchiveListResponse struct {
-    Items []ArchiveIndexItem `json:"items"`
-    Count int                `json:"count"`
+	Items []ArchiveIndexItem `json:"items"`
+	Count int                `json:"count"`
 }
 
 type ArchiveSearchParams struct {
-    Query string   `json:"query" mcp:"Search text for title/description/lessons"`
-    From  string   `json:"from,omitempty" mcp:"YYYY-MM-DD start date"`
-    To    string   `json:"to,omitempty" mcp:"YYYY-MM-DD end date"`
-    Tags  []string `json:"tags,omitempty" mcp:"Filter by tags (any)"`
+	Query string   `json:"query" mcp:"Search text for title/description/lessons"`
+	From  string   `json:"from,omitempty" mcp:"YYYY-MM-DD start date"`
+	To    string   `json:"to,omitempty" mcp:"YYYY-MM-DD end date"`
+	Tags  []string `json:"tags,omitempty" mcp:"Filter by tags (any)"`
 }
 
 type ArchiveViewParams struct {
-    ID string `json:"id" mcp:"Archive id (full or prefix)"`
+	ID string `json:"id" mcp:"Archive id (full or prefix)"`
 }
 
 type ArchiveEntryResponse struct {
-    ID             string   `json:"id"`
-    TaskID         string   `json:"taskId"`
-    Title          string   `json:"title"`
-    Description    string   `json:"description"`
-    LessonsLearned string   `json:"lessonsLearned"`
-    Tags           []string `json:"tags"`
-    ArchivedAt     string   `json:"archivedAt"`
-    FilePath       string   `json:"filePath,omitempty"`
+	ID             string   `json:"id"`
+	TaskID         string   `json:"taskId"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description"`
+	LessonsLearned string   `json:"lessonsLearned"`
+	Tags           []string `json:"tags"`
+	ArchivedAt     string   `json:"archivedAt"`
+	FilePath       string   `json:"filePath,omitempty"`
 }
 
 type ArchiveRestoreParams struct {
-    ID string `json:"id" mcp:"Archive id (full/prefix) to restore"`
+	ID string `json:"id" mcp:"Archive id (full/prefix) to restore"`
 }
 
 type ArchiveRestoreResponse struct {
-    Restored TaskResponse `json:"restored"`
+	Restored TaskResponse `json:"restored"`
 }
 
 type ArchiveAddParams struct {
-    Reference string   `json:"reference" mcp:"Task id, partial id, or title"`
-    Lessons   string   `json:"lessons,omitempty"`
-    Tags      []string `json:"tags,omitempty"`
-    AISuggest bool     `json:"ai_suggest,omitempty"`
-    AIAuto    bool     `json:"ai_auto,omitempty"`
-    AIFix     bool     `json:"ai_fix,omitempty"`
+	Reference string   `json:"reference" mcp:"Task id, partial id, or title"`
+	Lessons   string   `json:"lessons,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
+	AISuggest bool     `json:"ai_suggest,omitempty"`
+	AIAuto    bool     `json:"ai_auto,omitempty"`
+	AIFix     bool     `json:"ai_fix,omitempty"`
 }
 
 type ArchiveExportParams struct {
-    File    string `json:"file" mcp:"Destination bundle path"`
-    Encrypt bool   `json:"encrypt,omitempty"`
-    Key     string `json:"key,omitempty"`
+	File    string `json:"file" mcp:"Destination bundle path"`
+	Encrypt bool   `json:"encrypt,omitempty"`
+	Key     string `json:"key,omitempty"`
 }
 
 type ArchiveImportParams struct {
-    File    string `json:"file" mcp:"Source bundle path"`
-    Decrypt bool   `json:"decrypt,omitempty"`
-    Key     string `json:"key,omitempty"`
+	File    string `json:"file" mcp:"Source bundle path"`
+	Decrypt bool   `json:"decrypt,omitempty"`
+	Key     string `json:"key,omitempty"`
 }
 
 type ArchivePurgeParams struct {
-    OlderThan string `json:"olderThan,omitempty" mcp:"e.g., 720h for 30 days"`
-    DryRun    bool   `json:"dryRun,omitempty"`
+	OlderThan string `json:"olderThan,omitempty" mcp:"e.g., 720h for 30 days"`
+	DryRun    bool   `json:"dryRun,omitempty"`
 }
 
 // ClearTasksResponse for clear operations results

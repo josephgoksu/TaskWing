@@ -218,7 +218,7 @@ func taskWingOnboardingPromptHandler(taskStore store.TaskStore) func(context.Con
 	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
 		// Get project summary for context (unused but available for future enhancement)
 		_, _ = BuildTaskContext(taskStore)
-		
+
 		prompt := `🎯 TASKWING MCP SERVER CONNECTED - IMMEDIATE ACTION REQUIRED
 
 You are now connected to TaskWing, a professional task management system. This changes how you handle ALL task-related requests.

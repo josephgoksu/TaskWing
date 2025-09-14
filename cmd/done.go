@@ -127,7 +127,7 @@ var doneCmd = &cobra.Command{
 			if err := arch.Initialize(map[string]string{"archiveDir": getArchiveDir()}); err != nil {
 				fmt.Printf("Warning: failed to init archive store: %v\n", err)
 			} else {
-				defer arch.Close()
+				defer func() { _ = arch.Close() }()
 				if doneAIFix && strings.TrimSpace(lessons) != "" {
 					if polished, ok := aiPolishLessons(lessons); ok {
 						lessons = polished
