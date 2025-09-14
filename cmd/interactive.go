@@ -688,15 +688,16 @@ func handleClearTasks() error {
 		return nil
 	}
 
-	// Delete all done tasks
-	for _, task := range doneTasks {
-		err = taskStore.DeleteTask(task.ID)
-		if err != nil {
-			fmt.Printf("Warning: Could not delete task %s: %v\n", task.Title, err)
-		}
+	// Delete all done tasks in batch for better relationship handling
+	ids := make([]string, 0, len(doneTasks))
+	for _, t := range doneTasks {
+		ids = append(ids, t.ID)
 	}
-
-	fmt.Printf("✅ Cleared %d completed tasks\n", len(doneTasks))
+	deletedCount, err := taskStore.DeleteTasks(ids)
+	if err != nil {
+		fmt.Printf("Warning: Batch clear encountered an error: %v\n", err)
+	}
+	fmt.Printf("✅ Cleared %d completed tasks\n", deletedCount)
 	pressAnyKey()
 	return nil
 }

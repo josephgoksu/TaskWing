@@ -66,8 +66,8 @@ func resolveReference(reference string, tasks []models.Task) (string, []types.Ta
 		}
 	}
 
-	// High confidence threshold
-	if best.Score >= 0.8 {
+	// High confidence threshold (tuned down to improve practical matches)
+	if best.Score >= 0.7 {
 		return best.Task.ID, all, true
 	}
 	return "", all, false
@@ -95,12 +95,18 @@ func normalizePriorityString(input string) (string, error) {
 		return "medium", nil
 
 	// High synonyms/typos
-	case "hi", "h", "important", "importantn", "imp", "prio-high", "high-priority":
+	case "hi", "h", "important", "importantn", "imp", "prio-high", "high-priority", "p1":
 		return "high", nil
 
 	// Urgent synonyms/typos
 	case "urg", "u", "critical", "asap", "emergency", "prio-urgent", "urgent!":
 		return "urgent", nil
+
+	// Common alternate priority formats
+	case "p2", "p3", "p4":
+		return "medium", nil
+	case "p5", "p0":
+		return "low", nil
 	}
 
 	return "", fmt.Errorf("unknown priority '%s'", input)

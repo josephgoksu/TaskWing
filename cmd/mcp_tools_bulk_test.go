@@ -12,7 +12,8 @@ import (
 func seedSimple(t *testing.T, st interface {
 	DeleteAllTasks() error
 	CreateTask(models.Task) (models.Task, error)
-}) {
+},
+) {
 	t.Helper()
 	_ = st.DeleteAllTasks()
 	// Two TODOs and one DOING
@@ -22,7 +23,7 @@ func seedSimple(t *testing.T, st interface {
 }
 
 func TestBulkByFilter_PreviewAndConfirm_Complete(t *testing.T) {
-	_ = setupTestProject(t)
+	_ = SetupTestProject(t)
 	st, _ := GetStore()
 	defer func() { _ = st.Close() }()
 	seedSimple(t, st)

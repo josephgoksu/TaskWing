@@ -1065,19 +1065,19 @@ func RegisterIntelligentMCPTools(server *mcp.Server, taskStore store.TaskStore) 
 	// Intelligent query tasks tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "query-tasks",
-		Description: "Natural language or structured query. Examples: 'high priority unfinished', 'status:todo AND priority:urgent'. Supports fuzzy matching; returns tasks with match details.",
+		Description: "🔍 NATURAL LANGUAGE SEARCH (preferred for general search): Examples: 'high priority unfinished', 'what needs review'. Supports fuzzy matching and smart interpretation.",
 	}, queryTasksHandler(taskStore))
 
 	// Smart task finding tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "find-task",
-		Description: "Find a task by partial ID, fuzzy title, or description. Handles typos and prioritizes current task context. Returns best matches first.",
+		Description: "🔍 FIND SINGLE TASK (use for specific task lookup): Find by partial ID, fuzzy title, or description. Handles typos. Best for: 'find task abc123' or 'find login task'.",
 	}, findTaskHandler(taskStore))
 
 	// Task suggestion tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "suggest-tasks",
-		Description: "Suggest likely-relevant tasks from input + current context. Returns ranked suggestions with scores.",
+		Description: "🤖 AI-POWERED SUGGESTIONS: Get relevant task recommendations based on context and input. Returns ranked suggestions with confidence scores.",
 	}, suggestTasksHandler(taskStore))
 
 	return nil

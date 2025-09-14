@@ -85,7 +85,7 @@ func (s *FileTaskStore) Initialize(config map[string]string) error {
 	// Ensure the directory for the file path exists
 	dir := filepath.Dir(s.filePath)
 	if dir != "." && dir != "" {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
@@ -131,13 +131,13 @@ func (s *FileTaskStore) loadTasksFromFileInternal() error {
 			s.tasks = make(map[string]models.Task)
 			// If data file doesn't exist, checksum file shouldn't either. Clean up if it does.
 			_ = os.Remove(checksumFilePath)
-			if f, createErr := os.OpenFile(s.filePath, os.O_CREATE|os.O_RDWR, 0644); createErr != nil {
+			if f, createErr := os.OpenFile(s.filePath, os.O_CREATE|os.O_RDWR, 0o644); createErr != nil {
 				return fmt.Errorf("failed to create data file %s: %w", s.filePath, createErr)
 			} else {
 				_ = f.Close()
 			}
 			// Create an empty checksum file for a new empty data file
-			if err := os.WriteFile(checksumFilePath, []byte(calculateChecksum([]byte{})), 0644); err != nil {
+			if err := os.WriteFile(checksumFilePath, []byte(calculateChecksum([]byte{})), 0o644); err != nil {
 				// Non-critical, log or ignore. The next save will attempt to create it.
 				fmt.Printf("Warning: could not write initial checksum file %s: %v\n", checksumFilePath, err)
 			}
@@ -169,7 +169,7 @@ func (s *FileTaskStore) loadTasksFromFileInternal() error {
 	if len(data) == 0 {
 		// If data is empty, ensure checksum reflects this or is created.
 		currentChecksum := calculateChecksum([]byte{})
-		_ = os.WriteFile(checksumFilePath, []byte(currentChecksum), 0644) // best effort
+		_ = os.WriteFile(checksumFilePath, []byte(currentChecksum), 0o644) // best effort
 		s.tasks = make(map[string]models.Task)
 		return nil
 	}
@@ -239,13 +239,13 @@ func (s *FileTaskStore) saveTasksToFileInternal() error {
 	defer func() { _ = os.Remove(tempFilePath) }()
 	defer func() { _ = os.Remove(tempChecksumFilePath) }()
 
-	if err := os.WriteFile(tempFilePath, marshaledData, 0644); err != nil {
+	if err := os.WriteFile(tempFilePath, marshaledData, 0o644); err != nil {
 		return fmt.Errorf("failed to write to temporary data file %s: %w", tempFilePath, err)
 	}
 
 	// Data file written to temp, now calculate its checksum
 	actualChecksum := calculateChecksum(marshaledData)
-	if err := os.WriteFile(tempChecksumFilePath, []byte(actualChecksum), 0644); err != nil {
+	if err := os.WriteFile(tempChecksumFilePath, []byte(actualChecksum), 0o644); err != nil {
 		return fmt.Errorf("failed to write to temporary checksum file %s: %w", tempChecksumFilePath, err)
 	}
 
@@ -889,7 +889,7 @@ func (s *FileTaskStore) Backup(destinationPath string) error {
 		return fmt.Errorf("failed to read source file %s for backup: %w", s.filePath, err)
 	}
 
-	if err = os.WriteFile(destinationPath, input, 0644); err != nil {
+	if err = os.WriteFile(destinationPath, input, 0o644); err != nil {
 		return fmt.Errorf("failed to write backup file to %s: %w", destinationPath, err)
 	}
 	// Note: Backup does not copy the .checksum file. The backed up data file
@@ -915,7 +915,7 @@ func (s *FileTaskStore) Restore(sourcePath string) error {
 	tempFilePath := s.filePath + ".tmp_restore"
 	defer func() { _ = os.Remove(tempFilePath) }()
 
-	if err = os.WriteFile(tempFilePath, sourceData, 0644); err != nil {
+	if err = os.WriteFile(tempFilePath, sourceData, 0o644); err != nil {
 		return fmt.Errorf("failed to write restored data to temporary file %s: %w", tempFilePath, err)
 	}
 

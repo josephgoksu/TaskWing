@@ -32,12 +32,12 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "taskwing",
 	Short: "TaskWing CLI helps you manage your tasks efficiently.",
-	Long: ` ████████╗ █████╗ ███████╗██╗  ██╗██╗    ██╗██╗███╗   ██╗ ██████╗ 
- ╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝██║    ██║██║████╗  ██║██╔════╝ 
+	Long: ` ████████╗ █████╗ ███████╗██╗  ██╗██╗    ██╗██╗███╗   ██╗ ██████╗
+ ╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝██║    ██║██║████╗  ██║██╔════╝
     ██║   ███████║███████╗█████╔╝ ██║ █╗ ██║██║██╔██╗ ██║██║  ███╗
     ██║   ██╔══██║╚════██║██╔═██╗ ██║███╗██║██║██║╚██╗██║██║   ██║
     ██║   ██║  ██║███████║██║  ██╗╚███╔███╔╝██║██║ ╚████║╚██████╔╝
-    ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+    ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝
 
 TaskWing CLI is a comprehensive tool to manage your tasks from the command line.
 It allows you to initialize a task repository, add, list, update, and delete tasks.`,
@@ -63,12 +63,16 @@ func Execute() {
 
 // Command categories for organized help display
 var commandCategories = map[string][]string{
-	"Getting Started":      {"quickstart", "interactive"},
-	"Core Tasks":           {"add", "list", "show", "update", "delete"},
-	"Workflow":             {"start", "review", "done", "current"},
-	"Discovery & Planning": {"search", "next", "expand", "clear"},
-	"Project Setup":        {"init", "reset", "config"},
-	"System & Utilities":   {"mcp", "generate", "completion", "version", "help"},
+	"Getting Started":    {"quickstart", "flow", "interactive"},
+	"Core Tasks":         {"add", "list", "show", "update", "delete"},
+	"Task Status":        {"start", "review", "done", "current"},
+	"Planning":           {"plan", "iterate"},
+	"Discovery":          {"search", "next", "clear"},
+	"Project Setup":      {"init", "reset", "config"},
+	"System & Utilities": {"mcp", "completion", "version", "help"},
+	"Archive":            {"archive"},
+	// Context-aware: for the 'archive' parent command, these will match its subcommands
+	"Archive Ops": {"view", "restore", "export", "import", "purge"},
 }
 
 // getGroupedHelpTemplate returns a custom help template with grouped commands
@@ -81,7 +85,7 @@ Usage:{{if .Runnable}}
 
 Common Workflows:
   {{.CommandPath}} quickstart                    # Interactive getting started guide
-  {{.CommandPath}} add "Fix login bug"           # Create a new task  
+  {{.CommandPath}} add "Fix login bug"           # Create a new task
   {{.CommandPath}} ls                            # List all tasks
   {{.CommandPath}} start <task-id>               # Begin working on a task
   {{.CommandPath}} done <task-id>                # Mark task complete

@@ -41,7 +41,7 @@ Perfect for getting started - everything you need in one command!`,
 		projectTasksDir := filepath.Join(projectRootDir, cfg.Project.TasksDir)
 
 		// Create the project root and tasks directories
-		if err := os.MkdirAll(projectTasksDir, 0755); err != nil {
+		if err := os.MkdirAll(projectTasksDir, 0o755); err != nil {
 			HandleError(fmt.Sprintf("Error: Could not create project directories at '%s'.", projectTasksDir), err)
 		}
 
@@ -82,7 +82,7 @@ data:
 # --- Optional configurations ---
 # Uncomment and customize as needed.
 
-# --- LLM Configuration for 'taskwing generate tasks' ---
+# --- LLM Configuration for 'taskwing plan' and 'taskwing iterate' ---
 # llm:
 #   provider: "%s"
 #   modelName: "%s"
@@ -117,7 +117,7 @@ data:
 			)
 
 			// Write the config file
-			err = os.WriteFile(projectConfigFilePath, []byte(defaultConfigContent), 0644)
+			err = os.WriteFile(projectConfigFilePath, []byte(defaultConfigContent), 0o644)
 			if err != nil {
 				HandleError(fmt.Sprintf("Error: Could not write configuration file at '%s'.", projectConfigFilePath), err)
 			}
@@ -369,5 +369,5 @@ func updateLLMConfigInFile(configPath, modelName, apiKey string) error {
 	}
 
 	// Write the updated content back to the file
-	return os.WriteFile(configPath, []byte(strings.Join(newLines, "\n")), 0644)
+	return os.WriteFile(configPath, []byte(strings.Join(newLines, "\n")), 0o644)
 }

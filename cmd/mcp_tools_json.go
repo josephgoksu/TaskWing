@@ -567,7 +567,7 @@ func RegisterJSONProcessingTools(server *mcp.Server, taskStore store.TaskStore) 
 	// Filter tasks tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "filter-tasks",
-		Description: "Filter using JSONPath-style or expressions. Examples: $.status==\"todo\"; status=todo AND priority=urgent. Args: filter, expression, limit, fields.",
+		Description: "⚙️ TECHNICAL FILTER (for developers): JSONPath or expression-based filtering. Examples: $.status==\"todo\"; priority=urgent. Returns raw JSON data.",
 	}, filterTasksHandler(taskStore))
 
 	// Extract task IDs tool

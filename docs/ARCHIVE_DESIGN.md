@@ -4,6 +4,12 @@
 
 The TaskWing Archive System provides a mechanism to preserve completed tasks with enriched metadata, capture lessons learned, and maintain a searchable knowledge base for improving future task management and AI assistance.
 
+### Final Decisions
+- Backend: file-based JSON with a lightweight `index.json` (no external DB dependencies). This aligns with TaskWing's local-first design and current build constraints.
+- Search: simple case-insensitive substring matching over title, description, and lessons learned; metadata filters for date range and tags; assignees optional.
+- Layout: year/month directories under `.taskwing/archive/` with one JSON entry per archived task and a global `index.json` for listings.
+- Forward compatibility: structure is compatible with future SQLite+FTS5 migration without changing CLI contracts.
+
 ## Architecture
 
 ### Storage Structure
@@ -147,9 +153,30 @@ taskwing archive list
 # Search archives
 taskwing archive search "documentation"
 
-# Restore archived tasks (read-only view)
-taskwing archive show <archive-id>
+# Restore archived tasks
+taskwing archive restore <archive-id>
 ```
+
+## Migration Plan
+
+### From legacy tasks.json to archive
+
+Goal: Move completed tasks from `.taskwing/tasks/tasks.json` into `.taskwing/archive/` with minimal user friction.
+
+Pseudocode:
+
+```
+read tasks.json -> TaskList
+for each task where status == done:
+  build ArchiveEntry {task fields + archived_at = now}
+  write .taskwing/archive/YYYY/MM/<date>_<slug>.json
+  append to index.json (id, date, title, tags, path, task_count=1, summary)
+```
+
+Notes:
+- Keep tasks in the active list by default; restoration is supported via `archive restore`.
+- Checksums are not required for archive files; `index.json` is the source of truth for listings.
+- Future migration to SQLite+FTS5 can ingest the same JSON; maintain `index.json` during transition.
 
 ### Interactive Archive Flow
 
@@ -174,9 +201,9 @@ taskwing archive show <archive-id>
    - Note reusable workflows
 
 5. **Archive Creation**
-   - Generate JSON archive
+   - Generate JSON archive entry per task
    - Update archive index
-   - Clear completed tasks
+   - Optionally clear completed tasks (future flag)
    - Generate summary report
 
 ## Knowledge Base Integration

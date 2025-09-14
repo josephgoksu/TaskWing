@@ -14,9 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	recursive bool
-)
+var recursive bool
 
 // deleteCmd represents the delete command
 var deleteCmd = &cobra.Command{
@@ -76,12 +74,25 @@ func handleSingleDelete(taskStore store.TaskStore, taskID string) {
 
 	task := *resolvedTask
 
-	confirmPrompt := promptui.Prompt{
-		Label:     fmt.Sprintf("Are you sure you want to delete task '%s' (ID: %s)?", task.Title, task.ID),
-		IsConfirm: true,
+	// Inspect relationships to provide a safer, more helpful flow
+	// 1) Subtasks: if present, confirm recursive delete of descendants
+	// 2) Dependents: ensure references are unlinked by using batch DeleteTasks
+
+	// Fetch descendants (includes root)
+	descendants, derr := taskStore.GetTaskWithDescendants(task.ID)
+	if derr != nil {
+		HandleError("Error: Could not inspect subtasks for deletion.", derr)
 	}
-	_, err = confirmPrompt.Run()
-	if err != nil {
+	hasSubtasks := len(descendants) > 1
+
+	// Build confirmation message
+	confirmLabel := fmt.Sprintf("Are you sure you want to delete task '%s' (ID: %s)?", task.Title, task.ID)
+	if hasSubtasks {
+		confirmLabel = fmt.Sprintf("This will delete '%s' and %d subtask(s). Proceed?", task.Title, len(descendants)-1)
+	}
+
+	confirmPrompt := promptui.Prompt{Label: confirmLabel, IsConfirm: true}
+	if _, err = confirmPrompt.Run(); err != nil {
 		if err == promptui.ErrAbort {
 			fmt.Println("Deletion cancelled.")
 			return
@@ -89,12 +100,29 @@ func handleSingleDelete(taskStore store.TaskStore, taskID string) {
 		HandleError("Error: Could not get confirmation for deletion.", err)
 	}
 
-	err = taskStore.DeleteTask(task.ID)
+	// Determine IDs to delete
+	idsToDelete := []string{task.ID}
+	if hasSubtasks {
+		idsToDelete = make([]string, 0, len(descendants))
+		for _, t := range descendants {
+			idsToDelete = append(idsToDelete, t.ID)
+		}
+	}
+
+	// Use batch delete which also cleans up dependency links in kept tasks
+	deletedCount, err := taskStore.DeleteTasks(idsToDelete)
 	if err != nil {
 		HandleError(fmt.Sprintf("Error: Failed to delete task '%s'.", task.Title), err)
 	}
 
-	fmt.Printf("Task '%s' (ID: %s) deleted successfully.\n", task.Title, task.ID)
+	if hasSubtasks {
+		fmt.Printf("Deleted '%s' and %d subtask(s).\n", task.Title, len(descendants)-1)
+	}
+	if deletedCount == 0 {
+		fmt.Printf("No tasks were deleted.\n")
+	} else if !hasSubtasks {
+		fmt.Printf("Task '%s' (ID: %s) deleted successfully.\n", task.Title, task.ID)
+	}
 }
 
 func handleRecursiveDelete(taskStore store.TaskStore, rootTaskID string) {

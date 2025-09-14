@@ -355,7 +355,7 @@ func TestMCPAllToolsSmoke(t *testing.T) {
 		"workflow-status":        {},
 		"extract-task-ids":       {},
 		"task-analytics":         {},
-		"suggest-tasks":          {},
+		"suggest-tasks":          {"input": "Smoke"},
 		"task-autocomplete":      {"input": "Sm"},
 		"smart-task-transition":  {"task_id": firstID},
 		"find-task-by-title":     {"title": "Smoke"},
@@ -366,6 +366,9 @@ func TestMCPAllToolsSmoke(t *testing.T) {
 		"board-reconcile":        {"dry_run": true, "ops": []map[string]interface{}{{"reference": "Smoke Task One", "action": "update", "priority": "high"}}},
 		"dependency-health":      {},
 		"clear-tasks":            {"status": "done", "preview_only": true},
+		"generate-plan":          {"task_id": firstID, "count": 2, "preview": true},
+		"iterate-plan-step":      {"task_id": firstID, "step_id": firstID, "prompt": "refine", "preview": true},
+		"plan-from-document":     {"content": "Test PRD content for smoke test", "skip_improve": true, "confirm": false},
 	}
 
 	// Call each tool found with mapped arguments when available
