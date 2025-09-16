@@ -93,7 +93,7 @@ func TestMCPServerHelp(t *testing.T) {
 			return fmt.Errorf("MCP help command failed: %v", err)
 		}
 
-		if !strings.Contains(string(output), "Start a Model Context Protocol") {
+		if !strings.Contains(string(output), "Start MCP server") {
 			return fmt.Errorf("MCP help output doesn't contain expected text")
 		}
 
@@ -215,72 +215,40 @@ func (suite *MCPIntegrationTestSuite) PrintResults(t *testing.T) {
 	}
 }
 
-// TestAllMCPToolsComprehensive runs a comprehensive test of all MCP tools
-func TestAllMCPToolsComprehensive(t *testing.T) {
-	// This is a placeholder for the comprehensive MCP tools test
-	// It would use the MCP server binary and test tool functionality
-
+// TestMCPToolsIntegration runs basic integration tests for MCP tools
+func TestMCPToolsIntegration(t *testing.T) {
 	suite := SetupMCPIntegrationTest(t)
 	defer suite.Cleanup()
 
-	// Initialize TaskWing in the temp directory
-	initCmd := exec.Command(suite.binaryPath, "init")
-	initCmd.Dir = suite.tempDir
-	if err := initCmd.Run(); err != nil {
-		t.Fatalf("Failed to initialize TaskWing: %v", err)
-	}
-
-	// Define all MCP tools to test
-	mcpTools := map[string]string{
-		"task-summary":          "Get project overview and health metrics",
-		"add-task":              "Create individual tasks with validation",
-		"list-tasks":            "Filter tasks by various criteria",
-		"get-task":              "Retrieve task details by ID",
-		"update-task":           "Modify task fields",
-		"delete-task":           "Remove tasks with dependency checks",
-		"mark-done":             "Complete tasks and set timestamps",
-		"batch-create-tasks":    "Create multiple tasks with relationships",
-		"bulk-tasks":            "Batch complete/delete/prioritize by task IDs",
-		"bulk-by-filter":        "Bulk operations with filter expressions",
-		"search-tasks":          "Full-text search across task content",
-		"find-task":             "Smart task resolution by partial reference",
-		"find-task-by-title":    "Fuzzy title matching with scores",
-		"set-current-task":      "Set active task for context",
-		"get-current-task":      "Retrieve active task context",
-		"clear-current-task":    "Remove current task reference",
-		"board-snapshot":        "Kanban-style status overview",
-		"workflow-status":       "Project phase and completion analysis",
-		"query-tasks":           "Natural language and structured queries",
-		"extract-task-ids":      "Get task IDs with simple criteria",
-		"task-analytics":        "Compute project metrics with grouping",
-		"suggest-tasks":         "Context-aware task suggestions",
-		"task-autocomplete":     "Title completion suggestions",
-		"smart-task-transition": "AI-powered next step recommendations",
-		"dependency-health":     "Analyze and validate task relationships",
-	}
-
-	// For now, just test that MCP server can start and show help
-	suite.RunTest("mcp-comprehensive", "MCP server comprehensive test (basic)", func() error {
-		cmd := exec.Command(suite.binaryPath, "mcp", "--help")
+	// Test basic MCP functionality through binary
+	suite.RunTest("mcp-init", "Initialize TaskWing project", func() error {
+		cmd := exec.Command(suite.binaryPath, "init")
 		cmd.Dir = suite.tempDir
-		_, err := cmd.Output()
-		if err != nil {
-			return fmt.Errorf("MCP server help failed: %v", err)
+		return cmd.Run()
+	})
+
+	suite.RunTest("mcp-basic-task", "Create and manage task via binary", func() error {
+		// Create a task
+		cmd := exec.Command(suite.binaryPath, "add", "Test Task", "--no-ai")
+		cmd.Dir = suite.tempDir
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to create task: %w", err)
 		}
+
+		// List tasks to verify
+		cmd = exec.Command(suite.binaryPath, "list")
+		cmd.Dir = suite.tempDir
+		output, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to list tasks: %w", err)
+		}
+
+		if !strings.Contains(string(output), "Test Task") {
+			return fmt.Errorf("task not found in output: %s", output)
+		}
+
 		return nil
 	})
 
-	// Mark that we've identified all tools for future implementation
-	t.Logf("Found %d MCP tools to test: %v", len(mcpTools), getKeys(mcpTools))
-
 	suite.PrintResults(t)
-}
-
-// getKeys returns the keys of a map as a slice
-func getKeys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
 }

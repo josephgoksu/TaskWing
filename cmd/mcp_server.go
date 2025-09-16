@@ -265,11 +265,7 @@ func registerMCPResources(server *mcp.Server, taskStore store.TaskStore) error {
 }
 
 func registerMCPPrompts(server *mcp.Server, taskStore store.TaskStore) error {
-	// TaskWing onboarding prompt - AI tools should read this on connection
-	server.AddPrompt(&mcp.Prompt{
-		Name:        "taskwing-onboarding",
-		Description: "🎯 CRITICAL ONBOARDING - TaskWing is active. AI tools must read this to understand how to use TaskWing instead of generic task management.",
-	}, taskWingOnboardingPromptHandler(taskStore))
+	// Removed: taskwing-onboarding prompt (not needed, was causing MCP validation errors)
 
 	// Task generation prompt
 	server.AddPrompt(&mcp.Prompt{

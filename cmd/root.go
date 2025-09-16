@@ -64,7 +64,7 @@ func Execute() {
 // Command categories for organized help display
 var commandCategories = map[string][]string{
 	"Getting Started":    {"quickstart", "flow", "interactive"},
-	"Core Tasks":         {"add", "list", "show", "update", "delete"},
+	"Core Tasks":         {"add", "list", "show", "update", "delete", "improve"},
 	"Task Status":        {"start", "review", "done", "current"},
 	"Planning":           {"plan", "iterate"},
 	"Discovery":          {"search", "next", "clear"},
@@ -77,7 +77,8 @@ var commandCategories = map[string][]string{
 
 // getGroupedHelpTemplate returns a custom help template with grouped commands
 func getGroupedHelpTemplate() string {
-	return `{{.Long | trimTrailingWhitespaces}}
+	return `{{if isRootCmd .}}
+{{.Long | trimTrailingWhitespaces}}
 
 Usage:{{if .Runnable}}
   {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
@@ -89,6 +90,7 @@ Common Workflows:
   {{.CommandPath}} ls                            # List all tasks
   {{.CommandPath}} start <task-id>               # Begin working on a task
   {{.CommandPath}} done <task-id>                # Mark task complete
+  {{.CommandPath}} improve <task-id> --apply     # AI‑enhance a task (title/desc/criteria/priority)
   {{.CommandPath}} add "Task" && {{.CommandPath}} start $({{.CommandPath}} ls --format=id --status=todo | head -1)  # Add and start
 
 Available Commands:{{range $category, $commands := getCommandsByCategory .}}
@@ -105,7 +107,17 @@ Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
   {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
 
 Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
-`
+{{else}}
+{{.Short}}
+
+Usage:
+  {{.UseLine}}
+{{if .HasAvailableLocalFlags}}Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
+{{end}}`
 }
 
 // getCommandsByCategory organizes commands into categories for the help template
@@ -133,8 +145,9 @@ func getCommandsByCategory(cmd *cobra.Command) map[string][]*cobra.Command {
 func init() {
 	cobra.OnInitialize(InitConfig)
 
-	// Register custom template function
+	// Register custom template functions
 	cobra.AddTemplateFunc("getCommandsByCategory", getCommandsByCategory)
+	cobra.AddTemplateFunc("isRootCmd", func(c *cobra.Command) bool { return c != nil && c.Parent() == nil })
 
 	// Set custom help template with grouped commands
 	rootCmd.SetHelpTemplate(getGroupedHelpTemplate())

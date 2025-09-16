@@ -15,6 +15,12 @@ taskwing plan --task abc123           # Preview plan (subtasks)
 taskwing plan --task abc123 --confirm # Create subtasks
 taskwing iterate --task abc123 --step 1 --prompt "split into client/server" --split --confirm
 taskwing search "authentication"      # Smart search
+
+# AI task refinement
+# Preview enhancements for an existing task
+taskwing improve abc123
+# Apply enhancements and generate a subtask plan
+taskwing improve abc123 --apply --plan
 ```
 
 ## Documentation Links

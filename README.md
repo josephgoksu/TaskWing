@@ -78,6 +78,7 @@ taskwing add "Fix authentication bug" --priority urgent
 taskwing ls                    # List all tasks
 taskwing start <task-id>       # Begin working
 taskwing done <task-id>        # Mark complete
+taskwing improve <task-id>     # AI‑enhance task details; add --plan to create subtasks
 ```
 
 ### AI Integration
@@ -157,6 +158,7 @@ taskwing current                        # See active task
 taskwing next                          # Get AI suggestions
 taskwing start <task-id>               # Focus on task
 taskwing done <task-id>                # Mark complete
+taskwing improve <task-id> --apply     # Refine title/desc/criteria/priority
 
 # Project analysis
 taskwing search "auth"                 # Find auth-related tasks
@@ -198,6 +200,7 @@ taskwing next                      # What's next?
 taskwing batch-create-tasks        # Create multiple tasks
 taskwing board-reconcile          # Organize dependencies
 taskwing workflow-status          # Show project phases
+taskwing improve <task-id>        # Refine any generated task for clarity
 ```
 
 ## Documentation

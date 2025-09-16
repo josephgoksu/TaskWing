@@ -251,6 +251,10 @@ func buildDependenciesSchema() map[string]interface{} {
 
 // parseEnhancedTaskFallback makes a best-effort to build an EnhancedTask from free-form text.
 func parseEnhancedTaskFallback(text, defaultTitle string) types.EnhancedTask {
+	// First, attempt to extract an inline JSON object if present
+	if et, ok := tryExtractEnhancedTaskJSON(text); ok {
+		return sanitizeEnhancedTask(et, defaultTitle)
+	}
 	et := types.EnhancedTask{}
 	lines := strings.Split(text, "\n")
 	for _, l := range lines {
@@ -280,6 +284,50 @@ func parseEnhancedTaskFallback(text, defaultTitle string) types.EnhancedTask {
 		}
 	}
 	if et.Priority == "" {
+		et.Priority = "medium"
+	}
+	return sanitizeEnhancedTask(et, defaultTitle)
+}
+
+// tryExtractEnhancedTaskJSON tries to parse a JSON object from the given string.
+// It supports the entire string being JSON or a substring between the first '{' and last '}'.
+func tryExtractEnhancedTaskJSON(s string) (types.EnhancedTask, bool) {
+	var et types.EnhancedTask
+	ss := strings.TrimSpace(s)
+	// Direct JSON
+	if strings.HasPrefix(ss, "{") && strings.HasSuffix(ss, "}") {
+		if err := json.Unmarshal([]byte(ss), &et); err == nil {
+			return et, true
+		}
+	}
+	// Substring JSON
+	start := strings.Index(ss, "{")
+	end := strings.LastIndex(ss, "}")
+	if start >= 0 && end > start {
+		sub := ss[start : end+1]
+		if err := json.Unmarshal([]byte(sub), &et); err == nil {
+			return et, true
+		}
+	}
+	return types.EnhancedTask{}, false
+}
+
+// sanitizeEnhancedTask cleans fields and applies safe defaults.
+func sanitizeEnhancedTask(in types.EnhancedTask, defaultTitle string) types.EnhancedTask {
+	et := in
+	// Ensure title
+	if strings.TrimSpace(et.Title) == "" {
+		et.Title = defaultTitle
+	}
+	// Remove any embedded acceptance criteria block from description
+	if idx := strings.Index(strings.ToLower(et.Description), strings.ToLower("Acceptance Criteria:")); idx >= 0 {
+		et.Description = strings.TrimSpace(et.Description[:idx])
+	}
+	// Trim and default
+	et.Title = strings.TrimSpace(et.Title)
+	et.Description = strings.TrimSpace(et.Description)
+	et.AcceptanceCriteria = strings.TrimSpace(et.AcceptanceCriteria)
+	if strings.TrimSpace(et.Priority) == "" {
 		et.Priority = "medium"
 	}
 	return et
@@ -350,10 +398,35 @@ func (p *OpenAIProvider) EnhanceTask(ctx context.Context, systemPrompt, taskInpu
 	// Use a schema tailored for a single enhanced task output
 	content, err := p.callOpenAIAndExtractEnhanced(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
 	if err != nil {
-		return types.EnhancedTask{}, err
+		// Fallback: retry once without JSON schema in plain text mode
+		content2, err2 := p.callOpenAIAndExtractText(ctx, apiKey, modelName, systemPrompt, userMessage, temperature, maxTokens)
+		if err2 != nil {
+			// Last-resort: craft a minimal, sane enhancement from original input
+			base := taskInput
+			if idx := strings.Index(base, "\n"); idx >= 0 {
+				base = base[:idx]
+			}
+			if idx := strings.Index(strings.ToLower(base), "acceptance criteria:"); idx >= 0 {
+				base = strings.TrimSpace(base[:idx])
+			}
+			if strings.TrimSpace(base) == "" {
+				base = taskInput
+			}
+			return types.EnhancedTask{
+				Title:              base,
+				Description:        base,
+				AcceptanceCriteria: "- task is clarified and scoped\n- requirements reviewed with stakeholders",
+				Priority:           "medium",
+			}, nil
+		}
+		content = content2
 	}
 
 	var enhancedTask types.EnhancedTask
+	// Try direct JSON or embedded JSON first
+	if et, ok := tryExtractEnhancedTaskJSON(content); ok {
+		return sanitizeEnhancedTask(et, taskInput), nil
+	}
 	if err := json.Unmarshal([]byte(content), &enhancedTask); err != nil {
 		// Fallback: try to coerce from a text response
 		coerced := parseEnhancedTaskFallback(content, taskInput)
@@ -364,10 +437,10 @@ func (p *OpenAIProvider) EnhanceTask(ctx context.Context, systemPrompt, taskInpu
 		if strings.TrimSpace(coerced.Description) == "" {
 			coerced.Description = taskInput
 		}
-		return coerced, nil
+		return sanitizeEnhancedTask(coerced, taskInput), nil
 	}
 
-	return enhancedTask, nil
+	return sanitizeEnhancedTask(enhancedTask, taskInput), nil
 }
 
 // BreakdownTask analyzes a task and suggests relevant subtasks

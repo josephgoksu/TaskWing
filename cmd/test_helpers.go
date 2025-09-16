@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/josephgoksu/TaskWing/llm"
@@ -59,11 +60,16 @@ func (f *UnifiedFakeProvider) EnhanceTask(ctx context.Context, systemPrompt, tas
 		return types.EnhancedTask{}, f.EnhanceTaskError
 	}
 	if f.EnhanceTaskResult.Title != "" {
-		return f.EnhanceTaskResult, nil
+		// Return the configured result - including priority
+		result := f.EnhanceTaskResult
+		return result, nil
 	}
+	// Extract just the title from taskInput (which might contain title + description)
+	lines := strings.Split(taskInput, "\n")
+	title := lines[0]
 	return types.EnhancedTask{
-		Title:              "Enhanced " + taskInput,
-		Description:        "Enhanced description for " + taskInput,
+		Title:              "Enhanced " + title,
+		Description:        "Enhanced description for " + title,
 		AcceptanceCriteria: "- enhanced criteria",
 		Priority:           "medium",
 	}, nil

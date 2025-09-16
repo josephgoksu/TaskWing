@@ -62,13 +62,10 @@ test-mcp: build
 	$(GO) test -v ./cmd -run "TestMCP.*" | tee $(TEST_DIR)/mcp-protocol.log
 	@echo "✅ MCP protocol and functional tests complete"
 
-# Run comprehensive MCP functional tests (all tools)
+# Run comprehensive MCP functional tests (all tools) - same as test-mcp smoke tests
 .PHONY: test-mcp-functional
-test-mcp-functional: build  
-	@echo "🔧 Running comprehensive MCP functional tests..."
-	mkdir -p $(TEST_DIR)
-	go test -v ./cmd -run "TestMCPAllToolsSmoke" | tee $(TEST_DIR)/mcp-functional.log
-	@echo "✅ MCP functional tests complete"
+test-mcp-functional: test-mcp
+	@echo "✅ MCP functional tests complete (using test-mcp)"
 
 
 # Generate test coverage
