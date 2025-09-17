@@ -59,11 +59,11 @@ Note: To delete a specific task, use 'taskwing delete <task_id>' instead.`,
 		}
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error getting task store", err)
+			HandleFatalError("Error getting task store", err)
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 
@@ -73,7 +73,7 @@ Note: To delete a specific task, use 'taskwing delete <task_id>' instead.`,
 		// Get tasks to be cleared
 		tasksToDelete, err := taskStore.ListTasks(filterFn, nil)
 		if err != nil {
-			HandleError("Error listing tasks", err)
+			HandleFatalError("Error listing tasks", err)
 		}
 
 		if len(tasksToDelete) == 0 {

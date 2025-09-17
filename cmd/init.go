@@ -42,13 +42,13 @@ Perfect for getting started - everything you need in one command!`,
 
 		// Create the project root and tasks directories
 		if err := os.MkdirAll(projectTasksDir, 0o755); err != nil {
-			HandleError(fmt.Sprintf("Error: Could not create project directories at '%s'.", projectTasksDir), err)
+			HandleFatalError(fmt.Sprintf("Error: Could not create project directories at '%s'.", projectTasksDir), err)
 		}
 
 		// Attempt to get the store, which will initialize the data file if it doesn't exist.
 		store, err := GetStore()
 		if err != nil {
-			HandleError("Error: Could not initialize task store.", err)
+			HandleFatalError("Error: Could not initialize task store.", err)
 		}
 		if err := store.Close(); err != nil {
 			// Log the error but continue with initialization
@@ -119,7 +119,7 @@ data:
 			// Write the config file
 			err = os.WriteFile(projectConfigFilePath, []byte(defaultConfigContent), 0o644)
 			if err != nil {
-				HandleError(fmt.Sprintf("Error: Could not write configuration file at '%s'.", projectConfigFilePath), err)
+				HandleFatalError(fmt.Sprintf("Error: Could not write configuration file at '%s'.", projectConfigFilePath), err)
 			}
 			configCreated = true
 		} else {

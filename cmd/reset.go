@@ -55,14 +55,14 @@ the project's root directory.`,
 				fmt.Println("Project reset cancelled.")
 				os.Exit(0)
 			}
-			HandleError("Error: Could not get confirmation for project reset.", err)
+			HandleFatalError("Error: Could not get confirmation for project reset.", err)
 			return // Unreachable, for clarity
 		}
 
 		fmt.Printf("Deleting project directory '%s'...\n", projectRootDir)
 		err = os.RemoveAll(projectRootDir)
 		if err != nil {
-			HandleError(fmt.Sprintf("Error: Failed to delete project directory '%s'. Check permissions or delete it manually.", projectRootDir), err)
+			HandleFatalError(fmt.Sprintf("Error: Failed to delete project directory '%s'. Check permissions or delete it manually.", projectRootDir), err)
 		}
 
 		fmt.Printf("TaskWing project at '%s' has been reset successfully.\n", projectRootDir)

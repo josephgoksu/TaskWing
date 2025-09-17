@@ -36,3 +36,15 @@ type ProjectMetrics struct {
 	TasksCreatedWeek   int     `json:"tasks_created_this_week"`
 	VelocityTrend      string  `json:"velocity_trend"` // increasing, decreasing, stable
 }
+
+// TaskUpdates represents the fields that can be updated on a task
+type TaskUpdates struct {
+	Title              *string    `json:"title,omitempty"`
+	Description        *string    `json:"description,omitempty"`
+	AcceptanceCriteria *string    `json:"acceptanceCriteria,omitempty"`
+	Status             *string    `json:"status,omitempty"`
+	Priority           *string    `json:"priority,omitempty"`
+	ParentID           *string    `json:"parentId,omitempty"`
+	Dependencies       *[]string  `json:"dependencies,omitempty"`
+	CompletedAt        *time.Time `json:"completedAt,omitempty"`
+}

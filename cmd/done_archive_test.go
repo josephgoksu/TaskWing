@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/models"
 	"os"
+
+	"github.com/josephgoksu/TaskWing/models"
 )
 
 func TestDoneCreatesArchiveEntryWithFlags(t *testing.T) {

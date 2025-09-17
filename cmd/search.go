@@ -28,11 +28,11 @@ Examples:
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: Could not initialize the task store.", err)
+			HandleFatalError("Error: Could not initialize the task store.", err)
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 
@@ -67,7 +67,7 @@ Examples:
 		// Search tasks
 		tasks, err := taskStore.ListTasks(filterFn, nil)
 		if err != nil {
-			HandleError("Failed to search tasks", err)
+			HandleFatalError("Failed to search tasks", err)
 		}
 
 		if len(tasks) == 0 {
@@ -83,7 +83,7 @@ Examples:
 			// Output as JSON
 			jsonData, err := json.MarshalIndent(tasks, "", "  ")
 			if err != nil {
-				HandleError("Failed to marshal search results to JSON", err)
+				HandleFatalError("Failed to marshal search results to JSON", err)
 				return
 			}
 			fmt.Println(string(jsonData))

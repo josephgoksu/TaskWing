@@ -28,11 +28,11 @@ var deleteCmd = &cobra.Command{
 
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error getting task store", err)
+			HandleFatalError("Error getting task store", err)
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 
@@ -52,7 +52,7 @@ var deleteCmd = &cobra.Command{
 					fmt.Println("No tasks available to delete.")
 					return
 				}
-				HandleError("Error: Could not select a task.", err)
+				HandleFatalError("Error: Could not select a task.", err)
 			}
 			taskIDToDelete = selectedTask.ID
 		}
@@ -69,7 +69,7 @@ func handleSingleDelete(taskStore store.TaskStore, taskID string) {
 	// Resolve the task ID (handle partial IDs)
 	resolvedTask, err := resolveTaskReference(taskStore, taskID)
 	if err != nil {
-		HandleError(fmt.Sprintf("Error: Could not find task with reference '%s'.", taskID), err)
+		HandleFatalError(fmt.Sprintf("Error: Could not find task with reference '%s'.", taskID), err)
 	}
 
 	task := *resolvedTask
@@ -81,7 +81,7 @@ func handleSingleDelete(taskStore store.TaskStore, taskID string) {
 	// Fetch descendants (includes root)
 	descendants, derr := taskStore.GetTaskWithDescendants(task.ID)
 	if derr != nil {
-		HandleError("Error: Could not inspect subtasks for deletion.", derr)
+		HandleFatalError("Error: Could not inspect subtasks for deletion.", derr)
 	}
 	hasSubtasks := len(descendants) > 1
 
@@ -97,7 +97,7 @@ func handleSingleDelete(taskStore store.TaskStore, taskID string) {
 			fmt.Println("Deletion cancelled.")
 			return
 		}
-		HandleError("Error: Could not get confirmation for deletion.", err)
+		HandleFatalError("Error: Could not get confirmation for deletion.", err)
 	}
 
 	// Determine IDs to delete
@@ -112,7 +112,7 @@ func handleSingleDelete(taskStore store.TaskStore, taskID string) {
 	// Use batch delete which also cleans up dependency links in kept tasks
 	deletedCount, err := taskStore.DeleteTasks(idsToDelete)
 	if err != nil {
-		HandleError(fmt.Sprintf("Error: Failed to delete task '%s'.", task.Title), err)
+		HandleFatalError(fmt.Sprintf("Error: Failed to delete task '%s'.", task.Title), err)
 	}
 
 	if hasSubtasks {
@@ -129,14 +129,14 @@ func handleRecursiveDelete(taskStore store.TaskStore, rootTaskID string) {
 	// Resolve the task ID first
 	resolvedTask, err := resolveTaskReference(taskStore, rootTaskID)
 	if err != nil {
-		HandleError(fmt.Sprintf("Error: Could not find task with reference '%s' to begin recursive delete.", rootTaskID), err)
+		HandleFatalError(fmt.Sprintf("Error: Could not find task with reference '%s' to begin recursive delete.", rootTaskID), err)
 	}
 
 	// Use the resolved full UUID for the recursive deletion
 	fullTaskID := resolvedTask.ID
 	tasksToDelete, err := taskStore.GetTaskWithDescendants(fullTaskID)
 	if err != nil {
-		HandleError(fmt.Sprintf("Error: Could not get descendant tasks for '%s'.", resolvedTask.Title), err)
+		HandleFatalError(fmt.Sprintf("Error: Could not get descendant tasks for '%s'.", resolvedTask.Title), err)
 	}
 
 	if len(tasksToDelete) <= 1 {
@@ -166,7 +166,7 @@ func handleRecursiveDelete(taskStore store.TaskStore, rootTaskID string) {
 			fmt.Println("Recursive deletion cancelled.")
 			return
 		}
-		HandleError("Error: Could not get confirmation for recursive deletion.", err)
+		HandleFatalError("Error: Could not get confirmation for recursive deletion.", err)
 	}
 
 	idsToDelete := make([]string, len(tasksToDelete))
@@ -176,7 +176,7 @@ func handleRecursiveDelete(taskStore store.TaskStore, rootTaskID string) {
 
 	deletedCount, err := taskStore.DeleteTasks(idsToDelete)
 	if err != nil {
-		HandleError("Error: Failed to perform the recursive delete operation.", err)
+		HandleFatalError("Error: Failed to perform the recursive delete operation.", err)
 	}
 
 	fmt.Printf("Successfully deleted %d tasks.\n", deletedCount)

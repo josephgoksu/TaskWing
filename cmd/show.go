@@ -28,11 +28,11 @@ Otherwise, it will present an interactive menu to select a task.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: could not get the task store", err)
+			HandleFatalError("Error: could not get the task store", err)
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 
@@ -45,7 +45,7 @@ Otherwise, it will present an interactive menu to select a task.`,
 			// No ID provided, use interactive selector
 			allTasks, err := taskStore.ListTasks(nil, nil)
 			if err != nil {
-				HandleError("Error: Could not list tasks for selection.", err)
+				HandleFatalError("Error: Could not list tasks for selection.", err)
 			}
 			if len(allTasks) == 0 {
 				fmt.Println("No tasks found.")
@@ -59,14 +59,14 @@ Otherwise, it will present an interactive menu to select a task.`,
 					fmt.Println("Operation cancelled.")
 					return
 				}
-				HandleError("Error: Could not select a task.", err)
+				HandleFatalError("Error: Could not select a task.", err)
 			}
 			selectedTaskID = selectedTask.ID
 		}
 
 		taskToShow, err = taskStore.GetTask(selectedTaskID)
 		if err != nil {
-			HandleError(fmt.Sprintf("Error: Could not retrieve task with ID '%s'.", selectedTaskID), err)
+			HandleFatalError(fmt.Sprintf("Error: Could not retrieve task with ID '%s'.", selectedTaskID), err)
 		}
 
 		displayTaskDetails(taskToShow, taskStore)

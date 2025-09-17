@@ -29,12 +29,12 @@ var archiveListCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		s, err := getArchiveStore()
 		if err != nil {
-			HandleError("Failed to init archive store", err)
+			HandleFatalError("Failed to init archive store", err)
 		}
 		defer func() { _ = s.Close() }()
 		items, err := s.List()
 		if err != nil {
-			HandleError("Failed to list archives", err)
+			HandleFatalError("Failed to list archives", err)
 		}
 		if len(items) == 0 {
 			fmt.Println("No archives found.")
@@ -55,7 +55,7 @@ var archiveViewCmd = &cobra.Command{
 		id := args[0]
 		s, err := getArchiveStore()
 		if err != nil {
-			HandleError("Failed to init archive store", err)
+			HandleFatalError("Failed to init archive store", err)
 		}
 		defer func() { _ = s.Close() }()
 		e, path, err := s.GetByID(id)
@@ -88,28 +88,28 @@ var archiveSearchCmd = &cobra.Command{
 		searchQuery = args[0]
 		s, err := getArchiveStore()
 		if err != nil {
-			HandleError("Failed to init archive store", err)
+			HandleFatalError("Failed to init archive store", err)
 		}
 		defer func() { _ = s.Close() }()
 		var fromPtr, toPtr *time.Time
 		if filterFrom != "" {
 			t, err := time.Parse("2006-01-02", filterFrom)
 			if err != nil {
-				HandleError(fmt.Sprintf("Invalid --from date format (expected YYYY-MM-DD): %s", filterFrom), err)
+				HandleFatalError(fmt.Sprintf("Invalid --from date format (expected YYYY-MM-DD): %s", filterFrom), err)
 			}
 			fromPtr = &t
 		}
 		if filterTo != "" {
 			t, err := time.Parse("2006-01-02", filterTo)
 			if err != nil {
-				HandleError(fmt.Sprintf("Invalid --to date format (expected YYYY-MM-DD): %s", filterTo), err)
+				HandleFatalError(fmt.Sprintf("Invalid --to date format (expected YYYY-MM-DD): %s", filterTo), err)
 			}
 			tt := t.Add(24*time.Hour - time.Nanosecond)
 			toPtr = &tt
 		}
 		items, err := s.Search(searchQuery, store.ArchiveSearchFilters{DateFrom: fromPtr, DateTo: toPtr, Tags: filterTags})
 		if err != nil {
-			HandleError("Search failed", err)
+			HandleFatalError("Search failed", err)
 		}
 		for _, it := range items {
 			fmt.Printf("%s  %s  %s\n", shortID(it.ID), it.Date, it.Title)
@@ -134,13 +134,13 @@ var archiveAddCmd = &cobra.Command{
 		ref := args[0]
 		tasks, err := GetStore()
 		if err != nil {
-			HandleError("Failed to init task store", err)
+			HandleFatalError("Failed to init task store", err)
 		}
 		defer func() { _ = tasks.Close() }()
 
 		t, err := resolveTaskReference(tasks, ref)
 		if err != nil {
-			HandleError("Could not resolve task reference", err)
+			HandleFatalError("Could not resolve task reference", err)
 		}
 
 		// Warn if task is not completed
@@ -174,7 +174,7 @@ var archiveAddCmd = &cobra.Command{
 
 		arch := store.NewFileArchiveStore()
 		if err := arch.Initialize(map[string]string{"archiveDir": getArchiveDir()}); err != nil {
-			HandleError("Failed to init archive store", err)
+			HandleFatalError("Failed to init archive store", err)
 		}
 		defer func() { _ = arch.Close() }()
 
@@ -190,14 +190,14 @@ var archiveAddCmd = &cobra.Command{
 			// Archive without deleting - only archive the parent task for simplicity
 			entry, archiveErr := arch.CreateFromTask(*t, lessons, tags)
 			if archiveErr != nil {
-				HandleError("Failed to archive task", archiveErr)
+				HandleFatalError("Failed to archive task", archiveErr)
 			}
 			entries = []models.ArchiveEntry{entry}
 		} else {
 			// Archive and delete the entire subtree (parent + descendants)
 			entries, err = archiveAndDeleteSubtree(tasks, arch, *t, lessons, tags)
 			if err != nil {
-				HandleError("Failed to archive task subtree", err)
+				HandleFatalError("Failed to archive task subtree", err)
 			}
 		}
 
@@ -236,17 +236,17 @@ var archiveRestoreCmd = &cobra.Command{
 		id := args[0]
 		arch, err := getArchiveStore()
 		if err != nil {
-			HandleError("Failed to init archive store", err)
+			HandleFatalError("Failed to init archive store", err)
 		}
 		defer func() { _ = arch.Close() }()
 		tasks, err := GetStore()
 		if err != nil {
-			HandleError("Failed to init task store", err)
+			HandleFatalError("Failed to init task store", err)
 		}
 		defer func() { _ = tasks.Close() }()
 		t, err := arch.RestoreToTaskStore(id, tasks)
 		if err != nil {
-			HandleError("Restore failed", err)
+			HandleFatalError("Restore failed", err)
 		}
 		fmt.Printf("✅ Restored as new task: %s (%s)\n", t.Title, t.ID)
 	},
@@ -260,27 +260,27 @@ var archiveExportCmd = &cobra.Command{
 		out := args[0]
 		s, err := getArchiveStore()
 		if err != nil {
-			HandleError("Failed to init archive store", err)
+			HandleFatalError("Failed to init archive store", err)
 		}
 		defer func() { _ = s.Close() }()
 		// Export to a temp file first
 		tmp := out + ".tmp"
 		_ = os.Remove(tmp)
 		if err := s.Export(tmp); err != nil {
-			HandleError("Export failed", err)
+			HandleFatalError("Export failed", err)
 		}
 		if exportEncrypt {
 			if exportKey == "" {
-				HandleError("--key required when --encrypt is set", fmt.Errorf("missing key"))
+				HandleFatalError("--key required when --encrypt is set", fmt.Errorf("missing key"))
 			}
 			if err := encryptFile(tmp, out, exportKey); err != nil {
-				HandleError("Encryption failed", err)
+				HandleFatalError("Encryption failed", err)
 			}
 			_ = os.Remove(tmp)
 			fmt.Printf("🔐 Encrypted export written to %s\n", out)
 		} else {
 			if err := os.Rename(tmp, out); err != nil {
-				HandleError("Failed to write export", err)
+				HandleFatalError("Failed to write export", err)
 			}
 			fmt.Printf("📦 Exported archive to %s\n", out)
 		}
@@ -294,27 +294,27 @@ var archiveImportCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		in := args[0]
 		if _, err := os.Stat(in); err != nil {
-			HandleError("Import file not found", err)
+			HandleFatalError("Import file not found", err)
 		}
 		s, err := getArchiveStore()
 		if err != nil {
-			HandleError("Failed to init archive store", err)
+			HandleFatalError("Failed to init archive store", err)
 		}
 		defer func() { _ = s.Close() }()
 		src := in
 		tmp := ""
 		if importDecrypt {
 			if importKey == "" {
-				HandleError("--key required when --decrypt is set", fmt.Errorf("missing key"))
+				HandleFatalError("--key required when --decrypt is set", fmt.Errorf("missing key"))
 			}
 			tmp = in + ".dec.tmp"
 			if err := decryptFile(in, tmp, importKey); err != nil {
-				HandleError("Decryption failed", err)
+				HandleFatalError("Decryption failed", err)
 			}
 			src = tmp
 		}
 		if err := s.Import(src); err != nil {
-			HandleError("Import failed", err)
+			HandleFatalError("Import failed", err)
 		}
 		if tmp != "" {
 			_ = os.Remove(tmp)
@@ -334,20 +334,20 @@ var archivePurgeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		s, err := getArchiveStore()
 		if err != nil {
-			HandleError("Failed to init archive store", err)
+			HandleFatalError("Failed to init archive store", err)
 		}
 		defer func() { _ = s.Close() }()
 		var older *time.Duration
 		if purgeOlderThan != "" {
 			d, err := time.ParseDuration(purgeOlderThan)
 			if err != nil {
-				HandleError("Invalid --older-than duration (e.g., 720h)", err)
+				HandleFatalError("Invalid --older-than duration (e.g., 720h)", err)
 			}
 			older = &d
 		}
 		res, err := s.Purge(store.PurgeOptions{DryRun: purgeDryRun, OlderThan: older})
 		if err != nil {
-			HandleError("Purge failed", err)
+			HandleFatalError("Purge failed", err)
 		}
 		mode := "DRY-RUN"
 		if !res.DryRun {

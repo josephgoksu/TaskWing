@@ -45,11 +45,11 @@ var addCmd = &cobra.Command{
 		// Initialize task store
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: Could not initialize the task store.", err)
+			HandleFatalError("Error: Could not initialize the task store.", err)
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 
@@ -66,7 +66,7 @@ var addCmd = &cobra.Command{
 			taskInput = strings.Join(args, " ")
 		} else {
 			if nonInteractive {
-				HandleError("Task input is required in non-interactive mode. Use positional arguments or --title flag.", nil)
+				HandleFatalError("Task input is required in non-interactive mode. Use positional arguments or --title flag.", nil)
 				return
 			}
 			// Interactive prompt for task input
@@ -85,7 +85,7 @@ var addCmd = &cobra.Command{
 					fmt.Println("Task addition cancelled.")
 					os.Exit(0)
 				}
-				HandleError("Error: Failed to read task input.", err)
+				HandleFatalError("Error: Failed to read task input.", err)
 			}
 		}
 
@@ -171,7 +171,7 @@ var addCmd = &cobra.Command{
 		// Create the task
 		createdTask, err := taskStore.CreateTask(newTask)
 		if err != nil {
-			HandleError("Error: Could not create the new task.", err)
+			HandleFatalError("Error: Could not create the new task.", err)
 		}
 
 		fmt.Printf("✅ Task added successfully!\n")
@@ -494,7 +494,7 @@ func handleSubtaskSuggestions(subtasks []types.EnhancedTask, parentID string, ta
 			fmt.Println("🚫 Subtask creation cancelled.")
 			return
 		}
-		HandleError("Error reading confirmation", err)
+		HandleFatalError("Error reading confirmation", err)
 		return
 	}
 

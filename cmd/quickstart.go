@@ -39,7 +39,7 @@ Perfect for first-time users who want to learn the basic workflow.`,
 
 			fmt.Println("📁 Initializing TaskWing project...")
 			if err := runCommand("init", []string{}); err != nil {
-				HandleError("Failed to initialize project", err)
+				HandleFatalError("Failed to initialize project", err)
 				return
 			}
 			fmt.Println("✅ Project initialized!")
@@ -59,7 +59,7 @@ Perfect for first-time users who want to learn the basic workflow.`,
 		fmt.Printf("📝 Creating task: %s\n", taskTitle)
 
 		if err := runCommand("add", []string{taskTitle, "--no-ai"}); err != nil {
-			HandleError("Failed to create task", err)
+			HandleFatalError("Failed to create task", err)
 			return
 		}
 		fmt.Println("✅ Task created!")
@@ -81,12 +81,12 @@ Perfect for first-time users who want to learn the basic workflow.`,
 		// Get the most recently created task
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Could not access tasks", err)
+			HandleFatalError("Could not access tasks", err)
 			return
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 
@@ -103,7 +103,7 @@ Perfect for first-time users who want to learn the basic workflow.`,
 		firstTask := tasks[0]
 		fmt.Printf("🏃 Starting work on: %s\n", firstTask.Title)
 		if err := runCommand("start", []string{firstTask.ID[:8]}); err != nil {
-			HandleError("Failed to start task", err)
+			HandleFatalError("Failed to start task", err)
 			return
 		}
 		fmt.Println("✅ Task started! Status changed to 'doing'")
@@ -117,7 +117,7 @@ Perfect for first-time users who want to learn the basic workflow.`,
 
 		fmt.Printf("✅ Marking task as done: %s\n", firstTask.Title)
 		if err := runCommand("done", []string{firstTask.ID[:8]}); err != nil {
-			HandleError("Failed to complete task", err)
+			HandleFatalError("Failed to complete task", err)
 			return
 		}
 		fmt.Println("🎉 Congratulations! You've completed your first TaskWing workflow!")

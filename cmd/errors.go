@@ -7,14 +7,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-// HandleError provides a centralized way to manage CLI errors.
-// It prints a user-friendly message by default. If the --verbose
-// flag is set, it prints the full technical error.
-// After printing the message, it exits the application with a status code of 1.
-// DEPRECATED: Use PrintError for recoverable errors or HandleFatalError for unrecoverable ones.
+// HandleError is DEPRECATED. Use HandleFatalError instead.
+// This function is kept for backward compatibility and will be removed in a future version.
 func HandleError(userMsg string, technicalErr error) {
-	PrintError(userMsg, technicalErr)
-	os.Exit(1)
+	HandleFatalError(userMsg, technicalErr)
 }
 
 // HandleFatalError handles unrecoverable errors that should terminate the application.

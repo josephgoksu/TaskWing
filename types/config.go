@@ -45,3 +45,25 @@ type LLMConfig struct {
 	// Debug enables extra request/response logging within the LLM provider (generally tied to --verbose)
 	Debug bool `mapstructure:"debug"`
 }
+
+// StoreConfig represents configuration options for task stores
+type StoreConfig struct {
+	FilePath   string `json:"filePath,omitempty"`
+	DataFormat string `json:"dataFormat,omitempty"`
+	ArchiveDir string `json:"archiveDir,omitempty"`
+}
+
+// ToMap converts StoreConfig to map[string]string for compatibility
+func (c StoreConfig) ToMap() map[string]string {
+	m := make(map[string]string)
+	if c.FilePath != "" {
+		m["filePath"] = c.FilePath
+	}
+	if c.DataFormat != "" {
+		m["dataFormat"] = c.DataFormat
+	}
+	if c.ArchiveDir != "" {
+		m["archiveDir"] = c.ArchiveDir
+	}
+	return m
+}

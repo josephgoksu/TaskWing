@@ -33,11 +33,11 @@ var currentSetCmd = &cobra.Command{
 		// Initialize task store
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: Could not initialize the task store.", err)
+			HandleFatalError("Error: Could not initialize the task store.", err)
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 
@@ -74,11 +74,11 @@ var currentShowCmd = &cobra.Command{
 		// Initialize task store
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: Could not initialize the task store.", err)
+			HandleFatalError("Error: Could not initialize the task store.", err)
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 

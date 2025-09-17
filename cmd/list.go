@@ -39,11 +39,11 @@ var listCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: could not get the task store", err)
+			HandleFatalError("Error: could not get the task store", err)
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 
@@ -226,14 +226,14 @@ var listCmd = &cobra.Command{
 
 		tasks, err := taskStore.ListTasks(finalFilterFn, finalSortFn)
 		if err != nil {
-			HandleError("Failed to list tasks with filters/sorting", err)
+			HandleFatalError("Failed to list tasks with filters/sorting", err)
 		}
 
 		// Apply readiness filters post-fetch if requested
 		if readyOnly || blockedOnly {
 			all, err := taskStore.ListTasks(nil, nil)
 			if err != nil {
-				HandleError("Failed to list all tasks for readiness evaluation", err)
+				HandleFatalError("Failed to list all tasks for readiness evaluation", err)
 			}
 			byID := make(map[string]models.Task, len(all))
 			for _, t := range all {
@@ -283,7 +283,7 @@ var listCmd = &cobra.Command{
 			// Output as JSON
 			jsonData, err := json.MarshalIndent(tasks, "", "  ")
 			if err != nil {
-				HandleError("Failed to marshal tasks to JSON", err)
+				HandleFatalError("Failed to marshal tasks to JSON", err)
 				return
 			}
 			fmt.Println(string(jsonData))
@@ -295,7 +295,7 @@ var listCmd = &cobra.Command{
 			// Build a quick lookup for dependency summaries (use all tasks)
 			allForDeps, err := taskStore.ListTasks(nil, nil)
 			if err != nil {
-				HandleError("Failed to list all tasks for dependency summary", err)
+				HandleFatalError("Failed to list all tasks for dependency summary", err)
 			}
 			depByID := make(map[string]models.Task, len(allForDeps))
 			for _, tsk := range allForDeps {
@@ -317,7 +317,7 @@ var listCmd = &cobra.Command{
 			// Prepare lookup for dependency status summary
 			allForDeps, err := taskStore.ListTasks(nil, nil)
 			if err != nil {
-				HandleError("Failed to list all tasks for dependency summary", err)
+				HandleFatalError("Failed to list all tasks for dependency summary", err)
 			}
 			depByID := make(map[string]models.Task, len(allForDeps))
 			for _, tsk := range allForDeps {
@@ -498,7 +498,7 @@ func displayTasksAsTreeEnhanced(allTasks []models.Task, currentTaskID string, st
 			printNode(fetched, "", true, false)
 			return
 		}
-		HandleError(fmt.Sprintf("Error: Task ID %s specified for tree view not found.", currentTaskID), fmt.Errorf("not found"))
+		HandleFatalError(fmt.Sprintf("Error: Task ID %s specified for tree view not found.", currentTaskID), fmt.Errorf("not found"))
 		return
 	}
 

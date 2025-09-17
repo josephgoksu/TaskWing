@@ -37,11 +37,11 @@ var doneCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		taskStore, err := GetStore()
 		if err != nil {
-			HandleError("Error: Could not initialize the task store.", err)
+			HandleFatalError("Error: Could not initialize the task store.", err)
 		}
 		defer func() {
 			if err := taskStore.Close(); err != nil {
-				HandleError("Failed to close task store", err)
+				HandleFatalError("Failed to close task store", err)
 			}
 		}()
 
@@ -51,7 +51,7 @@ var doneCmd = &cobra.Command{
 			taskID := args[0]
 			taskPtr, err := resolveTaskReference(taskStore, taskID)
 			if err != nil {
-				HandleError(fmt.Sprintf("Error: Could not find task with ID '%s'.", taskID), err)
+				HandleFatalError(fmt.Sprintf("Error: Could not find task with ID '%s'.", taskID), err)
 			}
 			taskToMarkDone = *taskPtr
 		} else {
@@ -69,7 +69,7 @@ var doneCmd = &cobra.Command{
 					fmt.Println("No active tasks available to mark as done.")
 					return
 				}
-				HandleError("Error: Could not select a task.", err)
+				HandleFatalError("Error: Could not select a task.", err)
 			}
 		}
 
@@ -80,7 +80,7 @@ var doneCmd = &cobra.Command{
 
 		updatedTask, err := taskStore.MarkTaskDone(taskToMarkDone.ID)
 		if err != nil {
-			HandleError(fmt.Sprintf("Error: Failed to mark task '%s' as done.", taskToMarkDone.Title), err)
+			HandleFatalError(fmt.Sprintf("Error: Failed to mark task '%s' as done.", taskToMarkDone.Title), err)
 		}
 
 		// Clear current task if this was the current one
