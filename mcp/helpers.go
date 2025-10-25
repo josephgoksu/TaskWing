@@ -1,21 +1,18 @@
-package cmd
+package mcp
 
 // Shared helpers for MCP tools (reference resolution, text formatting)
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/types"
 )
 
 // shortID returns a compact 8-char prefix of a UUID for display.
 func shortID(id string) string {
-	if len(id) > 8 {
-		return id[:8]
-	}
-	return id
+	return taskutil.ShortID(id)
 }
 
 // resolveReference tries to resolve a human-provided reference (ID, partial ID, title, or description text)
@@ -76,38 +73,13 @@ func resolveReference(reference string, tasks []models.Task) (string, []types.Ta
 // normalizePriorityString maps various inputs and common typos to canonical priorities.
 // Returns canonical one of: low, medium, high, urgent.
 func normalizePriorityString(input string) (string, error) {
-	s := strings.ToLower(strings.TrimSpace(input))
-	if s == "" {
-		return "", nil
-	}
+	return taskutil.NormalizePriorityString(input)
+}
 
-	switch s {
-	// Canonical
-	case "low", "medium", "high", "urgent":
-		return s, nil
+func priorityToInt(p models.TaskPriority) int {
+	return taskutil.PriorityToInt(p)
+}
 
-	// Low synonyms/typos
-	case "lo", "l", "minor":
-		return "low", nil
-
-	// Medium synonyms/typos
-	case "med", "m", "normal", "regular":
-		return "medium", nil
-
-	// High synonyms/typos
-	case "hi", "h", "important", "importantn", "imp", "prio-high", "high-priority", "p1":
-		return "high", nil
-
-	// Urgent synonyms/typos
-	case "urg", "u", "critical", "asap", "emergency", "prio-urgent", "urgent!":
-		return "urgent", nil
-
-	// Common alternate priority formats
-	case "p2", "p3", "p4":
-		return "medium", nil
-	case "p5", "p0":
-		return "low", nil
-	}
-
-	return "", fmt.Errorf("unknown priority '%s'", input)
+func statusToInt(s models.TaskStatus) int {
+	return taskutil.StatusToInt(s)
 }

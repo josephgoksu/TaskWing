@@ -1,7 +1,7 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
-package cmd
+package mcp
 
 import (
 	"context"
@@ -10,12 +10,12 @@ import (
 
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // taskGenerationPromptHandler generates tasks from natural language descriptions
-func taskGenerationPromptHandler(taskStore store.TaskStore) func(context.Context, *mcp.ServerSession, *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+func taskGenerationPromptHandler(taskStore store.TaskStore) func(context.Context, *mcpsdk.ServerSession, *mcpsdk.GetPromptParams) (*mcpsdk.GetPromptResult, error) {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.GetPromptParams) (*mcpsdk.GetPromptResult, error) {
 		// Get the description argument
 		description := params.Arguments["description"]
 
@@ -103,12 +103,12 @@ This approach ensures the user gets both the analysis AND the actual tasks creat
 
 		logInfo("Generated task generation prompt")
 
-		return &mcp.GetPromptResult{
+		return &mcpsdk.GetPromptResult{
 			Description: fmt.Sprintf("Generate tasks from: %s", description),
-			Messages: []*mcp.PromptMessage{
+			Messages: []*mcpsdk.PromptMessage{
 				{
 					Role: "user",
-					Content: &mcp.TextContent{
+					Content: &mcpsdk.TextContent{
 						Text: prompt,
 					},
 				},
@@ -118,8 +118,8 @@ This approach ensures the user gets both the analysis AND the actual tasks creat
 }
 
 // taskBreakdownPromptHandler breaks down a complex task into smaller subtasks
-func taskBreakdownPromptHandler(taskStore store.TaskStore) func(context.Context, *mcp.ServerSession, *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+func taskBreakdownPromptHandler(taskStore store.TaskStore) func(context.Context, *mcpsdk.ServerSession, *mcpsdk.GetPromptParams) (*mcpsdk.GetPromptResult, error) {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.GetPromptParams) (*mcpsdk.GetPromptResult, error) {
 		// Get the task_id argument
 		taskID := params.Arguments["task_id"]
 
@@ -199,12 +199,12 @@ Example TaskCreationRequest for subtasks:
 
 		logInfo(fmt.Sprintf("Generated task breakdown prompt for task: %s", task.ID))
 
-		return &mcp.GetPromptResult{
+		return &mcpsdk.GetPromptResult{
 			Description: fmt.Sprintf("Break down task: %s", task.Title),
-			Messages: []*mcp.PromptMessage{
+			Messages: []*mcpsdk.PromptMessage{
 				{
 					Role: "user",
-					Content: &mcp.TextContent{
+					Content: &mcpsdk.TextContent{
 						Text: prompt,
 					},
 				},
@@ -216,8 +216,8 @@ Example TaskCreationRequest for subtasks:
 // Removed: taskWingOnboardingPromptHandler (was causing MCP validation errors with "system" role)
 
 // taskWingUsagePromptHandler provides guidance on using TaskWing instead of generic tools
-func taskWingUsagePromptHandler(taskStore store.TaskStore) func(context.Context, *mcp.ServerSession, *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.GetPromptParams) (*mcp.GetPromptResult, error) {
+func taskWingUsagePromptHandler(taskStore store.TaskStore) func(context.Context, *mcpsdk.ServerSession, *mcpsdk.GetPromptParams) (*mcpsdk.GetPromptResult, error) {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.GetPromptParams) (*mcpsdk.GetPromptResult, error) {
 		// Get current project context
 		context, err := BuildTaskContext(taskStore)
 		if err != nil {
@@ -265,16 +265,50 @@ TaskWing provides professional-grade task management with full context, relation
 
 		logInfo("Generated TaskWing usage guidance prompt")
 
-		return &mcp.GetPromptResult{
+		return &mcpsdk.GetPromptResult{
 			Description: "TaskWing Task Management System - Use TaskWing tools instead of generic task management",
-			Messages: []*mcp.PromptMessage{
+			Messages: []*mcpsdk.PromptMessage{
 				{
 					Role: "user",
-					Content: &mcp.TextContent{
+					Content: &mcpsdk.TextContent{
 						Text: prompt,
 					},
 				},
 			},
 		}, nil
 	}
+}
+
+// RegisterMCPPrompts registers TaskWing prompts exposed over MCP.
+func RegisterMCPPrompts(server *mcpsdk.Server, taskStore store.TaskStore) error {
+	server.AddPrompt(&mcpsdk.Prompt{
+		Name:        "task-generation",
+		Description: "Generate tasks from natural language descriptions",
+		Arguments: []*mcpsdk.PromptArgument{
+			{
+				Name:        "description",
+				Description: "Natural language description of work to be done",
+				Required:    true,
+			},
+		},
+	}, taskGenerationPromptHandler(taskStore))
+
+	server.AddPrompt(&mcpsdk.Prompt{
+		Name:        "task-breakdown",
+		Description: "Break down a complex task into smaller subtasks",
+		Arguments: []*mcpsdk.PromptArgument{
+			{
+				Name:        "task_id",
+				Description: "ID of the task to break down",
+				Required:    true,
+			},
+		},
+	}, taskBreakdownPromptHandler(taskStore))
+
+	server.AddPrompt(&mcpsdk.Prompt{
+		Name:        "taskwing-usage-guide",
+		Description: "Get guidance on using TaskWing instead of generic task management tools",
+	}, taskWingUsagePromptHandler(taskStore))
+
+	return nil
 }

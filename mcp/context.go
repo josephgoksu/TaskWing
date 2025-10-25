@@ -1,7 +1,7 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
-package cmd
+package mcp
 
 import (
 	"fmt"
@@ -117,7 +117,7 @@ func BuildTaskContext(taskStore store.TaskStore) (*types.TaskContext, error) {
 	}
 
 	// Add current task information
-	currentTaskID := GetCurrentTask()
+	currentTaskID := currentTaskID()
 	if currentTaskID != "" {
 		if currentTask, err := taskStore.GetTask(currentTaskID); err == nil {
 			context.CurrentTask = taskToResponsePtr(currentTask)

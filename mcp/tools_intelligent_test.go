@@ -6,7 +6,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // seedIntelligentTasks adds sample tasks for intelligent MCP tests
@@ -39,7 +39,7 @@ func TestQueryTasks_NaturalLanguage(t *testing.T) {
 	st, _ := GetStore()
 	defer func() { _ = st.Close() }()
 	handler := queryTasksHandler(st)
-	params := &mcp.CallToolParamsFor[types.FilterTasksParams]{
+	params := &mcpsdk.CallToolParamsFor[types.FilterTasksParams]{
 		Arguments: types.FilterTasksParams{
 			Query:      "high priority unfinished",
 			FuzzyMatch: true,
@@ -74,7 +74,7 @@ func TestResolveTaskReference_ExactAndFuzzy(t *testing.T) {
 	handler := resolveTaskReferenceHandler(st2)
 
 	// Exact ID
-	paramsExact := &mcp.CallToolParamsFor[types.ResolveTaskReferenceParams]{
+	paramsExact := &mcpsdk.CallToolParamsFor[types.ResolveTaskReferenceParams]{
 		Arguments: types.ResolveTaskReferenceParams{Reference: exactID, Exact: true},
 	}
 	rexact, err := handler(context.Background(), nil, paramsExact)
@@ -86,7 +86,7 @@ func TestResolveTaskReference_ExactAndFuzzy(t *testing.T) {
 	}
 
 	// Fuzzy partial ID
-	paramsFuzzy := &mcp.CallToolParamsFor[types.ResolveTaskReferenceParams]{
+	paramsFuzzy := &mcpsdk.CallToolParamsFor[types.ResolveTaskReferenceParams]{
 		Arguments: types.ResolveTaskReferenceParams{Reference: partial, Exact: false},
 	}
 	rfuzzy, err := handler(context.Background(), nil, paramsFuzzy)

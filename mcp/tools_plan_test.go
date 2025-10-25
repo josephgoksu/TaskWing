@@ -6,7 +6,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/llm"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Use unified fake provider with custom results for plan tests
@@ -32,11 +32,11 @@ func TestPlanFromDocument_Preview_NoImprove(t *testing.T) {
 	_ = SetupTestProject(t)
 
 	// Build server and handler
-	_ = mcp.NewServer(&mcp.Implementation{Name: "taskwing", Version: "test"}, &mcp.ServerOptions{})
+	_ = mcpsdk.NewServer(&mcpsdk.Implementation{Name: "taskwing", Version: "test"}, &mcpsdk.ServerOptions{})
 	handler := planFromDocumentHandler(nil) // store not used for preview
 
 	// Call tool with content and skip_improve=true, confirm=false
-	params := &mcp.CallToolParamsFor[types.PlanFromDocumentParams]{
+	params := &mcpsdk.CallToolParamsFor[types.PlanFromDocumentParams]{
 		Arguments: types.PlanFromDocumentParams{
 			Content:     "PRD content",
 			SkipImprove: true,
@@ -61,10 +61,10 @@ func TestPlanFromDocument_Confirm_CreatesTasks(t *testing.T) {
 
 	_ = SetupTestProject(t)
 
-	_ = mcp.NewServer(&mcp.Implementation{Name: "taskwing", Version: "test"}, &mcp.ServerOptions{})
+	_ = mcpsdk.NewServer(&mcpsdk.Implementation{Name: "taskwing", Version: "test"}, &mcpsdk.ServerOptions{})
 	handler := planFromDocumentHandler(nil)
 
-	params := &mcp.CallToolParamsFor[types.PlanFromDocumentParams]{
+	params := &mcpsdk.CallToolParamsFor[types.PlanFromDocumentParams]{
 		Arguments: types.PlanFromDocumentParams{
 			Content:     "PRD content",
 			SkipImprove: true,

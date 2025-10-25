@@ -1,4 +1,4 @@
-package cmd
+package mcp
 
 import (
 	"context"
@@ -10,24 +10,24 @@ import (
 	"github.com/josephgoksu/TaskWing/prompts"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func RegisterSimplePlanTools(server *mcp.Server, taskStore store.TaskStore) error {
-	mcp.AddTool(server, &mcp.Tool{
+func RegisterSimplePlanTools(server *mcpsdk.Server, taskStore store.TaskStore) error {
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "generate-plan",
 		Description: "Generate a concise set of subtasks for a parent task (preview by default; confirm to create).",
 	}, generatePlanHandler(taskStore))
 
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "iterate-plan-step",
 		Description: "Refine or split a specific subtask (preview by default; confirm to apply).",
 	}, iteratePlanStepHandler(taskStore))
 	return nil
 }
 
-func generatePlanHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.GeneratePlanParams, types.GeneratePlanResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.GeneratePlanParams]) (*mcp.CallToolResultFor[types.GeneratePlanResponse], error) {
+func generatePlanHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.GeneratePlanParams, types.GeneratePlanResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.GeneratePlanParams]) (*mcpsdk.CallToolResultFor[types.GeneratePlanResponse], error) {
 		p := params.Arguments
 		if p.TaskID == "" {
 			return nil, types.NewMCPError("MISSING_TASK", "task_id is required", nil)
@@ -37,11 +37,11 @@ func generatePlanHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Gen
 			return nil, types.NewMCPError("TASK_NOT_FOUND", fmt.Sprintf("%v", err), nil)
 		}
 
-		sys, err := prompts.GetPrompt(prompts.KeyBreakdownTask, GetConfig().Project.RootDir+"/"+GetConfig().Project.TemplatesDir)
+		sys, err := prompts.GetPrompt(prompts.KeyBreakdownTask, currentConfig().Project.RootDir+"/"+currentConfig().Project.TemplatesDir)
 		if err != nil {
 			return nil, types.NewMCPError("PROMPT", err.Error(), nil)
 		}
-		provider, err := createLLMProvider(&GetConfig().LLM)
+		provider, err := createLLMProvider(&currentConfig().LLM)
 		if err != nil {
 			var guidance map[string]interface{}
 			if strings.Contains(err.Error(), "API key") {
@@ -70,7 +70,7 @@ func generatePlanHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Gen
 		b.WriteString("\n\nProject Summary:\n")
 		b.WriteString(fmt.Sprintf("Total tasks: %d, Done: %d\n", tc.TotalTasks, tc.TasksByStatus[string(models.StatusDone)]))
 
-		steps, err := provider.BreakdownTask(ctx, sys, parent.Title, parent.Description, parent.AcceptanceCriteria, b.String(), GetConfig().LLM.ModelName, GetConfig().LLM.APIKey, GetConfig().LLM.ProjectID, GetConfig().LLM.MaxOutputTokens, GetConfig().LLM.Temperature)
+		steps, err := provider.BreakdownTask(ctx, sys, parent.Title, parent.Description, parent.AcceptanceCriteria, b.String(), currentConfig().LLM.ModelName, currentConfig().LLM.APIKey, currentConfig().LLM.ProjectID, currentConfig().LLM.MaxOutputTokens, currentConfig().LLM.Temperature)
 		if err != nil {
 			guidance := map[string]interface{}{
 				"task_title": parent.Title,
@@ -120,7 +120,7 @@ func generatePlanHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Gen
 				fmt.Sprintf("View parent task: taskwing show %s", parent.ID[:8]),
 				"Modify count with count parameter (3-7)",
 			}
-			return &mcp.CallToolResultFor[types.GeneratePlanResponse]{StructuredContent: resp}, nil
+			return &mcpsdk.CallToolResultFor[types.GeneratePlanResponse]{StructuredContent: resp}, nil
 		}
 
 		// Apply
@@ -166,12 +166,12 @@ func generatePlanHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Gen
 			fmt.Sprintf("View parent: taskwing show %s", parent.ID[:8]),
 		}
 
-		return &mcp.CallToolResultFor[types.GeneratePlanResponse]{StructuredContent: resp}, nil
+		return &mcpsdk.CallToolResultFor[types.GeneratePlanResponse]{StructuredContent: resp}, nil
 	}
 }
 
-func iteratePlanStepHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.IteratePlanStepParams, types.IteratePlanStepResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.IteratePlanStepParams]) (*mcp.CallToolResultFor[types.IteratePlanStepResponse], error) {
+func iteratePlanStepHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.IteratePlanStepParams, types.IteratePlanStepResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.IteratePlanStepParams]) (*mcpsdk.CallToolResultFor[types.IteratePlanStepResponse], error) {
 		p := params.Arguments
 		if p.TaskID == "" || p.StepID == "" {
 			return nil, types.NewMCPError("MISSING_ARGS", "task_id and step_id are required", nil)
@@ -196,11 +196,11 @@ func iteratePlanStepHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.
 		}
 
 		if p.Split {
-			sys, err := prompts.GetPrompt(prompts.KeyBreakdownTask, GetConfig().Project.RootDir+"/"+GetConfig().Project.TemplatesDir)
+			sys, err := prompts.GetPrompt(prompts.KeyBreakdownTask, currentConfig().Project.RootDir+"/"+currentConfig().Project.TemplatesDir)
 			if err != nil {
 				return nil, types.NewMCPError("PROMPT", err.Error(), nil)
 			}
-			provider, err := createLLMProvider(&GetConfig().LLM)
+			provider, err := createLLMProvider(&currentConfig().LLM)
 			if err != nil {
 				var guidance map[string]interface{}
 				if strings.Contains(err.Error(), "API key") {
@@ -214,7 +214,7 @@ func iteratePlanStepHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.
 				}
 				return nil, types.NewMCPError("LLM_CONFIG", err.Error(), guidance)
 			}
-			steps, err := provider.BreakdownTask(ctx, sys, target.Title, target.Description, target.AcceptanceCriteria, p.Prompt, GetConfig().LLM.ModelName, GetConfig().LLM.APIKey, GetConfig().LLM.ProjectID, GetConfig().LLM.MaxOutputTokens, GetConfig().LLM.Temperature)
+			steps, err := provider.BreakdownTask(ctx, sys, target.Title, target.Description, target.AcceptanceCriteria, p.Prompt, currentConfig().LLM.ModelName, currentConfig().LLM.APIKey, currentConfig().LLM.ProjectID, currentConfig().LLM.MaxOutputTokens, currentConfig().LLM.Temperature)
 			if err != nil {
 				return nil, types.NewMCPError("SPLIT_FAIL", err.Error(), nil)
 			}
@@ -235,7 +235,7 @@ func iteratePlanStepHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.
 					fmt.Sprintf("Run with confirm=true to replace '%s' with %d new steps", target.Title, len(resp.Proposed)),
 					fmt.Sprintf("View parent task: taskwing show %s", parent.ID[:8]),
 				}
-				return &mcp.CallToolResultFor[types.IteratePlanStepResponse]{StructuredContent: resp}, nil
+				return &mcpsdk.CallToolResultFor[types.IteratePlanStepResponse]{StructuredContent: resp}, nil
 			}
 			// Apply: create new subtasks, delete old
 			for _, s := range steps {
@@ -249,30 +249,30 @@ func iteratePlanStepHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.
 			if err := taskStore.DeleteTask(target.ID); err != nil {
 				return nil, types.NewMCPError("DELETE_OLD", err.Error(), nil)
 			}
-			return &mcp.CallToolResultFor[types.IteratePlanStepResponse]{StructuredContent: resp}, nil
+			return &mcpsdk.CallToolResultFor[types.IteratePlanStepResponse]{StructuredContent: resp}, nil
 		}
 
 		// Refine
-		sys, err := prompts.GetPrompt(prompts.KeyEnhanceTask, GetConfig().Project.RootDir+"/"+GetConfig().Project.TemplatesDir)
+		sys, err := prompts.GetPrompt(prompts.KeyEnhanceTask, currentConfig().Project.RootDir+"/"+currentConfig().Project.TemplatesDir)
 		if err != nil {
 			return nil, types.NewMCPError("PROMPT", err.Error(), nil)
 		}
-		provider, err := createLLMProvider(&GetConfig().LLM)
+		provider, err := createLLMProvider(&currentConfig().LLM)
 		if err != nil {
 			return nil, types.NewMCPError("LLM", err.Error(), nil)
 		}
-		enhanced, err := provider.EnhanceTask(ctx, sys, target.Title+"\n\n"+target.Description, p.Prompt, GetConfig().LLM.ModelName, GetConfig().LLM.APIKey, GetConfig().LLM.ProjectID, GetConfig().LLM.MaxOutputTokens, GetConfig().LLM.Temperature)
+		enhanced, err := provider.EnhanceTask(ctx, sys, target.Title+"\n\n"+target.Description, p.Prompt, currentConfig().LLM.ModelName, currentConfig().LLM.APIKey, currentConfig().LLM.ProjectID, currentConfig().LLM.MaxOutputTokens, currentConfig().LLM.Temperature)
 		if err != nil {
 			return nil, types.NewMCPError("REFINE_FAIL", err.Error(), nil)
 		}
 		resp := types.IteratePlanStepResponse{Preview: !p.Confirm}
 		resp.Proposed = []types.ProposedTask{{Title: enhanced.Title, Description: enhanced.Description, AcceptanceCriteria: enhanced.AcceptanceCriteria, Priority: strings.ToLower(enhanced.Priority)}}
 		if !p.Confirm {
-			return &mcp.CallToolResultFor[types.IteratePlanStepResponse]{StructuredContent: resp}, nil
+			return &mcpsdk.CallToolResultFor[types.IteratePlanStepResponse]{StructuredContent: resp}, nil
 		}
 		if _, err := taskStore.UpdateTask(target.ID, map[string]interface{}{"title": enhanced.Title, "description": enhanced.Description, "acceptanceCriteria": enhanced.AcceptanceCriteria, "priority": strings.ToLower(enhanced.Priority)}); err != nil {
 			return nil, types.NewMCPError("APPLY_FAIL", err.Error(), nil)
 		}
-		return &mcp.CallToolResultFor[types.IteratePlanStepResponse]{StructuredContent: resp}, nil
+		return &mcpsdk.CallToolResultFor[types.IteratePlanStepResponse]{StructuredContent: resp}, nil
 	}
 }

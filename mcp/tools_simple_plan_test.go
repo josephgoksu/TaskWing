@@ -7,7 +7,7 @@ import (
 	"github.com/josephgoksu/TaskWing/llm"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func simplePlanProviderFactory(_ *types.LLMConfig) (llm.Provider, error) {
@@ -37,10 +37,10 @@ func TestGeneratePlanPreviewAndConfirm(t *testing.T) {
 		t.Fatalf("create parent: %v", err)
 	}
 
-	_ = mcp.NewServer(&mcp.Implementation{Name: "taskwing", Version: "test"}, &mcp.ServerOptions{})
+	_ = mcpsdk.NewServer(&mcpsdk.Implementation{Name: "taskwing", Version: "test"}, &mcpsdk.ServerOptions{})
 	// Preview
 	h := generatePlanHandler(st)
-	res, err := h(context.Background(), nil, &mcp.CallToolParamsFor[types.GeneratePlanParams]{Arguments: types.GeneratePlanParams{TaskID: parent.ID, Count: 2}})
+	res, err := h(context.Background(), nil, &mcpsdk.CallToolParamsFor[types.GeneratePlanParams]{Arguments: types.GeneratePlanParams{TaskID: parent.ID, Count: 2}})
 	if err != nil {
 		t.Fatalf("preview err: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestGeneratePlanPreviewAndConfirm(t *testing.T) {
 		t.Fatalf("unexpected preview: %+v", res.StructuredContent)
 	}
 	// Confirm
-	res2, err := h(context.Background(), nil, &mcp.CallToolParamsFor[types.GeneratePlanParams]{Arguments: types.GeneratePlanParams{TaskID: parent.ID, Count: 2, Confirm: true}})
+	res2, err := h(context.Background(), nil, &mcpsdk.CallToolParamsFor[types.GeneratePlanParams]{Arguments: types.GeneratePlanParams{TaskID: parent.ID, Count: 2, Confirm: true}})
 	if err != nil {
 		t.Fatalf("confirm err: %v", err)
 	}
@@ -78,15 +78,15 @@ func TestIteratePlanStepRefine(t *testing.T) {
 		t.Fatalf("CreateTask step: %v", err)
 	}
 
-	_ = mcp.NewServer(&mcp.Implementation{Name: "taskwing", Version: "test"}, &mcp.ServerOptions{})
+	_ = mcpsdk.NewServer(&mcpsdk.Implementation{Name: "taskwing", Version: "test"}, &mcpsdk.ServerOptions{})
 	h := iteratePlanStepHandler(st)
 	// Preview refine
 	t.Logf("Parent ID: %s, Step ID: %s", parent.ID, step.ID)
-	if _, err := h(context.Background(), nil, &mcp.CallToolParamsFor[types.IteratePlanStepParams]{Arguments: types.IteratePlanStepParams{TaskID: parent.ID, StepID: step.ID, Prompt: "refine"}}); err != nil {
+	if _, err := h(context.Background(), nil, &mcpsdk.CallToolParamsFor[types.IteratePlanStepParams]{Arguments: types.IteratePlanStepParams{TaskID: parent.ID, StepID: step.ID, Prompt: "refine"}}); err != nil {
 		t.Fatalf("preview refine: %v", err)
 	}
 	// Confirm refine
-	if _, err := h(context.Background(), nil, &mcp.CallToolParamsFor[types.IteratePlanStepParams]{Arguments: types.IteratePlanStepParams{TaskID: parent.ID, StepID: step.ID, Prompt: "refine", Confirm: true}}); err != nil {
+	if _, err := h(context.Background(), nil, &mcpsdk.CallToolParamsFor[types.IteratePlanStepParams]{Arguments: types.IteratePlanStepParams{TaskID: parent.ID, StepID: step.ID, Prompt: "refine", Confirm: true}}); err != nil {
 		t.Fatalf("confirm refine: %v", err)
 	}
 }

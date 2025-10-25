@@ -6,7 +6,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestBatchCreate_WithTempIDs_ResolvesDependenciesAndParents(t *testing.T) {
@@ -20,7 +20,7 @@ func TestBatchCreate_WithTempIDs_ResolvesDependenciesAndParents(t *testing.T) {
 
 	handler := batchCreateTasksHandler(st)
 
-	params := &mcp.CallToolParamsFor[types.BatchCreateTasksParams]{
+	params := &mcpsdk.CallToolParamsFor[types.BatchCreateTasksParams]{
 		Arguments: types.BatchCreateTasksParams{Tasks: []types.TaskCreationRequest{
 			{TempID: 1, Title: "Root A", Description: ""},
 			{TempID: 2, Title: "Depends on A", Description: "", Dependencies: []string{"1"}},
@@ -108,7 +108,7 @@ func TestBatchCreate_RejectsPlaceholderDependency(t *testing.T) {
 
 	handler := batchCreateTasksHandler(st)
 
-	params := &mcp.CallToolParamsFor[types.BatchCreateTasksParams]{
+	params := &mcpsdk.CallToolParamsFor[types.BatchCreateTasksParams]{
 		Arguments: types.BatchCreateTasksParams{Tasks: []types.TaskCreationRequest{
 			{TempID: 1, Title: "X", Description: ""},
 			{TempID: 2, Title: "Y", Description: "", Dependencies: []string{"task_placeholder"}},
@@ -138,7 +138,7 @@ func TestBatchCreate_WithUUIDDependenciesAndParent(t *testing.T) {
 
 	handler := batchCreateTasksHandler(st)
 
-	params := &mcp.CallToolParamsFor[types.BatchCreateTasksParams]{
+	params := &mcpsdk.CallToolParamsFor[types.BatchCreateTasksParams]{
 		Arguments: types.BatchCreateTasksParams{Tasks: []types.TaskCreationRequest{
 			{TempID: 10, Title: "A depends on existing", Description: "", Dependencies: []string{existing.ID}},
 			{TempID: 11, Title: "B child of existing", Description: "", ParentID: existing.ID},

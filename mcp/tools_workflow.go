@@ -1,7 +1,7 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
-package cmd
+package mcp
 
 // Workflow integration tools: smart transitions, workflow status, dependency health
 
@@ -14,14 +14,14 @@ import (
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Workflow Integration tools implementation for context-aware AI assistance
 
 // smartTaskTransitionHandler implements AI-powered next step suggestions
-func smartTaskTransitionHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.SmartTaskTransitionParams, types.SmartTaskTransitionResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.SmartTaskTransitionParams]) (*mcp.CallToolResultFor[types.SmartTaskTransitionResponse], error) {
+func smartTaskTransitionHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.SmartTaskTransitionParams, types.SmartTaskTransitionResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.SmartTaskTransitionParams]) (*mcpsdk.CallToolResultFor[types.SmartTaskTransitionResponse], error) {
 		args := params.Arguments
 		logToolCall("smart-task-transition", args)
 
@@ -30,7 +30,7 @@ func smartTaskTransitionHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[ty
 		if args.TaskID != "" {
 			targetTaskID = args.TaskID
 		} else {
-			targetTaskID = GetCurrentTask()
+			targetTaskID = currentTaskID()
 		}
 
 		// Set default limit
@@ -82,9 +82,9 @@ func smartTaskTransitionHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[ty
 			responseText += fmt.Sprintf(". Recommended: %s", suggestions[0].Description)
 		}
 
-		return &mcp.CallToolResultFor[types.SmartTaskTransitionResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.SmartTaskTransitionResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -92,8 +92,8 @@ func smartTaskTransitionHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[ty
 }
 
 // workflowStatusHandler implements project lifecycle tracking
-func workflowStatusHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.WorkflowStatusParams, types.WorkflowStatusResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.WorkflowStatusParams]) (*mcp.CallToolResultFor[types.WorkflowStatusResponse], error) {
+func workflowStatusHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.WorkflowStatusParams, types.WorkflowStatusResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.WorkflowStatusParams]) (*mcpsdk.CallToolResultFor[types.WorkflowStatusResponse], error) {
 		args := params.Arguments
 		logToolCall("workflow-status", args)
 
@@ -137,9 +137,9 @@ func workflowStatusHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.W
 		responseText := fmt.Sprintf("Project status: %s phase (%.1f%% complete). %s",
 			currentPhase.Phase, overallProgress*100, summary)
 
-		return &mcp.CallToolResultFor[types.WorkflowStatusResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.WorkflowStatusResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -147,8 +147,8 @@ func workflowStatusHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.W
 }
 
 // dependencyHealthHandler implements relationship validation
-func dependencyHealthHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.DependencyHealthParams, types.DependencyHealthResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.DependencyHealthParams]) (*mcp.CallToolResultFor[types.DependencyHealthResponse], error) {
+func dependencyHealthHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.DependencyHealthParams, types.DependencyHealthResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.DependencyHealthParams]) (*mcpsdk.CallToolResultFor[types.DependencyHealthResponse], error) {
 		args := params.Arguments
 		logToolCall("dependency-health", args)
 
@@ -219,9 +219,9 @@ func dependencyHealthHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		responseText := fmt.Sprintf("Dependency health: %.1f%% (%d issues found, %d fixed). %s",
 			healthScore*100, len(issues), len(fixedIssues), summary)
 
-		return &mcp.CallToolResultFor[types.DependencyHealthResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.DependencyHealthResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -901,21 +901,21 @@ func findLongDependencyChains(tasks []models.Task) []string {
 }
 
 // RegisterWorkflowIntegrationTools registers the workflow integration MCP tools
-func RegisterWorkflowIntegrationTools(server *mcp.Server, taskStore store.TaskStore) error {
+func RegisterWorkflowIntegrationTools(server *mcpsdk.Server, taskStore store.TaskStore) error {
 	// Smart task transition tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "smart-task-transition",
 		Description: "🧠 AI-POWERED: Get intelligent next step suggestions based on current task and project context. Eliminates guesswork in task progression.",
 	}, smartTaskTransitionHandler(taskStore))
 
 	// Workflow status tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "workflow-status",
 		Description: "📊 PROJECT LIFECYCLE: Track project phases, progress, and bottlenecks. Shows where you are in the development process.",
 	}, workflowStatusHandler(taskStore))
 
 	// Dependency health tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "dependency-health",
 		Description: "🔗 RELATIONSHIP VALIDATOR: Analyze and fix task dependencies. Detects circular dependencies, broken links, and suggests improvements.",
 	}, dependencyHealthHandler(taskStore))

@@ -6,7 +6,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func seedSimple(t *testing.T, st interface {
@@ -39,7 +39,7 @@ func TestBulkByFilter_PreviewAndConfirm_Complete(t *testing.T) {
 	}
 
 	// Preview: match TODO tasks
-	prevParams := &mcp.CallToolParamsFor[types.BulkByFilterParams]{
+	prevParams := &mcpsdk.CallToolParamsFor[types.BulkByFilterParams]{
 		Arguments: types.BulkByFilterParams{Filter: "status=todo", Action: "complete", PreviewOnly: true},
 	}
 	prev, err := handler(context.Background(), nil, prevParams)
@@ -51,7 +51,7 @@ func TestBulkByFilter_PreviewAndConfirm_Complete(t *testing.T) {
 	}
 
 	// Confirm
-	confParams := &mcp.CallToolParamsFor[types.BulkByFilterParams]{
+	confParams := &mcpsdk.CallToolParamsFor[types.BulkByFilterParams]{
 		Arguments: types.BulkByFilterParams{Filter: "status=todo", Action: "complete", Confirm: true},
 	}
 	conf, err := handler(context.Background(), nil, confParams)

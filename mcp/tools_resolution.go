@@ -1,7 +1,7 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
-package cmd
+package mcp
 
 // Resolution tools: resolve references, fuzzy title search, autocomplete
 
@@ -14,14 +14,14 @@ import (
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Task resolution tools implementation uses types directly
 
 // findTaskByTitleHandler implements fuzzy title matching
-func findTaskByTitleHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.FindTaskByTitleParams, types.FindTaskByTitleResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.FindTaskByTitleParams]) (*mcp.CallToolResultFor[types.FindTaskByTitleResponse], error) {
+func findTaskByTitleHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.FindTaskByTitleParams, types.FindTaskByTitleResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.FindTaskByTitleParams]) (*mcpsdk.CallToolResultFor[types.FindTaskByTitleResponse], error) {
 		args := params.Arguments
 		logToolCall("find-task-by-title", args)
 
@@ -75,9 +75,9 @@ func findTaskByTitleHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.
 			}
 		}
 
-		return &mcp.CallToolResultFor[types.FindTaskByTitleResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.FindTaskByTitleResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -85,8 +85,8 @@ func findTaskByTitleHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.
 }
 
 // resolveTaskReferenceHandler implements smart task resolution
-func resolveTaskReferenceHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ResolveTaskReferenceParams, types.ResolveTaskReferenceResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ResolveTaskReferenceParams]) (*mcp.CallToolResultFor[types.ResolveTaskReferenceResponse], error) {
+func resolveTaskReferenceHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.ResolveTaskReferenceParams, types.ResolveTaskReferenceResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.ResolveTaskReferenceParams]) (*mcpsdk.CallToolResultFor[types.ResolveTaskReferenceResponse], error) {
 		args := params.Arguments
 		logToolCall("resolve-task-reference", args)
 
@@ -173,9 +173,9 @@ func resolveTaskReferenceHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[t
 			response.Message = fmt.Sprintf("No exact match found for '%s'", reference)
 		}
 
-		return &mcp.CallToolResultFor[types.ResolveTaskReferenceResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: response.Message},
+		return &mcpsdk.CallToolResultFor[types.ResolveTaskReferenceResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: response.Message},
 			},
 			StructuredContent: response,
 		}, nil
@@ -183,8 +183,8 @@ func resolveTaskReferenceHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[t
 }
 
 // taskAutocompleteHandler implements predictive task suggestions
-func taskAutocompleteHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.TaskAutocompleteParams, types.TaskAutocompleteResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.TaskAutocompleteParams]) (*mcp.CallToolResultFor[types.TaskAutocompleteResponse], error) {
+func taskAutocompleteHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.TaskAutocompleteParams, types.TaskAutocompleteResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.TaskAutocompleteParams]) (*mcpsdk.CallToolResultFor[types.TaskAutocompleteResponse], error) {
 		args := params.Arguments
 		logToolCall("task-autocomplete", args)
 
@@ -221,9 +221,9 @@ func taskAutocompleteHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 
 		responseText := fmt.Sprintf("Found %d autocomplete suggestions for '%s'", len(suggestions), args.Input)
 
-		return &mcp.CallToolResultFor[types.TaskAutocompleteResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.TaskAutocompleteResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -357,7 +357,7 @@ func filterTasksByContext(tasks []models.Task, context string) []models.Task {
 	switch strings.ToLower(context) {
 	case "current":
 		// Return only current and related tasks
-		currentTaskID := GetCurrentTask()
+		currentTaskID := currentTaskID()
 		if currentTaskID == "" {
 			return tasks
 		}
@@ -421,21 +421,21 @@ func containsString(slice []string, str string) bool {
 }
 
 // RegisterTaskResolutionTools registers the task resolution MCP tools
-func RegisterTaskResolutionTools(server *mcp.Server, taskStore store.TaskStore) error {
+func RegisterTaskResolutionTools(server *mcpsdk.Server, taskStore store.TaskStore) error {
 	// Find task by title tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "find-task-by-title",
 		Description: "Find tasks by fuzzy title match. Prefer 'find-task' for partial IDs and context-aware ranking.",
 	}, findTaskByTitleHandler(taskStore))
 
 	// Resolve task reference tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "resolve-task-reference",
 		Description: "Resolve a task ref from partial ID/title/description. Returns a single resolved task or guidance if ambiguous.",
 	}, resolveTaskReferenceHandler(taskStore))
 
 	// Task autocomplete tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "task-autocomplete",
 		Description: "Autocomplete titles by partial input. Returns suggestions; use 'suggest-tasks' for context-aware ranking.",
 	}, taskAutocompleteHandler(taskStore))

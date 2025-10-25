@@ -9,6 +9,9 @@ import (
 )
 
 // validateAndGuideLLMConfig ensures essential provider settings are present and helpful errors are returned
+
+var newLLMProvider = llm.NewProvider
+
 func validateAndGuideLLMConfig(cfg *types.LLMConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("LLM config missing")

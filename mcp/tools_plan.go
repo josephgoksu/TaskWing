@@ -1,4 +1,4 @@
-package cmd
+package mcp
 
 // Planning MCP tool: plan-from-document (preview or create)
 
@@ -15,23 +15,23 @@ import (
 	"github.com/josephgoksu/TaskWing/prompts"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // test seam: allow overriding provider factory in tests
 var newLLMProvider = llm.NewProvider
 
 // RegisterPlanningTools registers the document→plan tool
-func RegisterPlanningTools(server *mcp.Server, taskStore store.TaskStore) error {
-	mcp.AddTool(server, &mcp.Tool{
+func RegisterPlanningTools(server *mcpsdk.Server, taskStore store.TaskStore) error {
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "plan-from-document",
 		Description: "Create a plan from PRD/text using iterative generation. Args: content or uri, skip_improve (bool), confirm (bool), model, temperature. Preview by default; set confirm=true to create.",
 	}, planFromDocumentHandler(taskStore))
 	return nil
 }
 
-func planFromDocumentHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.PlanFromDocumentParams, types.PlanFromDocumentResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.PlanFromDocumentParams]) (*mcp.CallToolResultFor[types.PlanFromDocumentResponse], error) {
+func planFromDocumentHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.PlanFromDocumentParams, types.PlanFromDocumentResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.PlanFromDocumentParams]) (*mcpsdk.CallToolResultFor[types.PlanFromDocumentResponse], error) {
 		args := params.Arguments
 		logToolCall("plan-from-document", args)
 
@@ -52,7 +52,7 @@ func planFromDocumentHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		start := time.Now()
 
 		// 2) Resolve config and provider
-		appCfg := GetConfig()
+		appCfg := currentConfig()
 		if args.Model != "" {
 			appCfg.LLM.ModelName = args.Model
 		}
@@ -74,7 +74,7 @@ func planFromDocumentHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		if resolved.Provider == "openai" && resolved.APIKey == "" {
 			if v := os.Getenv("OPENAI_API_KEY"); v != "" {
 				resolved.APIKey = v
-			} else if v := os.Getenv(envPrefix + "_LLM_APIKEY"); v != "" {
+			} else if v := os.Getenv(envPrefix() + "_LLM_APIKEY"); v != "" {
 				resolved.APIKey = v
 			}
 		}
@@ -205,11 +205,7 @@ func planFromDocumentHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		// 7) If confirm, delete existing tasks and create (iterative approach requires special handling)
 		if args.Confirm {
 			// Fresh store instance
-			st, gerr := GetStore()
-			if gerr != nil {
-				return nil, types.NewMCPError("STORE_ERROR", "failed to init task store", map[string]interface{}{"error": gerr.Error()})
-			}
-			defer func() { _ = st.Close() }()
+			st := taskStore
 
 			// Clean slate: delete existing
 			if err := st.DeleteAllTasks(); err != nil {
@@ -252,8 +248,8 @@ func planFromDocumentHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		resp.ImprovedPRD = improved
 
 		text := resp.Summary
-		return &mcp.CallToolResultFor[types.PlanFromDocumentResponse]{
-			Content:           []mcp.Content{&mcp.TextContent{Text: text}},
+		return &mcpsdk.CallToolResultFor[types.PlanFromDocumentResponse]{
+			Content:           []mcpsdk.Content{&mcpsdk.TextContent{Text: text}},
 			StructuredContent: resp,
 		}, nil
 	}

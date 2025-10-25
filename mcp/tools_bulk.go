@@ -1,7 +1,7 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
-package cmd
+package mcp
 
 // Bulk and advanced MCP tools: batch create, bulk ops, search, summary
 
@@ -16,12 +16,12 @@ import (
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // bulkTaskHandler handles bulk operations on multiple tasks
-func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTaskParams, types.BulkOperationResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.BulkTaskParams]) (*mcp.CallToolResultFor[types.BulkOperationResponse], error) {
+func bulkTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.BulkTaskParams, types.BulkOperationResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.BulkTaskParams]) (*mcpsdk.CallToolResultFor[types.BulkOperationResponse], error) {
 		args := params.Arguments
 
 		if len(args.TaskIDs) == 0 {
@@ -112,9 +112,9 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTas
 			return nil, fmt.Errorf("bulk %s operation failed: %s", args.Action, errorMsg)
 		}
 
-		return &mcp.CallToolResultFor[types.BulkOperationResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: resultText},
+		return &mcpsdk.CallToolResultFor[types.BulkOperationResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: resultText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -122,8 +122,8 @@ func bulkTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkTas
 }
 
 // taskSummaryHandler provides a high-level task summary
-func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, types.TaskSummaryResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[struct{}]) (*mcp.CallToolResultFor[types.TaskSummaryResponse], error) {
+func taskSummaryHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[struct{}, types.TaskSummaryResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[struct{}]) (*mcpsdk.CallToolResultFor[types.TaskSummaryResponse], error) {
 		// Get all tasks
 		tasks, err := taskStore.ListTasks(nil, nil)
 		if err != nil {
@@ -189,9 +189,9 @@ func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, 
 			response.Summary += fmt.Sprintf(". Project health: %s", context.ProjectHealth)
 		}
 
-		return &mcp.CallToolResultFor[types.TaskSummaryResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: response.Summary},
+		return &mcpsdk.CallToolResultFor[types.TaskSummaryResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: response.Summary},
 			},
 			StructuredContent: response,
 		}, nil
@@ -199,8 +199,8 @@ func taskSummaryHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[struct{}, 
 }
 
 // batchCreateTasksHandler creates multiple tasks at once with dependency resolution
-func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BatchCreateTasksParams, types.BatchCreateTasksResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.BatchCreateTasksParams]) (*mcp.CallToolResultFor[types.BatchCreateTasksResponse], error) {
+func batchCreateTasksHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.BatchCreateTasksParams, types.BatchCreateTasksResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.BatchCreateTasksParams]) (*mcpsdk.CallToolResultFor[types.BatchCreateTasksResponse], error) {
 		args := params.Arguments
 
 		if len(args.Tasks) == 0 {
@@ -374,9 +374,9 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 			return nil, fmt.Errorf("batch task creation failed: %s", errorMsg)
 		}
 
-		return &mcp.CallToolResultFor[types.BatchCreateTasksResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: resultText},
+		return &mcpsdk.CallToolResultFor[types.BatchCreateTasksResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: resultText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -384,8 +384,8 @@ func batchCreateTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 }
 
 // advancedSearchHandler provides powerful search capabilities
-func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.TaskSearchParams, types.TaskListResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.TaskSearchParams]) (*mcp.CallToolResultFor[types.TaskListResponse], error) {
+func advancedSearchHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.TaskSearchParams, types.TaskListResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.TaskSearchParams]) (*mcpsdk.CallToolResultFor[types.TaskListResponse], error) {
 		args := params.Arguments
 
 		// Parse date filters
@@ -501,8 +501,8 @@ func advancedSearchHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.T
 			}
 		}
 
-		return &mcp.CallToolResultFor[types.TaskListResponse]{
-			Content:           []mcp.Content{&mcp.TextContent{Text: text}},
+		return &mcpsdk.CallToolResultFor[types.TaskListResponse]{
+			Content:           []mcpsdk.Content{&mcpsdk.TextContent{Text: text}},
 			StructuredContent: response,
 		}, nil
 	}
@@ -533,27 +533,27 @@ func createTaskFromRequest(taskStore store.TaskStore, taskReq types.TaskCreation
 // Pattern suggestion functionality removed as part of cleanup.
 
 // RegisterAdvancedMCPTools registers additional MCP tools
-func RegisterAdvancedMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
+func RegisterAdvancedMCPTools(server *mcpsdk.Server, taskStore store.TaskStore) error {
 	// Batch create tasks tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "batch-create-tasks",
 		Description: "Create many tasks at once. Supports TempID-based parent-child linking, dependencies, and priorities. Returns created_tasks, errors, and success_count.",
 	}, batchCreateTasksHandler(taskStore))
 
 	// Bulk operations tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "bulk-tasks",
 		Description: "Bulk operate on task_ids (IDs or references). Actions: complete, delete, prioritize (requires priority [low|medium|high|urgent]). Returns succeeded/failed and updated_task_ids.",
 	}, bulkTaskHandler(taskStore))
 
 	// Bulk by filter tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "bulk-by-filter",
 		Description: "Bulk operate by filter/expression/query with preview/confirm. Actions: complete, delete, prioritize (requires priority).",
 	}, bulkByFilterHandler(taskStore))
 
 	// Advanced search tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "search-tasks",
 		Description: "🔍 ADVANCED SEARCH (use for complex queries): Boolean operators (AND/OR/NOT), date ranges, tags. Example: '(urgent OR high) AND NOT done'. Best for power users.",
 	}, advancedSearchHandler(taskStore))
@@ -564,8 +564,8 @@ func RegisterAdvancedMCPTools(server *mcp.Server, taskStore store.TaskStore) err
 }
 
 // bulkByFilterHandler applies bulk operations to tasks matched by filter/expression/query
-func bulkByFilterHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BulkByFilterParams, types.BulkByFilterResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.BulkByFilterParams]) (*mcp.CallToolResultFor[types.BulkByFilterResponse], error) {
+func bulkByFilterHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.BulkByFilterParams, types.BulkByFilterResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.BulkByFilterParams]) (*mcpsdk.CallToolResultFor[types.BulkByFilterResponse], error) {
 		args := params.Arguments
 
 		// Load all tasks
@@ -605,7 +605,7 @@ func bulkByFilterHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Bul
 				Matched:  len(matched),
 			}
 			text := fmt.Sprintf("Preview: %d tasks match (%s)", len(matched), criteria)
-			return &mcp.CallToolResultFor[types.BulkByFilterResponse]{Content: []mcp.Content{&mcp.TextContent{Text: text}}, StructuredContent: resp}, nil
+			return &mcpsdk.CallToolResultFor[types.BulkByFilterResponse]{Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: text}}, StructuredContent: resp}, nil
 		}
 
 		// Apply action
@@ -660,6 +660,6 @@ func bulkByFilterHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Bul
 			Errors:       errorsList,
 		}
 		text := fmt.Sprintf("Bulk-by-filter %s: %d acted, %d failed (%s)", args.Action, succeeded, failed, criteria)
-		return &mcp.CallToolResultFor[types.BulkByFilterResponse]{Content: []mcp.Content{&mcp.TextContent{Text: text}}, StructuredContent: resp}, nil
+		return &mcpsdk.CallToolResultFor[types.BulkByFilterResponse]{Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: text}}, StructuredContent: resp}, nil
 	}
 }

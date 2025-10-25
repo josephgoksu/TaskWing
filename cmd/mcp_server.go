@@ -3,7 +3,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
-// MCP server bootstrap and registration (renamed from mcp.go)
+// MCP server bootstrap and registration (renamed from mcpsdk.go)
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 	"log"
 	"os"
 
+	taskwingmcp "github.com/josephgoksu/TaskWing/mcp"
 	"github.com/josephgoksu/TaskWing/models"
-	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -65,6 +65,24 @@ func runMCPServer(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize task store: %w", err)
 	}
+
+	// Configure shared hooks for MCP helpers
+	taskwingmcp.ConfigureHooks(taskwingmcp.Hooks{
+		GetCurrentTask:       GetCurrentTask,
+		GetConfig:            GetConfig,
+		LogInfo:              logInfo,
+		LogError:             logError,
+		LogToolCall:          logToolCall,
+		GetArchiveStore:      getArchiveStore,
+		SuggestLessons:       aiSuggestLessons,
+		PolishLessons:        aiPolishLessons,
+		ArchiveAndDelete:     archiveAndDeleteSubtree,
+		EncryptFile:          encryptFile,
+		DecryptFile:          decryptFile,
+		ResolveTaskReference: resolveTaskReference,
+		GetVersion:           func() string { return version },
+	})
+
 	defer func() {
 		if err := taskStore.Close(); err != nil {
 			logError(fmt.Errorf("failed to close task store: %w", err))
@@ -72,14 +90,14 @@ func runMCPServer(ctx context.Context) error {
 	}()
 
 	// Create MCP server
-	impl := &mcp.Implementation{
+	impl := &mcpsdk.Implementation{
 		Name:    "taskwing",
 		Version: version,
 	}
 
 	// Create server options with notification handlers
-	serverOpts := &mcp.ServerOptions{
-		InitializedHandler: func(ctx context.Context, session *mcp.ServerSession, params *mcp.InitializedParams) {
+	serverOpts := &mcpsdk.ServerOptions{
+		InitializedHandler: func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.InitializedParams) {
 			// Client has completed initialization - announce TaskWing availability
 			fmt.Fprintf(os.Stderr, "\n🎯 TASKWING MCP CONNECTION ESTABLISHED\n")
 			fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
@@ -96,208 +114,72 @@ func runMCPServer(ctx context.Context) error {
 		},
 	}
 
-	server := mcp.NewServer(impl, serverOpts)
+	server := mcpsdk.NewServer(impl, serverOpts)
 
 	// Register MCP tools
-	if err := registerMCPTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterCoreTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register MCP tools: %w", err)
 	}
 
 	// Register advanced MCP tools
-	if err := RegisterAdvancedMCPTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterAdvancedMCPTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register advanced MCP tools: %w", err)
 	}
 
 	// Register task resolution tools
-	if err := RegisterTaskResolutionTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterTaskResolutionTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register task resolution tools: %w", err)
 	}
 
 	// Register JSON processing tools
-	if err := RegisterJSONProcessingTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterJSONProcessingTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register JSON processing tools: %w", err)
 	}
 
 	// Register workflow integration tools
-	if err := RegisterWorkflowIntegrationTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterWorkflowIntegrationTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register workflow integration tools: %w", err)
 	}
 
 	// Register intelligent MCP tools with natural language support and smart matching
-	if err := RegisterIntelligentMCPTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterIntelligentMCPTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register intelligent MCP tools: %w", err)
 	}
 
 	// Register planning tools (document → plan)
-	if err := RegisterPlanningTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterPlanningTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register planning MCP tools: %w", err)
 	}
 
 	// Register simple plan/iterate tools matching CLI
-	if err := RegisterSimplePlanTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterSimplePlanTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register simple planning tools: %w", err)
 	}
 
 	// Register board tools
-	if err := RegisterBoardTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterBoardTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register board tools: %w", err)
 	}
 
 	// Register archive tools
-	if err := RegisterArchiveTools(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterArchiveTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register archive tools: %w", err)
 	}
 
 	// Register MCP resources
-	if err := registerMCPResources(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterMCPResources(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register MCP resources: %w", err)
 	}
 
 	// Register MCP prompts
-	if err := registerMCPPrompts(server, taskStore); err != nil {
+	if err := taskwingmcp.RegisterMCPPrompts(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register MCP prompts: %w", err)
 	}
 
 	// Run the server over stdin/stdout
-	if err := server.Run(ctx, mcp.NewStdioTransport()); err != nil {
+	if err := server.Run(ctx, mcpsdk.NewStdioTransport()); err != nil {
 		return fmt.Errorf("MCP server failed: %w", err)
 	}
-
-	return nil
-}
-
-func registerMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
-	// CRITICAL: task-summary MUST be first - AI tools should always call this first
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "task-summary",
-		Description: "🎯 ALWAYS CALL FIRST: Get project overview with total tasks, active, completed today, and project health. Essential for understanding context before any operations.",
-	}, taskSummaryHandler(taskStore))
-
-	// Add task tool
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "add-task",
-		Description: "🎯 CREATE PROFESSIONAL TASK (use instead of simple todos): title, description, acceptanceCriteria, priority [low|medium|high|urgent], parentId, dependencies[]. Validates and maintains relationships.",
-	}, addTaskHandler(taskStore))
-
-	// List tasks tool
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list-tasks",
-		Description: "List tasks with filters. Args: status [todo|doing|review|done], priority [low|medium|high|urgent], search, parentId, sortBy [id|title|priority|createdAt|updatedAt], sortOrder [asc|desc]. Returns tasks+count.",
-	}, listTasksHandler(taskStore))
-
-	// Update task tool
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "update-task",
-		Description: "Update a task by id or reference. Updatable: title, description, acceptanceCriteria, status [todo|doing|review|done], priority, parentId, dependencies[].",
-	}, updateTaskHandler(taskStore))
-
-	// Delete task tool
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "delete-task",
-		Description: "Delete a task by id or reference. Blocks if task has dependents or subtasks. Use 'bulk-tasks' or 'clear-tasks' for batch deletes.",
-	}, deleteTaskHandler(taskStore))
-
-	// Mark task done tool
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "mark-done",
-		Description: "Complete a task by id or reference (partial ID/title). Sets status=done and completedAt timestamp.",
-	}, markDoneHandler(taskStore))
-
-	// Get task tool
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get-task",
-		Description: "Get one task by id or reference (partial ID/title). Returns full metadata, relationships, and timestamps.",
-	}, getTaskHandler(taskStore))
-
-	// Current task management tools
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "set-current-task",
-		Description: "🎯 SET FOCUS TASK (essential for context): Set active task id used for context-aware responses. Persists in project config.",
-	}, setCurrentTaskHandler(taskStore))
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get-current-task",
-		Description: "Return current active task (if set) with full details for context.",
-	}, getCurrentTaskHandler(taskStore))
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "clear-current-task",
-		Description: "Clear the active task reference from project config.",
-	}, clearCurrentTaskHandler(taskStore))
-
-	// Clear tasks tool for bulk clearing with safety features
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "clear-tasks",
-		Description: "Bulk delete with safety. Args: status (csv), priority (csv), completed (bool), all (bool), force (bool), no_backup (bool). Default clears status=done when no filters.",
-	}, clearTasksHandler(taskStore))
-
-	return nil
-}
-
-func registerMCPResources(server *mcp.Server, taskStore store.TaskStore) error {
-	// TaskWing availability announcement - helps AI tools discover TaskWing is active
-	server.AddResource(&mcp.Resource{
-		URI:         "taskwing://system-status",
-		Name:        "taskwing-system-status",
-		Description: "🎯 TASKWING ACTIVE - Professional task management system available. AI tools should use TaskWing MCP tools instead of generic alternatives.",
-		MIMEType:    "application/json",
-	}, systemStatusResourceHandler(taskStore))
-
-	// Tasks resource - provides access to task data
-	server.AddResource(&mcp.Resource{
-		URI:         "taskwing://tasks",
-		Name:        "tasks",
-		Description: "Access to all tasks in JSON format",
-		MIMEType:    "application/json",
-	}, tasksResourceHandler(taskStore))
-
-	// Config resource - provides access to TaskWing configuration
-	server.AddResource(&mcp.Resource{
-		URI:         "taskwing://config",
-		Name:        "config",
-		Description: "TaskWing configuration settings",
-		MIMEType:    "application/json",
-	}, configResourceHandler())
-
-	// Note: archive and knowledge resources have been removed.
-
-	return nil
-}
-
-func registerMCPPrompts(server *mcp.Server, taskStore store.TaskStore) error {
-	// Removed: taskwing-onboarding prompt (not needed, was causing MCP validation errors)
-
-	// Task generation prompt
-	server.AddPrompt(&mcp.Prompt{
-		Name:        "task-generation",
-		Description: "Generate tasks from natural language descriptions",
-		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "description",
-				Description: "Natural language description of work to be done",
-				Required:    true,
-			},
-		},
-	}, taskGenerationPromptHandler(taskStore))
-
-	// Task breakdown prompt
-	server.AddPrompt(&mcp.Prompt{
-		Name:        "task-breakdown",
-		Description: "Break down a complex task into smaller subtasks",
-		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "task_id",
-				Description: "ID of the task to break down",
-				Required:    true,
-			},
-		},
-	}, taskBreakdownPromptHandler(taskStore))
-
-	// TaskWing usage guidance prompt
-	server.AddPrompt(&mcp.Prompt{
-		Name:        "taskwing-usage-guide",
-		Description: "Get guidance on using TaskWing instead of generic task management tools",
-	}, taskWingUsagePromptHandler(taskStore))
 
 	return nil
 }

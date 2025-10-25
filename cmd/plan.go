@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	taskwingmcp "github.com/josephgoksu/TaskWing/mcp"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/prompts"
 	"github.com/spf13/cobra"
@@ -77,7 +78,7 @@ var planCmd = &cobra.Command{
 		}
 
 		// Build lightweight context string using existing builder
-		taskCtx, err := BuildTaskContext(st)
+		taskCtx, err := taskwingmcp.BuildTaskContext(st)
 		if err != nil {
 			return fmt.Errorf("build context: %w", err)
 		}

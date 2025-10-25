@@ -1,51 +1,25 @@
 # Repository Guidelines
 
-## Project Structure & Modules
+## Project Structure & Module Organization
 
-- `cmd/`: CLI commands and entry points (e.g., `root.go`, task/MCP subcommands).
-- `main.go`: binary entry; builds the `taskwing` CLI.
-- `types/`: shared types and interfaces (config, MCP, errors, LLM contracts).
-- `models/`: domain models (e.g., `task.go`).
-- `store/`: persistence layer (file-backed task store).
-- `llm/`: LLM providers and helpers (e.g., OpenAI integration).
-- `prompts/`: prompt loaders and templates.
-- `docs/`: design notes and long-form docs.
-- `.taskwing/`: local project data (e.g., `tasks/`); generated at runtime.
-- `test-results/`: logs and coverage outputs created by tests.
+Core CLI entry lives in `main.go`, with commands under `cmd/` (e.g., `root.go`, task and MCP subcommands). Shared contracts sit in `types/`, domain models in `models/`, and persistence code in `store/`. LLM providers and prompts belong in `llm/` and `prompts/` respectively. Docs and design references are under `docs/`, while runtime data is written to `.taskwing/`. Test artifacts such as logs and coverage land in `test-results/`.
 
-## Build, Test, and Development
+## Build, Test, and Development Commands
 
-- `make build`: compile CLI to `./taskwing`.
-- `make test`: run unit + integration + MCP tests; logs in `test-results/`.
-- `make test-quick`: fast local check of core paths.
-- `make test-integration` / `make test-mcp`: scoped suites for CLI/MCP.
-- `make coverage`: generate `test-results/coverage.html` and summary.
-- `make lint`: `go fmt` and optional `golangci-lint` if installed.
-- `make dev-setup`: tidy modules, generate, and install linters.
-- Run locally: `./taskwing init`, `./taskwing add "Fix login"`, `./taskwing mcp -v`.
+Use `make build` to compile the CLI to `./taskwing`. `make test` runs unit, integration, and MCP suites and streams logs to `test-results/`. For a faster pass, run `make test-quick`; scope to integration or MCP with `make test-integration` or `make test-mcp`. Format and lint via `make lint`, and prepare a fresh dev environment with `make dev-setup`. Run the CLI locally with `./taskwing init` followed by commands like `./taskwing add "Fix login"` or `./taskwing mcp -v` for verbose MCP sessions.
 
-## Coding Style & Conventions
+## Coding Style & Naming Conventions
 
-- Go 1.24+; format with `go fmt` (enforced via `make lint`).
-- Packages: lowercase, no underscores (e.g., `store`, `llm`).
-- Exported names: `PascalCase`; unexported: `camelCase`.
-- Errors: wrap with context (`fmt.Errorf("...: %w", err)`).
-- Files/commands: mirror feature names (e.g., `cmd/list.go`, `cmd/add.go`).
+Target Go 1.24+, keeping packages lowercase without underscores. Exported identifiers use PascalCase, while internals use camelCase. Always format with `go fmt` (enforced through `make lint`) and wrap errors using `fmt.Errorf("context: %w", err)`. Place commands in files that mirror their feature names (for example, `cmd/list.go`).
 
 ## Testing Guidelines
 
-- Framework: standard `go test`; tests live beside code as `*_test.go` with `TestXxx`.
-- Common suites live in `cmd/` (MCP and CLI behavior).
-- Run: `make test` or target a file: `go test -v ./cmd -run TestMCPProtocolStdio`.
-- Coverage: keep or improve existing totals; review `coverage.html` locally.
+Tests live beside their sources as `*_test.go` and rely on the standard `go test` framework. Name tests with `TestXxx` and prefer focused coverage per package. Generate coverage using `make coverage`, which also writes `test-results/coverage.html`. When debugging a specific path, run targeted commands such as `go test -v ./cmd -run TestMCPProtocolStdio`.
 
-## Commits & Pull Requests
+## Commit & Pull Request Guidelines
 
-- Commits: follow Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`) as in repo history.
-- PRs must include: clear description, linked issues, test plan (commands run) and relevant logs from `test-results/`.
-- If CLI behavior changes, add examples to `EXAMPLES.md` and update help where relevant.
+Adopt Conventional Commits prefixes like `feat:` and `fix:` to align with repository history. Pull requests should include a clear summary, linked issues, and a test plan detailing executed commands with relevant snippets from `test-results/`. Update CLI help or `EXAMPLES.md` whenever behavior changes.
 
-## Security & Configuration
+## Security & Configuration Tips
 
-- Use `example.env` → `.env`; never commit secrets. Key vars: `OPENAI_API_KEY`, `TASKWING_LLM_PROVIDER`, `TASKWING_LLM_MODELNAME`.
-- Local config: `.taskwing.yaml` or `--config` flag; see `.taskwing.example.yaml`.
+Never commit secrets; copy `example.env` to `.env` for local overrides and configure `OPENAI_API_KEY`, `TASKWING_LLM_PROVIDER`, and `TASKWING_LLM_MODELNAME`. Use `.taskwing.yaml` or the `--config` flag for project-specific settings. Treat `.taskwing/` artifacts as generated and exclude them from version control.

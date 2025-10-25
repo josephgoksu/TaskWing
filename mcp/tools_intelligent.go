@@ -1,7 +1,7 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
-package cmd
+package mcp
 
 // Intelligent MCP tools: query, smart find, suggest
 
@@ -16,12 +16,12 @@ import (
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Intelligent query handler with natural language support and advanced filtering
-func queryTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.FilterTasksParams, types.FilterTasksResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.FilterTasksParams]) (*mcp.CallToolResultFor[types.FilterTasksResponse], error) {
+func queryTasksHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.FilterTasksParams, types.FilterTasksResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.FilterTasksParams]) (*mcpsdk.CallToolResultFor[types.FilterTasksResponse], error) {
 		args := params.Arguments
 		logToolCall("query-tasks", args)
 
@@ -164,9 +164,9 @@ func queryTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Filte
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[types.FilterTasksResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.FilterTasksResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -174,8 +174,8 @@ func queryTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Filte
 }
 
 // Smart task finder with fuzzy matching and intelligent suggestions
-func findTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ResolveTaskReferenceParams, types.ResolveTaskReferenceResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ResolveTaskReferenceParams]) (*mcp.CallToolResultFor[types.ResolveTaskReferenceResponse], error) {
+func findTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.ResolveTaskReferenceParams, types.ResolveTaskReferenceResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.ResolveTaskReferenceParams]) (*mcpsdk.CallToolResultFor[types.ResolveTaskReferenceResponse], error) {
 		args := params.Arguments
 		logToolCall("resolve-task-reference", args)
 
@@ -217,9 +217,9 @@ func findTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Resolve
 			response.Resolved = true
 			response.Message = fmt.Sprintf("✓ Exact ID match: %s", exactTask.Title)
 
-			return &mcp.CallToolResultFor[types.ResolveTaskReferenceResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: response.Message},
+			return &mcpsdk.CallToolResultFor[types.ResolveTaskReferenceResponse]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{Text: response.Message},
 				},
 				StructuredContent: response,
 			}, nil
@@ -291,9 +291,9 @@ func findTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Resolve
 			response.Message = fmt.Sprintf("❌ No exact match found for '%s'. Try without 'exact=true' for fuzzy matching.", reference)
 		}
 
-		return &mcp.CallToolResultFor[types.ResolveTaskReferenceResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: response.Message},
+		return &mcpsdk.CallToolResultFor[types.ResolveTaskReferenceResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: response.Message},
 			},
 			StructuredContent: response,
 		}, nil
@@ -301,8 +301,8 @@ func findTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Resolve
 }
 
 // Intelligent task suggestions with context awareness
-func suggestTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.TaskAutocompleteParams, types.TaskAutocompleteResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.TaskAutocompleteParams]) (*mcp.CallToolResultFor[types.TaskAutocompleteResponse], error) {
+func suggestTasksHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.TaskAutocompleteParams, types.TaskAutocompleteResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.TaskAutocompleteParams]) (*mcpsdk.CallToolResultFor[types.TaskAutocompleteResponse], error) {
 		args := params.Arguments
 		logToolCall("task-autocomplete", args)
 
@@ -352,9 +352,9 @@ func suggestTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Tas
 			responseText += fmt.Sprintf(" (context: %s)", args.Context)
 		}
 
-		return &mcp.CallToolResultFor[types.TaskAutocompleteResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.TaskAutocompleteResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -753,7 +753,7 @@ func calculateEnhancedMatchScore(query, text string, fuzzyMatch bool) float64 {
 }
 
 func boostCurrentTaskMatches(matches []types.TaskMatch) []types.TaskMatch {
-	currentTaskID := GetCurrentTask()
+	currentTaskID := currentTaskID()
 	if currentTaskID == "" {
 		return matches
 	}
@@ -777,7 +777,7 @@ func boostCurrentTaskMatches(matches []types.TaskMatch) []types.TaskMatch {
 func filterTasksBySmartContext(tasks []models.Task, context string) []models.Task {
 	switch strings.ToLower(context) {
 	case "current", "active":
-		currentTaskID := GetCurrentTask()
+		currentTaskID := currentTaskID()
 		if currentTaskID == "" {
 			// Return active tasks if no current task
 			var active []models.Task
@@ -1061,21 +1061,21 @@ func min(a, b int) int {
 }
 
 // RegisterIntelligentMCPTools registers intelligent MCP tools with natural language support
-func RegisterIntelligentMCPTools(server *mcp.Server, taskStore store.TaskStore) error {
+func RegisterIntelligentMCPTools(server *mcpsdk.Server, taskStore store.TaskStore) error {
 	// Intelligent query tasks tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "query-tasks",
 		Description: "🔍 NATURAL LANGUAGE SEARCH (preferred for general search): Examples: 'high priority unfinished', 'what needs review'. Supports fuzzy matching and smart interpretation.",
 	}, queryTasksHandler(taskStore))
 
 	// Smart task finding tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "find-task",
 		Description: "🔍 FIND SINGLE TASK (use for specific task lookup): Find by partial ID, fuzzy title, or description. Handles typos. Best for: 'find task abc123' or 'find login task'.",
 	}, findTaskHandler(taskStore))
 
 	// Task suggestion tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "suggest-tasks",
 		Description: "🤖 AI-POWERED SUGGESTIONS: Get relevant task recommendations based on context and input. Returns ranked suggestions with confidence scores.",
 	}, suggestTasksHandler(taskStore))

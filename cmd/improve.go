@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	taskwingmcp "github.com/josephgoksu/TaskWing/mcp"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/prompts"
 	"github.com/manifoldco/promptui"
@@ -83,7 +84,7 @@ var improveCmd = &cobra.Command{
 		if ac := strings.TrimSpace(task.AcceptanceCriteria); ac != "" {
 			input = fmt.Sprintf("%s\n\nAcceptance Criteria:\n%s", input, ac)
 		}
-		ctxInfo, _ := BuildTaskContext(st)
+		ctxInfo, _ := taskwingmcp.BuildTaskContext(st)
 		var ctxStr string
 		if ctxInfo != nil {
 			ctxStr = fmt.Sprintf("Project: %d tasks, %d done", ctxInfo.TotalTasks, ctxInfo.TasksByStatus[string(models.StatusDone)])

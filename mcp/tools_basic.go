@@ -1,7 +1,7 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
-package cmd
+package mcp
 
 // Basic MCP tools: add, list, get, update, delete, mark-done
 
@@ -18,12 +18,12 @@ import (
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // addTaskHandler creates a new task
-func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskParams, types.TaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.AddTaskParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
+func addTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.AddTaskParams, types.TaskResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.AddTaskParams]) (*mcpsdk.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 		logToolCall("add-task", args)
 
@@ -134,9 +134,9 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskP
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[types.TaskResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
+		return &mcpsdk.CallToolResultFor[types.TaskResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{
 					Text: responseText,
 				},
 			},
@@ -147,8 +147,8 @@ func addTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.AddTaskP
 }
 
 // listTasksHandler lists tasks with optional filtering
-func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ListTasksParams, types.TaskListResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ListTasksParams]) (*mcp.CallToolResultFor[types.TaskListResponse], error) {
+func listTasksHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.ListTasksParams, types.TaskListResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.ListTasksParams]) (*mcpsdk.CallToolResultFor[types.TaskListResponse], error) {
 		args := params.Arguments
 
 		// Create filter function
@@ -231,9 +231,9 @@ func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ListTa
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[types.TaskListResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
+		return &mcpsdk.CallToolResultFor[types.TaskListResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{
 					Text: responseText,
 				},
 			},
@@ -243,8 +243,8 @@ func listTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ListTa
 }
 
 // updateTaskHandler updates an existing task
-func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.UpdateTaskParams, types.TaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.UpdateTaskParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
+func updateTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.UpdateTaskParams, types.TaskResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.UpdateTaskParams]) (*mcpsdk.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 
 		// Validate required fields (allow reference)
@@ -352,9 +352,9 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Updat
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[types.TaskResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
+		return &mcpsdk.CallToolResultFor[types.TaskResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{
 					Text: responseText,
 				},
 			},
@@ -364,8 +364,8 @@ func updateTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Updat
 }
 
 // deleteTaskHandler deletes a task
-func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.DeleteTaskParams, types.DeleteTaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.DeleteTaskParams]) (*mcp.CallToolResultFor[types.DeleteTaskResponse], error) {
+func deleteTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.DeleteTaskParams, types.DeleteTaskResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.DeleteTaskParams]) (*mcpsdk.CallToolResultFor[types.DeleteTaskResponse], error) {
 		args := params.Arguments
 
 		// Validate required fields (allow reference)
@@ -436,9 +436,9 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Delet
 			Message: fmt.Sprintf("Task '%s' deleted successfully", task.Title),
 		}
 
-		return &mcp.CallToolResultFor[types.DeleteTaskResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
+		return &mcpsdk.CallToolResultFor[types.DeleteTaskResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{
 					Text: responseText,
 				},
 			},
@@ -448,8 +448,8 @@ func deleteTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Delet
 }
 
 // markDoneHandler marks a task as completed
-func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.MarkDoneParams, types.TaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.MarkDoneParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
+func markDoneHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.MarkDoneParams, types.TaskResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.MarkDoneParams]) (*mcpsdk.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 
 		// Validate required fields (allow reference fallback)
@@ -498,9 +498,9 @@ func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.MarkDon
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[types.TaskResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
+		return &mcpsdk.CallToolResultFor[types.TaskResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{
 					Text: responseText,
 				},
 			},
@@ -510,8 +510,8 @@ func markDoneHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.MarkDon
 }
 
 // getTaskHandler retrieves a specific task
-func getTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.GetTaskParams, types.TaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.GetTaskParams]) (*mcp.CallToolResultFor[types.TaskResponse], error) {
+func getTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.GetTaskParams, types.TaskResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.GetTaskParams]) (*mcpsdk.CallToolResultFor[types.TaskResponse], error) {
 		args := params.Arguments
 
 		// Validate required fields (allow reference)
@@ -564,9 +564,9 @@ func getTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.GetTaskP
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[types.TaskResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
+		return &mcpsdk.CallToolResultFor[types.TaskResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{
 					Text: responseText,
 				},
 			},
@@ -609,16 +609,16 @@ func createSortFunction(sortBy, sortOrder string) func([]models.Task) []models.T
 }
 
 // setCurrentTaskHandler sets the current active task
-func setCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.SetCurrentTaskParams, types.CurrentTaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.SetCurrentTaskParams]) (*mcp.CallToolResultFor[types.CurrentTaskResponse], error) {
+func setCurrentTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.SetCurrentTaskParams, types.CurrentTaskResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.SetCurrentTaskParams]) (*mcpsdk.CallToolResultFor[types.CurrentTaskResponse], error) {
 		args := params.Arguments
 		logToolCall("set-current-task", args)
 
 		// Accept either ID or Reference
 		if strings.TrimSpace(args.ID) == "" && strings.TrimSpace(args.Reference) == "" {
-			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{
+			return &mcpsdk.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{
 						Text: "Task ID or reference is required",
 					},
 				},
@@ -665,10 +665,10 @@ func setCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.S
 		}
 
 		// Set the current task
-		if err := SetCurrentTask(task.ID); err != nil {
-			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{
+		if err := setCurrentTask(task.ID); err != nil {
+			return &mcpsdk.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{
 						Text: fmt.Sprintf("Failed to set current task: %v", err),
 					},
 				},
@@ -688,9 +688,9 @@ func setCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.S
 			Message:     fmt.Sprintf("Set current task: %s - %s", task.ID, task.Title),
 		}
 
-		return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
+		return &mcpsdk.CallToolResultFor[types.CurrentTaskResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{
 					Text: response.Message,
 				},
 			},
@@ -700,11 +700,11 @@ func setCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.S
 }
 
 // getCurrentTaskHandler gets the current active task
-func getCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.GetCurrentTaskParams, types.CurrentTaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.GetCurrentTaskParams]) (*mcp.CallToolResultFor[types.CurrentTaskResponse], error) {
+func getCurrentTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.GetCurrentTaskParams, types.CurrentTaskResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.GetCurrentTaskParams]) (*mcpsdk.CallToolResultFor[types.CurrentTaskResponse], error) {
 		logToolCall("get-current-task", params.Arguments)
 
-		currentTaskID := GetCurrentTask()
+		currentTaskID := currentTaskID()
 
 		if currentTaskID == "" {
 			response := types.CurrentTaskResponse{
@@ -712,9 +712,9 @@ func getCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.G
 				Message: "No current task set",
 			}
 
-			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{
+			return &mcpsdk.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{
 						Text: "No current task set",
 					},
 				},
@@ -730,9 +730,9 @@ func getCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.G
 				Message: fmt.Sprintf("Current task '%s' not found (may have been deleted)", currentTaskID),
 			}
 
-			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{
+			return &mcpsdk.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{
 						Text: response.Message,
 					},
 				},
@@ -749,9 +749,9 @@ func getCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.G
 			Message:     fmt.Sprintf("Current task: %s - %s", task.ID, task.Title),
 		}
 
-		return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
+		return &mcpsdk.CallToolResultFor[types.CurrentTaskResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{
 					Text: response.Message,
 				},
 			},
@@ -761,11 +761,11 @@ func getCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.G
 }
 
 // clearCurrentTaskHandler clears the current active task
-func clearCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ClearCurrentTaskParams, types.CurrentTaskResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ClearCurrentTaskParams]) (*mcp.CallToolResultFor[types.CurrentTaskResponse], error) {
+func clearCurrentTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.ClearCurrentTaskParams, types.CurrentTaskResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.ClearCurrentTaskParams]) (*mcpsdk.CallToolResultFor[types.CurrentTaskResponse], error) {
 		logToolCall("clear-current-task", params.Arguments)
 
-		currentTaskID := GetCurrentTask()
+		currentTaskID := currentTaskID()
 
 		if currentTaskID == "" {
 			response := types.CurrentTaskResponse{
@@ -773,9 +773,9 @@ func clearCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 				Message: "No current task was set",
 			}
 
-			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{
+			return &mcpsdk.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{
 						Text: "No current task was set",
 					},
 				},
@@ -784,10 +784,10 @@ func clearCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 		}
 
 		// Clear the current task
-		if err := ClearCurrentTask(); err != nil {
-			return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{
+		if err := clearCurrentTask(); err != nil {
+			return &mcpsdk.CallToolResultFor[types.CurrentTaskResponse]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{
 						Text: fmt.Sprintf("Failed to clear current task: %v", err),
 					},
 				},
@@ -806,9 +806,9 @@ func clearCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 			Message: fmt.Sprintf("Cleared current task: %s", currentTaskID),
 		}
 
-		return &mcp.CallToolResultFor[types.CurrentTaskResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{
+		return &mcpsdk.CallToolResultFor[types.CurrentTaskResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{
 					Text: response.Message,
 				},
 			},
@@ -817,15 +817,9 @@ func clearCurrentTaskHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types
 	}
 }
 
-// Helper function to convert task to response pointer
-func taskToResponsePtr(task models.Task) *types.TaskResponse {
-	response := taskToResponse(task)
-	return &response
-}
-
 // clearTasksHandler clears tasks with safety features and filtering options
-func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ClearTasksParams, types.ClearTasksResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ClearTasksParams]) (*mcp.CallToolResultFor[types.ClearTasksResponse], error) {
+func clearTasksHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.ClearTasksParams, types.ClearTasksResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.ClearTasksParams]) (*mcpsdk.CallToolResultFor[types.ClearTasksResponse], error) {
 		args := params.Arguments
 		startTime := time.Now()
 
@@ -923,9 +917,9 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 					"all":      args.All,
 				},
 			}
-			return &mcp.CallToolResultFor[types.ClearTasksResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "No tasks match the clearing criteria"},
+			return &mcpsdk.CallToolResultFor[types.ClearTasksResponse]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{Text: "No tasks match the clearing criteria"},
 				},
 				StructuredContent: response,
 			}, nil
@@ -950,9 +944,9 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 					"all":      args.All,
 				},
 			}
-			return &mcp.CallToolResultFor[types.ClearTasksResponse]{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: fmt.Sprintf("Preview: %d tasks would be cleared", len(tasksToDelete))},
+			return &mcpsdk.CallToolResultFor[types.ClearTasksResponse]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{Text: fmt.Sprintf("Preview: %d tasks would be cleared", len(tasksToDelete))},
 				},
 				StructuredContent: response,
 			}, nil
@@ -969,7 +963,7 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 		// Create backup unless disabled
 		var backupFile string
 		if !args.NoBackup {
-			cfg := GetConfig()
+			cfg := currentConfig()
 			backupDir := filepath.Join(cfg.Project.RootDir, "backups")
 
 			if err := os.MkdirAll(backupDir, 0o755); err == nil {
@@ -1007,11 +1001,11 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 		}
 
 		// Clear current task if it was deleted
-		currentTaskID := GetCurrentTask()
+		currentTaskID := currentTaskID()
 		if currentTaskID != "" {
 			for _, task := range tasksToDelete {
 				if task.ID == currentTaskID {
-					if err := ClearCurrentTask(); err != nil {
+					if err := clearCurrentTask(); err != nil {
 						logError(fmt.Errorf("could not clear current task reference: %w", err))
 					}
 					break
@@ -1048,9 +1042,9 @@ func clearTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Clear
 			responseText = EnrichToolResponse(responseText, context)
 		}
 
-		return &mcp.CallToolResultFor[types.ClearTasksResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.ClearTasksResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil

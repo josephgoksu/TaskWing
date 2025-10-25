@@ -1,4 +1,4 @@
-package cmd
+package mcp
 
 // Board MCP tools: snapshot and reconcile
 
@@ -11,24 +11,24 @@ import (
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // RegisterBoardTools registers board-related MCP tools
-func RegisterBoardTools(server *mcp.Server, taskStore store.TaskStore) error {
-	mcp.AddTool(server, &mcp.Tool{
+func RegisterBoardTools(server *mcpsdk.Server, taskStore store.TaskStore) error {
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "board-snapshot",
 		Description: "Return Kanban-style snapshot grouped by status. Args: limit (int), include_tasks (bool). Columns: todo, doing, review, done.",
 	}, boardSnapshotHandler(taskStore))
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "board-reconcile",
 		Description: "Apply multiple operations by reference (complete/delete/prioritize/update). Supports dry_run preview and returns final snapshot.",
 	}, boardReconcileHandler(taskStore))
 	return nil
 }
 
-func boardSnapshotHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BoardSnapshotParams, types.BoardSnapshotResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.BoardSnapshotParams]) (*mcp.CallToolResultFor[types.BoardSnapshotResponse], error) {
+func boardSnapshotHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.BoardSnapshotParams, types.BoardSnapshotResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.BoardSnapshotParams]) (*mcpsdk.CallToolResultFor[types.BoardSnapshotResponse], error) {
 		args := params.Arguments
 
 		limit := args.Limit
@@ -91,15 +91,15 @@ func boardSnapshotHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Bo
 		}
 
 		text := summary
-		return &mcp.CallToolResultFor[types.BoardSnapshotResponse]{
-			Content:           []mcp.Content{&mcp.TextContent{Text: text}},
+		return &mcpsdk.CallToolResultFor[types.BoardSnapshotResponse]{
+			Content:           []mcpsdk.Content{&mcpsdk.TextContent{Text: text}},
 			StructuredContent: resp,
 		}, nil
 	}
 }
 
-func boardReconcileHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.BoardReconcileParams, types.BoardReconcileResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.BoardReconcileParams]) (*mcp.CallToolResultFor[types.BoardReconcileResponse], error) {
+func boardReconcileHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.BoardReconcileParams, types.BoardReconcileResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.BoardReconcileParams]) (*mcpsdk.CallToolResultFor[types.BoardReconcileResponse], error) {
 		args := params.Arguments
 
 		tasks, err := taskStore.ListTasks(nil, nil)
@@ -197,8 +197,8 @@ func boardReconcileHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.B
 		}
 
 		text := fmt.Sprintf("Reconcile: %d succeeded, %d failed", succeeded, failed)
-		return &mcp.CallToolResultFor[types.BoardReconcileResponse]{
-			Content:           []mcp.Content{&mcp.TextContent{Text: text}},
+		return &mcpsdk.CallToolResultFor[types.BoardReconcileResponse]{
+			Content:           []mcpsdk.Content{&mcpsdk.TextContent{Text: text}},
 			StructuredContent: resp,
 		}, nil
 	}

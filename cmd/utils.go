@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/manifoldco/promptui"
@@ -18,34 +19,12 @@ import (
 
 // Helper to convert priority to an integer for sorting
 func priorityToInt(p models.TaskPriority) int {
-	switch p {
-	case models.PriorityUrgent:
-		return 4
-	case models.PriorityHigh:
-		return 3
-	case models.PriorityMedium:
-		return 2
-	case models.PriorityLow:
-		return 1
-	default:
-		return 0 // Should not happen with validated data
-	}
+	return taskutil.PriorityToInt(p)
 }
 
 // Helper to convert status to an integer for sorting (workflow order)
 func statusToInt(s models.TaskStatus) int {
-	switch s {
-	case models.StatusTodo:
-		return 1
-	case models.StatusDoing:
-		return 2
-	case models.StatusReview:
-		return 3
-	case models.StatusDone:
-		return 4
-	default:
-		return 0
-	}
+	return taskutil.StatusToInt(s)
 }
 
 // statusIcon provides a compact emoji indicator for task status
@@ -396,4 +375,14 @@ func aesGCMDecrypt(key, ciphertext []byte) ([]byte, error) {
 	nonce := ciphertext[:gcm.NonceSize()]
 	ct := ciphertext[gcm.NonceSize():]
 	return gcm.Open(nil, nonce, ct, nil)
+}
+
+// shortID proxies to taskutil.ShortID for consistent display formatting.
+func shortID(id string) string {
+	return taskutil.ShortID(id)
+}
+
+// normalizePriorityString normalizes user-supplied priorities via shared helpers.
+func normalizePriorityString(input string) (string, error) {
+	return taskutil.NormalizePriorityString(input)
 }

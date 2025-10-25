@@ -1,7 +1,7 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
-package cmd
+package mcp
 
 // JSON processing tools: filter, extract ids, analytics
 
@@ -14,14 +14,14 @@ import (
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // JSON Processing tools implementation replaces jq usage
 
 // filterTasksHandler implements advanced filtering with JSONPath-style expressions
-func filterTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.FilterTasksParams, types.FilterTasksResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.FilterTasksParams]) (*mcp.CallToolResultFor[types.FilterTasksResponse], error) {
+func filterTasksHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.FilterTasksParams, types.FilterTasksResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.FilterTasksParams]) (*mcpsdk.CallToolResultFor[types.FilterTasksResponse], error) {
 		args := params.Arguments
 		logToolCall("filter-tasks", args)
 
@@ -115,9 +115,9 @@ func filterTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Filt
 		responseText := fmt.Sprintf("Filtered %d tasks using '%s' (executed in %dms)",
 			len(taskResponses), filterUsed, executionTime)
 
-		return &mcp.CallToolResultFor[types.FilterTasksResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.FilterTasksResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -125,8 +125,8 @@ func filterTasksHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Filt
 }
 
 // extractTaskIDsHandler implements bulk ID extraction with criteria
-func extractTaskIDsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.ExtractTaskIDsParams, types.ExtractTaskIDsResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.ExtractTaskIDsParams]) (*mcp.CallToolResultFor[types.ExtractTaskIDsResponse], error) {
+func extractTaskIDsHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.ExtractTaskIDsParams, types.ExtractTaskIDsResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.ExtractTaskIDsParams]) (*mcpsdk.CallToolResultFor[types.ExtractTaskIDsResponse], error) {
 		args := params.Arguments
 		logToolCall("extract-task-ids", args)
 
@@ -229,9 +229,9 @@ func extractTaskIDsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.E
 			responseText += ". Includes id/title pairs."
 		}
 
-		return &mcp.CallToolResultFor[types.ExtractTaskIDsResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.ExtractTaskIDsResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -239,8 +239,8 @@ func extractTaskIDsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.E
 }
 
 // taskAnalyticsHandler implements aggregation and statistics
-func taskAnalyticsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.TaskAnalyticsParams, types.TaskAnalyticsResponse] {
-	return func(ctx context.Context, ss *mcp.ServerSession, params *mcp.CallToolParamsFor[types.TaskAnalyticsParams]) (*mcp.CallToolResultFor[types.TaskAnalyticsResponse], error) {
+func taskAnalyticsHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.TaskAnalyticsParams, types.TaskAnalyticsResponse] {
+	return func(ctx context.Context, ss *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[types.TaskAnalyticsParams]) (*mcpsdk.CallToolResultFor[types.TaskAnalyticsResponse], error) {
 		args := params.Arguments
 		logToolCall("task-analytics", args)
 
@@ -287,9 +287,9 @@ func taskAnalyticsHandler(taskStore store.TaskStore) mcp.ToolHandlerFor[types.Ta
 		responseText := fmt.Sprintf("Analytics for %d tasks (%s): %s (executed in %dms)",
 			len(tasks), dateRange, summary, executionTime)
 
-		return &mcp.CallToolResultFor[types.TaskAnalyticsResponse]{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: responseText},
+		return &mcpsdk.CallToolResultFor[types.TaskAnalyticsResponse]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: responseText},
 			},
 			StructuredContent: response,
 		}, nil
@@ -563,21 +563,21 @@ func generateAnalyticsSummary(metrics map[string]interface{}, groups map[string]
 }
 
 // RegisterJSONProcessingTools registers the JSON processing MCP tools
-func RegisterJSONProcessingTools(server *mcp.Server, taskStore store.TaskStore) error {
+func RegisterJSONProcessingTools(server *mcpsdk.Server, taskStore store.TaskStore) error {
 	// Filter tasks tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "filter-tasks",
 		Description: "⚙️ TECHNICAL FILTER (for developers): JSONPath or expression-based filtering. Examples: $.status==\"todo\"; priority=urgent. Returns raw JSON data.",
 	}, filterTasksHandler(taskStore))
 
 	// Extract task IDs tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "extract-task-ids",
 		Description: "Extract only task IDs with simple criteria. Args: status, priority, search, format [array|string|newline]. Returns ids+count.",
 	}, extractTaskIDsHandler(taskStore))
 
 	// Task analytics tool
-	mcp.AddTool(server, &mcp.Tool{
+	mcpsdk.AddTool(server, &mcpsdk.Tool{
 		Name:        "task-analytics",
 		Description: "Compute metrics. Args: metrics [count,duration,completion_rate], group_by [status|priority|created_date], date_range [today|week|month|all].",
 	}, taskAnalyticsHandler(taskStore))
