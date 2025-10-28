@@ -1,4 +1,4 @@
-package cmd
+package mcp
 
 import (
 	"context"
@@ -30,10 +30,15 @@ func TestPlanFromDocument_Preview_NoImprove(t *testing.T) {
 	defer func() { newLLMProvider = prev }()
 
 	_ = SetupTestProject(t)
+	st, err := GetStore()
+	if err != nil {
+		t.Fatalf("GetStore: %v", err)
+	}
+	defer func() { _ = st.Close() }()
 
 	// Build server and handler
 	_ = mcpsdk.NewServer(&mcpsdk.Implementation{Name: "taskwing", Version: "test"}, &mcpsdk.ServerOptions{})
-	handler := planFromDocumentHandler(nil) // store not used for preview
+	handler := planFromDocumentHandler(st) // store only used on confirm
 
 	// Call tool with content and skip_improve=true, confirm=false
 	params := &mcpsdk.CallToolParamsFor[types.PlanFromDocumentParams]{
@@ -60,9 +65,14 @@ func TestPlanFromDocument_Confirm_CreatesTasks(t *testing.T) {
 	defer func() { newLLMProvider = prev }()
 
 	_ = SetupTestProject(t)
+	st, err := GetStore()
+	if err != nil {
+		t.Fatalf("GetStore: %v", err)
+	}
+	defer func() { _ = st.Close() }()
 
 	_ = mcpsdk.NewServer(&mcpsdk.Implementation{Name: "taskwing", Version: "test"}, &mcpsdk.ServerOptions{})
-	handler := planFromDocumentHandler(nil)
+	handler := planFromDocumentHandler(st)
 
 	params := &mcpsdk.CallToolParamsFor[types.PlanFromDocumentParams]{
 		Arguments: types.PlanFromDocumentParams{
@@ -77,5 +87,14 @@ func TestPlanFromDocument_Confirm_CreatesTasks(t *testing.T) {
 	}
 	if res.StructuredContent.Created == 0 || res.StructuredContent.Preview {
 		t.Fatalf("expected tasks to be created, got %+v", res.StructuredContent)
+	}
+
+	// Verify tasks persisted to store
+	tasks, listErr := st.ListTasks(nil, nil)
+	if listErr != nil {
+		t.Fatalf("list tasks: %v", listErr)
+	}
+	if len(tasks) == 0 {
+		t.Fatalf("expected created tasks to be stored")
 	}
 }
