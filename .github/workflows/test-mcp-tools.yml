@@ -14,6 +14,9 @@ jobs:
   test-mcp-tools:
     name: Test MCP Tools (${{ matrix.go-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      GOCACHE: ${{ github.workspace }}/.cache/go-build
+      GOMODCACHE: ${{ github.workspace }}/.cache/go/pkg/mod
 
     strategy:
       matrix:
@@ -35,8 +38,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
+            ${{ env.GOCACHE }}
+            ${{ env.GOMODCACHE }}
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/*.go') }}
           restore-keys: |
             ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
