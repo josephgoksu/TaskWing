@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
@@ -63,7 +64,7 @@ func findTaskByTitleHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[typ
 		responseText := fmt.Sprintf("Found %d tasks matching '%s'", len(matches), args.Title)
 		if len(matches) > 0 {
 			responseText += fmt.Sprintf(". Best: '%s' [%s] (%.1f%%)",
-				matches[0].Task.Title, shortID(matches[0].Task.ID), matches[0].Score*100)
+				matches[0].Task.Title, taskutil.ShortID(matches[0].Task.ID), matches[0].Score*100)
 			// Append compact list
 			maxShow := 5
 			if len(matches) < maxShow {
@@ -71,7 +72,7 @@ func findTaskByTitleHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[typ
 			}
 			responseText += "\nTop:"
 			for i := 0; i < maxShow; i++ {
-				responseText += fmt.Sprintf("\n - %s [%s] (%.1f%%)", matches[i].Task.Title, shortID(matches[i].Task.ID), matches[i].Score*100)
+				responseText += fmt.Sprintf("\n - %s [%s] (%.1f%%)", matches[i].Task.Title, taskutil.ShortID(matches[i].Task.ID), matches[i].Score*100)
 			}
 		}
 
@@ -146,7 +147,7 @@ func resolveTaskReferenceHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFo
 					response.Match = &uniqueMatches[0]
 					response.Resolved = true
 					response.Message = fmt.Sprintf("High confidence: %s [%s] (%.1f%%)",
-						uniqueMatches[0].Task.Title, shortID(uniqueMatches[0].Task.ID), uniqueMatches[0].Score*100)
+						uniqueMatches[0].Task.Title, taskutil.ShortID(uniqueMatches[0].Task.ID), uniqueMatches[0].Score*100)
 				} else {
 					// Multiple matches or lower confidence
 					response.Matches = uniqueMatches
@@ -162,7 +163,7 @@ func resolveTaskReferenceHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFo
 					msg += "\nTop:"
 					for i := 0; i < maxShow; i++ {
 						m := response.Matches[i]
-						msg += fmt.Sprintf("\n - %s [%s] (%.1f%%)", m.Task.Title, shortID(m.Task.ID), m.Score*100)
+						msg += fmt.Sprintf("\n - %s [%s] (%.1f%%)", m.Task.Title, taskutil.ShortID(m.Task.ID), m.Score*100)
 					}
 					response.Message = msg
 				}

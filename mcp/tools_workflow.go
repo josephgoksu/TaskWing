@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
@@ -240,7 +241,7 @@ func generateTaskTransitionSuggestions(currentTask *models.Task, allTasks []mode
 		if len(pendingTasks) > 0 {
 			// Sort by priority
 			sort.SliceStable(pendingTasks, func(i, j int) bool {
-				return priorityToInt(pendingTasks[i].Priority) > priorityToInt(pendingTasks[j].Priority)
+				return taskutil.PriorityToInt(pendingTasks[i].Priority) > taskutil.PriorityToInt(pendingTasks[j].Priority)
 			})
 
 			for i, task := range pendingTasks {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
@@ -42,9 +43,6 @@ func bulkTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.Bulk
 			// If direct op fails later, we will retry with resolved ID
 
 			action := strings.ToLower(args.Action)
-			if action == "cancel" {
-				return nil, types.NewMCPError("UNSUPPORTED_ACTION", "Bulk action 'cancel' is deprecated. Use 'delete' or update status explicitly.", nil)
-			}
 
 			switch action {
 			case "complete":
@@ -72,7 +70,7 @@ func bulkTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.Bulk
 				} else {
 					// Normalize priority before applying
 					canon := args.Priority
-					if np, nerr := normalizePriorityString(canon); nerr == nil {
+					if np, nerr := taskutil.NormalizePriorityString(canon); nerr == nil {
 						canon = np
 					} else {
 						err = types.NewMCPError("INVALID_PRIORITY", nerr.Error(), map[string]interface{}{
@@ -497,7 +495,7 @@ func advancedSearchHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[type
 			}
 			text += "\nTop:"
 			for i := 0; i < maxShow; i++ {
-				text += fmt.Sprintf("\n - %s [%s]", response.Tasks[i].Title, shortID(response.Tasks[i].ID))
+				text += fmt.Sprintf("\n - %s [%s]", response.Tasks[i].Title, taskutil.ShortID(response.Tasks[i].ID))
 			}
 		}
 

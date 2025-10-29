@@ -38,9 +38,8 @@ const (
 type FileTaskStore struct {
 	filePath string
 	tasks    map[string]models.Task
-	// mu       sync.RWMutex // Replaced by flock
-	flk    *flock.Flock
-	format string // Stores the data format: "json", "yaml", or "toml"
+	flk      *flock.Flock
+	format   string // Stores the data format: "json", "yaml", or "toml"
 }
 
 // NewFileTaskStore creates a new instance of FileTaskStore.
@@ -48,6 +47,59 @@ type FileTaskStore struct {
 func NewFileTaskStore() *FileTaskStore {
 	return &FileTaskStore{
 		tasks: make(map[string]models.Task),
+	}
+}
+
+// transaction represents a snapshot of tasks for rollback purposes
+type transaction struct {
+	originalTasks map[string]models.Task
+}
+
+// beginTransaction creates a snapshot of specified tasks for potential rollback
+func (s *FileTaskStore) beginTransaction(taskIDs []string) *transaction {
+	tx := &transaction{originalTasks: make(map[string]models.Task)}
+	for _, id := range taskIDs {
+		if task, exists := s.tasks[id]; exists {
+			// Deep copy the task to avoid shared references
+			tx.originalTasks[id] = copyTask(task)
+		}
+	}
+	return tx
+}
+
+// rollback restores tasks to their state before the transaction began
+func (s *FileTaskStore) rollback(tx *transaction) {
+	for id, task := range tx.originalTasks {
+		s.tasks[id] = task
+	}
+}
+
+// copyTask creates a deep copy of a task to avoid shared slice references
+func copyTask(t models.Task) models.Task {
+	// Copy slices to avoid shared references
+	subtasks := make([]string, len(t.SubtaskIDs))
+	copy(subtasks, t.SubtaskIDs)
+
+	dependencies := make([]string, len(t.Dependencies))
+	copy(dependencies, t.Dependencies)
+
+	dependents := make([]string, len(t.Dependents))
+	copy(dependents, t.Dependents)
+
+	return models.Task{
+		ID:                 t.ID,
+		Title:              t.Title,
+		Description:        t.Description,
+		AcceptanceCriteria: t.AcceptanceCriteria,
+		Status:             t.Status,
+		Priority:           t.Priority,
+		ParentID:           t.ParentID,
+		SubtaskIDs:         subtasks,
+		Dependencies:       dependencies,
+		Dependents:         dependents,
+		CreatedAt:          t.CreatedAt,
+		UpdatedAt:          t.UpdatedAt,
+		CompletedAt:        t.CompletedAt,
 	}
 }
 
@@ -196,6 +248,91 @@ func (s *FileTaskStore) loadTasksFromFileInternal() error {
 	for _, task := range taskList.Tasks {
 		s.tasks[task.ID] = task
 	}
+
+	// Validate relationships after loading to detect data corruption
+	if err := s.validateRelationships(); err != nil {
+		return fmt.Errorf("relationship validation failed after loading: %w", err)
+	}
+
+	return nil
+}
+
+// validateRelationships checks the integrity of task relationships after loading.
+// It verifies that all referenced tasks exist and bidirectional relationships are consistent.
+func (s *FileTaskStore) validateRelationships() error {
+	var errors []string
+
+	for id, task := range s.tasks {
+		// Validate parent exists
+		if task.ParentID != nil && *task.ParentID != "" {
+			if _, exists := s.tasks[*task.ParentID]; !exists {
+				errors = append(errors,
+					fmt.Sprintf("task '%s' (%s) references non-existent parent %s",
+						task.Title, id, *task.ParentID))
+			} else {
+				// Validate bidirectional parent-child relationship
+				parent := s.tasks[*task.ParentID]
+				if !slices.Contains(parent.SubtaskIDs, id) {
+					errors = append(errors,
+						fmt.Sprintf("task '%s' (%s) has parent '%s' but not in parent's subtasks",
+							task.Title, id, *task.ParentID))
+				}
+			}
+		}
+
+		// Validate all subtasks exist and point back to this task
+		for _, subtaskID := range task.SubtaskIDs {
+			if subtask, exists := s.tasks[subtaskID]; !exists {
+				errors = append(errors,
+					fmt.Sprintf("task '%s' (%s) references non-existent subtask %s",
+						task.Title, id, subtaskID))
+			} else {
+				// Validate subtask points back to this as parent
+				if subtask.ParentID == nil || *subtask.ParentID != id {
+					errors = append(errors,
+						fmt.Sprintf("task '%s' (%s) lists '%s' as subtask but subtask's parent is %v",
+							task.Title, id, subtask.Title, subtask.ParentID))
+				}
+			}
+		}
+
+		// Validate all dependencies exist
+		for _, depID := range task.Dependencies {
+			if dep, exists := s.tasks[depID]; !exists {
+				errors = append(errors,
+					fmt.Sprintf("task '%s' (%s) references non-existent dependency %s",
+						task.Title, id, depID))
+			} else {
+				// Validate dependency lists this task as a dependent
+				if !slices.Contains(dep.Dependents, id) {
+					errors = append(errors,
+						fmt.Sprintf("task '%s' (%s) depends on '%s' but not in dependency's dependents list",
+							task.Title, id, dep.Title))
+				}
+			}
+		}
+
+		// Validate all dependents exist
+		for _, dependentID := range task.Dependents {
+			if dependent, exists := s.tasks[dependentID]; !exists {
+				errors = append(errors,
+					fmt.Sprintf("task '%s' (%s) references non-existent dependent %s",
+						task.Title, id, dependentID))
+			} else {
+				// Validate dependent lists this task as a dependency
+				if !slices.Contains(dependent.Dependencies, id) {
+					errors = append(errors,
+						fmt.Sprintf("task '%s' (%s) lists '%s' as dependent but not in dependent's dependencies",
+							task.Title, id, dependent.Title))
+				}
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("found %d relationship integrity issues:\n  - %s",
+			len(errors), strings.Join(errors, "\n  - "))
+	}
 	return nil
 }
 
@@ -249,17 +386,43 @@ func (s *FileTaskStore) saveTasksToFileInternal() error {
 		return fmt.Errorf("failed to write to temporary checksum file %s: %w", tempChecksumFilePath, err)
 	}
 
-	// Atomically move data file and then checksum file
+	// Create backup of original data file before replacing
+	backupFilePath := s.filePath + ".backup"
+	var hadOriginalFile bool
+	if _, err := os.Stat(s.filePath); err == nil {
+		hadOriginalFile = true
+		if err := os.Rename(s.filePath, backupFilePath); err != nil {
+			return fmt.Errorf("failed to backup original data file %s to %s: %w", s.filePath, backupFilePath, err)
+		}
+		defer func() {
+			// Clean up backup file on success
+			if hadOriginalFile {
+				_ = os.Remove(backupFilePath)
+			}
+		}()
+	}
+
+	// Move new data file into place
 	if err := os.Rename(tempFilePath, s.filePath); err != nil {
+		// Restore backup if move failed
+		if hadOriginalFile {
+			_ = os.Rename(backupFilePath, s.filePath)
+		}
 		return fmt.Errorf("failed to rename temporary data file %s to %s: %w", tempFilePath, s.filePath, err)
 	}
-	// If renaming data file succeeded, then rename checksum file
+
+	// Move checksum file into place
 	if err := os.Rename(tempChecksumFilePath, checksumFilePath); err != nil {
-		// This is a problematic state: data file is updated, checksum file is not.
-		// Attempt to remove the new data file to revert to a potentially more consistent state (old data, old checksum or no checksum)
-		// Or, log prominently and alert. For now, return error and log this potential inconsistency.
-		// A more robust solution might try to write the checksum again, or remove the main file if this fails.
-		return fmt.Errorf("CRITICAL: data file %s updated, but failed to update checksum file %s from %s: %w - store may be inconsistent", s.filePath, checksumFilePath, tempChecksumFilePath, err)
+		// ROLLBACK: Restore original data file since checksum update failed
+		if hadOriginalFile {
+			if rollbackErr := os.Rename(backupFilePath, s.filePath); rollbackErr != nil {
+				return fmt.Errorf("FATAL: checksum file update failed AND rollback failed: checksum error: %w; rollback error: %w - manual intervention required", err, rollbackErr)
+			}
+		} else {
+			// No backup, remove the new file to return to empty state
+			_ = os.Remove(s.filePath)
+		}
+		return fmt.Errorf("checksum file update failed, changes rolled back: %w", err)
 	}
 
 	return nil
@@ -289,6 +452,50 @@ func removeStringFromSlice(slice []string, item string) []string {
 		}
 	}
 	return newSlice
+}
+
+// filterDeleted removes IDs that are in the delete set from a slice.
+// Returns a new slice containing only IDs not marked for deletion.
+func filterDeleted(ids []string, deleteSet map[string]bool) []string {
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !deleteSet[id] {
+			result = append(result, id)
+		}
+	}
+	return result
+}
+
+// wouldCreateDepCycle checks if adding a dependency from taskID to depID would create a cycle.
+// It performs a depth-first search starting from depID to see if we can reach taskID.
+func (s *FileTaskStore) wouldCreateDepCycle(taskID, depID string) bool {
+	visited := make(map[string]bool)
+	return s.detectDepCycleFrom(depID, taskID, visited)
+}
+
+// detectDepCycleFrom performs DFS to detect if we can reach target from current through dependencies.
+func (s *FileTaskStore) detectDepCycleFrom(current, target string, visited map[string]bool) bool {
+	if current == target {
+		return true // Found a cycle
+	}
+	if visited[current] {
+		return false // Already explored this path
+	}
+	visited[current] = true
+
+	task, exists := s.tasks[current]
+	if !exists {
+		return false
+	}
+
+	// Check all dependencies of current task
+	for _, depID := range task.Dependencies {
+		if s.detectDepCycleFrom(depID, target, visited) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // CreateTask adds a new task to the store.
@@ -324,7 +531,17 @@ func (s *FileTaskStore) CreateTask(task models.Task) (models.Task, error) {
 		return models.Task{}, fmt.Errorf("validation failed for new task: %w", err)
 	}
 
-	// --- Relationship Management ---
+	// --- Relationship Management with Transaction Support ---
+
+	// Collect all task IDs that will be modified for transaction snapshot
+	affectedTaskIDs := []string{}
+	if task.ParentID != nil && *task.ParentID != "" {
+		affectedTaskIDs = append(affectedTaskIDs, *task.ParentID)
+	}
+	affectedTaskIDs = append(affectedTaskIDs, task.Dependencies...)
+
+	// Begin transaction - snapshot affected tasks before modifications
+	tx := s.beginTransaction(affectedTaskIDs)
 
 	// 1. Handle Parent-Child relationship
 	if task.ParentID != nil && *task.ParentID != "" {
@@ -341,10 +558,19 @@ func (s *FileTaskStore) CreateTask(task models.Task) (models.Task, error) {
 	if len(task.Dependencies) > 0 {
 		for _, depID := range task.Dependencies {
 			if depID == task.ID {
+				s.rollback(tx)
 				return models.Task{}, fmt.Errorf("task cannot depend on itself")
 			}
+
+			// Check for dependency cycles
+			if s.wouldCreateDepCycle(task.ID, depID) {
+				s.rollback(tx)
+				return models.Task{}, fmt.Errorf("cannot add dependency '%s': would create a circular dependency", depID)
+			}
+
 			dependencyTask, exists := s.tasks[depID]
 			if !exists {
+				s.rollback(tx)
 				return models.Task{}, fmt.Errorf("dependency task with ID '%s' not found", depID)
 			}
 			// Add this new task's ID to the dependent list of the task it depends on.
@@ -357,10 +583,9 @@ func (s *FileTaskStore) CreateTask(task models.Task) (models.Task, error) {
 	s.tasks[task.ID] = task
 
 	if err := s.saveTasksToFileInternal(); err != nil {
-		// Attempt to revert in-memory changes on save failure.
-		// This is best-effort and a transactional approach would be more robust.
-		// For now, reloading from the unchanged file is the simplest "rollback".
-		_ = s.loadTasksFromFileInternal()
+		// Rollback all in-memory changes to affected tasks
+		s.rollback(tx)
+		delete(s.tasks, task.ID) // Remove the newly created task
 		return models.Task{}, fmt.Errorf("failed to save new task: %w", err)
 	}
 
@@ -421,10 +646,37 @@ func (s *FileTaskStore) UpdateTask(id string, updates map[string]interface{}) (m
 	if !exists {
 		return models.Task{}, fmt.Errorf("task with ID '%s' not found", id)
 	}
-	originalTask := task // Keep a copy for potential rollback
 
 	now := time.Now().UTC()
 	task.UpdatedAt = now
+
+	// Collect all task IDs that will be modified for transaction snapshot
+	affectedTaskIDs := []string{id}
+
+	// Add old parent if exists
+	if task.ParentID != nil && *task.ParentID != "" {
+		affectedTaskIDs = append(affectedTaskIDs, *task.ParentID)
+	}
+
+	// Add old dependencies
+	affectedTaskIDs = append(affectedTaskIDs, task.Dependencies...)
+
+	// Add new parent if being changed
+	if newParentID, ok := updates["parentId"]; ok && newParentID != nil {
+		if idStr, ok := newParentID.(string); ok && idStr != "" {
+			affectedTaskIDs = append(affectedTaskIDs, idStr)
+		}
+	}
+
+	// Add new dependencies if being changed
+	if newDeps, ok := updates["dependencies"]; ok {
+		if depsSlice, ok := newDeps.([]string); ok {
+			affectedTaskIDs = append(affectedTaskIDs, depsSlice...)
+		}
+	}
+
+	// Begin transaction - snapshot all affected tasks before modifications
+	tx := s.beginTransaction(affectedTaskIDs)
 
 	// Apply updates reflectively.
 	for key, value := range updates {
@@ -461,6 +713,7 @@ func (s *FileTaskStore) UpdateTask(id string, updates map[string]interface{}) (m
 	// Handle parent change
 	if newParentID, ok := updates["parentId"]; ok {
 		if err := s.updateParentLink(&task, newParentID, now); err != nil {
+			s.rollback(tx)
 			return models.Task{}, err
 		}
 	}
@@ -468,21 +721,22 @@ func (s *FileTaskStore) UpdateTask(id string, updates map[string]interface{}) (m
 	// Handle dependencies change
 	if newDeps, ok := updates["dependencies"]; ok {
 		if err := s.updateDependenciesLink(&task, newDeps, now); err != nil {
+			s.rollback(tx)
 			return models.Task{}, err
 		}
 	}
 
 	// Validate the updated task struct.
 	if err := models.ValidateStruct(task); err != nil {
+		s.rollback(tx)
 		return models.Task{}, fmt.Errorf("validation failed for updated task: %w", err)
 	}
 
 	s.tasks[id] = task
 
 	if err := s.saveTasksToFileInternal(); err != nil {
-		s.tasks[id] = originalTask // Rollback in-memory change
-		// More complex rollback for parent/dependency changes would be needed for full atomicity.
-		// For now, this is a best-effort rollback of the primary task.
+		// Rollback all in-memory changes to affected tasks
+		s.rollback(tx)
 		return models.Task{}, fmt.Errorf("failed to save updated task: %w", err)
 	}
 
@@ -603,6 +857,12 @@ func (s *FileTaskStore) updateDependenciesLink(task *models.Task, newDepsValue i
 		if depID == task.ID {
 			return fmt.Errorf("task cannot depend on itself")
 		}
+
+		// Check for dependency cycles
+		if s.wouldCreateDepCycle(task.ID, depID) {
+			return fmt.Errorf("cannot add dependency '%s': would create a circular dependency", depID)
+		}
+
 		if depTask, ok := s.tasks[depID]; ok {
 			depTask.Dependents = addStringToSliceIfMissing(depTask.Dependents, task.ID)
 			depTask.UpdatedAt = now
@@ -738,17 +998,28 @@ func (s *FileTaskStore) DeleteTasks(ids []string) (int, error) {
 			modified = true
 		}
 
-		// Clean up dependencies list.
-		newDeps := []string{}
-		for _, depID := range task.Dependencies {
-			if !deleteSet[depID] {
-				newDeps = append(newDeps, depID)
-			} else {
-				modified = true
-			}
-		}
-		if modified {
+		// Clean up dependencies list (tasks this one depends on)
+		newDeps := filterDeleted(task.Dependencies, deleteSet)
+		if len(newDeps) != len(task.Dependencies) {
 			task.Dependencies = newDeps
+			modified = true
+		}
+
+		// Clean up dependents list (tasks that depend on this one)
+		newDependents := filterDeleted(task.Dependents, deleteSet)
+		if len(newDependents) != len(task.Dependents) {
+			task.Dependents = newDependents
+			modified = true
+		}
+
+		// Clean up subtasks list (tasks that are children of this one)
+		newSubtasks := filterDeleted(task.SubtaskIDs, deleteSet)
+		if len(newSubtasks) != len(task.SubtaskIDs) {
+			task.SubtaskIDs = newSubtasks
+			modified = true
+		}
+
+		if modified {
 			task.UpdatedAt = now
 			keptTasks[id] = task
 		}
@@ -803,6 +1074,19 @@ func (s *FileTaskStore) MarkTaskDone(id string) (models.Task, error) {
 	task, ok := s.tasks[id]
 	if !ok {
 		return models.Task{}, fmt.Errorf("task with ID %s not found to mark as done", id)
+	}
+
+	// Validate that all dependencies are completed before marking this task as done
+	for _, depID := range task.Dependencies {
+		dep, exists := s.tasks[depID]
+		if !exists {
+			return models.Task{}, fmt.Errorf("cannot complete task: dependency %s not found", depID)
+		}
+		if dep.Status != models.StatusDone {
+			return models.Task{}, fmt.Errorf(
+				"cannot complete task '%s': dependency '%s' (status: %s) must be completed first",
+				task.Title, dep.Title, dep.Status)
+		}
 	}
 
 	originalTask := task // For potential revert

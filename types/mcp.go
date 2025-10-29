@@ -7,59 +7,59 @@ package types
 
 // AddTaskParams for creating a new task
 type AddTaskParams struct {
-	Title              string   `json:"title" mcp:"Task title (required)"`
-	Description        string   `json:"description,omitempty" mcp:"Task description"`
-	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty" mcp:"Acceptance criteria for task completion"`
-	Priority           string   `json:"priority,omitempty" mcp:"Task priority: low, medium, high, urgent"`
-	ParentID           string   `json:"parentId,omitempty" mcp:"Parent task ID to create this as a subtask"`
-	Dependencies       []string `json:"dependencies,omitempty" mcp:"List of task IDs this task depends on"`
+	Title              string   `json:"title" mcp:"Title"`
+	Description        string   `json:"description,omitempty" mcp:"Description"`
+	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty" mcp:"Acceptance criteria"`
+	Priority           string   `json:"priority,omitempty" mcp:"low|medium|high|urgent"`
+	ParentID           string   `json:"parentId,omitempty" mcp:"Parent task ID"`
+	Dependencies       []string `json:"dependencies,omitempty" mcp:"Dependency task IDs"`
 }
 
 // ListTasksParams for listing and filtering tasks
 type ListTasksParams struct {
-	Status    string `json:"status,omitempty" mcp:"Filter by status: todo, doing, review, done (legacy: pending, in-progress, completed, cancelled, on-hold, blocked, needs-review)"`
-	Priority  string `json:"priority,omitempty" mcp:"Filter by priority: low, medium, high, urgent"`
-	Search    string `json:"search,omitempty" mcp:"Search in title and description"`
-	ParentID  string `json:"parentId,omitempty" mcp:"Filter by parent task ID"`
-	SortBy    string `json:"sortBy,omitempty" mcp:"Sort by: id, title, priority, createdAt, updatedAt"`
-	SortOrder string `json:"sortOrder,omitempty" mcp:"Sort order: asc, desc"`
+	Status    string `json:"status,omitempty" mcp:"todo|doing|review|done"`
+	Priority  string `json:"priority,omitempty" mcp:"low|medium|high|urgent"`
+	Search    string `json:"search,omitempty" mcp:"Search text"`
+	ParentID  string `json:"parentId,omitempty" mcp:"Parent task ID"`
+	SortBy    string `json:"sortBy,omitempty" mcp:"Sort field"`
+	SortOrder string `json:"sortOrder,omitempty" mcp:"asc|desc"`
 }
 
 // UpdateTaskParams for updating an existing task
 type UpdateTaskParams struct {
-	ID                 string   `json:"id" mcp:"Task ID to update (required)"`
-	Reference          string   `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
-	Title              string   `json:"title,omitempty" mcp:"New task title"`
-	Description        string   `json:"description,omitempty" mcp:"New task description"`
-	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty" mcp:"New acceptance criteria"`
-	Status             string   `json:"status,omitempty" mcp:"New task status: todo, doing, review, done (legacy statuses also supported)"`
-	Priority           string   `json:"priority,omitempty" mcp:"New task priority"`
-	ParentID           string   `json:"parentId,omitempty" mcp:"New parent task ID"`
-	Dependencies       []string `json:"dependencies,omitempty" mcp:"New dependencies list"`
+	ID                 string   `json:"id" mcp:"Task ID"`
+	Reference          string   `json:"reference,omitempty" mcp:"Partial ID/title"`
+	Title              string   `json:"title,omitempty" mcp:"Title"`
+	Description        string   `json:"description,omitempty" mcp:"Description"`
+	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty" mcp:"Criteria"`
+	Status             string   `json:"status,omitempty" mcp:"todo|doing|review|done"`
+	Priority           string   `json:"priority,omitempty" mcp:"low|medium|high|urgent"`
+	ParentID           string   `json:"parentId,omitempty" mcp:"Parent ID"`
+	Dependencies       []string `json:"dependencies,omitempty" mcp:"Dependency IDs"`
 }
 
 // DeleteTaskParams for deleting a task
 type DeleteTaskParams struct {
-	ID        string `json:"id" mcp:"Task ID to delete (required if no reference)"`
-	Reference string `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
+	ID        string `json:"id" mcp:"Task ID"`
+	Reference string `json:"reference,omitempty" mcp:"Partial ID/title"`
 }
 
 // MarkDoneParams for marking a task as completed
 type MarkDoneParams struct {
-	ID        string `json:"id" mcp:"Task ID to mark as done (required if no reference)"`
-	Reference string `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
+	ID        string `json:"id" mcp:"Task ID"`
+	Reference string `json:"reference,omitempty" mcp:"Partial ID/title"`
 }
 
 // GetTaskParams for retrieving a specific task
 type GetTaskParams struct {
-	ID        string `json:"id" mcp:"Task ID to retrieve (required if no reference)"`
-	Reference string `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
+	ID        string `json:"id" mcp:"Task ID"`
+	Reference string `json:"reference,omitempty" mcp:"Partial ID/title"`
 }
 
 // Pattern suggestion types
 type SuggestPatternParams struct {
-	Description string `json:"description" mcp:"Description of work to find patterns for (required)"`
-	ProjectType string `json:"projectType,omitempty" mcp:"Type of project (e.g., documentation, development, refactoring)"`
+	Description string `json:"description" mcp:"Work description"`
+	ProjectType string `json:"projectType,omitempty" mcp:"Project type"`
 }
 
 type PatternSuggestion struct {
@@ -98,8 +98,8 @@ type SuggestPatternResponse struct {
 
 // SetCurrentTaskParams for setting the current active task
 type SetCurrentTaskParams struct {
-	ID        string `json:"id" mcp:"Task ID to set as current (or provide 'reference')"`
-	Reference string `json:"reference,omitempty" mcp:"Alternative to id: partial ID or title"`
+	ID        string `json:"id" mcp:"Task ID"`
+	Reference string `json:"reference,omitempty" mcp:"Partial ID/title"`
 }
 
 // GetCurrentTaskParams for retrieving the current active task
@@ -112,29 +112,29 @@ type ClearCurrentTaskParams struct{}
 
 // ClearTasksParams for bulk clearing operations with safety options
 type ClearTasksParams struct {
-	Status      string `json:"status,omitempty" mcp:"Clear tasks by status (comma-separated: todo,doing,review,done)"`
-	Priority    string `json:"priority,omitempty" mcp:"Clear tasks by priority (comma-separated: low,medium,high,urgent)"`
-	Completed   bool   `json:"completed,omitempty" mcp:"Clear only completed tasks (default: true if no other filters)"`
-	All         bool   `json:"all,omitempty" mcp:"Clear all tasks (requires confirmation)"`
-	Force       bool   `json:"force,omitempty" mcp:"Skip confirmation prompts (dangerous)"`
-	NoBackup    bool   `json:"no_backup,omitempty" mcp:"Skip backup creation (not recommended)"`
-	PreviewOnly bool   `json:"preview_only,omitempty" mcp:"Show what would be cleared without actually clearing"`
+	Status      string `json:"status,omitempty" mcp:"Status filter (CSV)"`
+	Priority    string `json:"priority,omitempty" mcp:"Priority filter (CSV)"`
+	Completed   bool   `json:"completed,omitempty" mcp:"Completed only"`
+	All         bool   `json:"all,omitempty" mcp:"Clear all"`
+	Force       bool   `json:"force,omitempty" mcp:"Skip confirm"`
+	NoBackup    bool   `json:"no_backup,omitempty" mcp:"Skip backup"`
+	PreviewOnly bool   `json:"preview_only,omitempty" mcp:"Preview only"`
 }
 
 // BulkTaskParams for bulk operations
 type BulkTaskParams struct {
-	TaskIDs  []string `json:"task_ids" mcp:"List of task IDs to operate on"`
-	Action   string   `json:"action" mcp:"Action to perform: complete, delete, prioritize"`
-	Priority string   `json:"priority,omitempty" mcp:"New priority for prioritize action"`
+	TaskIDs  []string `json:"task_ids" mcp:"Task IDs"`
+	Action   string   `json:"action" mcp:"complete|delete|prioritize"`
+	Priority string   `json:"priority,omitempty" mcp:"Priority (for prioritize)"`
 }
 
 // TaskSearchParams for advanced search
 type TaskSearchParams struct {
-	Query       string   `json:"query" mcp:"Search query supporting AND, OR, NOT operators"`
-	Tags        []string `json:"tags,omitempty" mcp:"Filter by tags"`
-	DateFrom    string   `json:"date_from,omitempty" mcp:"Filter tasks created after this date (YYYY-MM-DD)"`
-	DateTo      string   `json:"date_to,omitempty" mcp:"Filter tasks created before this date (YYYY-MM-DD)"`
-	HasSubtasks *bool    `json:"has_subtasks,omitempty" mcp:"Filter tasks that have subtasks"`
+	Query       string   `json:"query" mcp:"Search query (AND/OR/NOT)"`
+	Tags        []string `json:"tags,omitempty" mcp:"Tags"`
+	DateFrom    string   `json:"date_from,omitempty" mcp:"From date (YYYY-MM-DD)"`
+	DateTo      string   `json:"date_to,omitempty" mcp:"To date (YYYY-MM-DD)"`
+	HasSubtasks *bool    `json:"has_subtasks,omitempty" mcp:"Has subtasks"`
 }
 
 // TaskCreationRequest for batch task creation
@@ -150,7 +150,7 @@ type TaskCreationRequest struct {
 
 // BatchCreateTasksParams for creating multiple tasks at once
 type BatchCreateTasksParams struct {
-	Tasks []TaskCreationRequest `json:"tasks" mcp:"List of tasks to create"`
+	Tasks []TaskCreationRequest `json:"tasks" mcp:"Tasks to create"`
 }
 
 // MCP Response Types
@@ -237,14 +237,14 @@ type ArchiveListResponse struct {
 }
 
 type ArchiveSearchParams struct {
-	Query string   `json:"query" mcp:"Search text for title/description/lessons"`
-	From  string   `json:"from,omitempty" mcp:"YYYY-MM-DD start date"`
-	To    string   `json:"to,omitempty" mcp:"YYYY-MM-DD end date"`
-	Tags  []string `json:"tags,omitempty" mcp:"Filter by tags (any)"`
+	Query string   `json:"query" mcp:"Search text"`
+	From  string   `json:"from,omitempty" mcp:"Start date (YYYY-MM-DD)"`
+	To    string   `json:"to,omitempty" mcp:"End date (YYYY-MM-DD)"`
+	Tags  []string `json:"tags,omitempty" mcp:"Tags"`
 }
 
 type ArchiveViewParams struct {
-	ID string `json:"id" mcp:"Archive id (full or prefix)"`
+	ID string `json:"id" mcp:"Archive ID"`
 }
 
 type ArchiveEntryResponse struct {
@@ -259,7 +259,7 @@ type ArchiveEntryResponse struct {
 }
 
 type ArchiveRestoreParams struct {
-	ID string `json:"id" mcp:"Archive id (full/prefix) to restore"`
+	ID string `json:"id" mcp:"Archive ID"`
 }
 
 type ArchiveRestoreResponse struct {
@@ -267,7 +267,7 @@ type ArchiveRestoreResponse struct {
 }
 
 type ArchiveAddParams struct {
-	Reference string   `json:"reference" mcp:"Task id, partial id, or title"`
+	Reference string   `json:"reference" mcp:"Task reference"`
 	Lessons   string   `json:"lessons,omitempty"`
 	Tags      []string `json:"tags,omitempty"`
 	AISuggest bool     `json:"ai_suggest,omitempty"`
@@ -276,19 +276,19 @@ type ArchiveAddParams struct {
 }
 
 type ArchiveExportParams struct {
-	File    string `json:"file" mcp:"Destination bundle path"`
+	File    string `json:"file" mcp:"Export file path"`
 	Encrypt bool   `json:"encrypt,omitempty"`
 	Key     string `json:"key,omitempty"`
 }
 
 type ArchiveImportParams struct {
-	File    string `json:"file" mcp:"Source bundle path"`
+	File    string `json:"file" mcp:"Import file path"`
 	Decrypt bool   `json:"decrypt,omitempty"`
 	Key     string `json:"key,omitempty"`
 }
 
 type ArchivePurgeParams struct {
-	OlderThan string `json:"olderThan,omitempty" mcp:"e.g., 720h for 30 days"`
+	OlderThan string `json:"olderThan,omitempty" mcp:"Duration (e.g. 720h)"`
 	DryRun    bool   `json:"dryRun,omitempty"`
 }
 
@@ -308,26 +308,26 @@ type ClearTasksResponse struct {
 
 // FindTaskByTitleParams for fuzzy title matching
 type FindTaskByTitleParams struct {
-	Title         string   `json:"title" mcp:"Task title to search for (partial matches allowed)"`
-	Limit         int      `json:"limit,omitempty" mcp:"Maximum number of results to return (default: 5)"`
-	MinScore      float64  `json:"min_score,omitempty" mcp:"Minimum similarity score (0.0-1.0, default: 0.1)"`
-	IncludeStatus []string `json:"include_status,omitempty" mcp:"Only include tasks with these statuses"`
+	Title         string   `json:"title" mcp:"Title search"`
+	Limit         int      `json:"limit,omitempty" mcp:"Max results"`
+	MinScore      float64  `json:"min_score,omitempty" mcp:"Min score (0.0-1.0)"`
+	IncludeStatus []string `json:"include_status,omitempty" mcp:"Status filter"`
 }
 
 // ResolveTaskReferenceParams for smart task resolution
 type ResolveTaskReferenceParams struct {
-	Reference      string   `json:"reference" mcp:"Task reference - partial ID, title, or description"`
-	Exact          bool     `json:"exact,omitempty" mcp:"Require exact match (default: false for fuzzy matching)"`
-	PreferCurrent  bool     `json:"prefer_current,omitempty" mcp:"Prefer current task and related tasks"`
-	MaxSuggestions int      `json:"max_suggestions,omitempty" mcp:"Maximum suggestions if no exact match (default: 5)"`
-	Fields         []string `json:"fields,omitempty" mcp:"Fields to search in: id, title, description (default: all)"`
+	Reference      string   `json:"reference" mcp:"Task reference"`
+	Exact          bool     `json:"exact,omitempty" mcp:"Exact match"`
+	PreferCurrent  bool     `json:"prefer_current,omitempty" mcp:"Prefer current"`
+	MaxSuggestions int      `json:"max_suggestions,omitempty" mcp:"Max suggestions"`
+	Fields         []string `json:"fields,omitempty" mcp:"Search fields"`
 }
 
 // TaskAutocompleteParams for predictive suggestions
 type TaskAutocompleteParams struct {
-	Input   string `json:"input" mcp:"Partial input to get suggestions for"`
-	Context string `json:"context,omitempty" mcp:"Context for suggestions (current, related, etc.)"`
-	Limit   int    `json:"limit,omitempty" mcp:"Maximum number of suggestions (default: 10)"`
+	Input   string `json:"input" mcp:"Input text"`
+	Context string `json:"context,omitempty" mcp:"Context"`
+	Limit   int    `json:"limit,omitempty" mcp:"Max results"`
 }
 
 // Task Resolution Response Types
@@ -366,29 +366,29 @@ type TaskAutocompleteResponse struct {
 
 // FilterTasksParams for advanced filtering with multiple query syntaxes
 type FilterTasksParams struct {
-	Filter       string `json:"filter,omitempty" mcp:"JSONPath-style filter (e.g., 'status=todo', 'priority=high')"`
-	Expression   string `json:"expression,omitempty" mcp:"Complex filter with AND/OR logic (e.g., 'status=todo AND priority=high')"`
-	Query        string `json:"query,omitempty" mcp:"Natural language query (e.g., 'high priority unfinished tasks')"`
-	Fields       string `json:"fields,omitempty" mcp:"Comma-separated fields to return (default: all)"`
-	Limit        int    `json:"limit,omitempty" mcp:"Maximum number of results (default: unlimited)"`
-	FuzzyMatch   bool   `json:"fuzzy_match,omitempty" mcp:"Enable fuzzy matching for text searches"`
-	IncludeScore bool   `json:"include_score,omitempty" mcp:"Include relevance scores in results"`
+	Filter       string `json:"filter,omitempty" mcp:"Filter expr"`
+	Expression   string `json:"expression,omitempty" mcp:"AND/OR expr"`
+	Query        string `json:"query,omitempty" mcp:"Natural query"`
+	Fields       string `json:"fields,omitempty" mcp:"Fields (CSV)"`
+	Limit        int    `json:"limit,omitempty" mcp:"Max results"`
+	FuzzyMatch   bool   `json:"fuzzy_match,omitempty" mcp:"Fuzzy match"`
+	IncludeScore bool   `json:"include_score,omitempty" mcp:"Include scores"`
 }
 
 // ExtractTaskIDsParams for bulk ID extraction with criteria
 type ExtractTaskIDsParams struct {
-	Status   string `json:"status,omitempty" mcp:"Filter by status before extraction"`
-	Priority string `json:"priority,omitempty" mcp:"Filter by priority before extraction"`
-	Format   string `json:"format,omitempty" mcp:"Output format: array, space-separated, comma-separated (default: array)"`
-	Search   string `json:"search,omitempty" mcp:"Search filter before extraction"`
+	Status   string `json:"status,omitempty" mcp:"Status filter"`
+	Priority string `json:"priority,omitempty" mcp:"Priority filter"`
+	Format   string `json:"format,omitempty" mcp:"Format"`
+	Search   string `json:"search,omitempty" mcp:"Search filter"`
 }
 
 // TaskAnalyticsParams for aggregation and statistics
 type TaskAnalyticsParams struct {
-	GroupBy   string `json:"group_by,omitempty" mcp:"Group by field: status, priority, created_date (default: status)"`
-	DateRange string `json:"date_range,omitempty" mcp:"Date range: today, week, month, all (default: all)"`
-	Metrics   string `json:"metrics,omitempty" mcp:"Comma-separated metrics: count, duration, completion_rate"`
-	Format    string `json:"format,omitempty" mcp:"Output format: json, table, summary (default: json)"`
+	GroupBy   string `json:"group_by,omitempty" mcp:"Group by"`
+	DateRange string `json:"date_range,omitempty" mcp:"Date range"`
+	Metrics   string `json:"metrics,omitempty" mcp:"Metrics (CSV)"`
+	Format    string `json:"format,omitempty" mcp:"Format"`
 }
 
 // JSON Processing Response Types
@@ -433,8 +433,8 @@ type TaskAnalyticsResponse struct {
 // Board snapshot types
 
 type BoardSnapshotParams struct {
-	Limit        int  `json:"limit,omitempty" mcp:"Max tasks per column (default: 10)"`
-	IncludeTasks bool `json:"include_tasks,omitempty" mcp:"Include task lists in each column (default: true)"`
+	Limit        int  `json:"limit,omitempty" mcp:"Max per column"`
+	IncludeTasks bool `json:"include_tasks,omitempty" mcp:"Include tasks"`
 }
 
 type BoardColumn struct {
@@ -452,9 +452,9 @@ type BoardSnapshotResponse struct {
 // Board reconcile types
 
 type BoardReconcileOp struct {
-	Reference          string   `json:"reference" mcp:"Task id or reference (partial id/title)"`
-	Action             string   `json:"action" mcp:"Action: complete, delete, prioritize, update"`
-	Priority           string   `json:"priority,omitempty" mcp:"Required for prioritize: low,medium,high,urgent"`
+	Reference          string   `json:"reference" mcp:"Task reference"`
+	Action             string   `json:"action" mcp:"Action"`
+	Priority           string   `json:"priority,omitempty" mcp:"Priority"`
 	Title              string   `json:"title,omitempty"`
 	Description        string   `json:"description,omitempty"`
 	AcceptanceCriteria string   `json:"acceptanceCriteria,omitempty"`
@@ -464,8 +464,8 @@ type BoardReconcileOp struct {
 }
 
 type BoardReconcileParams struct {
-	Ops    []BoardReconcileOp `json:"ops" mcp:"List of operations to apply"`
-	DryRun bool               `json:"dry_run,omitempty" mcp:"Preview only; do not apply changes"`
+	Ops    []BoardReconcileOp `json:"ops" mcp:"Operations"`
+	DryRun bool               `json:"dry_run,omitempty" mcp:"Preview only"`
 }
 
 type BoardReconcileOpResult struct {
@@ -487,14 +487,14 @@ type BoardReconcileResponse struct {
 // Bulk by filter types
 
 type BulkByFilterParams struct {
-	Action      string `json:"action" mcp:"Action: complete, delete, prioritize"`
-	Priority    string `json:"priority,omitempty" mcp:"Required for prioritize"`
-	Filter      string `json:"filter,omitempty" mcp:"Simple filter: status=todo, priority=high"`
-	Expression  string `json:"expression,omitempty" mcp:"Complex: status=todo AND priority=high"`
-	Query       string `json:"query,omitempty" mcp:"Natural language: 'high priority unfinished'"`
-	Limit       int    `json:"limit,omitempty" mcp:"Limit matched tasks (preview)"`
-	PreviewOnly bool   `json:"preview_only,omitempty" mcp:"Preview matched tasks without applying"`
-	Confirm     bool   `json:"confirm,omitempty" mcp:"Apply changes to matched tasks"`
+	Action      string `json:"action" mcp:"Action"`
+	Priority    string `json:"priority,omitempty" mcp:"Priority"`
+	Filter      string `json:"filter,omitempty" mcp:"Filter"`
+	Expression  string `json:"expression,omitempty" mcp:"Expression"`
+	Query       string `json:"query,omitempty" mcp:"Query"`
+	Limit       int    `json:"limit,omitempty" mcp:"Limit"`
+	PreviewOnly bool   `json:"preview_only,omitempty" mcp:"Preview only"`
+	Confirm     bool   `json:"confirm,omitempty" mcp:"Confirm"`
 }
 
 type BulkByFilterResponse struct {
@@ -512,12 +512,12 @@ type BulkByFilterResponse struct {
 // PlanFromDocumentParams defines inputs for creating a plan from a PRD or text
 type PlanFromDocumentParams struct {
 	// Provide either inline content or a file URI
-	Content     string  `json:"content,omitempty" mcp:"Inline PRD/requirements text"`
-	URI         string  `json:"uri,omitempty" mcp:"Path to PRD/requirements file (e.g., product.xml, .md)"`
-	SkipImprove bool    `json:"skip_improve,omitempty" mcp:"Skip LLM improvement step (default: false)"`
-	Confirm     bool    `json:"confirm,omitempty" mcp:"If true, create tasks; otherwise, preview only"`
-	Model       string  `json:"model,omitempty" mcp:"Override LLM model name"`
-	Temperature float64 `json:"temperature,omitempty" mcp:"Override generation temperature"`
+	Content     string  `json:"content,omitempty" mcp:"Inline text"`
+	URI         string  `json:"uri,omitempty" mcp:"File URI"`
+	SkipImprove bool    `json:"skip_improve,omitempty" mcp:"Skip LLM improve"`
+	Confirm     bool    `json:"confirm,omitempty" mcp:"Create tasks"`
+	Model       string  `json:"model,omitempty" mcp:"Model override"`
+	Temperature float64 `json:"temperature,omitempty" mcp:"Temperature"`
 }
 
 // ProposedTask provides a compact preview of tasks before creation
@@ -581,24 +581,24 @@ type IteratePlanStepResponse struct {
 
 // SmartTaskTransitionParams for AI-powered next step suggestions
 type SmartTaskTransitionParams struct {
-	TaskID  string `json:"task_id,omitempty" mcp:"Task ID to analyze (uses current task if not provided)"`
-	Context string `json:"context,omitempty" mcp:"Additional context for suggestions (e.g., 'completed', 'blocked', 'next')"`
-	Limit   int    `json:"limit,omitempty" mcp:"Maximum number of suggestions (default: 5)"`
+	TaskID  string `json:"task_id,omitempty" mcp:"Task ID"`
+	Context string `json:"context,omitempty" mcp:"Context"`
+	Limit   int    `json:"limit,omitempty" mcp:"Max suggestions"`
 }
 
 // WorkflowStatusParams for project lifecycle tracking
 type WorkflowStatusParams struct {
-	Depth  string `json:"depth,omitempty" mcp:"Detail level: summary, detailed, full (default: summary)"`
-	Focus  string `json:"focus,omitempty" mcp:"Focus area: current, blockers, progress, timeline"`
-	Format string `json:"format,omitempty" mcp:"Output format: text, json, visual (default: text)"`
+	Depth  string `json:"depth,omitempty" mcp:"Detail level"`
+	Focus  string `json:"focus,omitempty" mcp:"Focus area"`
+	Format string `json:"format,omitempty" mcp:"Format"`
 }
 
 // DependencyHealthParams for relationship validation
 type DependencyHealthParams struct {
-	TaskID      string `json:"task_id,omitempty" mcp:"Specific task to analyze (analyzes all if not provided)"`
-	CheckType   string `json:"check_type,omitempty" mcp:"Type of check: circular, broken, orphaned, all (default: all)"`
-	AutoFix     bool   `json:"auto_fix,omitempty" mcp:"Attempt to auto-fix issues where possible"`
-	Suggestions bool   `json:"suggestions,omitempty" mcp:"Include resolution suggestions (default: true)"`
+	TaskID      string `json:"task_id,omitempty" mcp:"Task ID"`
+	CheckType   string `json:"check_type,omitempty" mcp:"Check type"`
+	AutoFix     bool   `json:"auto_fix,omitempty" mcp:"Auto-fix"`
+	Suggestions bool   `json:"suggestions,omitempty" mcp:"Include suggestions"`
 }
 
 // Workflow Integration Response Types

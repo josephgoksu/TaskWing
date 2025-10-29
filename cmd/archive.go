@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/manifoldco/promptui"
@@ -41,7 +42,7 @@ var archiveListCmd = &cobra.Command{
 			return
 		}
 		for _, it := range items {
-			fmt.Printf("%s  %s  %s  %s\n", shortID(it.ID), it.Date, it.Title, strings.Join(it.Tags, ","))
+			fmt.Printf("%s  %s  %s  %s\n", taskutil.ShortID(it.ID), it.Date, it.Title, strings.Join(it.Tags, ","))
 		}
 	},
 }
@@ -112,7 +113,7 @@ var archiveSearchCmd = &cobra.Command{
 			HandleFatalError("Search failed", err)
 		}
 		for _, it := range items {
-			fmt.Printf("%s  %s  %s\n", shortID(it.ID), it.Date, it.Title)
+			fmt.Printf("%s  %s  %s\n", taskutil.ShortID(it.ID), it.Date, it.Title)
 		}
 	},
 }
@@ -209,7 +210,7 @@ var archiveAddCmd = &cobra.Command{
 				fmt.Printf("Warning: could not get archive path: %v\n", err)
 				path = ""
 			}
-			short := shortID(parent.ID)
+			short := taskutil.ShortID(parent.ID)
 			if !addKeepTask {
 				fmt.Printf("✅ Task removed from active list\n")
 			} else {

@@ -7,12 +7,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// HandleError is DEPRECATED. Use HandleFatalError instead.
-// This function is kept for backward compatibility and will be removed in a future version.
-func HandleError(userMsg string, technicalErr error) {
-	HandleFatalError(userMsg, technicalErr)
-}
-
 // HandleFatalError handles unrecoverable errors that should terminate the application.
 func HandleFatalError(userMsg string, technicalErr error) {
 	PrintError(userMsg, technicalErr)

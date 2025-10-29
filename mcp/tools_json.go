@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
@@ -143,7 +144,7 @@ func extractTaskIDsHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[type
 		// Pre-normalize priority if provided
 		normalizedPrio := ""
 		if args.Priority != "" {
-			if canon, err := normalizePriorityString(args.Priority); err == nil {
+			if canon, err := taskutil.NormalizePriorityString(args.Priority); err == nil {
 				normalizedPrio = canon
 			} else {
 				normalizedPrio = strings.ToLower(args.Priority)
@@ -330,58 +331,13 @@ func applyJSONPathFilter(tasks []models.Task, filter string) ([]models.Task, err
 	return filtered, nil
 }
 
-// applyComplexFilter applies complex expressions with AND/OR logic
-// Currently unused - replaced by applyEnhancedComplexFilter
-// Kept for potential future use with simpler syntax requirements
-// func applyComplexFilter(tasks []models.Task, expression string) ([]models.Task, error) {
-//	var filtered []models.Task
-//
-//	// Simple implementation for AND/OR expressions
-//	expression = strings.TrimSpace(expression)
-//
-//	if strings.Contains(expression, " AND ") {
-//		parts := strings.Split(expression, " AND ")
-//		for _, task := range tasks {
-//			matches := true
-//			for _, part := range parts {
-//				if !evaluateSimpleExpression(task, strings.TrimSpace(part)) {
-//					matches = false
-//					break
-//				}
-//			}
-//			if matches {
-//				filtered = append(filtered, task)
-//			}
-//		}
-//	} else if strings.Contains(expression, " OR ") {
-//		parts := strings.Split(expression, " OR ")
-//		for _, task := range tasks {
-//			for _, part := range parts {
-//				if evaluateSimpleExpression(task, strings.TrimSpace(part)) {
-//					filtered = append(filtered, task)
-//					break
-//				}
-//			}
-//		}
-//	} else {
-//		// Single expression
-//		for _, task := range tasks {
-//			if evaluateSimpleExpression(task, expression) {
-//				filtered = append(filtered, task)
-//			}
-//		}
-//	}
-//
-//	return filtered, nil
-// }
-
 // matchesJSONPathFilter checks if task matches JSONPath filter
 func matchesJSONPathFilter(task models.Task, field, value string) bool {
 	switch field {
 	case "status":
 		return string(task.Status) == value
 	case "priority":
-		if canon, err := normalizePriorityString(value); err == nil && canon != "" {
+		if canon, err := taskutil.NormalizePriorityString(value); err == nil && canon != "" {
 			return string(task.Priority) == canon
 		}
 		return strings.EqualFold(string(task.Priority), value)
@@ -395,20 +351,6 @@ func matchesJSONPathFilter(task models.Task, field, value string) bool {
 		return false
 	}
 }
-
-// evaluateSimpleExpression evaluates simple field comparisons
-// Currently unused - replaced by enhanced filtering functions
-// func evaluateSimpleExpression(task models.Task, expr string) bool {
-//	if strings.Contains(expr, "==") {
-//		parts := strings.Split(expr, "==")
-//		if len(parts) == 2 {
-//			field := strings.TrimSpace(parts[0])
-//			value := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-//			return matchesJSONPathFilter(task, field, value)
-//		}
-//	}
-//	return false
-// }
 
 // taskToResponseWithFields converts task to response with specific fields
 func taskToResponseWithFields(task models.Task, fields []string) types.TaskResponse {

@@ -52,6 +52,7 @@ func runMCPServer(ctx context.Context) error {
 	fmt.Fprintf(os.Stderr, "\n🎯 TaskWing MCP Server Starting...\n")
 	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	fmt.Fprintf(os.Stderr, "CRITICAL: Professional task management system active\n")
+	fmt.Fprintf(os.Stderr, "Configuration: 15 essential tools (~9.6k tokens, 71%% reduction)\n")
 	fmt.Fprintf(os.Stderr, "AI tools MUST:\n")
 	fmt.Fprintf(os.Stderr, "  1. Call 'task-summary' first to understand project\n")
 	fmt.Fprintf(os.Stderr, "  2. Use TaskWing tools instead of markdown lists\n")
@@ -100,10 +101,12 @@ func runMCPServer(ctx context.Context) error {
 			fmt.Fprintf(os.Stderr, "\n🎯 TASKWING MCP CONNECTION ESTABLISHED\n")
 			fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 			fmt.Fprintf(os.Stderr, "AI Tool: You now have access to TaskWing professional\n")
-			fmt.Fprintf(os.Stderr, "task management. Use these tools instead of markdown lists:\n")
+			fmt.Fprintf(os.Stderr, "task management with 15 optimized tools (~9.6k tokens).\n")
+			fmt.Fprintf(os.Stderr, "Use these tools instead of markdown lists:\n")
 			fmt.Fprintf(os.Stderr, "  • task-summary - ALWAYS call first\n")
 			fmt.Fprintf(os.Stderr, "  • add-task - Create rich tasks\n")
 			fmt.Fprintf(os.Stderr, "  • query-tasks - Natural language search\n")
+			fmt.Fprintf(os.Stderr, "  • See MCP_TOOLS_REFERENCE.md for all 15 tools\n")
 			fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
 			if viper.GetBool("verbose") {
@@ -114,55 +117,56 @@ func runMCPServer(ctx context.Context) error {
 
 	server := mcpsdk.NewServer(impl, serverOpts)
 
-	// Register MCP tools
+	// Register ALL essential MCP tools (15 tools optimized for minimal token usage)
+	// All other tool registrations are disabled to reduce context window usage
 	if err := taskwingmcp.RegisterCoreTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register MCP tools: %w", err)
 	}
 
-	// Register advanced MCP tools
-	if err := taskwingmcp.RegisterAdvancedMCPTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register advanced MCP tools: %w", err)
-	}
+	// DISABLED - Archive tools (9 tools removed to save tokens)
+	// if err := taskwingmcp.RegisterArchiveTools(server, taskStore); err != nil {
+	// 	return fmt.Errorf("failed to register archive tools: %w", err)
+	// }
 
-	// Register task resolution tools
-	if err := taskwingmcp.RegisterTaskResolutionTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register task resolution tools: %w", err)
-	}
+	// DISABLED - Advanced bulk tools (board-reconcile, bulk-by-filter removed)
+	// if err := taskwingmcp.RegisterAdvancedMCPTools(server, taskStore); err != nil {
+	// 	return fmt.Errorf("failed to register advanced MCP tools: %w", err)
+	// }
 
-	// Register JSON processing tools
-	if err := taskwingmcp.RegisterJSONProcessingTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register JSON processing tools: %w", err)
-	}
+	// DISABLED - Redundant resolution tools (find-by-title, resolve-reference removed)
+	// if err := taskwingmcp.RegisterTaskResolutionTools(server, taskStore); err != nil {
+	// 	return fmt.Errorf("failed to register task resolution tools: %w", err)
+	// }
 
-	// Register workflow integration tools
-	if err := taskwingmcp.RegisterWorkflowIntegrationTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register workflow integration tools: %w", err)
-	}
+	// DISABLED - JSON processing tools (filter, extract-ids, analytics removed)
+	// if err := taskwingmcp.RegisterJSONProcessingTools(server, taskStore); err != nil {
+	// 	return fmt.Errorf("failed to register JSON processing tools: %w", err)
+	// }
 
-	// Register intelligent MCP tools with natural language support and smart matching
-	if err := taskwingmcp.RegisterIntelligentMCPTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register intelligent MCP tools: %w", err)
-	}
+	// DISABLED - Workflow tools (workflow-status removed, board-snapshot in core)
+	// if err := taskwingmcp.RegisterWorkflowIntegrationTools(server, taskStore); err != nil {
+	// 	return fmt.Errorf("failed to register workflow integration tools: %w", err)
+	// }
 
-	// Register planning tools (document → plan)
-	if err := taskwingmcp.RegisterPlanningTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register planning MCP tools: %w", err)
-	}
+	// DISABLED - Intelligent tools (suggest, smart-transition removed, query-tasks in core)
+	// if err := taskwingmcp.RegisterIntelligentMCPTools(server, taskStore); err != nil {
+	// 	return fmt.Errorf("failed to register intelligent MCP tools: %w", err)
+	// }
 
-	// Register simple plan/iterate tools matching CLI
-	if err := taskwingmcp.RegisterSimplePlanTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register simple planning tools: %w", err)
-	}
+	// DISABLED - Planning tools (plan-from-document, iterate removed, generate-plan in core)
+	// if err := taskwingmcp.RegisterPlanningTools(server, taskStore); err != nil {
+	// 	return fmt.Errorf("failed to register planning MCP tools: %w", err)
+	// }
 
-	// Register board tools
-	if err := taskwingmcp.RegisterBoardTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register board tools: %w", err)
-	}
+	// DISABLED - Simple planning tools (already have generate-plan in core)
+	// if err := taskwingmcp.RegisterSimplePlanTools(server, taskStore); err != nil {
+	// 	return fmt.Errorf("failed to register simple planning tools: %w", err)
+	// }
 
-	// Register archive tools
-	if err := taskwingmcp.RegisterArchiveTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register archive tools: %w", err)
-	}
+	// DISABLED - Board tools (board-snapshot moved to core, board-reconcile removed)
+	// if err := taskwingmcp.RegisterBoardTools(server, taskStore); err != nil {
+	// 	return fmt.Errorf("failed to register board tools: %w", err)
+	// }
 
 	// Register MCP resources
 	if err := taskwingmcp.RegisterMCPResources(server, taskStore); err != nil {

@@ -11,21 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/manifoldco/promptui"
 )
-
-// Helper to convert priority to an integer for sorting
-func priorityToInt(p models.TaskPriority) int {
-	return taskutil.PriorityToInt(p)
-}
-
-// Helper to convert status to an integer for sorting (workflow order)
-func statusToInt(s models.TaskStatus) int {
-	return taskutil.StatusToInt(s)
-}
 
 // statusIcon provides a compact emoji indicator for task status
 func statusIcon(s models.TaskStatus) string {
@@ -59,59 +48,40 @@ func priorityIcon(p models.TaskPriority) string {
 	}
 }
 
-// resolveTaskID resolves a partial task ID to a full task ID
-// Supports:
-// - Full UUID
-// - 8+ character prefix of UUID
-// - Returns error if no match or ambiguous
+// resolveTaskID resolves a partial task ID to a full task ID.
+// Simplified version supporting only ID-based resolution.
+// For fuzzy matching, CLI commands can fall back to prompting the user.
 func resolveTaskID(st store.TaskStore, partialID string) (string, error) {
 	partialID = strings.TrimSpace(strings.ToLower(partialID))
 	if partialID == "" {
 		return "", fmt.Errorf("task ID cannot be empty")
 	}
 
-	// Get all tasks
 	tasks, err := st.ListTasks(nil, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to list tasks: %w", err)
 	}
 
-	// Try exact match first
+	// Exact match
 	for _, task := range tasks {
 		if strings.ToLower(task.ID) == partialID {
 			return task.ID, nil
 		}
 	}
 
-	// Try prefix match (minimum 8 characters for safety)
-	if len(partialID) >= 8 {
-		var matches []models.Task
+	// Prefix match (4+ chars)
+	if len(partialID) >= 4 {
+		var matches []string
 		for _, task := range tasks {
 			if strings.HasPrefix(strings.ToLower(task.ID), partialID) {
-				matches = append(matches, task)
+				matches = append(matches, task.ID)
 			}
 		}
-
 		if len(matches) == 1 {
-			return matches[0].ID, nil
-		} else if len(matches) > 1 {
-			return "", fmt.Errorf("ambiguous task ID '%s' matches %d tasks", partialID, len(matches))
+			return matches[0], nil
 		}
-	}
-
-	// Try very short prefix (4-7 chars) if unambiguous
-	if len(partialID) >= 4 && len(partialID) < 8 {
-		var matches []models.Task
-		for _, task := range tasks {
-			if strings.HasPrefix(strings.ToLower(task.ID), partialID) {
-				matches = append(matches, task)
-			}
-		}
-
-		if len(matches) == 1 {
-			return matches[0].ID, nil
-		} else if len(matches) > 1 {
-			return "", fmt.Errorf("ambiguous task ID '%s' matches %d tasks, use at least 8 characters", partialID, len(matches))
+		if len(matches) > 1 {
+			return "", fmt.Errorf("ambiguous ID '%s' matches %d tasks", partialID, len(matches))
 		}
 	}
 
@@ -375,14 +345,4 @@ func aesGCMDecrypt(key, ciphertext []byte) ([]byte, error) {
 	nonce := ciphertext[:gcm.NonceSize()]
 	ct := ciphertext[gcm.NonceSize():]
 	return gcm.Open(nil, nonce, ct, nil)
-}
-
-// shortID proxies to taskutil.ShortID for consistent display formatting.
-func shortID(id string) string {
-	return taskutil.ShortID(id)
-}
-
-// normalizePriorityString normalizes user-supplied priorities via shared helpers.
-func normalizePriorityString(input string) (string, error) {
-	return taskutil.NormalizePriorityString(input)
 }

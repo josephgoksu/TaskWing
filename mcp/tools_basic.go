@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
@@ -37,7 +38,7 @@ func addTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.AddTa
 		// Normalize and validate priority input
 		normalizedPriority := strings.TrimSpace(args.Priority)
 		if normalizedPriority != "" {
-			if canon, nerr := normalizePriorityString(normalizedPriority); nerr == nil {
+			if canon, nerr := taskutil.NormalizePriorityString(normalizedPriority); nerr == nil {
 				normalizedPriority = canon
 			} else {
 				return nil, types.NewMCPError("INVALID_PRIORITY", nerr.Error(), map[string]interface{}{
@@ -107,23 +108,7 @@ func addTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.AddTa
 			return nil, WrapStoreError(err, "create", task.ID)
 		}
 
-		// If this is a subtask, update parent's SubtaskIDs
-		if parentID != nil {
-			parentTask, err := taskStore.GetTask(*parentID)
-			if err != nil {
-				// Log error but don't fail the creation since task was already created
-				logError(fmt.Errorf("failed to get parent task %s for subtask update: %w", *parentID, err))
-			} else {
-				// Add this task to parent's subtasks
-				updatedSubtasks := append(parentTask.SubtaskIDs, createdTask.ID)
-				_, err = taskStore.UpdateTask(*parentID, map[string]interface{}{
-					"subtaskIds": updatedSubtasks,
-				})
-				if err != nil {
-					logError(fmt.Errorf("failed to update parent task %s with new subtask: %w", *parentID, err))
-				}
-			}
-		}
+		// Note: Parent's SubtaskIDs are automatically updated by the store's CreateTask method
 
 		logInfo(fmt.Sprintf("Created task: %s", createdTask.ID))
 
@@ -223,7 +208,7 @@ func listTasksHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.Lis
 			}
 			responseText += "\nTop:"
 			for i := 0; i < maxShow; i++ {
-				responseText += fmt.Sprintf("\n - %s [%s]", tasks[i].Title, shortID(tasks[i].ID))
+				responseText += fmt.Sprintf("\n - %s [%s]", tasks[i].Title, taskutil.ShortID(tasks[i].ID))
 			}
 			responseText += "\nTip: Use set-current-task with id:'<8+ char ID>' or reference:'<title>'"
 		}
@@ -277,7 +262,7 @@ func updateTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.Up
 		if args.Priority != "" {
 			// Normalize and validate priority
 			canon := args.Priority
-			if np, nerr := normalizePriorityString(canon); nerr == nil {
+			if np, nerr := taskutil.NormalizePriorityString(canon); nerr == nil {
 				canon = np
 			} else {
 				return nil, types.NewMCPError("INVALID_PRIORITY", nerr.Error(), map[string]interface{}{
@@ -588,9 +573,9 @@ func createSortFunction(sortBy, sortOrder string) func([]models.Task) []models.T
 			case "title":
 				less = strings.ToLower(t1.Title) < strings.ToLower(t2.Title)
 			case "status":
-				less = statusToInt(t1.Status) < statusToInt(t2.Status)
+				less = taskutil.StatusToInt(t1.Status) < taskutil.StatusToInt(t2.Status)
 			case "priority":
-				less = priorityToInt(t1.Priority) < priorityToInt(t2.Priority)
+				less = taskutil.PriorityToInt(t1.Priority) < taskutil.PriorityToInt(t2.Priority)
 			case "createdat":
 				less = t1.CreatedAt.Before(t2.CreatedAt)
 			case "updatedat":

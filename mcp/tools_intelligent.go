@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
@@ -139,7 +140,7 @@ func queryTasksHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.Fi
 			}
 			responseText += "\nTop:"
 			for i := 0; i < maxShow; i++ {
-				responseText += fmt.Sprintf("\n - %s [%s]", taskResponses[i].Title, shortID(taskResponses[i].ID))
+				responseText += fmt.Sprintf("\n - %s [%s]", taskResponses[i].Title, taskutil.ShortID(taskResponses[i].ID))
 			}
 		}
 
@@ -272,7 +273,7 @@ func findTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.Reso
 					response.Match = &uniqueMatches[0]
 					response.Resolved = true
 					response.Message = fmt.Sprintf("✓ High confidence match: %s [%s] (%.1f%%, matched by %s)",
-						uniqueMatches[0].Task.Title, shortID(uniqueMatches[0].Task.ID), uniqueMatches[0].Score*100, uniqueMatches[0].Type)
+						uniqueMatches[0].Task.Title, taskutil.ShortID(uniqueMatches[0].Task.ID), uniqueMatches[0].Score*100, uniqueMatches[0].Type)
 				} else {
 					// Multiple matches or lower confidence
 					if len(uniqueMatches) > maxSuggestions {
@@ -280,7 +281,7 @@ func findTaskHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.Reso
 					}
 					response.Matches = uniqueMatches
 					response.Message = fmt.Sprintf("Found %d potential matches for '%s'. Top: %s [%s] (%.1f%%)",
-						len(uniqueMatches), reference, uniqueMatches[0].Task.Title, shortID(uniqueMatches[0].Task.ID), uniqueMatches[0].Score*100)
+						len(uniqueMatches), reference, uniqueMatches[0].Task.Title, taskutil.ShortID(uniqueMatches[0].Task.ID), uniqueMatches[0].Score*100)
 				}
 			} else {
 				// No matches found - provide helpful suggestions
@@ -345,7 +346,7 @@ func suggestTasksHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.
 		responseText := fmt.Sprintf("Found %d autocomplete suggestions for '%s'", len(suggestions), args.Input)
 		if len(suggestions) > 0 {
 			responseText += fmt.Sprintf(". Top: %s [%s] (%.1f%%)",
-				suggestions[0].Task.Title, shortID(suggestions[0].Task.ID), suggestions[0].Score*100)
+				suggestions[0].Task.Title, taskutil.ShortID(suggestions[0].Task.ID), suggestions[0].Score*100)
 		}
 
 		if args.Context != "" {
@@ -591,7 +592,7 @@ func matchesEnhancedFilter(task models.Task, key, value string) bool {
 	case "status":
 		return strings.EqualFold(string(task.Status), value)
 	case "priority":
-		if canon, err := normalizePriorityString(value); err == nil && canon != "" {
+		if canon, err := taskutil.NormalizePriorityString(value); err == nil && canon != "" {
 			return string(task.Priority) == canon
 		}
 		return strings.EqualFold(string(task.Priority), value)

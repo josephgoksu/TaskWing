@@ -5,15 +5,9 @@ package mcp
 import (
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/types"
 )
-
-// shortID returns a compact 8-char prefix of a UUID for display.
-func shortID(id string) string {
-	return taskutil.ShortID(id)
-}
 
 // resolveReference tries to resolve a human-provided reference (ID, partial ID, title, or description text)
 // to a concrete task ID. It returns the resolved ID, a slice of candidate matches for diagnostics,
@@ -68,18 +62,4 @@ func resolveReference(reference string, tasks []models.Task) (string, []types.Ta
 		return best.Task.ID, all, true
 	}
 	return "", all, false
-}
-
-// normalizePriorityString maps various inputs and common typos to canonical priorities.
-// Returns canonical one of: low, medium, high, urgent.
-func normalizePriorityString(input string) (string, error) {
-	return taskutil.NormalizePriorityString(input)
-}
-
-func priorityToInt(p models.TaskPriority) int {
-	return taskutil.PriorityToInt(p)
-}
-
-func statusToInt(s models.TaskStatus) int {
-	return taskutil.StatusToInt(s)
 }

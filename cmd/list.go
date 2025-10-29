@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/spf13/cobra"
@@ -95,7 +96,7 @@ var listCmd = &cobra.Command{
 				if p == "" {
 					continue
 				}
-				if canon, err := normalizePriorityString(p); err == nil {
+				if canon, err := taskutil.NormalizePriorityString(p); err == nil {
 					prioSet[models.TaskPriority(canon)] = true
 				} else {
 					// Also try literal value for backward-compat in case of new values
@@ -204,9 +205,9 @@ var listCmd = &cobra.Command{
 					case "title":
 						less = strings.ToLower(t1.Title) < strings.ToLower(t2.Title)
 					case "status":
-						less = statusToInt(t1.Status) < statusToInt(t2.Status)
+						less = taskutil.StatusToInt(t1.Status) < taskutil.StatusToInt(t2.Status)
 					case "priority":
-						less = priorityToInt(t1.Priority) < priorityToInt(t2.Priority)
+						less = taskutil.PriorityToInt(t1.Priority) < taskutil.PriorityToInt(t2.Priority)
 					case "createdat":
 						less = t1.CreatedAt.Before(t2.CreatedAt)
 					case "updatedat":
@@ -416,11 +417,11 @@ func displayTasksAsTreeEnhanced(allTasks []models.Task, currentTaskID string, st
 	sortSiblings := func(list []models.Task) {
 		sort.SliceStable(list, func(i, j int) bool {
 			li, lj := list[i], list[j]
-			pi, pj := priorityToInt(li.Priority), priorityToInt(lj.Priority)
+			pi, pj := taskutil.PriorityToInt(li.Priority), taskutil.PriorityToInt(lj.Priority)
 			if pi != pj {
 				return pi > pj // higher priority first
 			}
-			si, sj := statusToInt(li.Status), statusToInt(lj.Status)
+			si, sj := taskutil.StatusToInt(li.Status), taskutil.StatusToInt(lj.Status)
 			if si != sj {
 				return si < sj // workflow order
 			}

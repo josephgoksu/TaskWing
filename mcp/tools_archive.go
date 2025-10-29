@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/josephgoksu/TaskWing/types"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -75,7 +76,7 @@ func archiveViewHandler() mcpsdk.ToolHandlerFor[types.ArchiveViewParams, types.A
 			resp := types.ArchiveEntryResponse{
 				ID: e.ID, TaskID: e.TaskID, Title: e.Title, Description: e.Description, LessonsLearned: e.LessonsLearned, Tags: e.Tags, ArchivedAt: e.ArchivedAt.Format(time.RFC3339), FilePath: relPath,
 			}
-			return &mcpsdk.CallToolResultFor[types.ArchiveEntryResponse]{StructuredContent: resp, Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: fmt.Sprintf("Archive %s: %s", shortID(e.ID), e.Title)}}}, nil
+			return &mcpsdk.CallToolResultFor[types.ArchiveEntryResponse]{StructuredContent: resp, Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: fmt.Sprintf("Archive %s: %s", taskutil.ShortID(e.ID), e.Title)}}}, nil
 		})
 	}
 }
@@ -122,7 +123,7 @@ func archiveRestoreHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[type
 				return nil, types.NewMCPError("ARCHIVE_RESTORE", err.Error(), map[string]interface{}{"id": id})
 			}
 			resp := types.ArchiveRestoreResponse{Restored: taskToResponse(t)}
-			return &mcpsdk.CallToolResultFor[types.ArchiveRestoreResponse]{StructuredContent: resp, Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: fmt.Sprintf("Restored '%s' (%s)", t.Title, shortID(t.ID))}}}, nil
+			return &mcpsdk.CallToolResultFor[types.ArchiveRestoreResponse]{StructuredContent: resp, Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: fmt.Sprintf("Restored '%s' (%s)", t.Title, taskutil.ShortID(t.ID))}}}, nil
 		})
 	}
 }
@@ -173,7 +174,7 @@ func archiveAddHandler(taskStore store.TaskStore) mcpsdk.ToolHandlerFor[types.Ar
 			}
 			return &mcpsdk.CallToolResultFor[types.ArchiveEntryResponse]{
 				StructuredContent: resp,
-				Content:           []mcpsdk.Content{&mcpsdk.TextContent{Text: fmt.Sprintf("Archived '%s' (%s)%s", parent.Title, shortID(parent.ID), extra)}},
+				Content:           []mcpsdk.Content{&mcpsdk.TextContent{Text: fmt.Sprintf("Archived '%s' (%s)%s", parent.Title, taskutil.ShortID(parent.ID), extra)}},
 			}, nil
 		})
 	}

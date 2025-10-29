@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/manifoldco/promptui"
@@ -165,7 +166,7 @@ func buildClearFilter(cmd *cobra.Command) func(models.Task) bool {
 			priorityMatch := false
 			for _, priority := range priorityList {
 				priority = strings.TrimSpace(priority)
-				if canon, err := normalizePriorityString(priority); err == nil {
+				if canon, err := taskutil.NormalizePriorityString(priority); err == nil {
 					priority = canon
 				}
 				switch priority {
