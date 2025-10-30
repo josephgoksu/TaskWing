@@ -151,7 +151,7 @@ See [MCP Setup Guide](MCP.md) for detailed configuration and [AI Examples](EXAMP
 taskwing add "Implement user auth" --priority high
 taskwing add "Add login form" --parent <auth-task-id>
 taskwing add "Add logout functionality" --parent <auth-task-id>
-taskwing board-snapshot                 # See the plan
+taskwing ls --status todo,doing --tree   # See the plan in CLI
 
 # Daily workflow
 taskwing current                        # See active task
@@ -162,11 +162,16 @@ taskwing improve <task-id> --apply     # Refine title/desc/criteria/priority
 
 # Project analysis
 taskwing search "auth"                 # Find auth-related tasks
-taskwing analytics                     # View completion metrics
-taskwing workflow-status               # See project phase
+taskwing ls --status done --json       # Export completion metrics
+taskwing flow                          # Guided status and next steps
+
+# Need richer dashboards? Use MCP tools via Claude/Cursor:
+# board-snapshot (MCP)   → Kanban-style summary
+# analytics (MCP)        → Completion metrics
+# workflow-status (MCP)  → Project phase overview
 ```
 
-For complete command reference, see [User Guide](DOCS.md#commands-reference).
+For complete command reference, run `taskwing --help` or `taskwing <command> --help`.
 
 ## Real-World Examples
 
@@ -175,7 +180,7 @@ For complete command reference, see [User Guide](DOCS.md#commands-reference).
 ```bash
 # Morning standup
 taskwing current                    # What am I working on?
-taskwing board-snapshot            # Sprint overview
+taskwing ls --status todo,doing --tree  # Sprint overview in CLI
 
 # Start new work
 taskwing add "Implement OAuth2 flow" --priority high
@@ -196,21 +201,22 @@ taskwing next                      # What's next?
 # Upload PRD to Claude and ask:
 # "Create a task breakdown for this feature spec"
 
-# Claude uses MCP to:
-taskwing batch-create-tasks        # Create multiple tasks
-taskwing board-reconcile          # Organize dependencies
-taskwing workflow-status          # Show project phases
-taskwing improve <task-id>        # Refine any generated task for clarity
+# Claude uses MCP tools to:
+# - batch-create-tasks (MCP)   → Create multiple tasks at once
+# - board-reconcile (MCP)      → Organize dependencies
+# - workflow-status (MCP)      → Summarize project phases
+# - improve (CLI/MCP)          → Refine task details (AI assist)
 ```
 
 ## Documentation
 
-| Document                       | Purpose                                         |
-| ------------------------------ | ----------------------------------------------- |
-| **[DOCS.md](DOCS.md)**         | User guide - Installation, commands, workflows  |
-| **[MCP.md](MCP.md)**           | AI integration - Setup and tool reference       |
-| **[EXAMPLES.md](EXAMPLES.md)** | AI interaction examples - Common usage patterns |
-| **[CLAUDE.md](CLAUDE.md)**     | Developer guide - Architecture and contributing |
+| Document                                           | Purpose                                         |
+| -------------------------------------------------- | ----------------------------------------------- |
+| **CLI Help (`taskwing --help`)**                   | Built-in user guide for installation & commands |
+| **[MCP.md](MCP.md)**                               | AI integration - Setup and tool reference       |
+| **[EXAMPLES.md](EXAMPLES.md)**                     | AI interaction examples - Common usage patterns |
+| **[CLAUDE.md](CLAUDE.md)**                         | Developer guide - Architecture and contributing |
+| **[docs/ARCHIVE_DESIGN.md](docs/ARCHIVE_DESIGN.md)** | Archive system design notes                     |
 
 ## For Developers
 
