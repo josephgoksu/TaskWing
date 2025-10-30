@@ -25,6 +25,7 @@ var (
 	clearCompleted bool
 	clearAll       bool
 	clearBackup    bool
+	clearNoBackup  bool
 )
 
 // clearCmd represents the clear command
@@ -367,11 +368,11 @@ func init() {
 	clearCmd.Flags().BoolVar(&clearCompleted, "completed", false, "Clear only completed tasks (default behavior)")
 	clearCmd.Flags().BoolVar(&clearAll, "all", false, "Clear all tasks (requires confirmation)")
 	clearCmd.Flags().BoolVar(&clearBackup, "backup", true, "Create backup before clearing (default: true)")
-	clearCmd.Flags().BoolVar(&clearBackup, "no-backup", false, "Skip backup creation")
+	clearCmd.Flags().BoolVar(&clearNoBackup, "no-backup", false, "Skip backup creation")
 
 	// Make --no-backup set backup to false
 	clearCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		if cmd.Flag("no-backup").Changed {
+		if clearNoBackup {
 			clearBackup = false
 		}
 		return nil
