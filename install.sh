@@ -108,8 +108,8 @@ detect_arch() {
 }
 
 fetch_latest_version() {
-  curl -fsSL "$API_URL/releases/latest" \
-    | awk -F'"' '/"tag_name":/{print $4; exit}'
+  response="$(curl -fsSL "$API_URL/releases/latest")" || return 1
+  printf '%s' "$response" | awk -F'"' '/"tag_name":/{print $4; exit}'
 }
 
 resolve_version() {
@@ -120,7 +120,7 @@ resolve_version() {
     return 0
   fi
 
-  log "Fetching latest TaskWing release tag..."
+  log "Fetching latest TaskWing release tag..." >&2
   version="$(fetch_latest_version)"
 
   if [ -z "$version" ]; then
