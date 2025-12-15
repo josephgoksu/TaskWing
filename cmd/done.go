@@ -2,21 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/josephgoksu/TaskWing/models"
-	"github.com/josephgoksu/TaskWing/store"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
-)
-
-var (
-	doneArchive   bool
-	doneLessons   string
-	doneTags      string
-	doneAISuggest bool
-	doneAIFix     bool
-	doneAIAuto    bool
 )
 
 // doneCmd represents the done command
@@ -93,66 +82,6 @@ var doneCmd = &cobra.Command{
 
 		fmt.Printf("🎉 Task '%s' (ID: %s) marked as done successfully!\n", updatedTask.Title, updatedTask.ID)
 
-		// Prompt for lessons learned and archival (or use flags for non-interactive)
-		fmt.Println()
-		lessons := strings.TrimSpace(doneLessons)
-		if lessons == "" {
-			lessons = gatherLessonsInteractive(updatedTask, doneAISuggest, doneAIAuto, doneAIFix)
-		}
-
-		archiveNow := doneArchive
-		if !doneArchive {
-			confirmArchive := promptui.Select{Label: "Archive this task now?", Items: []string{"Yes", "No"}}
-			if _, choice, err := confirmArchive.Run(); err == nil && choice == "Yes" {
-				archiveNow = true
-			}
-		}
-
-		if archiveNow {
-			// Tags from flag or prompt
-			tags := []string{}
-			tagsInput := strings.TrimSpace(doneTags)
-			if tagsInput == "" {
-				tagsInput, _ = promptInput("Tags (comma-separated, optional)")
-			}
-			if tagsInput != "" {
-				for _, t := range strings.Split(tagsInput, ",") {
-					tt := strings.TrimSpace(t)
-					if tt != "" {
-						tags = append(tags, tt)
-					}
-				}
-			}
-			arch := store.NewFileArchiveStore()
-			if err := arch.Initialize(map[string]string{"archiveDir": getArchiveDir()}); err != nil {
-				fmt.Printf("Warning: failed to init archive store: %v\n", err)
-			} else {
-				defer func() { _ = arch.Close() }()
-				if doneAIFix && strings.TrimSpace(lessons) != "" {
-					if polished, ok := aiPolishLessons(lessons); ok {
-						lessons = polished
-					}
-				}
-				entry, err := arch.CreateFromTask(updatedTask, lessons, tags)
-				if err != nil {
-					fmt.Printf("Warning: failed to create archive entry: %v\n", err)
-				} else {
-					// friendly summary
-					_, path, _ := arch.GetByID(entry.ID)
-					short := entry.ID
-					if len(short) > 8 {
-						short = short[:8]
-					}
-					fmt.Printf("🗄️  Archived: %s (archive-id: %s)\n", entry.Title, short)
-					if path != "" {
-						fmt.Printf("     ↳ %s\n", path)
-					}
-					fmt.Printf("     View:   taskwing archive view %s\n", short)
-					fmt.Printf("     Search: taskwing archive search \"%s\"\n", entry.Title)
-				}
-			}
-		}
-
 		// Command discovery hints
 		fmt.Printf("\n💡 What's next?\n")
 		fmt.Printf("   • Add new task:   taskwing add \"Your next task\"\n")
@@ -163,10 +92,4 @@ var doneCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(doneCmd)
-	doneCmd.Flags().BoolVar(&doneArchive, "archive", false, "Archive task immediately (non-interactive)")
-	doneCmd.Flags().StringVar(&doneLessons, "lessons", "", "Lessons learned text (non-interactive)")
-	doneCmd.Flags().StringVar(&doneTags, "tags", "", "Comma-separated tags for the archive (non-interactive)")
-	doneCmd.Flags().BoolVar(&doneAISuggest, "ai-suggest", true, "Use AI to propose lessons learned suggestions (default: true)")
-	doneCmd.Flags().BoolVar(&doneAIFix, "ai-fix", true, "Use AI to polish/grammar-fix lessons text (default: true)")
-	doneCmd.Flags().BoolVar(&doneAIAuto, "ai-auto", false, "Auto-pick the first AI suggestion without prompting")
 }

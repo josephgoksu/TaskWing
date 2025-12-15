@@ -5,9 +5,8 @@ package cmd
 
 import (
 	"fmt"
-	"sort"
-	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/taskutil"
 	"github.com/josephgoksu/TaskWing/models"
 	"github.com/josephgoksu/TaskWing/store"
 	"github.com/manifoldco/promptui"
@@ -195,67 +194,7 @@ func resolveTaskReference(taskStore store.TaskStore, reference string) (*models.
 		return nil, fmt.Errorf("failed to list tasks: %w", err)
 	}
 
-	// Try partial ID match (minimum 8 characters for meaningful UUID portion)
-	if len(reference) >= 8 {
-		for _, task := range tasks {
-			if strings.HasPrefix(strings.ToLower(task.ID), strings.ToLower(reference)) {
-				return &task, nil
-			}
-		}
-	}
-
-	// Try fuzzy title matching
-	type match struct {
-		task  models.Task
-		score float64
-	}
-
-	var matches []match
-	refLower := strings.ToLower(reference)
-
-	for _, task := range tasks {
-		titleLower := strings.ToLower(task.Title)
-
-		// Exact title match
-		if titleLower == refLower {
-			return &task, nil
-		}
-
-		// Substring match in title
-		if strings.Contains(titleLower, refLower) {
-			score := 0.9 - (float64(len(titleLower)-len(refLower)) / float64(len(titleLower)) * 0.3)
-			matches = append(matches, match{task: task, score: score})
-		}
-	}
-
-	// Sort matches by score and return best match if confidence is high enough
-	if len(matches) > 0 {
-		sort.SliceStable(matches, func(i, j int) bool {
-			return matches[i].score > matches[j].score
-		})
-
-		// If we have a high confidence match (>80%) and it's the only good match
-		if matches[0].score > 0.8 && (len(matches) == 1 || matches[0].score > matches[1].score+0.2) {
-			return &matches[0].task, nil
-		}
-
-		// If we have multiple similar matches, show suggestions
-		if len(matches) > 1 {
-			var suggestions []string
-			for i, m := range matches {
-				if i >= 3 { // Limit to top 3 suggestions
-					break
-				}
-				suggestions = append(suggestions, fmt.Sprintf("  %s - %s",
-					m.task.ID[:8], m.task.Title))
-			}
-
-			return nil, fmt.Errorf("multiple matches found for '%s'. Did you mean:\n%s\n\nUse a more specific reference or full task ID",
-				reference, strings.Join(suggestions, "\n"))
-		}
-	}
-
-	return nil, fmt.Errorf("no task found matching '%s'. Use 'taskwing list' to see available tasks", reference)
+	return taskutil.ResolveTaskReference(reference, tasks)
 }
 
 func init() {

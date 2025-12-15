@@ -63,16 +63,12 @@ func Execute() {
 
 // Command categories for organized help display
 var commandCategories = map[string][]string{
-	"Getting Started":    {"quickstart", "flow", "interactive"},
-	"Core Tasks":         {"add", "list", "show", "update", "delete", "improve"},
-	"Task Status":        {"start", "review", "done", "current"},
-	"Planning":           {"plan", "iterate"},
+	"Getting Started":    {"quickstart", "interactive"},
+	"Core Tasks":         {"add", "list", "show", "update", "delete"},
+	"Task Status":        {"start", "done", "current"},
 	"Discovery":          {"search", "next", "clear"},
 	"Project Setup":      {"init", "reset", "config"},
 	"System & Utilities": {"mcp", "completion", "version", "help"},
-	"Archive":            {"archive"},
-	// Context-aware: for the 'archive' parent command, these will match its subcommands
-	"Archive Ops": {"view", "restore", "export", "import", "purge"},
 }
 
 // getGroupedHelpTemplate returns a custom help template with grouped commands

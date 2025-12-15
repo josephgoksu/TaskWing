@@ -161,7 +161,7 @@ func SetupTestProject(t *testing.T) string {
 			return activeTestConfig
 		},
 		CreateLLMProvider: func(cfg *types.LLMConfig) (llm.Provider, error) {
-			return newLLMProvider(cfg)
+			return &UnifiedFakeProvider{}, nil
 		},
 		EnvPrefix: "TASKWING_TEST",
 	})

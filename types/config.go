@@ -50,7 +50,6 @@ type LLMConfig struct {
 type StoreConfig struct {
 	FilePath   string `json:"filePath,omitempty"`
 	DataFormat string `json:"dataFormat,omitempty"`
-	ArchiveDir string `json:"archiveDir,omitempty"`
 }
 
 // ToMap converts StoreConfig to map[string]string for compatibility
@@ -61,9 +60,6 @@ func (c StoreConfig) ToMap() map[string]string {
 	}
 	if c.DataFormat != "" {
 		m["dataFormat"] = c.DataFormat
-	}
-	if c.ArchiveDir != "" {
-		m["archiveDir"] = c.ArchiveDir
 	}
 	return m
 }

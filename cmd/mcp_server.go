@@ -72,12 +72,6 @@ func runMCPServer(ctx context.Context) error {
 		LogInfo:              logInfo,
 		LogError:             logError,
 		LogToolCall:          logToolCall,
-		GetArchiveStore:      getArchiveStore,
-		SuggestLessons:       aiSuggestLessons,
-		PolishLessons:        aiPolishLessons,
-		ArchiveAndDelete:     archiveAndDeleteSubtree,
-		EncryptFile:          encryptFile,
-		DecryptFile:          decryptFile,
 		ResolveTaskReference: resolveTaskReference,
 		GetVersion:           func() string { return version },
 	})
@@ -122,51 +116,6 @@ func runMCPServer(ctx context.Context) error {
 	if err := taskwingmcp.RegisterCoreTools(server, taskStore); err != nil {
 		return fmt.Errorf("failed to register MCP tools: %w", err)
 	}
-
-	// DISABLED - Archive tools (9 tools removed to save tokens)
-	// if err := taskwingmcp.RegisterArchiveTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register archive tools: %w", err)
-	// }
-
-	// DISABLED - Advanced bulk tools (board-reconcile, bulk-by-filter removed)
-	// if err := taskwingmcp.RegisterAdvancedMCPTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register advanced MCP tools: %w", err)
-	// }
-
-	// DISABLED - Redundant resolution tools (find-by-title, resolve-reference removed)
-	// if err := taskwingmcp.RegisterTaskResolutionTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register task resolution tools: %w", err)
-	// }
-
-	// DISABLED - JSON processing tools (filter, extract-ids, analytics removed)
-	// if err := taskwingmcp.RegisterJSONProcessingTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register JSON processing tools: %w", err)
-	// }
-
-	// DISABLED - Workflow tools (workflow-status removed, board-snapshot in core)
-	// if err := taskwingmcp.RegisterWorkflowIntegrationTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register workflow integration tools: %w", err)
-	// }
-
-	// DISABLED - Intelligent tools (suggest, smart-transition removed, query-tasks in core)
-	// if err := taskwingmcp.RegisterIntelligentMCPTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register intelligent MCP tools: %w", err)
-	// }
-
-	// DISABLED - Planning tools (plan-from-document, iterate removed, generate-plan in core)
-	// if err := taskwingmcp.RegisterPlanningTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register planning MCP tools: %w", err)
-	// }
-
-	// DISABLED - Simple planning tools (already have generate-plan in core)
-	// if err := taskwingmcp.RegisterSimplePlanTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register simple planning tools: %w", err)
-	// }
-
-	// DISABLED - Board tools (board-snapshot moved to core, board-reconcile removed)
-	// if err := taskwingmcp.RegisterBoardTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register board tools: %w", err)
-	// }
 
 	// Register MCP resources
 	if err := taskwingmcp.RegisterMCPResources(server, taskStore); err != nil {

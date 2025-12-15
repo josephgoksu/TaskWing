@@ -27,18 +27,17 @@ var addCmd = &cobra.Command{
 	Long:    `Add a new task with AI-powered enhancement. Automatically improves title, description, acceptance criteria and priority. Use --no-ai to disable AI enhancement.`,
 	Example: `  # Quick add with AI enhancement
   taskwing add "Fix login bug"
-  
+
   # Add and immediately start working
   taskwing add "Implement auth" --start
-  
+
   # Add with specific priority
   taskwing add "Deploy to production" --priority urgent
-  
+
   # Add without AI (faster)
   taskwing add "Simple task" --no-ai
-  
-  # Add and generate subtasks
-  taskwing add "Build dashboard" --plan`,
+
+  taskwing add "Build dashboard"`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 
@@ -209,43 +208,9 @@ var addCmd = &cobra.Command{
 			_ = runCommand("start", []string{createdTask.ID})
 		}
 
-		// Handle --plan flag: generate subtasks immediately
-		planFlag, _ := cmd.Flags().GetBool("plan")
-		if planFlag {
-			fmt.Printf("\n📋 Generating plan...\n")
-			_ = runCommand("plan", []string{"--task", createdTask.ID, "--confirm"})
-		} else if !nonInteractive && !startFlag {
-			// Offer immediate planning flow only if not already handled
-			prompt := promptui.Prompt{Label: "Generate a plan now?", IsConfirm: true, Default: "y"}
-			if _, perr := prompt.Run(); perr == nil {
-				// Preview first
-				fmt.Print("\n🔄 Generating plan preview... ")
-				if err := runCommand("plan", []string{"--task", createdTask.ID}); err != nil {
-					fmt.Printf("\r❌ Failed to generate plan: %v\n", err)
-					if strings.Contains(err.Error(), "API key") {
-						fmt.Println("💡 To use AI planning features, set up your LLM API key:")
-						fmt.Println("   export OPENAI_API_KEY=your_key_here")
-						fmt.Println("   Or run: taskwing init --setup-llm")
-					}
-				} else {
-					// Ask to apply
-					confirm := promptui.Prompt{Label: "Apply this plan now? (This will create the subtasks)", IsConfirm: true}
-					if _, aerr := confirm.Run(); aerr == nil {
-						fmt.Print("🔄 Creating subtasks... ")
-						if err := runCommand("plan", []string{"--task", createdTask.ID, "--confirm"}); err != nil {
-							fmt.Printf("\r❌ Failed to apply plan: %v\n", err)
-						} else {
-							fmt.Print("\r✅ Plan applied successfully!\n")
-						}
-					}
-				}
-			}
-		}
-
 		// Command discovery hints (only if not already handled by flags)
-		if !startFlag && !planFlag {
+		if !startFlag {
 			fmt.Printf("\n💡 What's next?\n")
-			fmt.Printf("   • Plan work:     taskwing plan %s\n", createdTask.ID[:8])
 			fmt.Printf("   • Start working: taskwing start %s\n", createdTask.ID[:8])
 			fmt.Printf("   • View details:  taskwing show %s\n", createdTask.ID[:8])
 			fmt.Printf("   • List all:      taskwing ls\n")
@@ -722,7 +687,6 @@ func init() {
 
 	// Developer-friendly flags
 	addCmd.Flags().BoolP("start", "s", false, "Start working on the task immediately after creation")
-	addCmd.Flags().BoolP("plan", "p", false, "Generate subtasks immediately after creation")
 	addCmd.Flags().StringP("priority", "P", "", "Set priority (low/medium/high/urgent)")
 	addCmd.Flags().StringP("description", "d", "", "Task description")
 	addCmd.Flags().StringP("acceptance", "a", "", "Acceptance criteria")

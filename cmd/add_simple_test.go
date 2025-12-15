@@ -37,7 +37,6 @@ func TestAddCommand_Flags(t *testing.T) {
 		"parentID",
 		"non-interactive",
 		"start",
-		"plan",
 		"priority",
 		"description",
 		"acceptance",
@@ -55,7 +54,6 @@ func TestAddCommand_Flags(t *testing.T) {
 	// Test short flags exist
 	expectedShortFlags := map[string]string{
 		"s": "start",
-		"p": "plan",
 		"P": "priority",
 		"d": "description",
 		"a": "acceptance",
