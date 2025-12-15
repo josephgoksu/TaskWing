@@ -19,7 +19,6 @@ TaskWing integrates directly with Claude Code, Cursor, and other AI tools via th
 - **🤖 AI-Native**: Full MCP integration for Claude Code, Cursor, and other AI tools
 - **⚡ Zero Config**: Works immediately, stores data locally in your project
 - **🔗 Smart Dependencies**: Automatic dependency tracking and circular reference prevention
-- **📚 Learning System**: Captures patterns from completed projects for future AI assistance
 - **🚀 Developer-First**: Built for developers who value focus and efficiency
 
 ## By [@josephgoksu](https://x.com/josephgoksu)
@@ -43,8 +42,6 @@ curl -sSfL https://raw.githubusercontent.com/josephgoksu/TaskWing/main/install.s
 > ```
 
 #### Alternative: Go install
-
-If you have Go installed:
 
 ```bash
 go install github.com/josephgoksu/TaskWing@latest
@@ -78,7 +75,6 @@ taskwing add "Fix authentication bug" --priority urgent
 taskwing ls                    # List all tasks
 taskwing start <task-id>       # Begin working
 taskwing done <task-id>        # Mark complete
-taskwing done <task-id>        # Mark complete
 ```
 
 ### AI Integration
@@ -111,9 +107,8 @@ taskwing done <task-id>        # Mark complete
 - _"Break down this feature into tasks"_
 - _"What should I work on next?"_
 - _"Create tasks from this GitHub issue"_
-- _"Show me my current sprint status"_
 
-See [MCP Setup Guide](MCP.md) for detailed configuration and [AI Examples](EXAMPLES.md) for advanced patterns.
+See [MCP Setup Guide](MCP.md) for detailed configuration.
 
 ## Core Features
 
@@ -122,20 +117,20 @@ See [MCP Setup Guide](MCP.md) for detailed configuration and [AI Examples](EXAMP
 - **Rich metadata**: Priority, status, dependencies, acceptance criteria
 - **Flexible workflow**: `todo` → `doing` → `review` → `done`
 - **Smart search**: Find tasks by title, description, or partial ID
-- **Board view**: Kanban-style project visualization
+- **Hierarchical tasks**: Parent/child relationships with subtasks
 
 ### 🤖 AI Integration
 
 - **MCP Protocol**: Direct integration with Claude Code, Cursor, and AI tools
 - **Context-aware**: AI knows your current task and project state
-- **Intelligent suggestions**: Get next task recommendations
-- **Planning assistance**: Break down features into actionable tasks
+- **Intelligent suggestions**: Get next task recommendations via `taskwing next`
+- **Task enhancement**: AI improves task titles, descriptions, and acceptance criteria
 
 ### 🔗 Smart Dependencies
 
 - **Relationship tracking**: Parent/child tasks and dependencies
 - **Circular prevention**: Automatic detection and prevention
-- **Dependency health**: Analyze and fix broken relationships
+- **Dependency validation**: Tasks blocked until dependencies complete
 
 ### ⚡ Developer Experience
 
@@ -144,92 +139,70 @@ See [MCP Setup Guide](MCP.md) for detailed configuration and [AI Examples](EXAMP
 - **Fast commands**: Optimized for daily use with aliases
 - **Interactive mode**: Menu-driven interface for exploration
 
-**Example workflows:**
+## Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `taskwing init` | Initialize TaskWing in current directory |
+| `taskwing add "title"` | Add a new task (AI-enhanced by default) |
+| `taskwing ls` | List all tasks |
+| `taskwing show <id>` | Show task details |
+| `taskwing start <id>` | Start working on a task |
+| `taskwing done <id>` | Mark task as complete |
+| `taskwing update <id>` | Update task properties |
+| `taskwing delete <id>` | Delete a task |
+| `taskwing search "query"` | Search tasks |
+| `taskwing next` | Get AI-powered next task suggestion |
+| `taskwing current` | Show current active task |
+| `taskwing interactive` | Launch interactive menu |
+| `taskwing mcp` | Start MCP server for AI tools |
+| `taskwing config` | View/edit configuration |
+| `taskwing reset` | Reset TaskWing data |
+| `taskwing clear` | Clear completed tasks |
+
+## Example Workflows
+
+### Daily Development
 
 ```bash
-# Sprint planning
-taskwing add "Implement user auth" --priority high
-taskwing add "Add login form" --parent <auth-task-id>
-taskwing add "Add logout functionality" --parent <auth-task-id>
-taskwing board-snapshot                 # See the plan
-
-# Daily workflow
-taskwing current                        # See active task
-taskwing next                          # Get AI suggestions
-taskwing start <task-id>               # Focus on task
-taskwing done <task-id>                # Mark complete
-
-# Project analysis
-taskwing search "auth"                 # Find auth-related tasks
-taskwing analytics                     # View completion metrics
-taskwing workflow-status               # See project phase
-```
-
-For complete command reference, see [User Guide](DOCS.md#commands-reference).
-
-## Real-World Examples
-
-### Daily Development Workflow
-
-```bash
-# Morning standup
-taskwing current                    # What am I working on?
-taskwing board-snapshot            # Sprint overview
+# Morning: Check status
+taskwing current               # What am I working on?
+taskwing ls --status=doing     # All in-progress tasks
 
 # Start new work
 taskwing add "Implement OAuth2 flow" --priority high
-taskwing start <task-id>           # Focus mode
-
-# AI assistance
-# Ask Claude: "Break down this OAuth task into smaller steps"
-# Claude creates subtasks automatically via MCP
+taskwing start <task-id>
 
 # End of day
-taskwing done <task-id>            # Mark complete
-taskwing next                      # What's next?
+taskwing done <task-id>
+taskwing next                  # What's next?
 ```
 
-### Project Planning with AI
+### Sprint Planning
 
 ```bash
-# Upload PRD to Claude and ask:
-# "Create a task breakdown for this feature spec"
+# Create parent task
+taskwing add "Implement user auth" --priority high
 
-# Claude uses MCP to:
-taskwing batch-create-tasks        # Create multiple tasks
-taskwing board-reconcile          # Organize dependencies
-taskwing workflow-status          # Show project phases
-taskwing workflow-status          # Show project phases
+# Add subtasks
+taskwing add "Add login form" --parentID <auth-task-id>
+taskwing add "Add logout functionality" --parentID <auth-task-id>
+
+# Review hierarchy
+taskwing ls --parent <auth-task-id>
 ```
-
-## Documentation
-
-| Document                       | Purpose                                         |
-| ------------------------------ | ----------------------------------------------- |
-| **[DOCS.md](DOCS.md)**         | User guide - Installation, commands, workflows  |
-| **[MCP.md](MCP.md)**           | AI integration - Setup and tool reference       |
-| **[EXAMPLES.md](EXAMPLES.md)** | AI interaction examples - Common usage patterns |
-| **[CLAUDE.md](CLAUDE.md)**     | Developer guide - Architecture and contributing |
 
 ## For Developers
 
 ### Quick Development Setup
 
 ```bash
-# Clone and setup
 git clone https://github.com/josephgoksu/TaskWing.git
 cd TaskWing
-make dev-setup                 # Install dev tools
-
-# Development workflow
-make build                     # Build binary
-make test-quick               # Fast tests
-make lint                     # Format and lint
-
-# Testing
-make test-all                 # Comprehensive test suite
-make test-mcp                 # Test MCP integration
-make coverage                 # Generate coverage report
+make dev-setup    # Install dev tools
+make build        # Build binary
+make test-quick   # Fast tests
+make lint         # Format and lint
 ```
 
 ### Architecture
@@ -238,7 +211,6 @@ make coverage                 # Generate coverage report
 - **Go 1.24+**: Built with Cobra CLI framework
 - **MCP Integration**: Full Model Context Protocol support
 - **File-based storage**: JSON/YAML/TOML with file locking
-- **33+ MCP tools**: Comprehensive AI integration
 
 ### Contributing
 
@@ -249,14 +221,10 @@ We welcome contributions! Key areas:
 - 📄 **Documentation**: Improve user experience
 - 🧪 **Testing**: Increase coverage and reliability
 
-See [CLAUDE.md](CLAUDE.md) for detailed development guide.
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) file.
 
 ---
-
-[![Star History Chart](https://api.star-history.com/svg?repos=josephgoksu/TaskWing&type=Date)](https://www.star-history.com/#josephgoksu/TaskWing&Date)
 
 **Built for the terminal. Powered by AI. Made for developers.** 🚀
