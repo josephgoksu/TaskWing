@@ -86,7 +86,7 @@ Common Workflows:
   {{.CommandPath}} ls                            # List all tasks
   {{.CommandPath}} start <task-id>               # Begin working on a task
   {{.CommandPath}} done <task-id>                # Mark task complete
-  {{.CommandPath}} improve <task-id> --apply     # AI‑enhance a task (title/desc/criteria/priority)
+  {{.CommandPath}} done <task-id>                # Mark task complete
   {{.CommandPath}} add "Task" && {{.CommandPath}} start $({{.CommandPath}} ls --format=id --status=todo | head -1)  # Add and start
 
 Available Commands:{{range $category, $commands := getCommandsByCategory .}}

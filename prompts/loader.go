@@ -13,8 +13,7 @@ type PromptKey string
 const (
 	// KeyGenerateTasks is the key for the main task generation prompt.
 	KeyGenerateTasks PromptKey = "GenerateTasks"
-	// KeyImprovePRD is the key for the PRD improvement prompt.
-	KeyImprovePRD PromptKey = "ImprovePRD"
+
 	// KeyEnhanceTask is the key for the single task enhancement prompt.
 	KeyEnhanceTask PromptKey = "EnhanceTask"
 	// KeyGenerateNextWorkItem is the key for iterative, one-at-a-time generation with context.
@@ -39,10 +38,7 @@ var promptRegistry = map[PromptKey]promptConfig{
 		defaultContent: GenerateTasksSystemPrompt,
 		filename:       "generate_tasks_prompt.txt",
 	},
-	KeyImprovePRD: {
-		defaultContent: ImprovePRDSystemPrompt,
-		filename:       "improve_prd_prompt.txt",
-	},
+
 	KeyEnhanceTask: {
 		defaultContent: EnhanceTaskSystemPrompt,
 		filename:       "enhance_task_prompt.txt",
