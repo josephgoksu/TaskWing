@@ -96,7 +96,6 @@ func systemStatusResourceHandler(taskStore store.TaskStore) mcpsdk.ResourceHandl
 			"instructions": []string{
 				"Use task-summary tool first to understand project state",
 				"Use add-task instead of creating markdown lists",
-				"Use batch-create-tasks for multiple related tasks",
 				"Use set-current-task when user starts working on something",
 				"Professional task management with relationships, priorities, and context",
 			},
