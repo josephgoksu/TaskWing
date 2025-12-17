@@ -87,10 +87,11 @@ func (a *LLMAnalyzer) Analyze(ctx context.Context) (*LLMResponse, error) {
 
 // ProjectContext holds all the gathered project information
 type ProjectContext struct {
-	DirectoryTree string
-	PackageFiles  map[string]string // package.json, go.mod, etc.
-	ReadmeContent string
-	GitSummary    string
+	DirectoryTree       string
+	PackageFiles        map[string]string // package.json, go.mod, etc.
+	ReadmeContent       string
+	GitSummary          string
+	CurrentDependencies []string // Parsed from package.json/go.mod - the ACTUAL current stack
 }
 
 func (a *LLMAnalyzer) gatherContext() (*ProjectContext, error) {
@@ -137,27 +138,67 @@ func (a *LLMAnalyzer) gatherContext() (*ProjectContext, error) {
 	ctx.DirectoryTree = tree.String()
 	fmt.Fprintf(out, " (%d entries)\n", lineCount)
 
-	// 2. Read key config files (limit size)
+	// 2. Read key config files recursively (depth 2, limit size)
 	fmt.Fprint(out, "   📦 Reading package files...")
-	configFiles := []string{
-		"package.json", "go.mod", "Cargo.toml", "pyproject.toml",
+	configFileNames := map[string]bool{
+		"package.json":   true,
+		"go.mod":         true,
+		"Cargo.toml":     true,
+		"pyproject.toml": true,
 	}
 	foundConfigs := []string{}
-	for _, f := range configFiles {
-		path := filepath.Join(a.BasePath, f)
-		if content, err := os.ReadFile(path); err == nil {
-			// Truncate to 1000 chars
-			if len(content) > 1000 {
-				content = content[:1000]
-			}
-			ctx.PackageFiles[f] = string(content)
-			foundConfigs = append(foundConfigs, f)
+	filepath.WalkDir(a.BasePath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
 		}
-	}
+		rel, _ := filepath.Rel(a.BasePath, path)
+		depth := strings.Count(rel, string(os.PathSeparator))
+		if depth > 2 {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		// Skip hidden and common ignore dirs
+		name := d.Name()
+		if strings.HasPrefix(name, ".") || name == "node_modules" || name == "vendor" {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		// Check if this is a config file we want
+		if !d.IsDir() && configFileNames[name] {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return nil
+			}
+			// Truncate to 1500 chars
+			if len(content) > 1500 {
+				content = content[:1500]
+			}
+			// Use relative path as key to distinguish multiple package.json files
+			ctx.PackageFiles[rel] = string(content)
+			foundConfigs = append(foundConfigs, rel)
+		}
+		return nil
+	})
 	if len(foundConfigs) > 0 {
 		fmt.Fprintf(out, " %s\n", strings.Join(foundConfigs, ", "))
 	} else {
 		fmt.Fprintln(out, " none found")
+	}
+
+	// 2b. Parse actual dependencies from ALL found package files
+	for relPath, content := range ctx.PackageFiles {
+		if strings.HasSuffix(relPath, "package.json") {
+			deps := parsePackageJSONDeps(content)
+			ctx.CurrentDependencies = append(ctx.CurrentDependencies, deps...)
+		}
+		if strings.HasSuffix(relPath, "go.mod") {
+			deps := parseGoModDeps(content)
+			ctx.CurrentDependencies = append(ctx.CurrentDependencies, deps...)
+		}
 	}
 
 	// 3. Read README (truncated)
@@ -454,7 +495,7 @@ func (a *LLMAnalyzer) summarizeGitHistory() (string, error) {
 	}
 
 	if len(recentConventional) > 0 {
-		sb.WriteString("- Recent conventional commits (sample):\n")
+		sb.WriteString("- RECENT ACTIVITY (most relevant for current architecture - PRIORITIZE THESE):\n")
 		for _, line := range recentConventional {
 			sb.WriteString(fmt.Sprintf("  - %s\n", line))
 		}
@@ -476,6 +517,11 @@ For each feature, explain:
 
 Focus on architectural decisions, not implementation details.
 Limit to 5-7 main features maximum.
+
+IMPORTANT: When analyzing technology choices, PRIORITIZE the "CURRENT TECH STACK" section
+over git commit history. If git history mentions a technology that's NOT in the current
+dependencies, it was likely removed or migrated away from. Base your analysis on what's
+ACTUALLY in use today.
 
 RESPOND IN JSON FORMAT ONLY:
 {
@@ -520,12 +566,22 @@ PROJECT CONTEXT:
 		sb.WriteString("\n```\n\n")
 	}
 
+	// Add CURRENT TECH STACK section (prioritized over git history)
+	if len(ctx.CurrentDependencies) > 0 {
+		sb.WriteString("## CURRENT TECH STACK (from HEAD - THIS IS THE SOURCE OF TRUTH):\n")
+		sb.WriteString("These are the ACTUAL dependencies currently in use. Base your analysis on these:\n")
+		for _, dep := range ctx.CurrentDependencies {
+			sb.WriteString(fmt.Sprintf("- %s\n", dep))
+		}
+		sb.WriteString("\n")
+	}
+
 	for name, content := range ctx.PackageFiles {
 		sb.WriteString(fmt.Sprintf("## %s:\n```\n%s\n```\n\n", name, content))
 	}
 
 	if ctx.GitSummary != "" {
-		sb.WriteString("## Git History (summary):\n```\n")
+		sb.WriteString("## Git History (summary - may include OUTDATED technologies):\n```\n")
 		sb.WriteString(ctx.GitSummary)
 		sb.WriteString("\n```\n\n")
 	}
@@ -631,4 +687,60 @@ func (r *LLMResponse) PrintAnalysis() {
 		}
 	}
 	fmt.Println("\n═══════════════════════════════════════════════════════")
+}
+
+// parsePackageJSONDeps extracts dependency names from package.json content
+func parsePackageJSONDeps(content string) []string {
+	var pkg struct {
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if err := json.Unmarshal([]byte(content), &pkg); err != nil {
+		return nil
+	}
+	var deps []string
+	// Only include production dependencies for clarity (devDeps are often noise)
+	for name := range pkg.Dependencies {
+		deps = append(deps, name)
+	}
+	// Sort for consistent output
+	sort.Strings(deps)
+	return deps
+}
+
+// parseGoModDeps extracts module names from go.mod content
+func parseGoModDeps(content string) []string {
+	var deps []string
+	lines := strings.Split(content, "\n")
+	inRequire := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "require (" {
+			inRequire = true
+			continue
+		}
+		if inRequire {
+			if line == ")" {
+				break
+			}
+			// Skip indirect dependencies
+			if strings.Contains(line, "// indirect") {
+				continue
+			}
+			parts := strings.Fields(line)
+			if len(parts) >= 1 {
+				// Shorten common paths for readability
+				name := parts[0]
+				if strings.Contains(name, "github.com/") {
+					// Keep just the package name part
+					segments := strings.Split(name, "/")
+					if len(segments) >= 3 {
+						name = strings.Join(segments[1:], "/")
+					}
+				}
+				deps = append(deps, name)
+			}
+		}
+	}
+	return deps
 }

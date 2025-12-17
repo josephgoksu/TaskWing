@@ -4,9 +4,13 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
+	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -21,9 +25,10 @@ var memoryCmd = &cobra.Command{
 Commands for checking, repairing, and rebuilding the memory store.
 
 Examples:
-  taskwing memory check      # Check for integrity issues
-  taskwing memory repair     # Fix integrity issues
-  taskwing memory rebuild    # Rebuild the index cache`,
+  taskwing memory check               # Check for integrity issues
+  taskwing memory repair              # Fix integrity issues
+  taskwing memory rebuild             # Rebuild the index cache
+  taskwing memory generate-embeddings # Backfill missing embeddings`,
 }
 
 // memory check command
@@ -142,6 +147,83 @@ This is useful if the cache is out of sync with the database.`,
 	},
 }
 
+// memory generate-embeddings command
+var memoryGenerateEmbeddingsCmd = &cobra.Command{
+	Use:     "generate-embeddings",
+	Aliases: []string{"embed"},
+	Short:   "Generate embeddings for nodes without them",
+	Long: `Backfill embeddings for knowledge nodes that don't have them.
+
+Requires OPENAI_API_KEY to be set. Useful after:
+  • Importing data without embeddings
+  • Running bootstrap without API key
+  • Adding nodes with --skip-ai`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		apiKey := viper.GetString("llm.apiKey")
+		if apiKey == "" {
+			apiKey = os.Getenv("OPENAI_API_KEY")
+		}
+		if apiKey == "" {
+			return fmt.Errorf("OPENAI_API_KEY required for embedding generation")
+		}
+
+		store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+		if err != nil {
+			return fmt.Errorf("open memory store: %w", err)
+		}
+		defer store.Close()
+
+		nodes, err := store.ListNodes("")
+		if err != nil {
+			return fmt.Errorf("list nodes: %w", err)
+		}
+
+		// Find nodes without embeddings
+		var toProcess []memory.Node
+		for _, n := range nodes {
+			fullNode, err := store.GetNode(n.ID)
+			if err != nil {
+				continue
+			}
+			if len(fullNode.Embedding) == 0 {
+				toProcess = append(toProcess, *fullNode)
+			}
+		}
+
+		if len(toProcess) == 0 {
+			fmt.Println("✓ All nodes already have embeddings")
+			return nil
+		}
+
+		fmt.Printf("Generating embeddings for %d nodes...\n", len(toProcess))
+
+		ctx := context.Background()
+		llmCfg := llm.Config{APIKey: apiKey}
+		generated := 0
+
+		for _, n := range toProcess {
+			embedding, err := knowledge.GenerateEmbedding(ctx, n.Content, llmCfg)
+			if err != nil {
+				fmt.Printf("  ✗ %s: %v\n", n.ID, err)
+				continue
+			}
+
+			if err := store.UpdateNodeEmbedding(n.ID, embedding); err != nil {
+				fmt.Printf("  ✗ %s: save failed\n", n.ID)
+				continue
+			}
+
+			generated++
+			if !viper.GetBool("quiet") {
+				fmt.Printf("  ✓ %s\n", n.Summary)
+			}
+		}
+
+		fmt.Printf("\n✓ Generated %d/%d embeddings\n", generated, len(toProcess))
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(memoryCmd)
 
@@ -149,4 +231,5 @@ func init() {
 	memoryCmd.AddCommand(memoryCheckCmd)
 	memoryCmd.AddCommand(memoryRepairCmd)
 	memoryCmd.AddCommand(memoryRebuildCmd)
+	memoryCmd.AddCommand(memoryGenerateEmbeddingsCmd)
 }

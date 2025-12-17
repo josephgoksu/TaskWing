@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
+	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/spf13/cobra"
@@ -301,16 +302,108 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 		}
 	}
 
+	// === DUAL-WRITE: Create nodes for new knowledge graph ===
+	// This runs alongside legacy feature/decision creation during migration phase
+	nodesCreated := 0
+	embeddingsGenerated := 0
+
+	// Prepare embedding config
+	embeddingCfg := llm.Config{APIKey: apiKey}
+
+	if !viper.GetBool("quiet") && !viper.GetBool("json") {
+		fmt.Print("  Generating knowledge nodes")
+	}
+
+	for _, f := range result.Features {
+		name := strings.TrimSpace(f.Name)
+		if name == "" {
+			continue
+		}
+
+		// Create feature node
+		oneLiner := strings.TrimSpace(f.Description)
+		if oneLiner == "" {
+			oneLiner = strings.TrimSpace(f.Purpose)
+		}
+		content := fmt.Sprintf("%s: %s", name, oneLiner)
+
+		node := memory.Node{
+			Content: content,
+			Type:    memory.NodeTypeFeature,
+			Summary: name,
+		}
+
+		// Generate embedding
+		if apiKey != "" {
+			if embedding, err := knowledge.GenerateEmbedding(ctx, content, embeddingCfg); err == nil {
+				node.Embedding = embedding
+				embeddingsGenerated++
+			}
+		}
+
+		if err := store.CreateNode(node); err == nil {
+			nodesCreated++
+			if !viper.GetBool("quiet") && !viper.GetBool("json") {
+				fmt.Print(".")
+			}
+		}
+
+		// Create decision nodes
+		for _, d := range f.Decisions {
+			title := strings.TrimSpace(d.Title)
+			if title == "" {
+				continue
+			}
+
+			why := strings.TrimSpace(d.Why)
+			tradeoffs := strings.TrimSpace(d.Tradeoffs)
+			decisionContent := title
+			if why != "" {
+				decisionContent += ". Why: " + why
+			}
+			if tradeoffs != "" {
+				decisionContent += ". Trade-offs: " + tradeoffs
+			}
+
+			decisionNode := memory.Node{
+				Content: decisionContent,
+				Type:    memory.NodeTypeDecision,
+				Summary: title,
+			}
+
+			// Generate embedding
+			if apiKey != "" {
+				if embedding, err := knowledge.GenerateEmbedding(ctx, decisionContent, embeddingCfg); err == nil {
+					decisionNode.Embedding = embedding
+					embeddingsGenerated++
+				}
+			}
+
+			if err := store.CreateNode(decisionNode); err == nil {
+				nodesCreated++
+				if !viper.GetBool("quiet") && !viper.GetBool("json") {
+					fmt.Print(".")
+				}
+			}
+		}
+	}
+
+	if !viper.GetBool("quiet") && !viper.GetBool("json") {
+		fmt.Println(" done")
+	}
+
 	if viper.GetBool("json") {
 		fmt.Fprintf(os.Stderr, "\nBootstrap complete:\n")
 		fmt.Fprintf(os.Stderr, "  Features created: %d\n", featuresCreated)
 		fmt.Fprintf(os.Stderr, "  Decisions created: %d\n", decisionsCreated)
 		fmt.Fprintf(os.Stderr, "  Relationships created: %d\n", edgesCreated)
+		fmt.Fprintf(os.Stderr, "  Knowledge nodes created: %d\n", nodesCreated)
 	} else {
 		fmt.Printf("\n✓ Bootstrap complete:\n")
 		fmt.Printf("  • Features created: %d\n", featuresCreated)
 		fmt.Printf("  • Decisions created: %d\n", decisionsCreated)
 		fmt.Printf("  • Relationships created: %d\n", edgesCreated)
+		fmt.Printf("  • Knowledge nodes created: %d\n", nodesCreated)
 	}
 
 	return nil

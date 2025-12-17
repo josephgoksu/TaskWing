@@ -20,7 +20,7 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "taskwing",
-	Short: "TaskWing - Institutional Knowledge Layer for Engineering Teams",
+	Short: "TaskWing - Knowledge Graph for Engineering Teams",
 	Long: `
  _____         _   __        ___
 |_   _|_ _ ___| | _\ \      / (_)_ __   __ _
@@ -33,10 +33,10 @@ TaskWing captures the decisions, context, and rationale behind your codebase—
 making it queryable by humans and AI.
 
 Key Commands:
-  taskwing init           Initialize TaskWing in your project
-  taskwing bootstrap      Auto-generate features from your repo
-  taskwing feature add    Add a feature to your project memory
-  taskwing decision add   Record an architectural decision
+  taskwing bootstrap      Auto-generate knowledge from your repo
+  taskwing add "text"     Add knowledge (AI classifies it)
+  taskwing list           View all knowledge by type
+  taskwing context "q"    Semantic search
   taskwing mcp            Start MCP server for AI integration`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {

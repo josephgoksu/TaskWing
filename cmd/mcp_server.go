@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -24,9 +27,9 @@ var mcpCmd = &cobra.Command{
 Cursor, and other AI assistants to interact with TaskWing project memory.
 
 The MCP server provides the project-context tool that gives AI tools access to:
-- Features and their relationships
-- Architectural decisions and rationale
-- Project structure and dependencies
+- Knowledge nodes (decisions, features, plans, notes)
+- Semantic search across project memory
+- Relationships between components
 
 Example usage with Claude Code:
   taskwing mcp
@@ -52,7 +55,7 @@ type ProjectContextParams struct {
 func runMCPServer(ctx context.Context) error {
 	fmt.Fprintf(os.Stderr, "\n🎯 TaskWing MCP Server Starting...\n")
 	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	fmt.Fprintf(os.Stderr, "Institutional Knowledge Layer for Engineering Teams\n")
+	fmt.Fprintf(os.Stderr, "Knowledge Graph for Engineering Teams\n")
 	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
 	// Initialize memory store
@@ -82,129 +85,22 @@ func runMCPServer(ctx context.Context) error {
 	// Register project-context tool
 	tool := &mcpsdk.Tool{
 		Name:        "project-context",
-		Description: "Get project memory for AI context. Use {\"query\":\"FeatureName\"} to fetch detailed context for a feature and its related features.",
+		Description: "Get project knowledge for AI context. Use {\"query\":\"search term\"} for semantic search, or omit for summary.",
 	}
 
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
-		index, err := store.GetIndex()
-		if err != nil {
-			return nil, fmt.Errorf("get index: %w", err)
-		}
-
-		featureNameByID := make(map[string]string, len(index.Features))
-		featureIDByName := make(map[string]string, len(index.Features))
-		for _, f := range index.Features {
-			featureNameByID[f.ID] = f.Name
-			featureIDByName[strings.ToLower(strings.TrimSpace(f.Name))] = f.ID
-		}
-
 		query := strings.TrimSpace(params.Arguments.Query)
-		if query == "" {
-			// Summary-only response (fast and bounded).
-			result := struct {
-				Features []memory.FeatureSummary `json:"features"`
-				Total    int                     `json:"total"`
-			}{
-				Features: index.Features,
-				Total:    len(index.Features),
-			}
 
-			jsonBytes, _ := json.MarshalIndent(result, "", "  ")
-			return &mcpsdk.CallToolResultFor[any]{
-				Content: []mcpsdk.Content{
-					&mcpsdk.TextContent{Text: string(jsonBytes)},
-				},
-			}, nil
+		// Try new node-based system first
+		nodes, err := store.ListNodes("")
+		hasNodes := err == nil && len(nodes) > 0
+
+		if hasNodes {
+			return handleNodeContext(ctx, store, query, nodes)
 		}
 
-		queryKey := strings.ToLower(query)
-		seedID := featureIDByName[queryKey]
-		if seedID == "" {
-			// Fuzzy match: first feature name containing the query substring.
-			for _, f := range index.Features {
-				if strings.Contains(strings.ToLower(f.Name), queryKey) {
-					seedID = f.ID
-					break
-				}
-			}
-		}
-		if seedID == "" {
-			return nil, fmt.Errorf("no feature matches query: %q", query)
-		}
-
-		relatedIDs, err := store.GetRelated(seedID, 2)
-		if err != nil {
-			return nil, fmt.Errorf("get related: %w", err)
-		}
-
-		selectedIDs := make([]string, 0, 1+len(relatedIDs))
-		selectedIDs = append(selectedIDs, seedID)
-		selectedIDs = append(selectedIDs, relatedIDs...)
-
-		type featureDetail struct {
-			Feature    *memory.Feature   `json:"feature"`
-			Decisions  []memory.Decision `json:"decisions"`
-			DependsOn  []string          `json:"dependsOn"`
-			DependedBy []string          `json:"dependedBy"`
-		}
-
-		details := make([]featureDetail, 0, len(selectedIDs))
-		for _, id := range selectedIDs {
-			feature, err := store.GetFeature(id)
-			if err != nil {
-				continue
-			}
-
-			decisions, _ := store.GetDecisions(id)
-
-			depIDs, _ := store.GetDependencies(id)
-			deps := make([]string, 0, len(depIDs))
-			for _, depID := range depIDs {
-				name := featureNameByID[depID]
-				if name == "" {
-					name = depID
-				}
-				deps = append(deps, name)
-			}
-
-			dependentIDs, _ := store.GetDependents(id)
-			dependents := make([]string, 0, len(dependentIDs))
-			for _, depID := range dependentIDs {
-				name := featureNameByID[depID]
-				if name == "" {
-					name = depID
-				}
-				dependents = append(dependents, name)
-			}
-
-			details = append(details, featureDetail{
-				Feature:    feature,
-				Decisions:  decisions,
-				DependsOn:  deps,
-				DependedBy: dependents,
-			})
-		}
-
-		result := struct {
-			Query    string          `json:"query"`
-			Seed     string          `json:"seed"`
-			Features []featureDetail `json:"features"`
-			Total    int             `json:"total"`
-		}{
-			Query:    query,
-			Seed:     featureNameByID[seedID],
-			Features: details,
-			Total:    len(details),
-		}
-
-		// Format response as JSON text
-		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
-
-		return &mcpsdk.CallToolResultFor[any]{
-			Content: []mcpsdk.Content{
-				&mcpsdk.TextContent{Text: string(jsonBytes)},
-			},
-		}, nil
+		// Fallback to legacy feature system
+		return handleLegacyContext(store, query)
 	})
 
 	// Run the server
@@ -218,4 +114,174 @@ func runMCPServer(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// handleNodeContext returns context using the new node-based knowledge graph
+func handleNodeContext(ctx context.Context, store *memory.SQLiteStore, query string, nodes []memory.Node) (*mcpsdk.CallToolResultFor[any], error) {
+	if query == "" {
+		// Summary response - group by type
+		byType := make(map[string][]memory.Node)
+		for _, n := range nodes {
+			t := n.Type
+			if t == "" {
+				t = "unknown"
+			}
+			byType[t] = append(byType[t], n)
+		}
+
+		result := struct {
+			Nodes map[string][]memory.Node `json:"nodes"`
+			Total int                      `json:"total"`
+		}{
+			Nodes: byType,
+			Total: len(nodes),
+		}
+
+		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
+		return &mcpsdk.CallToolResultFor[any]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: string(jsonBytes)},
+			},
+		}, nil
+	}
+
+	// Semantic search
+	apiKey := viper.GetString("llm.apiKey")
+	if apiKey == "" {
+		apiKey = os.Getenv("OPENAI_API_KEY")
+	}
+
+	var results []memory.Node
+
+	if apiKey != "" {
+		// Use embeddings for semantic search
+		llmCfg := llm.Config{APIKey: apiKey}
+		queryEmb, err := knowledge.GenerateEmbedding(ctx, query, llmCfg)
+		if err == nil {
+			type scored struct {
+				Node  memory.Node
+				Score float32
+			}
+			var scoredNodes []scored
+
+			for _, n := range nodes {
+				fullNode, err := store.GetNode(n.ID)
+				if err != nil || len(fullNode.Embedding) == 0 {
+					continue
+				}
+				score := knowledge.CosineSimilarity(queryEmb, fullNode.Embedding)
+				scoredNodes = append(scoredNodes, scored{Node: *fullNode, Score: score})
+			}
+
+			sort.Slice(scoredNodes, func(i, j int) bool {
+				return scoredNodes[i].Score > scoredNodes[j].Score
+			})
+
+			limit := 5
+			if len(scoredNodes) < limit {
+				limit = len(scoredNodes)
+			}
+			for i := 0; i < limit; i++ {
+				results = append(results, scoredNodes[i].Node)
+			}
+		}
+	}
+
+	// Fallback to keyword matching if semantic search didn't work
+	if len(results) == 0 {
+		queryLower := strings.ToLower(query)
+		for _, n := range nodes {
+			if strings.Contains(strings.ToLower(n.Content), queryLower) ||
+				strings.Contains(strings.ToLower(n.Summary), queryLower) {
+				results = append(results, n)
+				if len(results) >= 5 {
+					break
+				}
+			}
+		}
+	}
+
+	result := struct {
+		Query   string        `json:"query"`
+		Results []memory.Node `json:"results"`
+		Total   int           `json:"total"`
+	}{
+		Query:   query,
+		Results: results,
+		Total:   len(results),
+	}
+
+	jsonBytes, _ := json.MarshalIndent(result, "", "  ")
+	return &mcpsdk.CallToolResultFor[any]{
+		Content: []mcpsdk.Content{
+			&mcpsdk.TextContent{Text: string(jsonBytes)},
+		},
+	}, nil
+}
+
+// handleLegacyContext returns context using the old feature/decision system
+func handleLegacyContext(store *memory.SQLiteStore, query string) (*mcpsdk.CallToolResultFor[any], error) {
+	index, err := store.GetIndex()
+	if err != nil {
+		return nil, fmt.Errorf("get index: %w", err)
+	}
+
+	if query == "" {
+		result := struct {
+			Features []memory.FeatureSummary `json:"features"`
+			Total    int                     `json:"total"`
+		}{
+			Features: index.Features,
+			Total:    len(index.Features),
+		}
+
+		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
+		return &mcpsdk.CallToolResultFor[any]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: string(jsonBytes)},
+			},
+		}, nil
+	}
+
+	// Feature query (legacy)
+	featureIDByName := make(map[string]string, len(index.Features))
+	featureNameByID := make(map[string]string, len(index.Features))
+	for _, f := range index.Features {
+		featureNameByID[f.ID] = f.Name
+		featureIDByName[strings.ToLower(strings.TrimSpace(f.Name))] = f.ID
+	}
+
+	queryKey := strings.ToLower(query)
+	seedID := featureIDByName[queryKey]
+	if seedID == "" {
+		for _, f := range index.Features {
+			if strings.Contains(strings.ToLower(f.Name), queryKey) {
+				seedID = f.ID
+				break
+			}
+		}
+	}
+	if seedID == "" {
+		return nil, fmt.Errorf("no feature matches query: %q", query)
+	}
+
+	feature, _ := store.GetFeature(seedID)
+	decisions, _ := store.GetDecisions(seedID)
+
+	result := struct {
+		Query     string            `json:"query"`
+		Feature   *memory.Feature   `json:"feature"`
+		Decisions []memory.Decision `json:"decisions"`
+	}{
+		Query:     query,
+		Feature:   feature,
+		Decisions: decisions,
+	}
+
+	jsonBytes, _ := json.MarshalIndent(result, "", "  ")
+	return &mcpsdk.CallToolResultFor[any]{
+		Content: []mcpsdk.Content{
+			&mcpsdk.TextContent{Text: string(jsonBytes)},
+		},
+	}, nil
 }

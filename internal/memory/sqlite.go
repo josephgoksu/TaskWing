@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
@@ -58,6 +59,7 @@ func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
 // initSchema creates the database tables if they don't exist.
 func (s *SQLiteStore) initSchema() error {
 	schema := `
+	-- Legacy tables (kept for dual-write migration)
 	CREATE TABLE IF NOT EXISTS features (
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL UNIQUE,
@@ -92,10 +94,40 @@ func (s *SQLiteStore) initSchema() error {
 		UNIQUE(from_feature, to_feature, edge_type)
 	);
 
+	-- New knowledge graph tables (v2 pivot)
+	CREATE TABLE IF NOT EXISTS nodes (
+		id TEXT PRIMARY KEY,
+		content TEXT NOT NULL,              -- Original text input
+		type TEXT,                          -- AI-inferred: decision, feature, plan, note
+		summary TEXT,                       -- AI-extracted title/summary
+		embedding BLOB,                     -- Vector for similarity search
+		created_at TEXT NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS node_edges (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		from_node TEXT NOT NULL,
+		to_node TEXT NOT NULL,
+		relation TEXT NOT NULL,             -- relates_to, depends_on, affects, etc.
+		properties TEXT,                    -- JSON for arbitrary metadata (adopted from simple-graph)
+		confidence REAL DEFAULT 1.0,        -- AI confidence score
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (from_node) REFERENCES nodes(id) ON DELETE CASCADE,
+		FOREIGN KEY (to_node) REFERENCES nodes(id) ON DELETE CASCADE,
+		UNIQUE(from_node, to_node, relation)
+	);
+
+	-- Indexes for legacy tables
 	CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_feature);
 	CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_feature);
 	CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type);
 	CREATE INDEX IF NOT EXISTS idx_decisions_feature ON decisions(feature_id);
+
+	-- Indexes for new tables
+	CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
+	CREATE INDEX IF NOT EXISTS idx_node_edges_from ON node_edges(from_node);
+	CREATE INDEX IF NOT EXISTS idx_node_edges_to ON node_edges(to_node);
+	CREATE INDEX IF NOT EXISTS idx_node_edges_relation ON node_edges(relation);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -781,4 +813,212 @@ func (s *SQLiteStore) writeMarkdownFile(f Feature) error {
 	sb.WriteString("<!-- Add notes here -->\n")
 
 	return os.WriteFile(f.FilePath, []byte(sb.String()), 0644)
+}
+
+// === Node CRUD (v2 Knowledge Graph) ===
+
+// CreateNode stores a new node in the knowledge graph.
+func (s *SQLiteStore) CreateNode(n Node) error {
+	if n.ID == "" {
+		n.ID = "n-" + uuid.New().String()[:8]
+	}
+	if n.CreatedAt.IsZero() {
+		n.CreatedAt = time.Now().UTC()
+	}
+
+	// Serialize embedding to bytes if present
+	var embeddingBytes []byte
+	if len(n.Embedding) > 0 {
+		embeddingBytes = float32SliceToBytes(n.Embedding)
+	}
+
+	_, err := s.db.Exec(`
+		INSERT INTO nodes (id, content, type, summary, embedding, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, embeddingBytes, n.CreatedAt.Format(time.RFC3339))
+
+	if err != nil {
+		return fmt.Errorf("insert node: %w", err)
+	}
+
+	return nil
+}
+
+// GetNode retrieves a node by ID.
+func (s *SQLiteStore) GetNode(id string) (*Node, error) {
+	var n Node
+	var createdAt string
+	var nodeType, summary sql.NullString
+	var embeddingBytes []byte
+
+	err := s.db.QueryRow(`
+		SELECT id, content, type, summary, embedding, created_at
+		FROM nodes WHERE id = ?
+	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &embeddingBytes, &createdAt)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("node not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query node: %w", err)
+	}
+
+	n.Type = nodeType.String
+	n.Summary = summary.String
+	n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	if len(embeddingBytes) > 0 {
+		n.Embedding = bytesToFloat32Slice(embeddingBytes)
+	}
+
+	return &n, nil
+}
+
+// ListNodes returns all nodes, optionally filtered by type.
+func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
+	var rows *sql.Rows
+	var err error
+
+	if nodeType != "" {
+		rows, err = s.db.Query(`
+			SELECT id, content, type, summary, created_at
+			FROM nodes WHERE type = ? ORDER BY created_at DESC
+		`, nodeType)
+	} else {
+		rows, err = s.db.Query(`
+			SELECT id, content, type, summary, created_at
+			FROM nodes ORDER BY created_at DESC
+		`)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("query nodes: %w", err)
+	}
+	defer rows.Close()
+
+	var nodes []Node
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeTypeStr, summary sql.NullString
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan node: %w", err)
+		}
+
+		n.Type = nodeTypeStr.String
+		n.Summary = summary.String
+		n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		nodes = append(nodes, n)
+	}
+
+	return nodes, nil
+}
+
+// DeleteNode removes a node and its edges.
+func (s *SQLiteStore) DeleteNode(id string) error {
+	result, err := s.db.Exec("DELETE FROM nodes WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete node: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("node not found: %s", id)
+	}
+
+	return nil
+}
+
+// UpdateNodeEmbedding updates the embedding for an existing node.
+func (s *SQLiteStore) UpdateNodeEmbedding(id string, embedding []float32) error {
+	embeddingBytes := float32SliceToBytes(embedding)
+
+	result, err := s.db.Exec("UPDATE nodes SET embedding = ? WHERE id = ?", embeddingBytes, id)
+	if err != nil {
+		return fmt.Errorf("update embedding: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("node not found: %s", id)
+	}
+
+	return nil
+}
+
+// LinkNodes creates a relationship between two nodes.
+func (s *SQLiteStore) LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error {
+	if confidence <= 0 {
+		confidence = 1.0
+	}
+
+	var propsJSON []byte
+	if len(properties) > 0 {
+		var err error
+		propsJSON, err = json.Marshal(properties)
+		if err != nil {
+			return fmt.Errorf("marshal properties: %w", err)
+		}
+	}
+
+	_, err := s.db.Exec(`
+		INSERT OR IGNORE INTO node_edges (from_node, to_node, relation, properties, confidence, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, from, to, relation, propsJSON, confidence, time.Now().UTC().Format(time.RFC3339))
+
+	return err
+}
+
+// GetNodeEdges returns all edges for a node.
+func (s *SQLiteStore) GetNodeEdges(nodeID string) ([]NodeEdge, error) {
+	rows, err := s.db.Query(`
+		SELECT id, from_node, to_node, relation, properties, confidence, created_at
+		FROM node_edges WHERE from_node = ? OR to_node = ?
+	`, nodeID, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("query edges: %w", err)
+	}
+	defer rows.Close()
+
+	var edges []NodeEdge
+	for rows.Next() {
+		var e NodeEdge
+		var createdAt string
+		var propsJSON sql.NullString
+
+		if err := rows.Scan(&e.ID, &e.FromNode, &e.ToNode, &e.Relation, &propsJSON, &e.Confidence, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan edge: %w", err)
+		}
+
+		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		if propsJSON.Valid && propsJSON.String != "" {
+			json.Unmarshal([]byte(propsJSON.String), &e.Properties)
+		}
+		edges = append(edges, e)
+	}
+
+	return edges, nil
+}
+
+// === Embedding Helpers ===
+
+func float32SliceToBytes(floats []float32) []byte {
+	buf := make([]byte, len(floats)*4)
+	for i, f := range floats {
+		bits := *(*uint32)(unsafe.Pointer(&f))
+		buf[i*4] = byte(bits)
+		buf[i*4+1] = byte(bits >> 8)
+		buf[i*4+2] = byte(bits >> 16)
+		buf[i*4+3] = byte(bits >> 24)
+	}
+	return buf
+}
+
+func bytesToFloat32Slice(buf []byte) []float32 {
+	floats := make([]float32, len(buf)/4)
+	for i := range floats {
+		bits := uint32(buf[i*4]) | uint32(buf[i*4+1])<<8 | uint32(buf[i*4+2])<<16 | uint32(buf[i*4+3])<<24
+		floats[i] = *(*float32)(unsafe.Pointer(&bits))
+	}
+	return floats
 }

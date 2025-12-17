@@ -74,3 +74,44 @@ type Issue struct {
 	FeatureID string `json:"featureId,omitempty"` // Related feature if applicable
 	Message   string `json:"message"`             // Human-readable description
 }
+
+// === New Knowledge Graph Types (v2 pivot) ===
+
+// Node represents a piece of knowledge in the graph.
+// Nodes are the universal storage unit - AI classifies them at write-time.
+type Node struct {
+	ID        string    `json:"id"`                  // Unique identifier (n-xxx)
+	Content   string    `json:"content"`             // Original text input
+	Type      string    `json:"type,omitempty"`      // AI-inferred: decision, feature, plan, note
+	Summary   string    `json:"summary,omitempty"`   // AI-extracted title/summary
+	Embedding []float32 `json:"embedding,omitempty"` // Vector for similarity search
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// NodeEdge represents a relationship between two nodes.
+type NodeEdge struct {
+	ID         int64          `json:"id"`                   // Auto-increment ID
+	FromNode   string         `json:"fromNode"`             // Source node ID
+	ToNode     string         `json:"toNode"`               // Target node ID
+	Relation   string         `json:"relation"`             // relates_to, depends_on, affects, etc.
+	Properties map[string]any `json:"properties,omitempty"` // Arbitrary JSON metadata
+	Confidence float64        `json:"confidence"`           // AI confidence score (0.0-1.0)
+	CreatedAt  time.Time      `json:"createdAt"`
+}
+
+// NodeType constants for classification.
+const (
+	NodeTypeDecision = "decision"
+	NodeTypeFeature  = "feature"
+	NodeTypePlan     = "plan"
+	NodeTypeNote     = "note"
+	NodeTypeUnknown  = "unknown"
+)
+
+// NodeRelation constants for edge types.
+const (
+	NodeRelationDependsOn = "depends_on"
+	NodeRelationRelatesTo = "relates_to"
+	NodeRelationAffects   = "affects"
+	NodeRelationExtends   = "extends"
+)

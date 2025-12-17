@@ -1,0 +1,212 @@
+# Getting Started with TaskWing v2
+
+> **Knowledge Graph for Engineering Teams**
+
+---
+
+## Installation
+
+```bash
+# One-liner install
+curl -sSfL https://raw.githubusercontent.com/josephgoksu/TaskWing/main/install.sh | sh
+
+# Or with Go
+go install github.com/josephgoksu/TaskWing@latest
+```
+
+---
+
+## Quick Start
+
+### Bootstrap Your Project
+
+```bash
+cd your-project
+
+# Required: set your LLM API key
+export OPENAI_API_KEY=...
+
+# Preview what TaskWing will detect
+taskwing bootstrap --preview
+
+# Run bootstrap to auto-generate project memory
+taskwing bootstrap
+
+# Alternative: use local Ollama models (no API key needed)
+export TASKWING_LLM_PROVIDER=ollama
+export TASKWING_LLM_MODELNAME=llama2
+taskwing bootstrap --preview
+```
+
+---
+
+## The Complete Workflow
+
+### Step 1: Bootstrap Your Project
+
+```bash
+$ taskwing bootstrap --preview
+
+┌──────────────────────────────────────────────────────────────┐
+│  🧠 TaskWing Bootstrap — Architectural Intelligence          │
+└──────────────────────────────────────────────────────────────┘
+
+  This will analyze your codebase and generate:
+  • Features with WHY they exist (not just what)
+  • Key decisions with trade-offs and reasoning
+  • Relationships between components
+
+  ⚡ Using: gpt-5-mini-2025-08-07 (openai)
+
+  Gathering context...
+   📁 Scanning directory structure... (45 entries)
+   📦 Reading package files... package.json, go.mod
+   📄 Reading README... README.md (1500 chars)
+   🔍 Analyzing git history... 234 commits
+
+💡 This was a preview. Run 'taskwing bootstrap' to save to memory.
+```
+
+If satisfied:
+```bash
+taskwing bootstrap
+
+✓ Bootstrap complete:
+  • Features created: 6
+  • Decisions created: 24
+  • Relationships created: 12
+  • Knowledge nodes created: 30
+```
+
+### Step 2: Add Knowledge Manually
+
+```bash
+# Add any text — AI classifies it automatically
+tw add "We chose Go because it's fast and deploys as a single binary"
+# ✓ Added [decision]: We chose Go because it's fast...
+
+tw add "The auth module handles OAuth2 and session management"
+# ✓ Added [feature]: The auth module handles...
+
+tw add "TODO: implement webhook retry with exponential backoff"
+# ✓ Added [plan]: TODO: implement webhook retry...
+```
+
+### Step 3: View Your Knowledge
+
+```bash
+# List all knowledge nodes
+tw list
+
+## 🎯 Decision (15)
+  • Use Go for backend
+  • Use LanceDB for vector search
+  ...
+
+## 📦 Feature (6)
+  • Backend API
+  • Chrome Extension
+  ...
+
+## 📋 Plan (3)
+  • Implement webhook retry
+  ...
+
+Total: 24 nodes
+
+# Filter by type
+tw list decision
+tw list plan
+```
+
+### Step 4: Search Semantically
+
+```bash
+# Find relevant knowledge
+tw context "error handling"
+
+Context for: "error handling"
+
+1. 🎯 [decision] (85% match)
+   Use structured error types for API responses
+   ID: n-abc123
+
+2. 📦 [feature] (72% match)
+   Backend API: Primary server providing error handling...
+   ID: n-def456
+```
+
+### Step 5: Use with AI Tools
+
+```bash
+# Start MCP server for Claude Code, Cursor, etc.
+taskwing mcp
+
+🎯 TaskWing MCP Server Starting...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Knowledge Graph for Engineering Teams
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ MCP connection established
+```
+
+Now when you ask AI about your code, it has full project context with semantic search.
+
+---
+
+## Command Reference
+
+### Knowledge Commands
+
+| Command | Description |
+|---------|-------------|
+| `tw add "text"` | Add knowledge (AI classifies type) |
+| `tw add "text" --type decision` | Add with manual type |
+| `tw list` | List all nodes |
+| `tw list <type>` | List nodes by type (decision/feature/plan/note) |
+| `tw context "query"` | Semantic search |
+
+### Bootstrap & Maintenance
+
+| Command | Description |
+|---------|-------------|
+| `tw init` | Initialize TaskWing in project |
+| `tw bootstrap` | Auto-generate from repo with LLM |
+| `tw bootstrap --preview` | Preview without saving |
+| `tw bootstrap --basic` | Heuristic scan only (no LLM) |
+| `tw memory check` | Validate integrity |
+| `tw memory repair` | Fix integrity issues |
+
+### MCP Server
+
+| Command | Description |
+|---------|-------------|
+| `tw mcp` | Start MCP server (stdio) |
+
+### Output Flags
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON |
+| `--quiet` | Minimal output |
+| `--verbose` | Detailed output |
+
+---
+
+## What Gets Created
+
+```
+.taskwing/
+├── memory/
+│   ├── memory.db            # SQLite with nodes, node_edges tables
+│   ├── index.json           # Cache for quick access
+│   └── features/            # Legacy markdown snapshots
+```
+
+---
+
+## Next Steps
+
+- [BOOTSTRAP.md](BOOTSTRAP.md) — How repo scanning works
+- [DATA_MODEL.md](DATA_MODEL.md) — Storage format details
+- [ARCHITECTURE.md](ARCHITECTURE.md) — Technical design
