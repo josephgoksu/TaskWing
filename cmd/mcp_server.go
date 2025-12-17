@@ -3,15 +3,14 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
-// MCP server bootstrap and registration (renamed from mcpsdk.go)
-
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"log"
 	"os"
+	"strings"
 
-	taskwingmcp "github.com/josephgoksu/TaskWing/mcp"
+	"github.com/josephgoksu/TaskWing/internal/memory"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -22,16 +21,12 @@ var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Start MCP server for AI tool integration",
 	Long: `Start a Model Context Protocol (MCP) server to enable AI tools like Claude Code,
-Cursor, and other AI assistants to interact with TaskWing tasks.
+Cursor, and other AI assistants to interact with TaskWing project memory.
 
-The MCP server runs over stdin/stdout and provides tools for:
-- Adding new tasks
-- Listing and filtering tasks
-- Updating existing tasks
-- Deleting tasks
-- Marking tasks as done
-- Getting task details
-- Managing current active task
+The MCP server provides the project-context tool that gives AI tools access to:
+- Features and their relationships
+- Architectural decisions and rationale
+- Project structure and dependencies
 
 Example usage with Claude Code:
   taskwing mcp
@@ -42,45 +37,30 @@ The server will run until the client disconnects.`,
 	},
 }
 
+var mcpPort int
+
 func init() {
 	rootCmd.AddCommand(mcpCmd)
-	// MCP server inherits verbose flag from root command
+	mcpCmd.Flags().IntVar(&mcpPort, "port", 0, "Port for SSE transport (0 = stdio)")
+}
+
+// ProjectContextParams defines the parameters for the project-context tool
+type ProjectContextParams struct {
+	Query string `json:"query,omitempty"`
 }
 
 func runMCPServer(ctx context.Context) error {
-	// Print startup message for AI tools
 	fmt.Fprintf(os.Stderr, "\n🎯 TaskWing MCP Server Starting...\n")
 	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	fmt.Fprintf(os.Stderr, "CRITICAL: Professional task management system active\n")
-	fmt.Fprintf(os.Stderr, "Configuration: 15 essential tools (~9.6k tokens, 71%% reduction)\n")
-	fmt.Fprintf(os.Stderr, "AI tools MUST:\n")
-	fmt.Fprintf(os.Stderr, "  1. Call 'task-summary' first to understand project\n")
-	fmt.Fprintf(os.Stderr, "  2. Use TaskWing tools instead of markdown lists\n")
-	fmt.Fprintf(os.Stderr, "  3. Set current task when user starts work\n")
+	fmt.Fprintf(os.Stderr, "Institutional Knowledge Layer for Engineering Teams\n")
 	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
-	// Initialize TaskWing store
-	taskStore, err := GetStore()
+	// Initialize memory store
+	store, err := memory.NewSQLiteStore(GetMemoryBasePath())
 	if err != nil {
-		return fmt.Errorf("failed to initialize task store: %w", err)
+		return fmt.Errorf("failed to initialize memory store: %w", err)
 	}
-
-	// Configure shared hooks for MCP helpers
-	taskwingmcp.ConfigureHooks(taskwingmcp.Hooks{
-		GetCurrentTask:       GetCurrentTask,
-		GetConfig:            GetConfig,
-		LogInfo:              logInfo,
-		LogError:             logError,
-		LogToolCall:          logToolCall,
-		ResolveTaskReference: resolveTaskReference,
-		GetVersion:           func() string { return version },
-	})
-
-	defer func() {
-		if err := taskStore.Close(); err != nil {
-			logError(fmt.Errorf("failed to close task store: %w", err))
-		}
-	}()
+	defer store.Close()
 
 	// Create MCP server
 	impl := &mcpsdk.Implementation{
@@ -88,67 +68,154 @@ func runMCPServer(ctx context.Context) error {
 		Version: version,
 	}
 
-	// Create server options with notification handlers
 	serverOpts := &mcpsdk.ServerOptions{
 		InitializedHandler: func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.InitializedParams) {
-			// Client has completed initialization - announce TaskWing availability
-			fmt.Fprintf(os.Stderr, "\n🎯 TASKWING MCP CONNECTION ESTABLISHED\n")
-			fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-			fmt.Fprintf(os.Stderr, "AI Tool: You now have access to TaskWing professional\n")
-			fmt.Fprintf(os.Stderr, "task management with 15 optimized tools (~9.6k tokens).\n")
-			fmt.Fprintf(os.Stderr, "Use these tools instead of markdown lists:\n")
-			fmt.Fprintf(os.Stderr, "  • task-summary - ALWAYS call first\n")
-			fmt.Fprintf(os.Stderr, "  • add-task - Create rich tasks\n")
-			fmt.Fprintf(os.Stderr, "  • query-tasks - Natural language search\n")
-			fmt.Fprintf(os.Stderr, "  • See MCP_TOOLS_REFERENCE.md for all 15 tools\n")
-			fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-
+			fmt.Fprintf(os.Stderr, "✓ MCP connection established\n")
 			if viper.GetBool("verbose") {
-				fmt.Fprintf(os.Stderr, "[DEBUG] MCP client initialization complete\n")
+				fmt.Fprintf(os.Stderr, "[DEBUG] Client initialized\n")
 			}
 		},
 	}
 
 	server := mcpsdk.NewServer(impl, serverOpts)
 
-	// Register ALL essential MCP tools (15 tools optimized for minimal token usage)
-	// All other tool registrations are disabled to reduce context window usage
-	if err := taskwingmcp.RegisterCoreTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register MCP tools: %w", err)
+	// Register project-context tool
+	tool := &mcpsdk.Tool{
+		Name:        "project-context",
+		Description: "Get project memory for AI context. Use {\"query\":\"FeatureName\"} to fetch detailed context for a feature and its related features.",
 	}
 
-	// Register MCP resources
-	if err := taskwingmcp.RegisterMCPResources(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register MCP resources: %w", err)
+	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		index, err := store.GetIndex()
+		if err != nil {
+			return nil, fmt.Errorf("get index: %w", err)
+		}
+
+		featureNameByID := make(map[string]string, len(index.Features))
+		featureIDByName := make(map[string]string, len(index.Features))
+		for _, f := range index.Features {
+			featureNameByID[f.ID] = f.Name
+			featureIDByName[strings.ToLower(strings.TrimSpace(f.Name))] = f.ID
+		}
+
+		query := strings.TrimSpace(params.Arguments.Query)
+		if query == "" {
+			// Summary-only response (fast and bounded).
+			result := struct {
+				Features []memory.FeatureSummary `json:"features"`
+				Total    int                     `json:"total"`
+			}{
+				Features: index.Features,
+				Total:    len(index.Features),
+			}
+
+			jsonBytes, _ := json.MarshalIndent(result, "", "  ")
+			return &mcpsdk.CallToolResultFor[any]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{Text: string(jsonBytes)},
+				},
+			}, nil
+		}
+
+		queryKey := strings.ToLower(query)
+		seedID := featureIDByName[queryKey]
+		if seedID == "" {
+			// Fuzzy match: first feature name containing the query substring.
+			for _, f := range index.Features {
+				if strings.Contains(strings.ToLower(f.Name), queryKey) {
+					seedID = f.ID
+					break
+				}
+			}
+		}
+		if seedID == "" {
+			return nil, fmt.Errorf("no feature matches query: %q", query)
+		}
+
+		relatedIDs, err := store.GetRelated(seedID, 2)
+		if err != nil {
+			return nil, fmt.Errorf("get related: %w", err)
+		}
+
+		selectedIDs := make([]string, 0, 1+len(relatedIDs))
+		selectedIDs = append(selectedIDs, seedID)
+		selectedIDs = append(selectedIDs, relatedIDs...)
+
+		type featureDetail struct {
+			Feature    *memory.Feature   `json:"feature"`
+			Decisions  []memory.Decision `json:"decisions"`
+			DependsOn  []string          `json:"dependsOn"`
+			DependedBy []string          `json:"dependedBy"`
+		}
+
+		details := make([]featureDetail, 0, len(selectedIDs))
+		for _, id := range selectedIDs {
+			feature, err := store.GetFeature(id)
+			if err != nil {
+				continue
+			}
+
+			decisions, _ := store.GetDecisions(id)
+
+			depIDs, _ := store.GetDependencies(id)
+			deps := make([]string, 0, len(depIDs))
+			for _, depID := range depIDs {
+				name := featureNameByID[depID]
+				if name == "" {
+					name = depID
+				}
+				deps = append(deps, name)
+			}
+
+			dependentIDs, _ := store.GetDependents(id)
+			dependents := make([]string, 0, len(dependentIDs))
+			for _, depID := range dependentIDs {
+				name := featureNameByID[depID]
+				if name == "" {
+					name = depID
+				}
+				dependents = append(dependents, name)
+			}
+
+			details = append(details, featureDetail{
+				Feature:    feature,
+				Decisions:  decisions,
+				DependsOn:  deps,
+				DependedBy: dependents,
+			})
+		}
+
+		result := struct {
+			Query    string          `json:"query"`
+			Seed     string          `json:"seed"`
+			Features []featureDetail `json:"features"`
+			Total    int             `json:"total"`
+		}{
+			Query:    query,
+			Seed:     featureNameByID[seedID],
+			Features: details,
+			Total:    len(details),
+		}
+
+		// Format response as JSON text
+		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
+
+		return &mcpsdk.CallToolResultFor[any]{
+			Content: []mcpsdk.Content{
+				&mcpsdk.TextContent{Text: string(jsonBytes)},
+			},
+		}, nil
+	})
+
+	// Run the server
+	if mcpPort > 0 {
+		fmt.Fprintf(os.Stderr, "Starting SSE transport on port %d\n", mcpPort)
+		return fmt.Errorf("SSE transport not yet implemented")
 	}
 
-	// Register MCP prompts
-	if err := taskwingmcp.RegisterMCPPrompts(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register MCP prompts: %w", err)
-	}
-
-	// Run the server over stdin/stdout
 	if err := server.Run(ctx, mcpsdk.NewStdioTransport()); err != nil {
 		return fmt.Errorf("MCP server failed: %w", err)
 	}
 
 	return nil
-}
-
-func logError(err error) {
-	if viper.GetBool("verbose") {
-		log.Printf("[MCP ERROR] %v", err)
-	}
-}
-
-func logInfo(msg string) {
-	if viper.GetBool("verbose") {
-		log.Printf("[MCP INFO] %s", msg)
-	}
-}
-
-func logToolCall(toolName string, params interface{}) {
-	if viper.GetBool("verbose") {
-		log.Printf("[MCP TOOL] %s called with params: %+v", toolName, params)
-	}
 }
