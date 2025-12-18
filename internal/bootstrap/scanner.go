@@ -236,7 +236,14 @@ func (s *Scanner) formatName(name string) string {
 	// Convert kebab-case or snake_case to Title Case
 	name = strings.ReplaceAll(name, "-", " ")
 	name = strings.ReplaceAll(name, "_", " ")
-	return strings.Title(strings.ToLower(name))
+	// Manual title case to avoid deprecated strings.Title
+	words := strings.Fields(strings.ToLower(name))
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 func (s *Scanner) inferDescription(name string) string {

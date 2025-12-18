@@ -551,3 +551,138 @@ func TestLinkInvalidRelationType(t *testing.T) {
 		t.Error("expected error for invalid relation type, got nil")
 	}
 }
+
+// === Node Tests (Knowledge Graph) ===
+
+func TestCreateAndGetNode(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	node := Node{
+		Content:   "We chose Go for performance",
+		Type:      NodeTypeDecision,
+		Summary:   "Language choice: Go",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := store.CreateNode(node); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+
+	// List nodes and verify
+	nodes, err := store.ListNodes("")
+	if err != nil {
+		t.Fatalf("list nodes: %v", err)
+	}
+
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+
+	if nodes[0].Type != NodeTypeDecision {
+		t.Errorf("expected type 'decision', got '%s'", nodes[0].Type)
+	}
+}
+
+func TestUpdateNodeEmbedding(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	// Create node without embedding
+	node := Node{
+		Content:   "Test content for embedding",
+		Type:      NodeTypeFeature,
+		Summary:   "Test feature",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := store.CreateNode(node); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+
+	// Get the node
+	nodes, _ := store.ListNodes("")
+	if len(nodes) == 0 {
+		t.Fatal("no nodes found")
+	}
+	nodeID := nodes[0].ID
+
+	// Update with embedding
+	embedding := []float32{0.1, 0.2, 0.3, 0.4, 0.5}
+	if err := store.UpdateNodeEmbedding(nodeID, embedding); err != nil {
+		t.Fatalf("update embedding: %v", err)
+	}
+
+	// Verify embedding was saved
+	fullNode, err := store.GetNode(nodeID)
+	if err != nil {
+		t.Fatalf("get node: %v", err)
+	}
+
+	if len(fullNode.Embedding) != 5 {
+		t.Errorf("expected embedding length 5, got %d", len(fullNode.Embedding))
+	}
+
+	if fullNode.Embedding[0] != 0.1 {
+		t.Errorf("embedding mismatch: expected 0.1, got %f", fullNode.Embedding[0])
+	}
+}
+
+func TestDeleteNode(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	// Create node
+	node := Node{
+		Content:   "To be deleted",
+		Type:      NodeTypeNote,
+		Summary:   "Delete me",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := store.CreateNode(node); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+
+	// Get node ID
+	nodes, _ := store.ListNodes("")
+	nodeID := nodes[0].ID
+
+	// Delete node
+	if err := store.DeleteNode(nodeID); err != nil {
+		t.Fatalf("delete node: %v", err)
+	}
+
+	// Verify deleted
+	nodes, _ = store.ListNodes("")
+	if len(nodes) != 0 {
+		t.Errorf("expected 0 nodes after delete, got %d", len(nodes))
+	}
+}
+
+func TestListNodesByType(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	// Create nodes of different types
+	store.CreateNode(Node{Content: "Decision 1", Type: NodeTypeDecision, Summary: "Dec 1", CreatedAt: time.Now()})
+	store.CreateNode(Node{Content: "Decision 2", Type: NodeTypeDecision, Summary: "Dec 2", CreatedAt: time.Now()})
+	store.CreateNode(Node{Content: "Feature 1", Type: NodeTypeFeature, Summary: "Feat 1", CreatedAt: time.Now()})
+
+	// List all
+	all, _ := store.ListNodes("")
+	if len(all) != 3 {
+		t.Fatalf("expected 3 nodes, got %d", len(all))
+	}
+
+	// List by type
+	decisions, _ := store.ListNodes(NodeTypeDecision)
+	if len(decisions) != 2 {
+		t.Errorf("expected 2 decisions, got %d", len(decisions))
+	}
+
+	features, _ := store.ListNodes(NodeTypeFeature)
+	if len(features) != 1 {
+		t.Errorf("expected 1 feature, got %d", len(features))
+	}
+}

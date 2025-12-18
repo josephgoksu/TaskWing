@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -26,19 +28,25 @@ var contextCmd = &cobra.Command{
 Uses embeddings to find the most relevant nodes for your query.
 Returns context optimized for AI consumption (~500-1000 tokens).
 
+Use --answer to get an LLM-generated answer based on the retrieved context.
+
 Examples:
   taskwing context "how does authentication work"
-  taskwing context "error handling"
-  taskwing context "what decisions were made about the API"`,
+  taskwing context "why lancedb" --answer
+  taskwing context "what decisions were made about the API" --answer`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runContext,
 }
 
-var contextLimit int
+var (
+	contextLimit  int
+	contextAnswer bool
+)
 
 func init() {
 	rootCmd.AddCommand(contextCmd)
 	contextCmd.Flags().IntVar(&contextLimit, "limit", 5, "Maximum number of nodes to return")
+	contextCmd.Flags().BoolVar(&contextAnswer, "answer", false, "Generate an LLM answer from retrieved context (RAG)")
 }
 
 type scoredNode struct {
@@ -135,7 +143,12 @@ func runContext(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Output
+	// If --answer flag, generate RAG response
+	if contextAnswer {
+		return generateRAGAnswer(ctx, query, scored, llmCfg)
+	}
+
+	// Output (retrieval only)
 	if viper.GetBool("json") {
 		type result struct {
 			Query   string       `json:"query"`
@@ -156,6 +169,92 @@ func runContext(cmd *cobra.Command, args []string) error {
 			fmt.Printf("   %s\n", truncateSummary(s.Node.Content, 80))
 		}
 		fmt.Printf("   ID: %s\n\n", s.Node.ID)
+	}
+
+	return nil
+}
+
+// generateRAGAnswer passes retrieved context to an LLM to generate an answer
+func generateRAGAnswer(ctx context.Context, query string, scored []scoredNode, cfg llm.Config) error {
+	// Build context from retrieved nodes
+	var contextParts []string
+	for _, s := range scored {
+		nodeContext := fmt.Sprintf("[%s] %s\n%s", s.Node.Type, s.Node.Summary, s.Node.Content)
+		contextParts = append(contextParts, nodeContext)
+	}
+	retrievedContext := strings.Join(contextParts, "\n\n---\n\n")
+
+	// Build prompt
+	prompt := fmt.Sprintf(`You are an expert on this codebase. Answer the user's question using ONLY the context below.
+If the context doesn't contain enough information to answer, say so.
+Be concise and direct.
+
+## Retrieved Context:
+%s
+
+## Question:
+%s
+
+## Answer:`, retrievedContext, query)
+
+	// Get LLM config
+	provider := llm.Provider(viper.GetString("llm.provider"))
+	if provider == "" {
+		provider = llm.ProviderOpenAI
+	}
+	model := viper.GetString("llm.modelName")
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
+
+	llmCfg := llm.Config{
+		Provider: provider,
+		Model:    model,
+		APIKey:   cfg.APIKey,
+		BaseURL:  viper.GetString("llm.baseURL"),
+	}
+
+	// Create chat model
+	chatModel, err := llm.NewChatModel(ctx, llmCfg)
+	if err != nil {
+		return fmt.Errorf("create chat model: %w", err)
+	}
+
+	if !viper.GetBool("quiet") {
+		fmt.Fprint(os.Stderr, "🧠 Generating answer...")
+	}
+
+	// Stream response
+	messages := []*schema.Message{
+		schema.UserMessage(prompt),
+	}
+
+	stream, err := chatModel.Stream(ctx, messages)
+	if err != nil {
+		return fmt.Errorf("stream: %w", err)
+	}
+
+	if !viper.GetBool("quiet") {
+		fmt.Fprintln(os.Stderr, " done")
+	}
+
+	fmt.Printf("📖 Answer to: \"%s\"\n\n", query)
+
+	// Print streamed response
+	for {
+		chunk, err := stream.Recv()
+		if err != nil {
+			break
+		}
+		fmt.Print(chunk.Content)
+	}
+	fmt.Println()
+
+	// Show sources
+	fmt.Println("\n---")
+	fmt.Println("📚 Sources:")
+	for i, s := range scored {
+		fmt.Printf("  %d. [%s] %s (%.0f%% match) — ID: %s\n", i+1, s.Node.Type, s.Node.Summary, s.Score*100, s.Node.ID)
 	}
 
 	return nil

@@ -90,16 +90,215 @@ type ProjectContext struct {
 	DirectoryTree       string
 	PackageFiles        map[string]string // package.json, go.mod, etc.
 	ReadmeContent       string
+	DocFiles            map[string]string // AGENTS.md, docs/*.md, etc.
+	DeploymentInfo      map[string]string // Dockerfile, docker-compose.yaml
+	EntryPoints         map[string]string // main.go, cmd/*.go - initialization patterns
+	ConfigFiles         map[string]string // .env.example, vite.config.ts, Makefile
+	ImportGraph         string            // Go import relationships (internal packages)
+	DiscoveredFiles     map[string]string // Dynamically discovered high-value files
 	GitSummary          string
 	CurrentDependencies []string // Parsed from package.json/go.mod - the ACTUAL current stack
 }
 
+// FileCategory represents the type of discovered file
+type FileCategory string
+
+const (
+	CategoryDocs   FileCategory = "docs"
+	CategoryDeps   FileCategory = "deps"
+	CategoryDeploy FileCategory = "deploy"
+	CategoryEntry  FileCategory = "entry"
+	CategoryConfig FileCategory = "config"
+	CategoryBuild  FileCategory = "build"
+	CategoryEnv    FileCategory = "env"
+	CategoryCI     FileCategory = "ci"
+)
+
+// DiscoveredFile represents a file found via pattern matching
+type DiscoveredFile struct {
+	Path     string
+	Category FileCategory
+	Weight   int // 1-10, higher = more important
+}
+
+// filePattern defines a pattern for discovering important files
+type filePattern struct {
+	pattern  string // glob or regex pattern
+	category FileCategory
+	weight   int
+	maxDepth int // 0 = root only, 1 = one level, -1 = any depth
+}
+
+// discoverImportantFiles scans the project and returns high-value files
+func (a *LLMAnalyzer) discoverImportantFiles() []DiscoveredFile {
+	patterns := []filePattern{
+		// Documentation (high priority)
+		{"README*", CategoryDocs, 10, 0},
+		{"ARCHITECTURE*", CategoryDocs, 10, 0},
+		{"DESIGN*", CategoryDocs, 9, 0},
+		{"AGENTS.md", CategoryDocs, 9, 0},
+		{"CLAUDE.md", CategoryDocs, 9, 0},
+		{"GEMINI.md", CategoryDocs, 9, 0},
+		{"CONTRIBUTING*", CategoryDocs, 7, 0},
+		{"*.md", CategoryDocs, 5, 1}, // docs/*.md
+
+		// Deployment (high priority)
+		{"Dockerfile*", CategoryDeploy, 10, 1},
+		{"docker-compose*", CategoryDeploy, 10, 0},
+		{"compose.yaml", CategoryDeploy, 10, 0},
+		{"compose.yml", CategoryDeploy, 10, 0},
+		{".dockerignore", CategoryDeploy, 5, 0},
+
+		// Entry points (any language)
+		{"main.*", CategoryEntry, 9, 2},
+		{"index.*", CategoryEntry, 8, 1},
+		{"app.*", CategoryEntry, 7, 1},
+		{"server.*", CategoryEntry, 7, 1},
+		{"cmd/*/main.*", CategoryEntry, 9, 2},
+
+		// Dependencies (any language)
+		{"package.json", CategoryDeps, 10, 2},
+		{"go.mod", CategoryDeps, 10, 2},
+		{"requirements.txt", CategoryDeps, 10, 1},
+		{"Pipfile", CategoryDeps, 9, 0},
+		{"pyproject.toml", CategoryDeps, 10, 1},
+		{"Gemfile", CategoryDeps, 10, 0},
+		{"Cargo.toml", CategoryDeps, 10, 1},
+		{"build.gradle*", CategoryDeps, 9, 1},
+		{"pom.xml", CategoryDeps, 9, 1},
+		{"composer.json", CategoryDeps, 9, 0},
+
+		// Config files
+		{"*config.ts", CategoryConfig, 8, 1},
+		{"*config.js", CategoryConfig, 8, 1},
+		{"*config.mjs", CategoryConfig, 8, 1},
+		{"*.config.yaml", CategoryConfig, 7, 0},
+		{"*.config.yml", CategoryConfig, 7, 0},
+		{"*.config.json", CategoryConfig, 7, 0},
+		{"tsconfig.json", CategoryConfig, 8, 1},
+
+		// Build tools
+		{"Makefile", CategoryBuild, 8, 1},
+		{"justfile", CategoryBuild, 8, 0},
+		{"Taskfile*", CategoryBuild, 7, 0},
+		{"turbo.json", CategoryBuild, 7, 0},
+		{"nx.json", CategoryBuild, 7, 0},
+
+		// Environment
+		{".env.example", CategoryEnv, 8, 1},
+		{".env.sample", CategoryEnv, 8, 1},
+		{"env.example", CategoryEnv, 8, 0},
+
+		// CI/CD
+		{".github/workflows/*.yaml", CategoryCI, 8, 2},
+		{".github/workflows/*.yml", CategoryCI, 8, 2},
+		{".gitlab-ci.yml", CategoryCI, 8, 0},
+		{"Jenkinsfile", CategoryCI, 7, 0},
+	}
+
+	var discovered []DiscoveredFile
+
+	filepath.WalkDir(a.BasePath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		relPath, _ := filepath.Rel(a.BasePath, path)
+		depth := strings.Count(relPath, string(os.PathSeparator))
+
+		// Skip common ignore dirs
+		name := d.Name()
+		if d.IsDir() {
+			if strings.HasPrefix(name, ".") && name != ".github" {
+				return filepath.SkipDir
+			}
+			if name == "node_modules" || name == "vendor" || name == "__pycache__" ||
+				name == "dist" || name == "build" || name == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Match against patterns
+		for _, p := range patterns {
+			if p.maxDepth >= 0 && depth > p.maxDepth {
+				continue
+			}
+			matched, _ := filepath.Match(p.pattern, name)
+			if !matched {
+				// Try matching full relative path for patterns like "cmd/*/main.*"
+				matched, _ = filepath.Match(p.pattern, relPath)
+			}
+			if matched {
+				discovered = append(discovered, DiscoveredFile{
+					Path:     relPath,
+					Category: p.category,
+					Weight:   p.weight,
+				})
+				break // Only match first pattern
+			}
+		}
+		return nil
+	})
+
+	// Sort by weight (descending)
+	sort.Slice(discovered, func(i, j int) bool {
+		return discovered[i].Weight > discovered[j].Weight
+	})
+
+	return discovered
+}
+
 func (a *LLMAnalyzer) gatherContext() (*ProjectContext, error) {
 	ctx := &ProjectContext{
-		PackageFiles: make(map[string]string),
+		PackageFiles:    make(map[string]string),
+		DocFiles:        make(map[string]string),
+		DeploymentInfo:  make(map[string]string),
+		EntryPoints:     make(map[string]string),
+		ConfigFiles:     make(map[string]string),
+		DiscoveredFiles: make(map[string]string),
 	}
 
 	out := os.Stderr
+
+	// 0. Dynamic file discovery (language-agnostic)
+	fmt.Fprint(out, "   🔎 Discovering important files...")
+	discovered := a.discoverImportantFiles()
+	// Read top files by category
+	categoryLimits := map[FileCategory]int{
+		CategoryDocs:   5,
+		CategoryDeps:   10,
+		CategoryDeploy: 5,
+		CategoryEntry:  6,
+		CategoryConfig: 8,
+		CategoryBuild:  3,
+		CategoryEnv:    3,
+		CategoryCI:     3,
+	}
+	categoryCounts := make(map[FileCategory]int)
+	for _, f := range discovered {
+		if categoryCounts[f.Category] >= categoryLimits[f.Category] {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(a.BasePath, f.Path))
+		if err != nil {
+			continue
+		}
+		// Truncate based on category
+		maxLen := 1500
+		if f.Category == CategoryEntry {
+			// Only first 80 lines for entry points
+			lines := strings.Split(string(content), "\n")
+			if len(lines) > 80 {
+				lines = lines[:80]
+			}
+			content = []byte(strings.Join(lines, "\n"))
+		} else if len(content) > maxLen {
+			content = content[:maxLen]
+		}
+		ctx.DiscoveredFiles[f.Path] = string(content)
+		categoryCounts[f.Category]++
+	}
+	fmt.Fprintf(out, " %d files\n", len(ctx.DiscoveredFiles))
 
 	// 1. Get directory tree (top 2 levels, limited output)
 	fmt.Fprint(out, "   📁 Scanning directory structure...")
@@ -219,6 +418,204 @@ func (a *LLMAnalyzer) gatherContext() (*ProjectContext, error) {
 	}
 	if !readmeFound {
 		fmt.Fprintln(out, " not found")
+	}
+
+	// 3b. Read documentation and agent instruction files
+	fmt.Fprint(out, "   📚 Reading docs...")
+	agentFiles := []string{
+		"AGENTS.md", "CLAUDE.md", "GEMINI.md", "CURSORRULES", ".cursorrules",
+		"ARCHITECTURE.md", "DESIGN.md", "CONTRIBUTING.md",
+	}
+	docsFound := []string{}
+	for _, f := range agentFiles {
+		path := filepath.Join(a.BasePath, f)
+		if content, err := os.ReadFile(path); err == nil {
+			if len(content) > 2000 {
+				content = content[:2000]
+			}
+			ctx.DocFiles[f] = string(content)
+			docsFound = append(docsFound, f)
+		}
+	}
+	// Also scan docs/ directory
+	docsDir := filepath.Join(a.BasePath, "docs")
+	if entries, err := os.ReadDir(docsDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			if !strings.HasSuffix(name, ".md") {
+				continue
+			}
+			path := filepath.Join(docsDir, name)
+			if content, err := os.ReadFile(path); err == nil {
+				if len(content) > 2000 {
+					content = content[:2000]
+				}
+				ctx.DocFiles["docs/"+name] = string(content)
+				docsFound = append(docsFound, "docs/"+name)
+			}
+			// Limit to 5 docs files to avoid bloating prompt
+			if len(docsFound) >= 10 {
+				break
+			}
+		}
+	}
+	if len(docsFound) > 0 {
+		fmt.Fprintf(out, " %d files\n", len(docsFound))
+	} else {
+		fmt.Fprintln(out, " none found")
+	}
+
+	// 3c. Read deployment files (Dockerfile, docker-compose) for topology
+	fmt.Fprint(out, "   🐳 Reading deployment files...")
+	deployFiles := []string{
+		"Dockerfile", "docker-compose.yaml", "docker-compose.yml",
+		"compose.yaml", "compose.yml",
+	}
+	deployFound := []string{}
+	for _, f := range deployFiles {
+		path := filepath.Join(a.BasePath, f)
+		if content, err := os.ReadFile(path); err == nil {
+			if len(content) > 2000 {
+				content = content[:2000]
+			}
+			ctx.DeploymentInfo[f] = string(content)
+			deployFound = append(deployFound, f)
+		}
+	}
+	// Also check common subdirs
+	for _, subdir := range []string{"backend-go", "backend", "api", "server"} {
+		for _, f := range deployFiles[:1] { // Just Dockerfile
+			path := filepath.Join(a.BasePath, subdir, f)
+			if content, err := os.ReadFile(path); err == nil {
+				if len(content) > 1500 {
+					content = content[:1500]
+				}
+				ctx.DeploymentInfo[subdir+"/"+f] = string(content)
+				deployFound = append(deployFound, subdir+"/"+f)
+			}
+		}
+	}
+	if len(deployFound) > 0 {
+		fmt.Fprintf(out, " %s\n", strings.Join(deployFound, ", "))
+	} else {
+		fmt.Fprintln(out, " none found")
+	}
+
+	// 3d. Read entry points (main.go, cmd/*.go) for initialization patterns
+	fmt.Fprint(out, "   🚀 Reading entry points...")
+	entryFound := []string{}
+	// Check for main.go in root and common subdirs
+	mainDirs := []string{"", "backend-go", "backend", "api", "server", "cmd"}
+	for _, dir := range mainDirs {
+		mainPath := filepath.Join(a.BasePath, dir, "main.go")
+		if content, err := os.ReadFile(mainPath); err == nil {
+			// Read first 100 lines (init patterns)
+			lines := strings.Split(string(content), "\n")
+			if len(lines) > 100 {
+				lines = lines[:100]
+			}
+			key := "main.go"
+			if dir != "" {
+				key = dir + "/main.go"
+			}
+			ctx.EntryPoints[key] = strings.Join(lines, "\n")
+			entryFound = append(entryFound, key)
+		}
+	}
+	// Check cmd/ subdirectories
+	cmdDir := filepath.Join(a.BasePath, "cmd")
+	if entries, err := os.ReadDir(cmdDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				mainPath := filepath.Join(cmdDir, entry.Name(), "main.go")
+				if content, err := os.ReadFile(mainPath); err == nil {
+					lines := strings.Split(string(content), "\n")
+					if len(lines) > 80 {
+						lines = lines[:80]
+					}
+					key := "cmd/" + entry.Name() + "/main.go"
+					ctx.EntryPoints[key] = strings.Join(lines, "\n")
+					entryFound = append(entryFound, key)
+				}
+			}
+		}
+	}
+	// Check for cmd/*.go files directly
+	if entries, err := os.ReadDir(cmdDir); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") {
+				filePath := filepath.Join(cmdDir, entry.Name())
+				if content, err := os.ReadFile(filePath); err == nil {
+					lines := strings.Split(string(content), "\n")
+					if len(lines) > 60 {
+						lines = lines[:60]
+					}
+					key := "cmd/" + entry.Name()
+					ctx.EntryPoints[key] = strings.Join(lines, "\n")
+					entryFound = append(entryFound, key)
+					if len(entryFound) >= 8 {
+						break // Limit to avoid bloating
+					}
+				}
+			}
+		}
+	}
+	if len(entryFound) > 0 {
+		fmt.Fprintf(out, " %d files\n", len(entryFound))
+	} else {
+		fmt.Fprintln(out, " none found")
+	}
+
+	// 3e. Read config files for framework/external dependency info
+	fmt.Fprint(out, "   ⚙️  Reading config files...")
+	cfgFiles := []string{
+		".env.example", ".env.sample", "env.example",
+		"vite.config.ts", "vite.config.js",
+		"tsconfig.json", "next.config.js", "next.config.mjs",
+		"Makefile", "justfile",
+		"turbo.json", "nx.json",
+	}
+	configFound := []string{}
+	// Check root
+	for _, cf := range cfgFiles {
+		path := filepath.Join(a.BasePath, cf)
+		if content, err := os.ReadFile(path); err == nil {
+			if len(content) > 1500 {
+				content = content[:1500]
+			}
+			ctx.ConfigFiles[cf] = string(content)
+			configFound = append(configFound, cf)
+		}
+	}
+	// Check common subdirs for .env.example and vite.config
+	for _, subdir := range []string{"web", "frontend", "app", "admin-dashboard", "landing-page"} {
+		for _, f := range []string{".env.example", "vite.config.ts", "vite.config.js"} {
+			path := filepath.Join(a.BasePath, subdir, f)
+			if content, err := os.ReadFile(path); err == nil {
+				if len(content) > 1000 {
+					content = content[:1000]
+				}
+				ctx.ConfigFiles[subdir+"/"+f] = string(content)
+				configFound = append(configFound, subdir+"/"+f)
+			}
+		}
+	}
+	if len(configFound) > 0 {
+		fmt.Fprintf(out, " %d files\n", len(configFound))
+	} else {
+		fmt.Fprintln(out, " none found")
+	}
+
+	// 3f. Parse Go imports to understand internal package relationships
+	fmt.Fprint(out, "   🔗 Analyzing imports...")
+	ctx.ImportGraph = a.parseGoImports()
+	if ctx.ImportGraph != "" {
+		fmt.Fprintln(out, " done")
+	} else {
+		fmt.Fprintln(out, " no Go packages found")
 	}
 
 	// 4. Summarize git history (oldest → newest) to keep prompts bounded while
@@ -518,10 +915,15 @@ For each feature, explain:
 Focus on architectural decisions, not implementation details.
 Limit to 5-7 main features maximum.
 
-IMPORTANT: When analyzing technology choices, PRIORITIZE the "CURRENT TECH STACK" section
-over git commit history. If git history mentions a technology that's NOT in the current
-dependencies, it was likely removed or migrated away from. Base your analysis on what's
-ACTUALLY in use today.
+IMPORTANT INSTRUCTIONS:
+1. PRIORITIZE the "CURRENT TECH STACK" section over git commit history.
+   If git mentions a technology NOT in current dependencies, it was likely removed.
+
+2. Base your analysis on CURRENT state, not historical commits.
+
+3. If "Project Documentation" is provided (AGENTS.md, ARCHITECTURE.md, etc.),
+   use it as the authoritative source for architectural decisions.
+
 
 RESPOND IN JSON FORMAT ONLY:
 {
@@ -580,6 +982,55 @@ PROJECT CONTEXT:
 		sb.WriteString(fmt.Sprintf("## %s:\n```\n%s\n```\n\n", name, content))
 	}
 
+	// Add documentation files (AGENTS.md, docs/*.md, etc.)
+	if len(ctx.DocFiles) > 0 {
+		sb.WriteString("## Project Documentation (HIGHLY RELEVANT - use this for architectural decisions):\n")
+		for name, content := range ctx.DocFiles {
+			sb.WriteString(fmt.Sprintf("### %s:\n```\n%s\n```\n\n", name, content))
+		}
+	}
+
+	// Add deployment files (Dockerfile, docker-compose - shows actual deployment topology)
+	if len(ctx.DeploymentInfo) > 0 {
+		sb.WriteString("## Deployment Configuration (GROUND TRUTH for service topology):\n")
+		sb.WriteString("These files show what's actually deployed as separate services vs embedded:\n")
+		for name, content := range ctx.DeploymentInfo {
+			sb.WriteString(fmt.Sprintf("### %s:\n```\n%s\n```\n\n", name, content))
+		}
+	}
+
+	// Add entry points (main.go, cmd/*.go - shows initialization patterns)
+	if len(ctx.EntryPoints) > 0 {
+		sb.WriteString("## Entry Points (initialization code - what's actually started and how):\n")
+		for name, content := range ctx.EntryPoints {
+			sb.WriteString(fmt.Sprintf("### %s:\n```go\n%s\n```\n\n", name, content))
+		}
+	}
+
+	// Add config files (.env.example, vite.config, Makefile - framework/external deps)
+	if len(ctx.ConfigFiles) > 0 {
+		sb.WriteString("## Config Files (framework choices, external dependencies, build patterns):\n")
+		for name, content := range ctx.ConfigFiles {
+			sb.WriteString(fmt.Sprintf("### %s:\n```\n%s\n```\n\n", name, content))
+		}
+	}
+
+	// Add import graph (Go internal package relationships)
+	if ctx.ImportGraph != "" {
+		sb.WriteString("## Internal Package Dependencies (Go import analysis):\n")
+		sb.WriteString("```\n")
+		sb.WriteString(ctx.ImportGraph)
+		sb.WriteString("```\n\n")
+	}
+
+	// Add dynamically discovered files (language-agnostic high-value files)
+	if len(ctx.DiscoveredFiles) > 0 {
+		sb.WriteString("## Discovered Project Files (auto-detected by pattern matching):\n")
+		for name, content := range ctx.DiscoveredFiles {
+			sb.WriteString(fmt.Sprintf("### %s:\n```\n%s\n```\n\n", name, content))
+		}
+	}
+
 	if ctx.GitSummary != "" {
 		sb.WriteString("## Git History (summary - may include OUTDATED technologies):\n```\n")
 		sb.WriteString(ctx.GitSummary)
@@ -608,8 +1059,9 @@ func (a *LLMAnalyzer) callLLMStreaming(ctx context.Context, prompt string) (*LLM
 	// Collect streamed content
 	var content strings.Builder
 	progressOut := os.Stderr
-	fmt.Fprint(progressOut, "   Streaming: ")
 	chunkCount := 0
+	startTime := time.Now()
+	progressChars := []string{"░", "▒", "▓", "█"}
 
 	for {
 		msg, err := stream.Recv()
@@ -622,13 +1074,15 @@ func (a *LLMAnalyzer) callLLMStreaming(ctx context.Context, prompt string) (*LLM
 		if msg.Content != "" {
 			content.WriteString(msg.Content)
 			chunkCount++
-			if chunkCount%50 == 0 {
-				fmt.Fprint(progressOut, ".")
+			if chunkCount%30 == 0 {
+				// Animated progress indicator
+				idx := (chunkCount / 30) % len(progressChars)
+				fmt.Fprintf(progressOut, "\r   🧠 Analyzing with %s... %s %d tokens", a.Model, progressChars[idx], chunkCount)
 			}
 		}
 	}
-
-	fmt.Fprintf(progressOut, " (%d chunks)\n\n", chunkCount)
+	elapsed := time.Since(startTime)
+	fmt.Fprintf(progressOut, "\r   ✓ Analysis complete: %d tokens in %.1fs\n\n", chunkCount, elapsed.Seconds())
 
 	result := content.String()
 	if result == "" {
@@ -743,4 +1197,116 @@ func parseGoModDeps(content string) []string {
 		}
 	}
 	return deps
+}
+
+// parseGoImports extracts internal package import relationships from Go files
+func (a *LLMAnalyzer) parseGoImports() string {
+	// Find go.mod to get module name
+	goModPath := filepath.Join(a.BasePath, "go.mod")
+	content, err := os.ReadFile(goModPath)
+	if err != nil {
+		// Check backend-go subdirectory
+		goModPath = filepath.Join(a.BasePath, "backend-go", "go.mod")
+		content, err = os.ReadFile(goModPath)
+		if err != nil {
+			return ""
+		}
+	}
+
+	// Extract module name
+	var moduleName string
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.HasPrefix(line, "module ") {
+			moduleName = strings.TrimPrefix(line, "module ")
+			moduleName = strings.TrimSpace(moduleName)
+			break
+		}
+	}
+	if moduleName == "" {
+		return ""
+	}
+
+	// Map package -> imports (internal only)
+	pkgImports := make(map[string][]string)
+	basePath := a.BasePath
+	if strings.Contains(goModPath, "backend-go") {
+		basePath = filepath.Join(a.BasePath, "backend-go")
+	}
+
+	// Walk internal/ or pkg/ directories
+	for _, dir := range []string{"internal", "pkg", "cmd"} {
+		dirPath := filepath.Join(basePath, dir)
+		filepath.WalkDir(dirPath, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
+				return nil
+			}
+
+			goContent, err := os.ReadFile(path)
+			if err != nil {
+				return nil
+			}
+
+			// Get relative package path
+			relPath, _ := filepath.Rel(basePath, filepath.Dir(path))
+			pkgPath := relPath
+
+			// Parse imports
+			inImportBlock := false
+			for _, line := range strings.Split(string(goContent), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "import (") {
+					inImportBlock = true
+					continue
+				}
+				if inImportBlock && line == ")" {
+					inImportBlock = false
+					continue
+				}
+				if inImportBlock || strings.HasPrefix(line, "import \"") {
+					// Extract import path
+					importPath := ""
+					if strings.Contains(line, "\"") {
+						parts := strings.Split(line, "\"")
+						if len(parts) >= 2 {
+							importPath = parts[1]
+						}
+					}
+					// Only keep internal imports
+					if strings.HasPrefix(importPath, moduleName+"/") {
+						shortPath := strings.TrimPrefix(importPath, moduleName+"/")
+						if shortPath != pkgPath {
+							pkgImports[pkgPath] = append(pkgImports[pkgPath], shortPath)
+						}
+					}
+				}
+			}
+			return nil
+		})
+	}
+
+	if len(pkgImports) == 0 {
+		return ""
+	}
+
+	// Format as readable summary
+	var sb strings.Builder
+	sb.WriteString("Internal package dependencies:\n")
+	for pkg, imports := range pkgImports {
+		if len(imports) > 0 {
+			// Deduplicate
+			seen := make(map[string]bool)
+			unique := []string{}
+			for _, imp := range imports {
+				if !seen[imp] {
+					seen[imp] = true
+					unique = append(unique, imp)
+				}
+			}
+			sb.WriteString(fmt.Sprintf("  %s → %s\n", pkg, strings.Join(unique, ", ")))
+		}
+	}
+	return sb.String()
 }
