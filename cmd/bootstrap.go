@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -147,11 +148,13 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 	}
 
 	// Save to memory
-	store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+	memoryPath := GetMemoryBasePath()
+	store, err := memory.NewSQLiteStore(memoryPath)
 	if err != nil {
 		return fmt.Errorf("open memory store: %w", err)
 	}
 	defer store.Close()
+	ensureGitignore(memoryPath)
 
 	featuresCreated := 0
 	decisionsCreated := 0
@@ -306,6 +309,13 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 	// This runs alongside legacy feature/decision creation during migration phase
 	nodesCreated := 0
 	embeddingsGenerated := 0
+	nodesSkipped := 0
+
+	// Semantic deduplication - tracks embeddings for cosine similarity comparison
+	// If a new node's embedding is > 0.92 similar to an existing one, skip it
+	seenNodeSummaries := make(map[string]struct{})
+	var seenEmbeddings [][]float32
+	const similarityThreshold = 0.92
 
 	// Prepare embedding config
 	embeddingCfg := llm.Config{APIKey: apiKey}
@@ -327,6 +337,14 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 		}
 		content := fmt.Sprintf("%s: %s", name, oneLiner)
 
+		// String-based dedup as first pass (fast)
+		summaryKey := strings.ToLower(name)
+		if _, seen := seenNodeSummaries[summaryKey]; seen {
+			nodesSkipped++
+			continue
+		}
+		seenNodeSummaries[summaryKey] = struct{}{}
+
 		node := memory.Node{
 			Content: content,
 			Type:    memory.NodeTypeFeature,
@@ -338,6 +356,13 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 			if embedding, err := knowledge.GenerateEmbedding(ctx, content, embeddingCfg); err == nil {
 				node.Embedding = embedding
 				embeddingsGenerated++
+
+				// Semantic dedup: skip if embedding is too similar to an existing one
+				if isSemanticallyDuplicate(embedding, seenEmbeddings, similarityThreshold) {
+					nodesSkipped++
+					continue
+				}
+				seenEmbeddings = append(seenEmbeddings, embedding)
 			}
 		}
 
@@ -365,6 +390,14 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 				decisionContent += ". Trade-offs: " + tradeoffs
 			}
 
+			// Dedup: skip if we've seen this decision title (string-based first pass)
+			decisionKey := strings.ToLower(title)
+			if _, seen := seenNodeSummaries[decisionKey]; seen {
+				nodesSkipped++
+				continue
+			}
+			seenNodeSummaries[decisionKey] = struct{}{}
+
 			decisionNode := memory.Node{
 				Content: decisionContent,
 				Type:    memory.NodeTypeDecision,
@@ -376,6 +409,13 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 				if embedding, err := knowledge.GenerateEmbedding(ctx, decisionContent, embeddingCfg); err == nil {
 					decisionNode.Embedding = embedding
 					embeddingsGenerated++
+
+					// Semantic dedup: skip if embedding is too similar to an existing one
+					if isSemanticallyDuplicate(embedding, seenEmbeddings, similarityThreshold) {
+						nodesSkipped++
+						continue
+					}
+					seenEmbeddings = append(seenEmbeddings, embedding)
 				}
 			}
 
@@ -397,13 +437,13 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 		fmt.Fprintf(os.Stderr, "  Features created: %d\n", featuresCreated)
 		fmt.Fprintf(os.Stderr, "  Decisions created: %d\n", decisionsCreated)
 		fmt.Fprintf(os.Stderr, "  Relationships created: %d\n", edgesCreated)
-		fmt.Fprintf(os.Stderr, "  Knowledge nodes created: %d\n", nodesCreated)
+		fmt.Fprintf(os.Stderr, "  Knowledge nodes created: %d (skipped %d duplicates)\n", nodesCreated, nodesSkipped)
 	} else {
 		fmt.Printf("\n✓ Bootstrap complete:\n")
 		fmt.Printf("  • Features created: %d\n", featuresCreated)
 		fmt.Printf("  • Decisions created: %d\n", decisionsCreated)
 		fmt.Printf("  • Relationships created: %d\n", edgesCreated)
-		fmt.Printf("  • Knowledge nodes created: %d\n", nodesCreated)
+		fmt.Printf("  • Knowledge nodes created: %d (skipped %d duplicates)\n", nodesCreated, nodesSkipped)
 	}
 
 	return nil
@@ -454,11 +494,13 @@ func runBasicBootstrap(cwd string, preview bool) error {
 		return nil
 	}
 
-	store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+	memoryPath := GetMemoryBasePath()
+	store, err := memory.NewSQLiteStore(memoryPath)
 	if err != nil {
 		return fmt.Errorf("open memory store: %w", err)
 	}
 	defer store.Close()
+	ensureGitignore(memoryPath)
 
 	featuresCreated := 0
 	for _, f := range result.Features {
@@ -521,4 +563,51 @@ func init() {
 	rootCmd.AddCommand(bootstrapCmd)
 	bootstrapCmd.Flags().Bool("preview", false, "Preview what would be generated without saving")
 	bootstrapCmd.Flags().Bool("basic", false, "Use heuristic scan only (no LLM calls)")
+}
+
+// ensureGitignore creates .gitignore in the memory directory if it doesn't exist
+func ensureGitignore(memoryPath string) {
+	gitignorePath := memoryPath + "/.gitignore"
+	if _, err := os.Stat(gitignorePath); err == nil {
+		return // already exists
+	}
+	gitignoreContent := `# TaskWing generated/cache files
+memory.db-journal
+memory.db-wal
+memory.db-shm
+index.json
+`
+	os.WriteFile(gitignorePath, []byte(gitignoreContent), 0644)
+}
+
+// cosineSimilarity computes cosine similarity between two embedding vectors
+func cosineSimilarity(a, b []float32) float32 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+	var dotProduct, normA, normB float32
+	for i := range a {
+		dotProduct += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dotProduct / (sqrt32(normA) * sqrt32(normB))
+}
+
+// sqrt32 returns the square root of a float32
+func sqrt32(x float32) float32 {
+	return float32(math.Sqrt(float64(x)))
+}
+
+// isSemanticallyDuplicate checks if an embedding is too similar to any existing embeddings
+func isSemanticallyDuplicate(embedding []float32, existing [][]float32, threshold float32) bool {
+	for _, e := range existing {
+		if cosineSimilarity(embedding, e) > threshold {
+			return true
+		}
+	}
+	return false
 }
