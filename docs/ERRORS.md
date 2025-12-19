@@ -14,7 +14,6 @@
 ```bash
 git init
 # Or use TaskWing without bootstrap:
-taskwing init
 taskwing add "Your initial knowledge here"
 ```
 
@@ -37,7 +36,6 @@ taskwing add "Authentication module handles OAuth2 and sessions"
 
 **Solution:**
 ```bash
-taskwing init
 taskwing add "Main application core functionality"
 ```
 

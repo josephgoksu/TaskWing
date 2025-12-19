@@ -64,3 +64,6 @@ tmp/
 temp/
 
 .cache
+
+# Internal documentation (not for public)
+docs/internal/
