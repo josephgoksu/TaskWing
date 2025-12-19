@@ -8,33 +8,51 @@ TaskWing implements the [Model Context Protocol (MCP)](https://modelcontextproto
 
 ## Quick Setup
 
-```bash
-# 1. Get your taskwing binary path
-which taskwing
-# Example: /usr/local/bin/taskwing
+The easiest way to connect TaskWing is to use the automatic installer:
 
-# 2. Bootstrap your project (if not already done)
+```bash
+# 1. Bootstrap your project (if not already done)
 cd your-project
 tw bootstrap
 
-# 3. Test MCP server
-tw mcp
-# Should show: 🎯 TaskWing MCP Server Starting...
+# 2. Install MCP integration for your editor (installs locally in project)
+tw mcp install cursor     # For Cursor
+tw mcp install claude     # For Claude Code
+tw mcp install windsurf   # For Windsurf
+tw mcp install gemini     # For Gemini
+tw mcp install all        # Install for all supported editors
+
+# Use --global to install in home directory instead
+tw mcp install claude --global   # Installs to ~/.claude/mcp.json
 ```
+
+This command will automatically detect your project path and binary location, and write the necessary configuration files.
 
 ---
 
 ## Claude Code
 
-Edit `~/.claude/mcp.json`:
+**Automatic (local - recommended):**
+```bash
+tw mcp install claude
+```
+This creates `.claude/mcp.json` in your project directory.
+
+**Automatic (global):**
+```bash
+tw mcp install claude --global
+```
+This adds a project-specific server entry (e.g., `taskwing-myproject`) to `~/.claude/mcp.json`.
+
+**Manual:**
+Edit `.claude/mcp.json` in your project (or `~/.claude/mcp.json` for global):
 
 ```json
 {
   "mcpServers": {
     "taskwing": {
       "command": "/usr/local/bin/taskwing",
-      "args": ["mcp"],
-      "cwd": "/path/to/your/project"
+      "args": ["mcp"]
     }
   }
 }
@@ -46,6 +64,13 @@ Edit `~/.claude/mcp.json`:
 
 ## Cursor
 
+**Automatic:**
+```bash
+tw mcp install cursor
+```
+This creates or updates `.cursor/mcp.json` in your project root.
+
+**Manual:**
 Edit `.cursor/mcp.json` in your project root:
 
 ```json
@@ -63,17 +88,53 @@ Edit `.cursor/mcp.json` in your project root:
 
 ---
 
-## Gemini (Google AI Studio / Gemini CLI)
+## Windsurf
 
-Edit `~/.gemini/settings.json`:
+**Automatic:**
+```bash
+tw mcp install windsurf
+```
+This creates or updates `.windsurf/mcp.json` in your project root.
+
+**Manual:**
+Edit `.windsurf/mcp.json` in your project:
 
 ```json
 {
   "mcpServers": {
     "taskwing": {
       "command": "/usr/local/bin/taskwing",
-      "args": ["mcp"],
-      "cwd": "/path/to/your/project"
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+---
+
+## Gemini (Google AI Studio / Gemini CLI)
+
+**Automatic (local - recommended):**
+```bash
+tw mcp install gemini
+```
+This creates `.gemini/settings.json` in your project directory.
+
+**Automatic (global):**
+```bash
+tw mcp install gemini --global
+```
+This adds a project-specific server entry to `~/.gemini/settings.json`.
+
+**Manual:**
+Edit `.gemini/settings.json` in your project (or `~/.gemini/settings.json` for global):
+
+```json
+{
+  "mcpServers": {
+    "taskwing": {
+      "command": "/usr/local/bin/taskwing",
+      "args": ["mcp"]
     }
   }
 }
@@ -112,23 +173,6 @@ Edit `~/.config/zed/settings.json`:
         "path": "/usr/local/bin/taskwing",
         "args": ["mcp"]
       }
-    }
-  }
-}
-```
-
----
-
-## Windsurf
-
-Edit `.windsurf/mcp.json` in your project:
-
-```json
-{
-  "mcpServers": {
-    "taskwing": {
-      "command": "/usr/local/bin/taskwing",
-      "args": ["mcp"]
     }
   }
 }
@@ -201,7 +245,9 @@ tw bootstrap
 
 ## Per-Project Server
 
-If you have multiple projects, configure separate MCP servers per project:
+The `mcp install` command automatically handles multiple projects by adding unique server names (e.g., `taskwing-projectA`) to global configurations like Claude's.
+
+Manual configuration for multiple projects:
 
 ```json
 {
