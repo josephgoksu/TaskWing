@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -28,7 +29,45 @@ Examples:
   taskwing memory check               # Check for integrity issues
   taskwing memory repair              # Fix integrity issues
   taskwing memory rebuild             # Rebuild the index cache
-  taskwing memory generate-embeddings # Backfill missing embeddings`,
+  taskwing memory generate-embeddings # Backfill missing embeddings
+  taskwing memory reset               # Wipe all project memory and start fresh`,
+}
+
+// memory reset command
+var memoryResetCmd = &cobra.Command{
+	Use:   "reset",
+	Short: "Wipe all project memory",
+	Long: `Completely delete the project memory database and index.
+
+This action is irreversible. It will delete all nodes, edges, features,
+and decisions from the current project's memory store.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		force, _ := cmd.Flags().GetBool("force")
+		if !force {
+			fmt.Print("⚠️  This will delete ALL project memory. Are you sure? [y/N]: ")
+			var response string
+			fmt.Scanln(&response)
+			if response != "y" && response != "Y" {
+				fmt.Println("Reset cancelled.")
+				return nil
+			}
+		}
+
+		basePath := GetMemoryBasePath()
+		fmt.Printf("Wiping memory in %s...\n", basePath)
+
+		// Close any open connections by not creating a store, or we can just delete files
+		dbPath := filepath.Join(basePath, "memory.db")
+		indexPath := filepath.Join(basePath, "index.json")
+		featuresDir := filepath.Join(basePath, "features")
+
+		os.Remove(dbPath)
+		os.Remove(indexPath)
+		os.RemoveAll(featuresDir)
+
+		fmt.Println("✓ Project memory wiped successfully.")
+		return nil
+	},
 }
 
 // memory check command
@@ -232,4 +271,7 @@ func init() {
 	memoryCmd.AddCommand(memoryRepairCmd)
 	memoryCmd.AddCommand(memoryRebuildCmd)
 	memoryCmd.AddCommand(memoryGenerateEmbeddingsCmd)
+	memoryCmd.AddCommand(memoryResetCmd)
+
+	memoryResetCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 }

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -159,16 +160,31 @@ func runContext(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("Context for: \"%s\"\n\n", query)
+	// Styles
+	var (
+		titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+		sourceTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+		metaStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		barFull     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+		barEmpty    = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+	)
+
+	fmt.Println(titleStyle.Render(fmt.Sprintf("🔍 Context for: \"%s\"", query)))
+
 	for i, s := range scored {
-		icon := typeIcon(s.Node.Type)
-		fmt.Printf("%d. %s [%s] (%.0f%% match)\n", i+1, icon, s.Node.Type, s.Score*100)
-		if s.Node.Summary != "" {
-			fmt.Printf("   %s\n", s.Node.Summary)
-		} else {
-			fmt.Printf("   %s\n", truncateSummary(s.Node.Content, 80))
+		score := int(s.Score * 10)
+		if score > 10 { score = 10 }
+		bar := barFull.Render(strings.Repeat("━", score)) + barEmpty.Render(strings.Repeat("━", 10-score))
+
+		summary := s.Node.Summary
+		if summary == "" {
+			summary = truncateSummary(s.Node.Content, 60)
 		}
-		fmt.Printf("   ID: %s\n\n", s.Node.ID)
+
+		id := s.Node.ID
+		if len(id) > 6 { id = id[:6] }
+
+		fmt.Printf(" %d. %s %s %s\n", i+1, typeIcon(s.Node.Type), sourceTitle.Render(summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)))
 	}
 
 	return nil
@@ -234,27 +250,49 @@ Be concise and direct.
 		return fmt.Errorf("stream: %w", err)
 	}
 
-	if !viper.GetBool("quiet") {
-		fmt.Fprintln(os.Stderr, " done")
-	}
-
-	fmt.Printf("📖 Answer to: \"%s\"\n\n", query)
-
-	// Print streamed response
+	// Buffer the response to render in a nice card
+	var sb strings.Builder
 	for {
 		chunk, err := stream.Recv()
 		if err != nil {
 			break
 		}
-		fmt.Print(chunk.Content)
+		sb.WriteString(chunk.Content)
 	}
-	fmt.Println()
+	answer := sb.String()
 
-	// Show sources
-	fmt.Println("\n---")
-	fmt.Println("📚 Sources:")
+	if !viper.GetBool("quiet") {
+		fmt.Fprintln(os.Stderr, " done")
+	}
+
+	// Styles
+	var (
+		cardStyle   = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).Padding(0, 2).MarginTop(1).BorderForeground(lipgloss.Color("63"))
+		titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+		sourceTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+		metaStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		barFull     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+		barEmpty    = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+	)
+
+	// Render Answer Summary
+	fmt.Println()
+	fmt.Println(titleStyle.Render(fmt.Sprintf("📖 %s", query)))
+	fmt.Println(cardStyle.Render(answer))
+
+	// Render Sources
+	fmt.Println()
+	fmt.Println(titleStyle.Render("📚 Sources"))
+
 	for i, s := range scored {
-		fmt.Printf("  %d. [%s] %s (%.0f%% match) — ID: %s\n", i+1, s.Node.Type, s.Node.Summary, s.Score*100, s.Node.ID)
+		score := int(s.Score * 10)
+		if score > 10 { score = 10 }
+		bar := barFull.Render(strings.Repeat("━", score)) + barEmpty.Render(strings.Repeat("━", 10-score))
+		
+		id := s.Node.ID
+		if len(id) > 6 { id = id[:6] }
+		
+		fmt.Printf(" %d. %s %s %s\n", i+1, typeIcon(s.Node.Type), sourceTitle.Render(s.Node.Summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)))
 	}
 
 	return nil

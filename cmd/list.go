@@ -6,7 +6,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -68,6 +70,13 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Styles
+	var (
+		subtle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		title     = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Bold(true)
+		header    = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true) // Pinkish header
+	)
+
 	// Group by type
 	byType := make(map[string][]memory.Node)
 	for _, n := range nodes {
@@ -78,31 +87,49 @@ func runList(cmd *cobra.Command, args []string) error {
 		byType[t] = append(byType[t], n)
 	}
 
-	// Print in order: decision, feature, plan, note, unknown
+	// Calculate stats
 	typeOrder := []string{"decision", "feature", "plan", "note", "unknown"}
+	var stats []string
 	totalCount := 0
 
 	for _, t := range typeOrder {
-		nodes := byType[t]
-		if len(nodes) == 0 {
-			continue
-		}
-		totalCount += len(nodes)
-
-		icon := typeIcon(t)
-		fmt.Printf("\n## %s %s (%d)\n\n", icon, capitalizeFirst(t), len(nodes))
-
-		for _, n := range nodes {
-			summary := n.Summary
-			if summary == "" {
-				summary = truncateSummary(n.Content, 80)
-			}
-			fmt.Printf("  • %s\n", summary)
-			fmt.Printf("    ID: %s | %s\n", n.ID, n.CreatedAt.Format("2006-01-02"))
+		count := len(byType[t])
+		if count > 0 {
+			totalCount += count
+			stats = append(stats, fmt.Sprintf("%s %d", typeIcon(t), count))
 		}
 	}
 
-	fmt.Printf("\nTotal: %d nodes\n", totalCount)
+	// Render Header Summary
+	fmt.Printf(" 🧠 Knowledge: %d nodes (%s)\n", totalCount, strings.Join(stats, " • "))
+	fmt.Println(subtle.Render(strings.Repeat("─", 50)))
+
+	// Render Lists
+	for _, t := range typeOrder {
+		groupNodes := byType[t]
+		if len(groupNodes) == 0 {
+			continue
+		}
+
+		fmt.Println(header.Render(fmt.Sprintf("%s %ss", typeIcon(t), capitalizeFirst(t))))
+
+		for _, n := range groupNodes {
+			summary := n.Summary
+			if summary == "" {
+				summary = truncateSummary(n.Content, 60)
+			}
+			
+			dateStr := n.CreatedAt.Format("Jan 02")
+			idStr := n.ID
+			if len(idStr) > 6 {
+				idStr = idStr[:6]
+			}
+			
+			fmt.Printf(" • %s %s\n", title.Render(summary), subtle.Render(fmt.Sprintf("[%s %s]", idStr, dateStr)))
+		}
+		fmt.Println()
+	}
+
 	return nil
 }
 

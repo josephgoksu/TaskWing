@@ -9,13 +9,18 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/josephgoksu/TaskWing/internal/agents"
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -33,20 +38,15 @@ The bootstrap command analyzes:
 
 Examples:
   taskwing bootstrap --preview              # Preview with LLM analysis (requires OPENAI_API_KEY)
-  taskwing bootstrap                        # Generate with LLM analysis
-  taskwing bootstrap --basic --preview      # Preview heuristic scan (no LLM calls)
-  taskwing bootstrap --basic                # Save heuristic scan`,
+  taskwing bootstrap                        # Generate with parallel agent analysis
+  taskwing bootstrap --legacy               # Use legacy single-LLM mode`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		preview, _ := cmd.Flags().GetBool("preview")
-		basic, _ := cmd.Flags().GetBool("basic")
+		legacy, _ := cmd.Flags().GetBool("legacy")
 
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("get current directory: %w", err)
-		}
-
-		if basic {
-			return runBasicBootstrap(cwd, preview)
 		}
 
 		apiKey := viper.GetString("llm.apiKey")
@@ -54,16 +54,230 @@ Examples:
 			apiKey = os.Getenv("OPENAI_API_KEY")
 		}
 		if apiKey == "" {
-			if viper.GetBool("json") {
-				fmt.Fprintln(os.Stderr, "OPENAI_API_KEY (or TASKWING_LLM_APIKEY) not set; running heuristic scan (--basic).")
-			} else {
-				fmt.Println("⚠️  OPENAI_API_KEY not set; running heuristic scan (use --basic to silence this).")
-			}
-			return runBasicBootstrap(cwd, preview)
+			return fmt.Errorf("OPENAI_API_KEY (or TASKWING_LLM_APIKEY) not set")
 		}
 
-		return runLLMBootstrap(cmd.Context(), cwd, preview, apiKey)
+		// Use legacy single-LLM mode if --legacy flag is set
+		if legacy {
+			return runLLMBootstrap(cmd.Context(), cwd, preview, apiKey)
+		}
+
+		// Default: use parallel agent architecture
+		return runAgentBootstrap(cmd.Context(), cwd, preview, apiKey)
 	},
+}
+
+// runAgentBootstrap uses the parallel agent architecture for analysis
+func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey string) error {
+	model := viper.GetString("llm.modelName")
+	if model == "" {
+		model = DefaultLLMModel
+	}
+
+	providerStr := viper.GetString("llm.provider")
+	if providerStr == "" {
+		providerStr = "openai"
+	}
+
+	provider, err := llm.ValidateProvider(providerStr)
+	if err != nil {
+		return fmt.Errorf("invalid LLM provider: %w", err)
+	}
+
+	fmt.Println("")
+	fmt.Println("┌──────────────────────────────────────────────────────────────┐")
+	fmt.Println("│  🤖 TaskWing Agent Bootstrap (Experimental)                  │")
+	fmt.Println("└──────────────────────────────────────────────────────────────┘")
+	fmt.Println("")
+	fmt.Printf("  ⚡ Using: %s (%s) with parallel agents\n", model, provider)
+
+	llmCfg := llm.Config{
+		Provider: provider,
+		Model:    model,
+		APIKey:   apiKey,
+		BaseURL:  viper.GetString("llm.baseURL"),
+	}
+
+	projectName := filepath.Base(cwd)
+
+	// Create agents
+	docAgent := agents.NewDocAgent(llmCfg)
+	codeAgent := agents.NewCodeAgent(llmCfg)
+	gitAgent := agents.NewGitAgent(llmCfg)
+	depsAgent := agents.NewDepsAgent(llmCfg)
+
+	agentsList := []agents.Agent{docAgent, codeAgent, gitAgent, depsAgent}
+
+	// Prepare input
+	input := agents.Input{
+		BasePath:    cwd,
+		ProjectName: projectName,
+		Verbose:     true, // Will be suppressed in TUI
+	}
+
+	// Run TUI
+	tuiModel := ui.NewBootstrapModel(ctx, input, agentsList)
+	p := tea.NewProgram(tuiModel)
+	finalModel, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("TUI error: %w", err)
+	}
+
+	bootstrapModel, ok := finalModel.(ui.BootstrapModel)
+	if !ok {
+		return fmt.Errorf("internal error: invalid model type")
+	}
+
+	if bootstrapModel.Quitting && len(bootstrapModel.Results) < len(agentsList) {
+		fmt.Println("\n⚠️  Bootstrap cancelled.")
+		return nil
+	}
+
+	// Aggregate findings
+	allFindings := agents.AggregateFindings(bootstrapModel.Results)
+	
+	// Render the dashboard summary instead of raw list
+	renderBootstrapDashboard(allFindings)
+
+	if preview || viper.GetBool("preview") {
+		fmt.Println("\n💡 This was a preview. Run 'taskwing bootstrap' to save to memory.")
+		return nil
+	}
+
+	// Save to memory
+	if len(allFindings) == 0 {
+		fmt.Println("\n⚠️  No findings to save.")
+		return nil
+	}
+
+	memoryPath := GetMemoryBasePath()
+	store, err := memory.NewSQLiteStore(memoryPath)
+	if err != nil {
+		return fmt.Errorf("open memory store: %w", err)
+	}
+	defer store.Close()
+	ensureGitignore(memoryPath)
+
+	// Prepare embedding config
+	embeddingCfg := llm.Config{APIKey: apiKey}
+
+	if !viper.GetBool("quiet") {
+		fmt.Print("  Generating embeddings")
+	}
+
+	nodesCreated := 0
+	for _, f := range allFindings {
+		content := f.Title + "\n" + f.Description
+		if f.Why != "" {
+			content += "\n\nWhy: " + f.Why
+		}
+		if f.Tradeoffs != "" {
+			content += "\nTradeoffs: " + f.Tradeoffs
+		}
+
+		node := memory.Node{
+			ID:      uuid.New().String(),
+			Type:    string(f.Type),
+			Summary: f.Title,
+			Content: f.Description,
+		}
+
+		if f.Why != "" {
+			node.Content += "\n\nWhy: " + f.Why
+		}
+		if f.Tradeoffs != "" {
+			node.Content += "\nTradeoffs: " + f.Tradeoffs
+		}
+
+		// Generate embedding for semantic search
+		if embedding, err := knowledge.GenerateEmbedding(ctx, content, embeddingCfg); err == nil {
+			node.Embedding = embedding
+			if !viper.GetBool("quiet") {
+				fmt.Print(".")
+			}
+		}
+
+		if err := store.CreateNode(node); err != nil {
+			continue
+		}
+		nodesCreated++
+	}
+
+	if !viper.GetBool("quiet") {
+		fmt.Println(" done")
+	}
+
+	fmt.Printf("\n✅ Saved %d knowledge nodes to memory.\n", nodesCreated)
+	return nil
+}
+
+func renderBootstrapDashboard(findings []agents.Finding) {
+	var (
+		headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+		cardStyle   = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).Padding(0, 1).BorderForeground(lipgloss.Color("63")).MarginLeft(1)
+		keyStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("205")) // Pink
+		valStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("252")) // White
+		subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")) // Gray
+	)
+
+	// 1. Extract Stack
+	var stack []string
+	for _, f := range findings {
+		if f.Type == agents.FindingTypeDependency {
+			stack = append(stack, f.Title)
+		}
+	}
+	// Limit stack items
+	if len(stack) > 5 {
+		stack = stack[:5]
+	}
+	stackStr := strings.Join(stack, " • ")
+	if stackStr == "" {
+		stackStr = "Detecting..."
+	}
+
+	// 2. Counts
+	grouped := agents.GroupFindingsByType(findings)
+	counts := fmt.Sprintf("🎯 %d Decisions • 📦 %d Features", 
+		len(grouped[agents.FindingTypeDecision]), 
+		len(grouped[agents.FindingTypeFeature]))
+
+	// Render "DNA" Summary
+	fmt.Println()
+	fmt.Println(headerStyle.Render(" 🧬 Project DNA"))
+	dnaContent := fmt.Sprintf("%s\n%s", 
+		keyStyle.Render("Stack: ") + valStyle.Render(stackStr),
+		keyStyle.Render("Scope: ") + valStyle.Render(counts),
+	)
+	fmt.Println(cardStyle.Render(dnaContent))
+	fmt.Println()
+
+	// 3. Highlights (Top 3 Decisions)
+	var highlights []agents.Finding
+	for _, f := range findings {
+		if f.Type == agents.FindingTypeDecision && f.Why != "" {
+			highlights = append(highlights, f)
+		}
+	}
+	if len(highlights) > 3 {
+		highlights = highlights[:3]
+	}
+
+	if len(highlights) > 0 {
+		fmt.Println(headerStyle.Render(" 💡 Highlights"))
+		
+		for i, h := range highlights {
+			title := h.Title
+			why := h.Why
+			if len(why) > 70 {
+				why = why[:70] + "..."
+			}
+
+			fmt.Printf(" %d. %s\n", i+1, valStyle.Render(title))
+			fmt.Printf("    %s\n", subtleStyle.Render(why))
+		}
+		fmt.Println()
+	}
 }
 
 func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey string) error {
@@ -449,120 +663,10 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 	return nil
 }
 
-func runBasicBootstrap(cwd string, preview bool) error {
-	if viper.GetBool("json") {
-		fmt.Fprintln(os.Stderr, "Scanning repository...")
-	} else {
-		fmt.Println("🔍 Scanning repository...")
-	}
-
-	scanner := bootstrap.NewScanner(cwd)
-	result, err := scanner.Scan()
-	if err != nil {
-		return fmt.Errorf("scan: %w", err)
-	}
-
-	if viper.GetBool("json") {
-		jsonBytes, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("marshal scan result: %w", err)
-		}
-		fmt.Println(string(jsonBytes))
-	} else {
-		result.PrintPreview()
-	}
-
-	if preview || viper.GetBool("preview") {
-		if viper.GetBool("json") {
-			fmt.Fprintln(os.Stderr, "\nThis was a preview. Run 'taskwing bootstrap' to save to memory.")
-			fmt.Fprintln(os.Stderr, "Tip: Run without --basic for LLM-powered analysis.")
-		} else {
-			fmt.Println("\n💡 This was a preview. Run 'taskwing bootstrap' to save to memory.")
-			fmt.Println("   Tip: Run without --basic for LLM-powered analysis.")
-		}
-		return nil
-	}
-
-	if len(result.Features) == 0 && len(result.Decisions) == 0 {
-		if viper.GetBool("json") {
-			fmt.Fprintln(os.Stderr, "\nNothing to save. No features or decisions detected.")
-			fmt.Fprintln(os.Stderr, "Tip: Run without --basic for LLM-powered analysis.")
-		} else {
-			fmt.Println("\n⚠️  Nothing to save. No features or decisions detected.")
-			fmt.Println("   Tip: Run without --basic for LLM-powered analysis.")
-		}
-		return nil
-	}
-
-	memoryPath := GetMemoryBasePath()
-	store, err := memory.NewSQLiteStore(memoryPath)
-	if err != nil {
-		return fmt.Errorf("open memory store: %w", err)
-	}
-	defer store.Close()
-	ensureGitignore(memoryPath)
-
-	featuresCreated := 0
-	for _, f := range result.Features {
-		err := store.CreateFeature(memory.Feature{
-			Name:     f.Name,
-			OneLiner: f.OneLiner,
-			Status:   memory.FeatureStatusActive,
-		})
-		if err != nil {
-			continue
-		}
-		featuresCreated++
-	}
-
-	allFeatures, err := store.ListFeatures()
-	if err != nil {
-		return fmt.Errorf("list features: %w", err)
-	}
-	featureIDByName := make(map[string]string, len(allFeatures))
-	for _, f := range allFeatures {
-		key := strings.ToLower(strings.TrimSpace(f.Name))
-		if key == "" {
-			continue
-		}
-		featureIDByName[key] = f.ID
-	}
-
-	decisionsCreated := 0
-	for _, d := range result.Decisions {
-		featureKey := strings.ToLower(strings.TrimSpace(d.Feature))
-		featureID := featureIDByName[featureKey]
-		if featureID == "" {
-			continue
-		}
-
-		err := store.AddDecision(featureID, memory.Decision{
-			Title:     d.Title,
-			Summary:   d.Reasoning,
-			Reasoning: d.Reasoning,
-		})
-		if err == nil {
-			decisionsCreated++
-		}
-	}
-
-	if viper.GetBool("json") {
-		fmt.Fprintf(os.Stderr, "\nBootstrap complete:\n")
-		fmt.Fprintf(os.Stderr, "  Features created: %d\n", featuresCreated)
-		fmt.Fprintf(os.Stderr, "  Decisions created: %d\n", decisionsCreated)
-	} else {
-		fmt.Printf("\n✓ Bootstrap complete:\n")
-		fmt.Printf("  • Features created: %d\n", featuresCreated)
-		fmt.Printf("  • Decisions created: %d\n", decisionsCreated)
-	}
-
-	return nil
-}
-
 func init() {
 	rootCmd.AddCommand(bootstrapCmd)
 	bootstrapCmd.Flags().Bool("preview", false, "Preview what would be generated without saving")
-	bootstrapCmd.Flags().Bool("basic", false, "Use heuristic scan only (no LLM calls)")
+	bootstrapCmd.Flags().Bool("legacy", false, "Use legacy single-LLM bootstrap (default: parallel agents)")
 }
 
 // ensureGitignore creates .gitignore in the memory directory if it doesn't exist

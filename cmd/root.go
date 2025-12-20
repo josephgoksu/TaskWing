@@ -22,12 +22,12 @@ var rootCmd = &cobra.Command{
 	Use:   "taskwing",
 	Short: "TaskWing - Knowledge Graph for Engineering Teams",
 	Long: `
- _____         _   __        ___
-|_   _|_ _ ___| | _\ \      / (_)_ __   __ _
-  | |/ _' / __| |/ /\ \ /\ / /| | '_ \ / _' |
-  | | (_| \__ \   <  \ V  V / | | | | | (_| |
-  |_|\__,_|___/_|\_\  \_/\_/  |_|_| |_|\__, |
-                                       |___/
+████████╗ █████╗ ███████╗██╗  ██╗██╗    ██╗██╗███╗   ██╗ ██████╗
+╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝██║    ██║██║████╗  ██║██╔════╝
+   ██║   ███████║███████╗█████╔╝ ██║ █╗ ██║██║██╔██╗ ██║██║  ███╗
+   ██║   ██╔══██║╚════██║██╔═██╗ ██║███╗██║██║██║╚██╗██║██║   ██║
+   ██║   ██║  ██║███████║██║  ██╗╚███╔███╔╝██║██║ ╚████║╚██████╔╝
+   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝
 
 TaskWing captures the decisions, context, and rationale behind your codebase—
 making it queryable by humans and AI.
@@ -37,7 +37,8 @@ Key Commands:
   taskwing add "text"     Add knowledge (AI classifies it)
   taskwing list           View all knowledge by type
   taskwing context "q"    Semantic search
-  taskwing mcp            Start MCP server for AI integration`,
+  taskwing mcp            Start MCP server for AI integration
+  taskwing mcp install    Setup MCP for Cursor/Claude/Gemini`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			_ = cmd.Help()

@@ -35,7 +35,15 @@ Example usage with Claude Code:
   taskwing mcp
 
 The server will run until the client disconnects.`,
+	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// If arguments are provided but no subcommand was matched by Cobra,
+		// it might mean an invalid subcommand or argument.
+		// However, to maintain "taskwing mcp" as the way to start the server,
+		// we only error if it looks like a subcommand attempt.
+		if len(args) > 0 {
+			return fmt.Errorf("unknown command %q for %q\nRun '%s --help' for usage", args[0], cmd.CommandPath(), cmd.Root().Name())
+		}
 		return runMCPServer(cmd.Context())
 	},
 }
@@ -100,7 +108,16 @@ func runMCPServer(ctx context.Context) error {
 		}
 
 		// Fallback to legacy feature system
-		return handleLegacyContext(store, query)
+		result, err := handleLegacyContext(store, query)
+		if err != nil && query == "" {
+			// If it's a summary query and it failed/is empty, return a helpful message
+			return &mcpsdk.CallToolResultFor[any]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{Text: "Project memory is empty. Run 'taskwing bootstrap' to analyze this repository and generate context."},
+				},
+			}, nil
+		}
+		return result, err
 	})
 
 	// Run the server

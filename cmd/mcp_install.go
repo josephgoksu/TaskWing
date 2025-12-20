@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // mcpInstallCmd represents the install command
@@ -67,30 +69,30 @@ Examples:
 
 		switch target {
 		case "cursor":
-			installLocalMCP(cwd, ".cursor", binPath)
+			installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
 		case "windsurf":
-			installLocalMCP(cwd, ".windsurf", binPath)
+			installLocalMCP(cwd, ".windsurf", "mcp.json", binPath)
 		case "claude":
 			if globalInstall {
 				installGlobalMCP("claude", binPath, cwd)
 			} else {
-				installLocalMCP(cwd, ".claude", binPath)
+				installLocalMCP(cwd, ".claude", "mcp.json", binPath)
 			}
 		case "gemini":
 			if globalInstall {
 				installGlobalMCP("gemini", binPath, cwd)
 			} else {
-				installLocalMCP(cwd, ".gemini", binPath)
+				installLocalMCP(cwd, ".gemini", "settings.json", binPath)
 			}
 		case "all":
-			installLocalMCP(cwd, ".cursor", binPath)
-			installLocalMCP(cwd, ".windsurf", binPath)
+			installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
+			installLocalMCP(cwd, ".windsurf", "mcp.json", binPath)
 			if globalInstall {
 				installGlobalMCP("claude", binPath, cwd)
 				installGlobalMCP("gemini", binPath, cwd)
 			} else {
-				installLocalMCP(cwd, ".claude", binPath)
-				installLocalMCP(cwd, ".gemini", binPath)
+				installLocalMCP(cwd, ".claude", "mcp.json", binPath)
+				installLocalMCP(cwd, ".gemini", "settings.json", binPath)
 			}
 		default:
 			fmt.Printf("Unknown editor: %s\n", target)
@@ -114,14 +116,14 @@ type MCPConfig struct {
 	MCPServers map[string]MCPServerConfig `json:"mcpServers"`
 }
 
-func installLocalMCP(projectDir, configDirName, binPath string) {
+func installLocalMCP(projectDir, configDirName, configFileName, binPath string) {
 	configDir := filepath.Join(projectDir, configDirName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		fmt.Printf("❌ Failed to create %s directory: %v\n", configDirName, err)
 		return
 	}
 
-	configFile := filepath.Join(configDir, "mcp.json")
+	configFile := filepath.Join(configDir, configFileName)
 
 	// Check if file exists to avoid overwriting other servers (though unlikely in a pure .cursor/mcp.json)
 	// For Cursor/Windsurf, it's usually safe to read/modify.
@@ -130,7 +132,7 @@ func installLocalMCP(projectDir, configDirName, binPath string) {
 	if content, err := os.ReadFile(configFile); err == nil {
 		if err := json.Unmarshal(content, &config); err != nil {
 			// If invalid JSON, start fresh but warn
-			fmt.Printf("⚠️  Existing %s/mcp.json was invalid, creating new one.\n", configDirName)
+			fmt.Printf("⚠️  Existing %s/%s was invalid, creating new one.\n", configDirName, configFileName)
 			config.MCPServers = make(map[string]MCPServerConfig)
 		}
 	} else {
@@ -151,24 +153,55 @@ func installLocalMCP(projectDir, configDirName, binPath string) {
 }
 
 func installGlobalMCP(app string, binPath, projectDir string) {
+	switch app {
+	case "claude":
+		installClaudeCodeCLI(binPath, projectDir)
+	case "gemini":
+		installGeminiGlobal(binPath, projectDir)
+	}
+}
+
+func installClaudeCodeCLI(binPath, projectDir string) {
+	projectName := filepath.Base(projectDir)
+	// Sanitize: replace dots with underscores (Claude CLI doesn't allow dots in names)
+	projectName = strings.ReplaceAll(projectName, ".", "_")
+	serverName := fmt.Sprintf("taskwing-%s", projectName)
+
+	if viper.GetBool("preview") {
+		fmt.Printf("[PREVIEW] Would run: claude mcp add --transport stdio %s -- %s mcp\n", serverName, binPath)
+		fmt.Printf("✅ Would install for claude as '%s'\n", serverName)
+		return
+	}
+
+	// Run: claude mcp add --transport stdio <name> -- <binPath> mcp
+	cmd := exec.Command("claude", "mcp", "add", "--transport", "stdio", serverName, "--", binPath, "mcp")
+	cmd.Dir = projectDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("❌ Failed to run 'claude mcp add': %v\n", err)
+		fmt.Printf("   Make sure Claude Code CLI is installed and in PATH.\n")
+		fmt.Printf("   Manual command: claude mcp add --transport stdio %s -- %s mcp\n", serverName, binPath)
+		return
+	}
+
+	fmt.Printf("✅ Installed for claude as '%s'\n", serverName)
+}
+
+func installGeminiGlobal(binPath, projectDir string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Printf("❌ Could not find home directory: %v\n", err)
 		return
 	}
 
-	var configFile string
-	switch app {
-	case "claude":
-		configFile = filepath.Join(home, ".claude", "mcp.json")
-	case "gemini":
-		configFile = filepath.Join(home, ".gemini", "settings.json")
-	}
+	configFile := filepath.Join(home, ".gemini", "settings.json")
 
 	// Ensure dir exists
 	configDir := filepath.Dir(configFile)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		fmt.Printf("❌ Failed to create config directory for %s: %v\n", app, err)
+		fmt.Printf("❌ Failed to create config directory for gemini: %v\n", err)
 		return
 	}
 
@@ -177,7 +210,7 @@ func installGlobalMCP(app string, binPath, projectDir string) {
 	// Read existing
 	if content, err := os.ReadFile(configFile); err == nil {
 		if err := json.Unmarshal(content, &config); err != nil {
-			fmt.Printf("❌ Failed to parse existing %s config (it might contain comments or be invalid JSON).\n   Please add manually.\n", app)
+			fmt.Printf("❌ Failed to parse existing gemini config. Please add manually.\n")
 			return
 		}
 	} else {
@@ -198,10 +231,15 @@ func installGlobalMCP(app string, binPath, projectDir string) {
 	}
 
 	writeJSON(configFile, config)
-	fmt.Printf("✅ Installed for %s as '%s' in %s\n", app, serverName, configFile)
+	fmt.Printf("✅ Installed for gemini as '%s' in %s\n", serverName, configFile)
 }
 
 func writeJSON(path string, data interface{}) {
+	if viper.GetBool("preview") {
+		fmt.Printf("[PREVIEW] Would write JSON to %s\n", path)
+		return
+	}
+
 	bytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		fmt.Printf("❌ Failed to marshal JSON: %v\n", err)
