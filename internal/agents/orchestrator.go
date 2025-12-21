@@ -85,7 +85,10 @@ func (o *Orchestrator) RunAll(ctx context.Context, input Input) ([]Output, error
 func AggregateFindings(outputs []Output) []Finding {
 	var all []Finding
 	for _, out := range outputs {
-		all = append(all, out.Findings...)
+		for _, f := range out.Findings {
+			f.SourceAgent = out.AgentName
+			all = append(all, f)
+		}
 	}
 	return all
 }

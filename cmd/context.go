@@ -173,7 +173,9 @@ func runContext(cmd *cobra.Command, args []string) error {
 
 	for i, s := range scored {
 		score := int(s.Score * 10)
-		if score > 10 { score = 10 }
+		if score > 10 {
+			score = 10
+		}
 		bar := barFull.Render(strings.Repeat("━", score)) + barEmpty.Render(strings.Repeat("━", 10-score))
 
 		summary := s.Node.Summary
@@ -182,7 +184,9 @@ func runContext(cmd *cobra.Command, args []string) error {
 		}
 
 		id := s.Node.ID
-		if len(id) > 6 { id = id[:6] }
+		if len(id) > 6 {
+			id = id[:6]
+		}
 
 		fmt.Printf(" %d. %s %s %s\n", i+1, typeIcon(s.Node.Type), sourceTitle.Render(summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)))
 	}
@@ -218,9 +222,9 @@ Be concise and direct.
 	if provider == "" {
 		provider = llm.ProviderOpenAI
 	}
-	model := viper.GetString("llm.modelName")
+	model := viper.GetString("llm.model")
 	if model == "" {
-		model = "gpt-4o-mini"
+		model = llm.DefaultModelForProvider(provider)
 	}
 
 	llmCfg := llm.Config{
@@ -286,12 +290,16 @@ Be concise and direct.
 
 	for i, s := range scored {
 		score := int(s.Score * 10)
-		if score > 10 { score = 10 }
+		if score > 10 {
+			score = 10
+		}
 		bar := barFull.Render(strings.Repeat("━", score)) + barEmpty.Render(strings.Repeat("━", 10-score))
-		
+
 		id := s.Node.ID
-		if len(id) > 6 { id = id[:6] }
-		
+		if len(id) > 6 {
+			id = id[:6]
+		}
+
 		fmt.Printf(" %d. %s %s %s\n", i+1, typeIcon(s.Node.Type), sourceTitle.Render(s.Node.Summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)))
 	}
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -91,14 +92,14 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		} else {
 			// Classify with LLM
 			ctx := context.Background()
-			model := viper.GetString("llm.modelName")
+			model := viper.GetString("llm.model")
 			if model == "" {
-				model = DefaultLLMModel
+				model = config.DefaultOpenAIModel
 			}
 
 			providerStr := viper.GetString("llm.provider")
 			if providerStr == "" {
-				providerStr = "openai"
+				providerStr = config.DefaultProvider
 			}
 
 			provider, err := llm.ValidateProvider(providerStr)

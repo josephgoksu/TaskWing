@@ -100,6 +100,7 @@ func (s *SQLiteStore) initSchema() error {
 		content TEXT NOT NULL,              -- Original text input
 		type TEXT,                          -- AI-inferred: decision, feature, plan, note
 		summary TEXT,                       -- AI-extracted title/summary
+		source_agent TEXT DEFAULT '',       -- Agent that created this node (doc, code, git, deps)
 		embedding BLOB,                     -- Vector for similarity search
 		created_at TEXT NOT NULL
 	);
@@ -125,6 +126,8 @@ func (s *SQLiteStore) initSchema() error {
 
 	-- Indexes for new tables
 	CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
+	CREATE INDEX IF NOT EXISTS idx_nodes_source_agent ON nodes(source_agent);
+	CREATE INDEX IF NOT EXISTS idx_nodes_summary_agent ON nodes(summary, source_agent);
 	CREATE INDEX IF NOT EXISTS idx_node_edges_from ON node_edges(from_node);
 	CREATE INDEX IF NOT EXISTS idx_node_edges_to ON node_edges(to_node);
 	CREATE INDEX IF NOT EXISTS idx_node_edges_relation ON node_edges(relation);
@@ -833,9 +836,9 @@ func (s *SQLiteStore) CreateNode(n Node) error {
 	}
 
 	_, err := s.db.Exec(`
-		INSERT INTO nodes (id, content, type, summary, embedding, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, n.ID, n.Content, n.Type, n.Summary, embeddingBytes, n.CreatedAt.Format(time.RFC3339))
+		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339))
 
 	if err != nil {
 		return fmt.Errorf("insert node: %w", err)
@@ -848,13 +851,13 @@ func (s *SQLiteStore) CreateNode(n Node) error {
 func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 	var n Node
 	var createdAt string
-	var nodeType, summary sql.NullString
+	var nodeType, summary, sourceAgent sql.NullString
 	var embeddingBytes []byte
 
 	err := s.db.QueryRow(`
-		SELECT id, content, type, summary, embedding, created_at
+		SELECT id, content, type, summary, source_agent, embedding, created_at
 		FROM nodes WHERE id = ?
-	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &embeddingBytes, &createdAt)
+	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("node not found: %s", id)
@@ -865,6 +868,7 @@ func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 
 	n.Type = nodeType.String
 	n.Summary = summary.String
+	n.SourceAgent = sourceAgent.String
 	n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	if len(embeddingBytes) > 0 {
 		n.Embedding = bytesToFloat32Slice(embeddingBytes)
@@ -880,12 +884,12 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 
 	if nodeType != "" {
 		rows, err = s.db.Query(`
-			SELECT id, content, type, summary, created_at
+			SELECT id, content, type, summary, source_agent, created_at
 			FROM nodes WHERE type = ? ORDER BY created_at DESC
 		`, nodeType)
 	} else {
 		rows, err = s.db.Query(`
-			SELECT id, content, type, summary, created_at
+			SELECT id, content, type, summary, source_agent, created_at
 			FROM nodes ORDER BY created_at DESC
 		`)
 	}
@@ -899,14 +903,15 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 	for rows.Next() {
 		var n Node
 		var createdAt string
-		var nodeTypeStr, summary sql.NullString
+		var nodeTypeStr, summary, sourceAgent sql.NullString
 
-		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &createdAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &createdAt); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 
 		n.Type = nodeTypeStr.String
 		n.Summary = summary.String
+		n.SourceAgent = sourceAgent.String
 		n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		nodes = append(nodes, n)
 	}
@@ -924,6 +929,64 @@ func (s *SQLiteStore) DeleteNode(id string) error {
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
 		return fmt.Errorf("node not found: %s", id)
+	}
+
+	return nil
+}
+
+// DeleteNodesByAgent removes all nodes created by a specific agent.
+// This is used for agent-level replace strategy during selective re-bootstrapping.
+func (s *SQLiteStore) DeleteNodesByAgent(agentName string) error {
+	_, err := s.db.Exec("DELETE FROM nodes WHERE source_agent = ?", agentName)
+	if err != nil {
+		return fmt.Errorf("delete nodes by agent: %w", err)
+	}
+	return nil
+}
+
+// UpsertNodeBySummary inserts a new node or updates existing one matched by summary and agent.
+// This is used for incremental watch mode - findings with same title from same agent are updated.
+func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
+	if n.ID == "" {
+		n.ID = "n-" + uuid.New().String()[:8]
+	}
+	if n.CreatedAt.IsZero() {
+		n.CreatedAt = time.Now().UTC()
+	}
+
+	// Serialize embedding to bytes if present
+	var embeddingBytes []byte
+	if len(n.Embedding) > 0 {
+		embeddingBytes = float32SliceToBytes(n.Embedding)
+	}
+
+	// Use INSERT OR REPLACE with a check for existing summary+agent combo
+	// First check if node with same summary+agent exists
+	var existingID string
+	err := s.db.QueryRow(`
+		SELECT id FROM nodes WHERE summary = ? AND source_agent = ?
+	`, n.Summary, n.SourceAgent).Scan(&existingID)
+
+	if err == nil && existingID != "" {
+		// Update existing node
+		_, err = s.db.Exec(`
+			UPDATE nodes SET content = ?, type = ?, embedding = ?
+			WHERE id = ?
+		`, n.Content, n.Type, embeddingBytes, existingID)
+		if err != nil {
+			return fmt.Errorf("update existing node: %w", err)
+		}
+		return nil
+	}
+
+	// Insert new node
+	_, err = s.db.Exec(`
+		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339))
+
+	if err != nil {
+		return fmt.Errorf("insert node: %w", err)
 	}
 
 	return nil

@@ -96,7 +96,7 @@ Create `~/.taskwing.yaml` or `.taskwing.yaml` in your project:
 ```yaml
 llm:
   provider: openai          # or ollama
-  modelName: gpt-4o-mini
+  model: gpt-5-mini-2025-08-07
   apiKey: ""                # or use OPENAI_API_KEY env var
 ```
 

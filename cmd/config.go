@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 const (
-	configName      = ".taskwing"
-	envPrefix       = "TASKWING"
-	DefaultLLMModel = "gpt-5-mini-2025-08-07" // Used by bootstrap and LLM analyzer
+	configName = ".taskwing"
+	envPrefix  = "TASKWING"
 )
 
 // initConfig reads in config file and ENV variables if set.
@@ -57,10 +57,10 @@ func initConfig() {
 	viper.SetDefault("memory.path", ".taskwing/memory")
 
 	// LLM defaults (for bootstrap scanner)
-	viper.SetDefault("llm.provider", "openai") // or "ollama"
-	viper.SetDefault("llm.modelName", DefaultLLMModel)
+	viper.SetDefault("llm.provider", config.DefaultProvider)
+	viper.SetDefault("llm.model", config.DefaultOpenAIModel)
 	viper.SetDefault("llm.apiKey", "")
-	viper.SetDefault("llm.baseURL", "http://localhost:11434") // For Ollama
+	viper.SetDefault("llm.baseURL", config.DefaultOllamaURL)
 	viper.SetDefault("llm.maxOutputTokens", 0)
 	viper.SetDefault("llm.temperature", 0.7)
 }

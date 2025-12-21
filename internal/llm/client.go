@@ -5,17 +5,21 @@ import (
 	"context"
 	"fmt"
 
+	ollamaEmbed "github.com/cloudwego/eino-ext/components/embedding/ollama"
+	openaiEmbed "github.com/cloudwego/eino-ext/components/embedding/openai"
 	"github.com/cloudwego/eino-ext/components/model/ollama"
 	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/model"
+	"github.com/josephgoksu/TaskWing/internal/config"
 )
 
 // Provider identifies the LLM provider to use.
 type Provider string
 
 const (
-	ProviderOpenAI Provider = "openai"
-	ProviderOllama Provider = "ollama"
+	ProviderOpenAI Provider = Provider(config.ProviderOpenAI)
+	ProviderOllama Provider = Provider(config.ProviderOllama)
 )
 
 // Config holds configuration for creating an LLM client.
@@ -42,7 +46,7 @@ func NewChatModel(ctx context.Context, cfg Config) (model.BaseChatModel, error) 
 	case ProviderOllama:
 		baseURL := cfg.BaseURL
 		if baseURL == "" {
-			baseURL = "http://localhost:11434"
+			baseURL = config.DefaultOllamaURL
 		}
 		return ollama.NewChatModel(ctx, &ollama.ChatModelConfig{
 			BaseURL: baseURL,
@@ -63,5 +67,48 @@ func ValidateProvider(p string) (Provider, error) {
 		return ProviderOllama, nil
 	default:
 		return "", fmt.Errorf("unsupported provider: %s", p)
+	}
+}
+
+// DefaultModelForProvider returns the default model for a given provider.
+// This is a convenience wrapper around config.DefaultModelForProvider.
+func DefaultModelForProvider(p Provider) string {
+	return config.DefaultModelForProvider(string(p))
+}
+
+// NewEmbeddingModel creates an EmbeddingModel instance based on the provider configuration.
+func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, error) {
+	switch cfg.Provider {
+	case ProviderOpenAI:
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("OpenAI API key is required")
+		}
+		// Default to text-embedding-3-small if not specified
+		modelName := cfg.Model
+		if modelName == "" {
+			modelName = "text-embedding-3-small"
+		}
+		return openaiEmbed.NewEmbedder(ctx, &openaiEmbed.EmbeddingConfig{
+			Model:  modelName,
+			APIKey: cfg.APIKey,
+		})
+
+	case ProviderOllama:
+		baseURL := cfg.BaseURL
+		if baseURL == "" {
+			baseURL = config.DefaultOllamaURL
+		}
+		// Default to mxbai-embed-large or similar if not specified, but usually caller specifies
+		modelName := cfg.Model
+		if modelName == "" {
+			modelName = "nomic-embed-text" // Common default for Ollama
+		}
+		return ollamaEmbed.NewEmbedder(ctx, &ollamaEmbed.EmbeddingConfig{
+			BaseURL: baseURL,
+			Model:   modelName,
+		})
+
+	default:
+		return nil, fmt.Errorf("unsupported LLM provider: %s", cfg.Provider)
 	}
 }

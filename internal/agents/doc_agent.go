@@ -32,10 +32,19 @@ func (a *DocAgent) Description() string { return "Analyzes documentation to extr
 func (a *DocAgent) Run(ctx context.Context, input Input) (Output, error) {
 	var output Output
 
-	// Gather documentation content
-	docContent := a.gatherDocs(input.BasePath)
+	// Gather documentation content based on mode
+	var docContent string
+	if input.Mode == ModeWatch && len(input.ChangedFiles) > 0 {
+		// Watch mode: only read changed files
+		docContent = a.gatherChangedDocs(input.BasePath, input.ChangedFiles)
+	} else {
+		// Bootstrap mode: full scan
+		docContent = a.gatherDocs(input.BasePath)
+	}
+
 	if docContent == "" {
-		return output, fmt.Errorf("no documentation found")
+		// No docs to analyze - this is OK in watch mode for non-doc changes
+		return output, nil
 	}
 
 	// Build prompt
@@ -66,6 +75,33 @@ func (a *DocAgent) Run(ctx context.Context, input Input) (Output, error) {
 
 	output.Findings = findings
 	return output, nil
+}
+
+// gatherChangedDocs reads only the specified changed files
+func (a *DocAgent) gatherChangedDocs(basePath string, changedFiles []string) string {
+	var sb strings.Builder
+
+	for _, relPath := range changedFiles {
+		// Only process .md files
+		if !strings.HasSuffix(strings.ToLower(relPath), ".md") {
+			continue
+		}
+
+		fullPath := filepath.Join(basePath, relPath)
+		content, err := os.ReadFile(fullPath)
+		if err != nil {
+			continue
+		}
+
+		// Limit size
+		if len(content) > 8000 {
+			content = content[:8000]
+		}
+
+		sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, string(content)))
+	}
+
+	return sb.String()
 }
 
 func (a *DocAgent) gatherDocs(basePath string) string {

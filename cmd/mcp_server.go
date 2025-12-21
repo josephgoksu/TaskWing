@@ -14,6 +14,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/spec"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -65,6 +66,9 @@ func runMCPServer(ctx context.Context) error {
 	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	fmt.Fprintf(os.Stderr, "Knowledge Graph for Engineering Teams\n")
 	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+
+	// Get current working directory
+	cwd, _ := os.Getwd()
 
 	// Initialize memory store
 	store, err := memory.NewSQLiteStore(GetMemoryBasePath())
@@ -119,6 +123,105 @@ func runMCPServer(ctx context.Context) error {
 		}
 		return result, err
 	})
+
+	// Register list-specs tool
+	specStore, specErr := spec.NewStore(cwd)
+	if specErr == nil {
+		listSpecsTool := &mcpsdk.Tool{
+			Name:        "list-specs",
+			Description: "List all feature specifications in this project.",
+		}
+
+		mcpsdk.AddTool(server, listSpecsTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[struct{}]) (*mcpsdk.CallToolResultFor[any], error) {
+			specs, err := specStore.ListSpecs()
+			if err != nil {
+				return &mcpsdk.CallToolResultFor[any]{
+					Content: []mcpsdk.Content{
+						&mcpsdk.TextContent{Text: fmt.Sprintf("Error listing specs: %v", err)},
+					},
+				}, nil
+			}
+
+			if len(specs) == 0 {
+				return &mcpsdk.CallToolResultFor[any]{
+					Content: []mcpsdk.Content{
+						&mcpsdk.TextContent{Text: "No specs found. Create one with: taskwing spec create \"feature description\""},
+					},
+				}, nil
+			}
+
+			jsonBytes, _ := json.MarshalIndent(specs, "", "  ")
+			return &mcpsdk.CallToolResultFor[any]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{Text: string(jsonBytes)},
+				},
+			}, nil
+		})
+
+		// Register list-tasks tool
+		type ListTasksParams struct {
+			SpecSlug string `json:"spec_slug,omitempty"`
+		}
+
+		listTasksTool := &mcpsdk.Tool{
+			Name:        "list-tasks",
+			Description: "List development tasks. Use {\"spec_slug\":\"slug\"} to filter by spec.",
+		}
+
+		mcpsdk.AddTool(server, listTasksTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ListTasksParams]) (*mcpsdk.CallToolResultFor[any], error) {
+			tasks, err := specStore.ListTasks(params.Arguments.SpecSlug)
+			if err != nil {
+				return &mcpsdk.CallToolResultFor[any]{
+					Content: []mcpsdk.Content{
+						&mcpsdk.TextContent{Text: fmt.Sprintf("Error listing tasks: %v", err)},
+					},
+				}, nil
+			}
+
+			if len(tasks) == 0 {
+				return &mcpsdk.CallToolResultFor[any]{
+					Content: []mcpsdk.Content{
+						&mcpsdk.TextContent{Text: "No tasks found."},
+					},
+				}, nil
+			}
+
+			jsonBytes, _ := json.MarshalIndent(tasks, "", "  ")
+			return &mcpsdk.CallToolResultFor[any]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{Text: string(jsonBytes)},
+				},
+			}, nil
+		})
+
+		// Register get-task-context tool
+		type GetTaskContextParams struct {
+			TaskID string `json:"task_id"`
+		}
+
+		getTaskTool := &mcpsdk.Tool{
+			Name:        "get-task-context",
+			Description: "Get full context for a task including spec details and relevant code. Use {\"task_id\":\"task-abc123\"}",
+		}
+
+		mcpsdk.AddTool(server, getTaskTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[GetTaskContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
+			taskCtx, err := specStore.GetTaskContext(params.Arguments.TaskID)
+			if err != nil {
+				return &mcpsdk.CallToolResultFor[any]{
+					Content: []mcpsdk.Content{
+						&mcpsdk.TextContent{Text: fmt.Sprintf("Task not found: %v", err)},
+					},
+				}, nil
+			}
+
+			jsonBytes, _ := json.MarshalIndent(taskCtx, "", "  ")
+			return &mcpsdk.CallToolResultFor[any]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{Text: string(jsonBytes)},
+				},
+			}, nil
+		})
+	}
 
 	// Run the server
 	if mcpPort > 0 {

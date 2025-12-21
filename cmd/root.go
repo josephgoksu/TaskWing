@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/josephgoksu/TaskWing/internal/telemetry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -39,6 +40,40 @@ Key Commands:
   taskwing context "q"    Semantic search
   taskwing mcp            Start MCP server for AI integration
   taskwing mcp install    Setup MCP for Cursor/Claude/Gemini`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Skip telemetry for completion and help commands
+		if cmd.Name() == "completion" || cmd.Name() == "help" || cmd.Name() == "__complete" {
+			return nil
+		}
+		// Skip telemetry init for telemetry config commands (to avoid recursion)
+		if cmd.Parent() != nil && cmd.Parent().Name() == "telemetry" {
+			return nil
+		}
+
+		// Check if telemetry is disabled via flag or config
+		disabled := viper.GetBool("telemetry.disabled")
+		if disabled {
+			return telemetry.Init(version, true)
+		}
+
+		// Check if we need consent and prompt if necessary
+		_, err := telemetry.CheckAndPromptConsent(version)
+		if err != nil {
+			// Don't fail the command if telemetry setup fails
+			// Just log if verbose
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "Warning: telemetry setup failed: %v\n", err)
+			}
+		}
+
+		// Initialize telemetry client
+		return telemetry.Init(version, false)
+	},
+	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+		// Flush any pending telemetry events
+		telemetry.Shutdown()
+		return nil
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			_ = cmd.Help()
@@ -64,11 +99,13 @@ func init() {
 	rootCmd.PersistentFlags().Bool("json", false, "Output as JSON")
 	rootCmd.PersistentFlags().Bool("quiet", false, "Minimal output")
 	rootCmd.PersistentFlags().Bool("preview", false, "Dry run (no changes)")
+	rootCmd.PersistentFlags().Bool("no-telemetry", false, "Disable anonymous telemetry")
 
 	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	_ = viper.BindPFlag("json", rootCmd.PersistentFlags().Lookup("json"))
 	_ = viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
 	_ = viper.BindPFlag("preview", rootCmd.PersistentFlags().Lookup("preview"))
+	_ = viper.BindPFlag("telemetry.disabled", rootCmd.PersistentFlags().Lookup("no-telemetry"))
 }
 
 // GetVersion returns the application version

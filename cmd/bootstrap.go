@@ -12,11 +12,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/uuid"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/google/uuid"
 	"github.com/josephgoksu/TaskWing/internal/agents"
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -69,14 +70,14 @@ Examples:
 
 // runAgentBootstrap uses the parallel agent architecture for analysis
 func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey string) error {
-	model := viper.GetString("llm.modelName")
+	model := viper.GetString("llm.model")
 	if model == "" {
-		model = DefaultLLMModel
+		model = config.DefaultOpenAIModel
 	}
 
 	providerStr := viper.GetString("llm.provider")
 	if providerStr == "" {
-		providerStr = "openai"
+		providerStr = config.DefaultProvider
 	}
 
 	provider, err := llm.ValidateProvider(providerStr)
@@ -102,7 +103,7 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey str
 
 	// Create agents
 	docAgent := agents.NewDocAgent(llmCfg)
-	codeAgent := agents.NewCodeAgent(llmCfg)
+	codeAgent := agents.NewReactCodeAgent(llmCfg, cwd)
 	gitAgent := agents.NewGitAgent(llmCfg)
 	depsAgent := agents.NewDepsAgent(llmCfg)
 
@@ -112,6 +113,7 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey str
 	input := agents.Input{
 		BasePath:    cwd,
 		ProjectName: projectName,
+		Mode:        agents.ModeBootstrap,
 		Verbose:     true, // Will be suppressed in TUI
 	}
 
@@ -135,7 +137,7 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey str
 
 	// Aggregate findings
 	allFindings := agents.AggregateFindings(bootstrapModel.Results)
-	
+
 	// Render the dashboard summary instead of raw list
 	renderBootstrapDashboard(allFindings)
 
@@ -159,7 +161,11 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey str
 	ensureGitignore(memoryPath)
 
 	// Prepare embedding config
-	embeddingCfg := llm.Config{APIKey: apiKey}
+	embeddingCfg := llm.Config{
+		Provider: provider,
+		APIKey:   apiKey,
+		BaseURL:  viper.GetString("llm.baseURL"),
+	}
 
 	if !viper.GetBool("quiet") {
 		fmt.Print("  Generating embeddings")
@@ -176,10 +182,11 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey str
 		}
 
 		node := memory.Node{
-			ID:      uuid.New().String(),
-			Type:    string(f.Type),
-			Summary: f.Title,
-			Content: f.Description,
+			ID:          uuid.New().String(),
+			Type:        string(f.Type),
+			Summary:     f.Title,
+			Content:     f.Description,
+			SourceAgent: f.SourceAgent,
 		}
 
 		if f.Why != "" {
@@ -238,16 +245,16 @@ func renderBootstrapDashboard(findings []agents.Finding) {
 
 	// 2. Counts
 	grouped := agents.GroupFindingsByType(findings)
-	counts := fmt.Sprintf("🎯 %d Decisions • 📦 %d Features", 
-		len(grouped[agents.FindingTypeDecision]), 
+	counts := fmt.Sprintf("🎯 %d Decisions • 📦 %d Features",
+		len(grouped[agents.FindingTypeDecision]),
 		len(grouped[agents.FindingTypeFeature]))
 
 	// Render "DNA" Summary
 	fmt.Println()
 	fmt.Println(headerStyle.Render(" 🧬 Project DNA"))
-	dnaContent := fmt.Sprintf("%s\n%s", 
-		keyStyle.Render("Stack: ") + valStyle.Render(stackStr),
-		keyStyle.Render("Scope: ") + valStyle.Render(counts),
+	dnaContent := fmt.Sprintf("%s\n%s",
+		keyStyle.Render("Stack: ")+valStyle.Render(stackStr),
+		keyStyle.Render("Scope: ")+valStyle.Render(counts),
 	)
 	fmt.Println(cardStyle.Render(dnaContent))
 	fmt.Println()
@@ -265,7 +272,7 @@ func renderBootstrapDashboard(findings []agents.Finding) {
 
 	if len(highlights) > 0 {
 		fmt.Println(headerStyle.Render(" 💡 Highlights"))
-		
+
 		for i, h := range highlights {
 			title := h.Title
 			why := h.Why
@@ -281,14 +288,14 @@ func renderBootstrapDashboard(findings []agents.Finding) {
 }
 
 func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey string) error {
-	model := viper.GetString("llm.modelName")
+	model := viper.GetString("llm.model")
 	if model == "" {
-		model = DefaultLLMModel
+		model = config.DefaultOpenAIModel
 	}
 
 	providerStr := viper.GetString("llm.provider")
 	if providerStr == "" {
-		providerStr = "openai"
+		providerStr = config.DefaultProvider
 	}
 
 	provider, err := llm.ValidateProvider(providerStr)
@@ -532,7 +539,11 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 	const similarityThreshold = 0.92
 
 	// Prepare embedding config
-	embeddingCfg := llm.Config{APIKey: apiKey}
+	embeddingCfg := llm.Config{
+		Provider: provider,
+		APIKey:   apiKey,
+		BaseURL:  viper.GetString("llm.baseURL"),
+	}
 
 	if !viper.GetBool("quiet") && !viper.GetBool("json") {
 		fmt.Print("  Generating knowledge nodes")

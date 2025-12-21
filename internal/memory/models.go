@@ -80,12 +80,13 @@ type Issue struct {
 // Node represents a piece of knowledge in the graph.
 // Nodes are the universal storage unit - AI classifies them at write-time.
 type Node struct {
-	ID        string    `json:"id"`                  // Unique identifier (n-xxx)
-	Content   string    `json:"content"`             // Original text input
-	Type      string    `json:"type,omitempty"`      // AI-inferred: decision, feature, plan, note
-	Summary   string    `json:"summary,omitempty"`   // AI-extracted title/summary
-	Embedding []float32 `json:"embedding,omitempty"` // Vector for similarity search
-	CreatedAt time.Time `json:"createdAt"`
+	ID          string    `json:"id"`                    // Unique identifier (n-xxx)
+	Content     string    `json:"content"`               // Original text input
+	Type        string    `json:"type,omitempty"`        // AI-inferred: decision, feature, plan, note
+	Summary     string    `json:"summary,omitempty"`     // AI-extracted title/summary
+	SourceAgent string    `json:"sourceAgent,omitempty"` // Agent that created this node (doc, code, git, deps)
+	Embedding   []float32 `json:"embedding,omitempty"`   // Vector for similarity search
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 // NodeEdge represents a relationship between two nodes.

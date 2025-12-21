@@ -9,32 +9,36 @@ import (
 	"math"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	openai "github.com/sashabaranov/go-openai"
 )
 
+// embeddingModelFactory allows injection for testing
+var embeddingModelFactory = llm.NewEmbeddingModel
+
 // GenerateEmbedding creates a vector embedding for the given text.
-// Uses OpenAI's text-embedding-3-small model by default.
+// Uses the configuration to determine provider (OpenAI or Ollama).
 func GenerateEmbedding(ctx context.Context, text string, cfg llm.Config) ([]float32, error) {
-	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("API key required for embeddings")
-	}
-
-	client := openai.NewClient(cfg.APIKey)
-
-	// Use text-embedding-3-small for cost efficiency
-	resp, err := client.CreateEmbeddings(ctx, openai.EmbeddingRequest{
-		Input: []string{text},
-		Model: openai.SmallEmbedding3,
-	})
+	embedder, err := embeddingModelFactory(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("create embedding: %w", err)
+		return nil, fmt.Errorf("create embedding model: %w", err)
 	}
 
-	if len(resp.Data) == 0 {
+	// Eino returns [][]float64
+	embeddings64, err := embedder.EmbedStrings(ctx, []string{text})
+	if err != nil {
+		return nil, fmt.Errorf("generate embedding: %w", err)
+	}
+
+	if len(embeddings64) == 0 {
 		return nil, fmt.Errorf("no embedding returned")
 	}
 
-	return resp.Data[0].Embedding, nil
+	// Convert []float64 to []float32
+	embedding32 := make([]float32, len(embeddings64[0]))
+	for i, v := range embeddings64[0] {
+		embedding32[i] = float32(v)
+	}
+
+	return embedding32, nil
 }
 
 // CosineSimilarity computes the cosine similarity between two vectors.

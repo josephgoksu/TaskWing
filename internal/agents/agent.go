@@ -23,6 +23,16 @@ type Agent interface {
 	Run(ctx context.Context, input Input) (Output, error)
 }
 
+// AgentMode determines how an agent should behave
+type AgentMode string
+
+const (
+	// ModeBootstrap runs full analysis on entire project
+	ModeBootstrap AgentMode = "bootstrap"
+	// ModeWatch runs incremental analysis on changed files only
+	ModeWatch AgentMode = "watch"
+)
+
 // Input provides the context and configuration for an agent run
 type Input struct {
 	// BasePath is the root directory of the project being analyzed
@@ -30,6 +40,12 @@ type Input struct {
 
 	// ProjectName is the name of the project (derived from directory)
 	ProjectName string
+
+	// Mode determines whether to do full scan (bootstrap) or incremental (watch)
+	Mode AgentMode
+
+	// ChangedFiles is the list of files that changed (only used in ModeWatch)
+	ChangedFiles []string
 
 	// ExistingContext is any context gathered by previous agents
 	ExistingContext map[string]any
@@ -81,6 +97,9 @@ type Finding struct {
 
 	// Confidence indicates how certain the agent is (high, medium, low)
 	Confidence string
+
+	// SourceAgent is the agent that produced this finding (doc, code, git, deps)
+	SourceAgent string
 
 	// SourceFiles lists files that informed this finding
 	SourceFiles []string
