@@ -126,3 +126,111 @@ func TestMCPHandshake(t *testing.T) {
 		t.Fatal("Timeout waiting for MCP initialization response")
 	}
 }
+
+// TestMCPPing verifies that the MCP server responds to ping requests.
+func TestMCPPing(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get cwd: %v", err)
+	}
+
+	binPath := filepath.Join(cwd, "../..", "bin", "taskwing")
+	if _, err := os.Stat(binPath); os.IsNotExist(err) {
+		binPath = filepath.Join(cwd, "../..", "taskwing")
+		if _, err := os.Stat(binPath); os.IsNotExist(err) {
+			t.Fatalf("Binary not found. Run 'make build' first.")
+		}
+	}
+
+	cmd := exec.Command(binPath, "mcp")
+	cmd.Dir = filepath.Dir(binPath)
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("Failed to get stdin: %v", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("Failed to get stdout: %v", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatalf("Failed to get stderr: %v", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Failed to start command: %v", err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+	}()
+
+	// Drain stderr
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			t.Logf("[stderr] %s", scanner.Text())
+		}
+	}()
+
+	// Send initialize, then initialized notification, then ping
+	initReq := `{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0"}},"id":1}`
+	initializedNotif := `{"jsonrpc":"2.0","method":"notifications/initialized"}`
+	pingReq := `{"jsonrpc":"2.0","method":"ping","id":2}`
+
+	go func() {
+		defer stdin.Close()
+		_, _ = io.WriteString(stdin, initReq+"\n")
+		time.Sleep(100 * time.Millisecond)
+		_, _ = io.WriteString(stdin, initializedNotif+"\n")
+		time.Sleep(100 * time.Millisecond)
+		_, _ = io.WriteString(stdin, pingReq+"\n")
+	}()
+
+	type response struct {
+		JSONRPC string          `json:"jsonrpc"`
+		Result  json.RawMessage `json:"result,omitempty"`
+		Error   json.RawMessage `json:"error,omitempty"`
+		ID      interface{}     `json:"id"`
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		responseCount := 0
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			t.Logf("[stdout] %s", line)
+
+			var resp response
+			if err := json.Unmarshal([]byte(line), &resp); err == nil {
+				if resp.ID != nil {
+					responseCount++
+					// First response is init, second is ping
+					if responseCount == 2 {
+						// Verify it's the ping response (id=2)
+						if id, ok := resp.ID.(float64); ok && int(id) == 2 {
+							done <- nil
+							return
+						}
+					}
+				}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			done <- fmt.Errorf("Error reading stdout: %v", err)
+		}
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Test Failed: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Timeout waiting for MCP ping response")
+	}
+}
