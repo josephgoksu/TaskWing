@@ -11,13 +11,6 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents"
 )
 
-var (
-	subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	checkStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("42")) // Green
-	errStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("160")) // Red
-	titleStyle  = lipgloss.NewStyle().Bold(true)
-)
-
 type AgentStatus int
 
 const (
@@ -43,13 +36,13 @@ type AgentResultMsg struct {
 }
 
 type BootstrapModel struct {
-	Agents    []*AgentState
-	Context   context.Context
-	Input     agents.Input
+	Agents     []*AgentState
+	Context    context.Context
+	Input      agents.Input
 	RealAgents []agents.Agent
-	Quitting  bool
-	Results   []agents.Output
-	Err       error
+	Quitting   bool
+	Results    []agents.Output
+	Err        error
 }
 
 func NewBootstrapModel(ctx context.Context, input agents.Input, agentsList []agents.Agent) BootstrapModel {
@@ -91,7 +84,7 @@ func (m BootstrapModel) Init() tea.Cmd {
 func runAgent(ctx context.Context, agent agents.Agent, input agents.Input) tea.Cmd {
 	return func() tea.Msg {
 		// Disable verbose logging for the agent to avoid messing up the TUI
-		input.Verbose = false 
+		input.Verbose = false
 		output, err := agent.Run(ctx, input)
 		return AgentResultMsg{
 			Name:   agent.Name(),
@@ -165,21 +158,21 @@ func (m BootstrapModel) View() string {
 		case StatusRunning:
 			s.WriteString(state.Spinner.View())
 			s.WriteString(" ")
-			s.WriteString(titleStyle.Render(state.Name))
+			s.WriteString(StyleTitle.Render(state.Name))
 			s.WriteString(" ")
 			s.WriteString(state.Message)
 		case StatusDone:
-			s.WriteString(checkStyle.Render("✓"))
+			s.WriteString(StyleSuccess.Render("✓"))
 			s.WriteString(" ")
-			s.WriteString(titleStyle.Render(state.Name))
+			s.WriteString(StyleTitle.Render(state.Name))
 			s.WriteString(" ")
-			s.WriteString(subtleStyle.Render(state.Message))
+			s.WriteString(StyleSubtle.Render(state.Message))
 		case StatusError:
-			s.WriteString(errStyle.Render("✗"))
+			s.WriteString(StyleError.Render("✗"))
 			s.WriteString(" ")
-			s.WriteString(titleStyle.Render(state.Name))
+			s.WriteString(StyleTitle.Render(state.Name))
 			s.WriteString(" ")
-			s.WriteString(errStyle.Render(state.Message))
+			s.WriteString(StyleError.Render(state.Message))
 		}
 		s.WriteString("\n")
 	}

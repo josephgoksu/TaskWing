@@ -22,27 +22,13 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "taskwing",
 	Short: "TaskWing - Knowledge Graph for Engineering Teams",
-	Long: `
-████████╗ █████╗ ███████╗██╗  ██╗██╗    ██╗██╗███╗   ██╗ ██████╗
-╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝██║    ██║██║████╗  ██║██╔════╝
-   ██║   ███████║███████╗█████╔╝ ██║ █╗ ██║██║██╔██╗ ██║██║  ███╗
-   ██║   ██╔══██║╚════██║██╔═██╗ ██║███╗██║██║██║╚██╗██║██║   ██║
-   ██║   ██║  ██║███████║██║  ██╗╚███╔███╔╝██║██║ ╚████║╚██████╔╝
-   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝
+	Long: `TaskWing - Knowledge Graph for Engineering Teams
 
-TaskWing captures the decisions, context, and rationale behind your codebase—
-making it queryable by humans and AI.
-
-Key Commands:
-  taskwing bootstrap      Auto-generate knowledge from your repo
-  taskwing add "text"     Add knowledge (AI classifies it)
-  taskwing list           View all knowledge by type
-  taskwing context "q"    Semantic search
-  taskwing mcp            Start MCP server for AI integration
-  taskwing mcp install    Setup MCP for Cursor/Claude/Gemini`,
+Captures the decisions, context, and rationale behind your codebase,
+making it queryable by humans and AI.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip telemetry for completion and help commands
-		if cmd.Name() == "completion" || cmd.Name() == "help" || cmd.Name() == "__complete" {
+		if cmd.Name() == "completion" || cmd.Name() == "help" || cmd.Name() == "__complete" || cmd.Name() == "mcp" {
 			return nil
 		}
 		// Skip telemetry init for telemetry config commands (to avoid recursion)
@@ -106,6 +92,22 @@ func init() {
 	_ = viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
 	_ = viper.BindPFlag("preview", rootCmd.PersistentFlags().Lookup("preview"))
 	_ = viper.BindPFlag("telemetry.disabled", rootCmd.PersistentFlags().Lookup("no-telemetry"))
+
+	// Custom Help Template
+	rootCmd.SetHelpTemplate(`{{if .HasAvailableSubCommands}}
+  {{.Short}}
+
+  Usage: {{.UseLine}}
+
+  Commands:
+{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}    {{rpad .Name .NamePadding }} {{.Short}}
+{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+  Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+  Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
+`)
 }
 
 // GetVersion returns the application version

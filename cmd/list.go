@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -56,26 +56,21 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	if viper.GetBool("json") {
 		output, _ := json.MarshalIndent(nodes, "", "  ")
-		fmt.Println(string(output))
+		cmd.Println(string(output))
 		return nil
 	}
 
 	if len(nodes) == 0 {
 		if nodeType != "" {
-			fmt.Printf("No %s nodes found.\n", nodeType)
+			cmd.Printf("No %s nodes found.\n", nodeType)
 		} else {
-			fmt.Println("No knowledge nodes found.")
+			cmd.Println("No knowledge nodes found.")
 		}
-		fmt.Println("Add one with: taskwing add \"Your text here\"")
+		cmd.Println("Add one with: taskwing add \"Your text here\"")
 		return nil
 	}
 
-	// Styles
-	var (
-		subtle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		title     = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Bold(true)
-		header    = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true) // Pinkish header
-	)
+	// Styles are now imported from internal/ui
 
 	// Group by type
 	byType := make(map[string][]memory.Node)
@@ -101,8 +96,8 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Render Header Summary
-	fmt.Printf(" 🧠 Knowledge: %d nodes (%s)\n", totalCount, strings.Join(stats, " • "))
-	fmt.Println(subtle.Render(strings.Repeat("─", 50)))
+	cmd.Printf(" 🧠 Knowledge: %d nodes (%s)\n", totalCount, strings.Join(stats, " • "))
+	cmd.Println(ui.StyleSubtle.Render(strings.Repeat("─", 50)))
 
 	// Render Lists
 	for _, t := range typeOrder {
@@ -111,23 +106,23 @@ func runList(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		fmt.Println(header.Render(fmt.Sprintf("%s %ss", typeIcon(t), capitalizeFirst(t))))
+		cmd.Println(ui.StyleHeader.Render(fmt.Sprintf("%s %ss", typeIcon(t), capitalizeFirst(t))))
 
 		for _, n := range groupNodes {
 			summary := n.Summary
 			if summary == "" {
 				summary = truncateSummary(n.Content, 60)
 			}
-			
+
 			dateStr := n.CreatedAt.Format("Jan 02")
 			idStr := n.ID
 			if len(idStr) > 6 {
 				idStr = idStr[:6]
 			}
-			
-			fmt.Printf(" • %s %s\n", title.Render(summary), subtle.Render(fmt.Sprintf("[%s %s]", idStr, dateStr)))
+
+			cmd.Printf(" • %s %s\n", ui.StyleTitle.Render(summary), ui.StyleSubtle.Render(fmt.Sprintf("[%s %s]", idStr, dateStr)))
 		}
-		fmt.Println()
+		cmd.Println()
 	}
 
 	return nil
