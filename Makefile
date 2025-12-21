@@ -51,7 +51,7 @@ test-unit:
 test-integration: build
 	@echo "🔧 Running integration tests..."
 	mkdir -p $(TEST_DIR)
-	$(GO) test -v ./cmd -run "TestMCP|TestTaskWing|TestBasic" | tee $(TEST_DIR)/integration-tests.log
+	$(GO) test -v ./tests/integration/... | tee $(TEST_DIR)/integration-tests.log
 	@echo "✅ Integration tests complete"
 
 # Run MCP tools tests
