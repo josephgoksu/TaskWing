@@ -88,6 +88,7 @@ func runAgent(ctx context.Context, agent agents.Agent, input agents.Input) tea.C
 		// Disable verbose logging for the agent to avoid messing up the TUI
 		input.Verbose = false
 		output, err := agent.Run(ctx, input)
+		output.AgentName = agent.Name()
 		return AgentResultMsg{
 			Name:   agent.Name(),
 			Output: &output,

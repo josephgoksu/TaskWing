@@ -4,70 +4,92 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package agents
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 )
 
-// GitAgent analyzes git history to understand project evolution and key milestones
+// GitAgent analyzes git history to understand project evolution and key milestones.
 type GitAgent struct {
-	llmConfig llm.Config
+	BaseAgent
 }
 
-// NewGitAgent creates a new git history analysis agent
+// NewGitAgent creates a new git history analysis agent.
 func NewGitAgent(cfg llm.Config) *GitAgent {
-	return &GitAgent{llmConfig: cfg}
-}
-
-func (a *GitAgent) Name() string { return "git" }
-func (a *GitAgent) Description() string {
-	return "Analyzes git history for project evolution and key milestones"
+	return &GitAgent{
+		BaseAgent: NewBaseAgent("git", "Analyzes git history for project evolution and key milestones", cfg),
+	}
 }
 
 func (a *GitAgent) Run(ctx context.Context, input Input) (Output, error) {
-	var output Output
+	start := time.Now()
 
-	// Gather git history
 	gitInfo := a.gatherGitInfo(input.BasePath)
 	if gitInfo == "" {
-		output.Error = fmt.Errorf("no git history available")
-		return output, nil
+		return Output{Error: fmt.Errorf("no git history available")}, nil
 	}
 
-	// Build prompt
 	prompt := a.buildPrompt(input.ProjectName, gitInfo)
-
-	// Call LLM
-	chatModel, err := llm.NewChatModel(ctx, a.llmConfig)
-	if err != nil {
-		return output, fmt.Errorf("create model: %w", err)
-	}
-
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),
 	}
 
-	resp, err := chatModel.Generate(ctx, messages)
+	rawOutput, err := a.Generate(ctx, messages)
 	if err != nil {
-		return output, fmt.Errorf("llm generate: %w", err)
+		return Output{}, err
 	}
 
-	output.RawOutput = resp.Content
-
-	// Parse response
-	findings, err := a.parseResponse(resp.Content)
+	findings, err := a.parseResponse(rawOutput)
 	if err != nil {
-		return output, fmt.Errorf("parse response: %w", err)
+		return Output{}, fmt.Errorf("parse response: %w", err)
 	}
 
-	output.Findings = findings
-	return output, nil
+	return BuildOutput(a.Name(), findings, rawOutput, time.Since(start)), nil
+}
+
+// gitMilestonesResponse is the expected JSON structure from LLM.
+type gitMilestonesResponse struct {
+	Milestones []struct {
+		Title       string `json:"title"`
+		Scope       string `json:"scope"`
+		Description string `json:"description"`
+		Evidence    string `json:"evidence"`
+		Confidence  string `json:"confidence"`
+	} `json:"milestones"`
+}
+
+func (a *GitAgent) parseResponse(response string) ([]Finding, error) {
+	parsed, err := ParseJSONResponse[gitMilestonesResponse](response)
+	if err != nil {
+		return nil, err
+	}
+
+	var findings []Finding
+	for _, m := range parsed.Milestones {
+		component := strings.TrimSpace(m.Scope)
+		if component == "" {
+			component = "Project Evolution"
+		}
+
+		findings = append(findings, Finding{
+			Type:        FindingTypeDecision,
+			Title:       m.Title,
+			Description: m.Description,
+			Why:         m.Evidence,
+			Confidence:  m.Confidence,
+			SourceAgent: a.Name(),
+			Metadata: map[string]any{
+				"component": component,
+			},
+		})
+	}
+
+	return findings, nil
 }
 
 func (a *GitAgent) gatherGitInfo(basePath string) string {
@@ -125,7 +147,7 @@ func (a *GitAgent) gatherGitInfo(basePath string) string {
 		if len(scopeCounts) > 0 {
 			sb.WriteString("## Most Active Scopes\n")
 			for s, c := range scopeCounts {
-				if c > 2 { // Only show scopes with 3+ commits
+				if c > 2 {
 					sb.WriteString(fmt.Sprintf("- %s: %d commits\n", s, c))
 				}
 			}
@@ -189,40 +211,74 @@ GIT HISTORY:
 Respond with JSON only:`, projectName, gitInfo)
 }
 
-func (a *GitAgent) parseResponse(response string) ([]Finding, error) {
-	response = strings.TrimPrefix(response, "```json")
-	response = strings.TrimPrefix(response, "```")
-	response = strings.TrimSuffix(response, "```")
-	response = strings.TrimSpace(response)
+// DepsAgent analyzes dependencies to understand technology choices.
+type DepsAgent struct {
+	BaseAgent
+}
 
-	var parsed struct {
-		Milestones []struct {
-			Title       string `json:"title"`
-			Description string `json:"description"`
-			Evidence    string `json:"evidence"`
-			Confidence  string `json:"confidence"`
-			Scope       string `json:"scope"` // Component/feature this applies to
-		} `json:"milestones"`
+// NewDepsAgent creates a new dependency analysis agent.
+func NewDepsAgent(cfg llm.Config) *DepsAgent {
+	return &DepsAgent{
+		BaseAgent: NewBaseAgent("deps", "Analyzes dependencies to understand technology choices", cfg),
+	}
+}
+
+func (a *DepsAgent) Run(ctx context.Context, input Input) (Output, error) {
+	start := time.Now()
+
+	depsInfo := a.gatherDeps(input.BasePath)
+	if depsInfo == "" {
+		return Output{Error: fmt.Errorf("no dependency files found")}, nil
 	}
 
-	if err := json.Unmarshal([]byte(response), &parsed); err != nil {
+	prompt := a.buildPrompt(input.ProjectName, depsInfo)
+	messages := []*schema.Message{
+		schema.UserMessage(prompt),
+	}
+
+	rawOutput, err := a.Generate(ctx, messages)
+	if err != nil {
+		return Output{}, err
+	}
+
+	findings, err := a.parseResponse(rawOutput)
+	if err != nil {
+		return Output{}, fmt.Errorf("parse response: %w", err)
+	}
+
+	return BuildOutput(a.Name(), findings, rawOutput, time.Since(start)), nil
+}
+
+// depsTechDecisionsResponse is the expected JSON structure from LLM.
+type depsTechDecisionsResponse struct {
+	TechDecisions []struct {
+		Title      string `json:"title"`
+		Category   string `json:"category"`
+		What       string `json:"what"`
+		Why        string `json:"why"`
+		Confidence string `json:"confidence"`
+	} `json:"tech_decisions"`
+}
+
+func (a *DepsAgent) parseResponse(response string) ([]Finding, error) {
+	parsed, err := ParseJSONResponse[depsTechDecisionsResponse](response)
+	if err != nil {
 		return nil, err
 	}
 
 	var findings []Finding
-	for _, m := range parsed.Milestones {
-		// Infer component from scope if provided by LLM
-		component := strings.TrimSpace(m.Scope)
+	for _, d := range parsed.TechDecisions {
+		component := strings.TrimSpace(d.Category)
 		if component == "" {
-			component = "Project Evolution" // Fallback
+			component = "Technology Stack"
 		}
 
 		findings = append(findings, Finding{
 			Type:        FindingTypeDecision,
-			Title:       m.Title,
-			Description: m.Description,
-			Why:         m.Evidence,
-			Confidence:  m.Confidence,
+			Title:       d.Title,
+			Description: d.What,
+			Why:         d.Why,
+			Confidence:  d.Confidence,
 			SourceAgent: a.Name(),
 			Metadata: map[string]any{
 				"component": component,
@@ -231,61 +287,6 @@ func (a *GitAgent) parseResponse(response string) ([]Finding, error) {
 	}
 
 	return findings, nil
-}
-
-// DepsAgent analyzes dependencies to understand technology choices
-type DepsAgent struct {
-	llmConfig llm.Config
-}
-
-// NewDepsAgent creates a new dependency analysis agent
-func NewDepsAgent(cfg llm.Config) *DepsAgent {
-	return &DepsAgent{llmConfig: cfg}
-}
-
-func (a *DepsAgent) Name() string { return "deps" }
-func (a *DepsAgent) Description() string {
-	return "Analyzes dependencies to understand technology choices"
-}
-
-func (a *DepsAgent) Run(ctx context.Context, input Input) (Output, error) {
-	var output Output
-
-	// Gather dependency info
-	depsInfo := a.gatherDeps(input.BasePath)
-	if depsInfo == "" {
-		output.Error = fmt.Errorf("no dependency files found")
-		return output, nil
-	}
-
-	// Build prompt
-	prompt := a.buildPrompt(input.ProjectName, depsInfo)
-
-	// Call LLM
-	chatModel, err := llm.NewChatModel(ctx, a.llmConfig)
-	if err != nil {
-		return output, fmt.Errorf("create model: %w", err)
-	}
-
-	messages := []*schema.Message{
-		schema.UserMessage(prompt),
-	}
-
-	resp, err := chatModel.Generate(ctx, messages)
-	if err != nil {
-		return output, fmt.Errorf("llm generate: %w", err)
-	}
-
-	output.RawOutput = resp.Content
-
-	// Parse response
-	findings, err := a.parseResponse(resp.Content)
-	if err != nil {
-		return output, fmt.Errorf("parse response: %w", err)
-	}
-
-	output.Findings = findings
-	return output, nil
 }
 
 func (a *DepsAgent) gatherDeps(basePath string) string {
@@ -306,7 +307,6 @@ func (a *DepsAgent) gatherDeps(basePath string) string {
 			catCmd.Dir = basePath
 			content, err := catCmd.Output()
 			if err == nil {
-				// Truncate large files
 				if len(content) > 3000 {
 					content = content[:3000]
 				}
@@ -372,50 +372,3 @@ DEPENDENCIES:
 
 Respond with JSON only:`, projectName, depsInfo)
 }
-
-func (a *DepsAgent) parseResponse(response string) ([]Finding, error) {
-	response = strings.TrimPrefix(response, "```json")
-	response = strings.TrimPrefix(response, "```")
-	response = strings.TrimSuffix(response, "```")
-	response = strings.TrimSpace(response)
-
-	var parsed struct {
-		TechDecisions []struct {
-			Title      string `json:"title"`
-			Category   string `json:"category"`
-			What       string `json:"what"`
-			Why        string `json:"why"`
-			Confidence string `json:"confidence"`
-		} `json:"tech_decisions"`
-	}
-
-	if err := json.Unmarshal([]byte(response), &parsed); err != nil {
-		return nil, err
-	}
-
-	var findings []Finding
-	for _, d := range parsed.TechDecisions {
-		// Infer component from category if provided by LLM
-		component := strings.TrimSpace(d.Category)
-		if component == "" {
-			component = "Technology Stack" // Fallback
-		}
-
-		findings = append(findings, Finding{
-			Type:        FindingTypeDecision,
-			Title:       d.Title,
-			Description: d.What,
-			Why:         d.Why,
-			Confidence:  d.Confidence,
-			SourceAgent: a.Name(),
-			Metadata: map[string]any{
-				"component": component,
-			},
-		})
-	}
-
-	return findings, nil
-}
-
-// Silence unused import warning
-var _ = bytes.Buffer{}

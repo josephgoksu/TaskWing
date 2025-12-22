@@ -5,84 +5,101 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 )
 
 // DocAgent analyzes documentation files (README, docs/, ARCHITECTURE.md, etc.)
-// to extract product-level features and user-facing functionality
+// to extract product-level features and user-facing functionality.
 type DocAgent struct {
-	llmConfig llm.Config
+	BaseAgent // Embed BaseAgent for shared LLM functionality
 }
 
-// NewDocAgent creates a new documentation analysis agent
+// NewDocAgent creates a new documentation analysis agent.
 func NewDocAgent(cfg llm.Config) *DocAgent {
-	return &DocAgent{llmConfig: cfg}
+	return &DocAgent{
+		BaseAgent: NewBaseAgent("doc", "Analyzes documentation to extract product features", cfg),
+	}
 }
-
-func (a *DocAgent) Name() string        { return "doc" }
-func (a *DocAgent) Description() string { return "Analyzes documentation to extract product features" }
 
 func (a *DocAgent) Run(ctx context.Context, input Input) (Output, error) {
-	var output Output
+	start := time.Now()
 
 	// Gather documentation content based on mode
 	var docContent string
 	if input.Mode == ModeWatch && len(input.ChangedFiles) > 0 {
-		// Watch mode: only read changed files
 		docContent = a.gatherChangedDocs(input.BasePath, input.ChangedFiles)
 	} else {
-		// Bootstrap mode: full scan
 		docContent = a.gatherDocs(input.BasePath)
 	}
 
 	if docContent == "" {
 		// No docs to analyze - this is OK in watch mode for non-doc changes
-		return output, nil
+		return Output{}, nil
 	}
 
-	// Build prompt
+	// Build prompt and call LLM using BaseAgent.Generate()
 	prompt := a.buildPrompt(input.ProjectName, docContent)
-
-	// Call LLM
-	chatModel, err := llm.NewChatModel(ctx, a.llmConfig)
-	if err != nil {
-		return output, fmt.Errorf("create model: %w", err)
-	}
-
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),
 	}
 
-	resp, err := chatModel.Generate(ctx, messages)
+	rawOutput, err := a.Generate(ctx, messages)
 	if err != nil {
-		return output, fmt.Errorf("llm generate: %w", err)
+		return Output{}, err
 	}
 
-	output.RawOutput = resp.Content
-
-	// Parse response
-	findings, err := a.parseResponse(resp.Content)
+	// Parse response using shared JSON parser
+	findings, err := a.parseResponse(rawOutput)
 	if err != nil {
-		return output, fmt.Errorf("parse response: %w", err)
+		return Output{}, fmt.Errorf("parse response: %w", err)
 	}
 
-	output.Findings = findings
-	return output, nil
+	return BuildOutput(a.Name(), findings, rawOutput, time.Since(start)), nil
 }
 
-// gatherChangedDocs reads only the specified changed files
+// docFeaturesResponse is the expected JSON structure from LLM.
+type docFeaturesResponse struct {
+	Features []struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		SourceFile  string `json:"source_file"`
+		Confidence  string `json:"confidence"`
+	} `json:"features"`
+}
+
+func (a *DocAgent) parseResponse(response string) ([]Finding, error) {
+	parsed, err := ParseJSONResponse[docFeaturesResponse](response)
+	if err != nil {
+		return nil, err
+	}
+
+	var findings []Finding
+	for _, f := range parsed.Features {
+		findings = append(findings, Finding{
+			Type:        FindingTypeFeature,
+			Title:       f.Name,
+			Description: f.Description,
+			Confidence:  f.Confidence,
+			SourceFiles: []string{f.SourceFile},
+			SourceAgent: a.Name(),
+		})
+	}
+
+	return findings, nil
+}
+
+// gatherChangedDocs reads only the specified changed files.
 func (a *DocAgent) gatherChangedDocs(basePath string, changedFiles []string) string {
 	var sb strings.Builder
 
 	for _, relPath := range changedFiles {
-		// Only process .md files
 		if !strings.HasSuffix(strings.ToLower(relPath), ".md") {
 			continue
 		}
@@ -93,7 +110,6 @@ func (a *DocAgent) gatherChangedDocs(basePath string, changedFiles []string) str
 			continue
 		}
 
-		// Limit size
 		if len(content) > 8000 {
 			content = content[:8000]
 		}
@@ -108,7 +124,6 @@ func (a *DocAgent) gatherDocs(basePath string) string {
 	var sb strings.Builder
 	seen := make(map[string]bool)
 
-	// Scan root directory for all .md files
 	entries, err := os.ReadDir(basePath)
 	if err == nil {
 		for _, entry := range entries {
@@ -126,7 +141,6 @@ func (a *DocAgent) gatherDocs(basePath string) string {
 				continue
 			}
 
-			// Limit size
 			if len(content) > 4000 {
 				content = content[:4000]
 			}
@@ -148,7 +162,6 @@ func (a *DocAgent) gatherDocs(basePath string) string {
 			if !strings.HasSuffix(strings.ToLower(name), ".md") {
 				continue
 			}
-			// Skip if already read from root
 			if seen[strings.ToLower(name)] {
 				continue
 			}
@@ -194,39 +207,4 @@ DOCUMENTATION:
 %s
 
 Respond with JSON only:`, projectName, docContent)
-}
-
-func (a *DocAgent) parseResponse(response string) ([]Finding, error) {
-	// Clean response
-	response = strings.TrimPrefix(response, "```json")
-	response = strings.TrimPrefix(response, "```")
-	response = strings.TrimSuffix(response, "```")
-	response = strings.TrimSpace(response)
-
-	var parsed struct {
-		Features []struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			SourceFile  string `json:"source_file"`
-			Confidence  string `json:"confidence"`
-		} `json:"features"`
-	}
-
-	if err := json.Unmarshal([]byte(response), &parsed); err != nil {
-		return nil, err
-	}
-
-	var findings []Finding
-	for _, f := range parsed.Features {
-		findings = append(findings, Finding{
-			Type:        FindingTypeFeature,
-			Title:       f.Name,
-			Description: f.Description,
-			Confidence:  f.Confidence,
-			SourceFiles: []string{f.SourceFile},
-			SourceAgent: a.Name(),
-		})
-	}
-
-	return findings, nil
 }

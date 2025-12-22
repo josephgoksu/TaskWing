@@ -248,6 +248,10 @@ func (r *Repository) DeleteNodesByAgent(agent string) error {
 	return r.db.DeleteNodesByAgent(agent)
 }
 
+func (r *Repository) UpsertNodeBySummary(n Node) error {
+	return r.db.UpsertNodeBySummary(n)
+}
+
 // CreatePattern stores a new pattern in the DB.
 func (r *Repository) CreatePattern(p Pattern) error {
 	return r.db.CreatePattern(p)

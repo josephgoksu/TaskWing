@@ -23,6 +23,9 @@ type Agent interface {
 	Run(ctx context.Context, input Input) (Output, error)
 }
 
+// NOTE: Tool interface was removed. All tools now use the Eino
+// tool.InvokableTool interface defined in eino_tools.go.
+
 // AgentMode determines how an agent should behave
 type AgentMode string
 
@@ -119,15 +122,3 @@ const (
 	FindingTypeRisk       FindingType = "risk"
 	FindingTypeTodo       FindingType = "todo"
 )
-
-// Tool represents a capability an agent can invoke
-type Tool interface {
-	// Name returns the tool identifier
-	Name() string
-
-	// Description returns what the tool does (for LLM)
-	Description() string
-
-	// Execute runs the tool with given arguments
-	Execute(ctx context.Context, args map[string]any) (any, error)
-}

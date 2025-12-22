@@ -27,10 +27,11 @@ type Service struct {
 }
 
 type NodeInput struct {
-	Content   string
-	Type      string // Optional manual override
-	Summary   string // Optional
-	Timestamp time.Time
+	Content     string
+	Type        string // Optional manual override
+	Summary     string // Optional
+	SourceAgent string // Agent that produced this node
+	Timestamp   time.Time
 }
 
 // NewService creates a new knowledge service
@@ -137,10 +138,11 @@ Be concise and direct.
 // AddNode process content (classifies, embeds) and saves it
 func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, error) {
 	node := &memory.Node{
-		Content:   input.Content,
-		Type:      input.Type,
-		Summary:   input.Summary,
-		CreatedAt: input.Timestamp,
+		Content:     input.Content,
+		Type:        input.Type,
+		Summary:     input.Summary,
+		SourceAgent: input.SourceAgent,
+		CreatedAt:   input.Timestamp,
 	}
 
 	if node.CreatedAt.IsZero() {

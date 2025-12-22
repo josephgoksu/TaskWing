@@ -228,7 +228,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var result []AgentWithCount
-	for _, a := range agents.Registry {
+	for _, a := range agents.Registry() {
 		result = append(result, AgentWithCount{
 			ID:          a.ID,
 			Name:        a.Name,

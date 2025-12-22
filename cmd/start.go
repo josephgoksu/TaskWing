@@ -54,7 +54,7 @@ func init() {
 	startCmd.Flags().IntVarP(&startPort, "port", "p", 5001, "API server port")
 	startCmd.Flags().BoolVar(&noDashboard, "no-dashboard", false, "Don't auto-open dashboard in browser")
 	startCmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't run watch mode (server only)")
-	startCmd.Flags().StringVar(&dashboardURL, "dashboard-url", "", "Dashboard URL (default: http://localhost:5173)")
+	startCmd.Flags().StringVar(&dashboardURL, "dashboard-url", "", "Dashboard URL (default: https://hub.taskwing.app, use http://localhost:5173 for local dev)")
 
 	// LLM configuration (reuse from watch)
 	startCmd.Flags().String("provider", "openai", "LLM provider (openai, ollama)")
@@ -117,7 +117,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if !noDashboard {
 		url := dashboardURL
 		if url == "" {
-			url = "http://localhost:5173"
+			url = "https://hub.taskwing.app"
 		}
 		// Give server a moment to start
 		time.Sleep(500 * time.Millisecond)

@@ -31,6 +31,8 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 
 	type NodeCreator interface {
 		CreateNode(n memory.Node) error
+		UpsertNodeBySummary(n memory.Node) error
+		DeleteNodesByAgent(agent string) error
 		CreateFeature(f memory.Feature) error
 		CreatePattern(p memory.Pattern) error
 		AddDecision(featureID string, d memory.Decision) error
@@ -42,6 +44,19 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 	repo, ok := s.source.(NodeCreator)
 	if !ok {
 		return fmt.Errorf("storage source does not support ingestion operations")
+	}
+
+	// 0. Purge stale nodes for involved agents (Replace Strategy)
+	// This prevents infinite growth due to non-deterministic LLM outputs (different summaries)
+	seenAgents := make(map[string]bool)
+	for _, f := range findings {
+		if f.SourceAgent != "" && !seenAgents[f.SourceAgent] {
+			if verbose {
+				fmt.Printf("  ♻️  Purging stale nodes for agent: %s\n", f.SourceAgent)
+			}
+			_ = repo.DeleteNodesByAgent(f.SourceAgent)
+			seenAgents[f.SourceAgent] = true
+		}
 	}
 
 	nodesCreated := 0
@@ -80,7 +95,8 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 			}
 		}
 
-		if err := repo.CreateNode(node); err == nil {
+		// Use Upsert to prevent duplication
+		if err := repo.UpsertNodeBySummary(node); err == nil {
 			nodesCreated++
 		}
 	}
