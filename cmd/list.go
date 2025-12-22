@@ -134,6 +134,8 @@ func typeIcon(t string) string {
 		return "🎯"
 	case "feature":
 		return "📦"
+	case "pattern":
+		return "🧩"
 	case "plan":
 		return "📋"
 	case "note":

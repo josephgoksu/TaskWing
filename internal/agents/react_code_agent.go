@@ -84,11 +84,20 @@ When you have gathered sufficient information, respond with a JSON analysis:
   "decisions": [
     {
       "title": "Short decision title",
+      "component": "The specific feature/component this applies to (e.g. 'Auth Service', 'CLI Core')",
       "what": "What technology/pattern was chosen",
       "why": "Why this choice was made (inferred from evidence)",
       "tradeoffs": "What tradeoffs this implies",
       "confidence": "high|medium|low",
       "evidence": ["file1.go:123", "README.md"]
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Pattern Name (e.g. Repository Pattern, Hexagonal Arch)",
+      "context": "Where and how it is applied",
+      "solution": "How it solves the problem",
+      "consequences": "Benefits and drawbacks"
     }
   ]
 }
@@ -97,6 +106,7 @@ When you have gathered sufficient information, respond with a JSON analysis:
 ## Rules
 - Call tools to gather information before making conclusions
 - Don't guess - use tools to verify assumptions
+- **CRITICAL**: Every decision MUST belong to a specific "component" (Feature). Do not make global decisions unless they truly apply to everything.
 - Focus on DECISIONS not just observations
 - Explain WHY choices were made, not just WHAT they are
 - Stop when you have 5-10 solid findings with evidence`
@@ -165,6 +175,14 @@ func (a *ReactCodeAgent) Run(ctx context.Context, input Input) (Output, error) {
 		// Call LLM with tool bindings
 		resp, err := chatModel.Generate(ctx, messages, model.WithTools(toolInfos))
 		if err != nil {
+			// Fallback: If tool-calling fails (e.g., model doesn't support it),
+			// try once without tool bindings using a simpler prompt
+			if iter == 0 && strings.Contains(err.Error(), "400") {
+				if a.verbose {
+					fmt.Printf("  [ReAct] Tool-calling not supported, falling back to simple mode\n")
+				}
+				return a.runSimpleFallback(ctx, chatModel, input)
+			}
 			return output, fmt.Errorf("generate (iter %d): %w", iter+1, err)
 		}
 
@@ -247,12 +265,19 @@ func (a *ReactCodeAgent) parseFindings(response string) ([]Finding, error) {
 	var parsed struct {
 		Decisions []struct {
 			Title      string   `json:"title"`
+			Component  string   `json:"component"`
 			What       string   `json:"what"`
 			Why        string   `json:"why"`
 			Tradeoffs  string   `json:"tradeoffs"`
 			Confidence string   `json:"confidence"`
 			Evidence   []string `json:"evidence"`
 		} `json:"decisions"`
+		Patterns []struct {
+			Name         string `json:"name"`
+			Context      string `json:"context"`
+			Solution     string `json:"solution"`
+			Consequences string `json:"consequences"`
+		} `json:"patterns"`
 	}
 
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
@@ -270,6 +295,24 @@ func (a *ReactCodeAgent) parseFindings(response string) ([]Finding, error) {
 			Confidence:  d.Confidence,
 			SourceFiles: d.Evidence,
 			SourceAgent: a.Name(),
+			Metadata: map[string]any{
+				"component": d.Component,
+			},
+		})
+	}
+
+	for _, p := range parsed.Patterns {
+		findings = append(findings, Finding{
+			Type:        FindingTypePattern,
+			Title:       p.Name,
+			Description: p.Context, // Mapping Context to Description for generic display
+			Tradeoffs:   p.Consequences,
+			SourceAgent: a.Name(),
+			Metadata: map[string]any{
+				"context":      p.Context,
+				"solution":     p.Solution,
+				"consequences": p.Consequences,
+			},
 		})
 	}
 
@@ -283,4 +326,117 @@ func truncate(s string, maxLen int) string {
 		return s[:maxLen] + "..."
 	}
 	return s
+}
+
+// runSimpleFallback is used when tool-calling is not supported by the model
+// It gathers context using the tools directly and then sends a single prompt
+func (a *ReactCodeAgent) runSimpleFallback(ctx context.Context, chatModel model.BaseChatModel, input Input) (Output, error) {
+	var output Output
+	output.AgentName = a.Name()
+	start := time.Now()
+
+	// Gather context using tools directly (no LLM tool-calling)
+	tools := CreateEinoTools(a.basePath)
+	var contextBuilder strings.Builder
+
+	// List root directory
+	for _, t := range tools {
+		info, _ := t.Info(ctx)
+		if info.Name == "list_dir" {
+			result, err := t.InvokableRun(ctx, `{"path": "."}`)
+			if err == nil {
+				contextBuilder.WriteString("## Directory Structure\n")
+				contextBuilder.WriteString(result)
+				contextBuilder.WriteString("\n\n")
+			}
+			break
+		}
+	}
+
+	// Read README if exists
+	for _, t := range tools {
+		info, _ := t.Info(ctx)
+		if info.Name == "read_file" {
+			result, err := t.InvokableRun(ctx, `{"path": "README.md"}`)
+			if err == nil && len(result) > 0 {
+				content := result
+				if len(content) > 2000 {
+					content = content[:2000] + "...[truncated]"
+				}
+				contextBuilder.WriteString("## README.md\n")
+				contextBuilder.WriteString(content)
+				contextBuilder.WriteString("\n\n")
+			}
+			break
+		}
+	}
+
+	// Read go.mod if exists
+	for _, t := range tools {
+		info, _ := t.Info(ctx)
+		if info.Name == "read_file" {
+			result, err := t.InvokableRun(ctx, `{"path": "go.mod"}`)
+			if err == nil && len(result) > 0 {
+				contextBuilder.WriteString("## go.mod\n")
+				contextBuilder.WriteString(result)
+				contextBuilder.WriteString("\n\n")
+			}
+			break
+		}
+	}
+
+	// Build simple prompt
+	simplePrompt := fmt.Sprintf(`You are an expert software architect. Analyze this codebase context and extract architectural patterns and decisions.
+
+PROJECT: %s
+
+CONTEXT:
+%s
+
+Respond with JSON only:
+%s`, input.ProjectName, contextBuilder.String(), "```json\n"+`{
+  "decisions": [
+    {
+      "title": "Decision title",
+      "component": "Which feature/component this applies to",
+      "what": "What was chosen",
+      "why": "Why it was chosen",
+      "tradeoffs": "Trade-offs",
+      "confidence": "high|medium|low",
+      "evidence": ["file1.go"]
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Pattern name",
+      "context": "Where and how it's applied",
+      "solution": "How it solves the problem",
+      "consequences": "Benefits and drawbacks"
+    }
+  ]
+}`+"\n```")
+
+	messages := []*schema.Message{
+		schema.UserMessage(simplePrompt),
+	}
+
+	// Call without tool bindings
+	resp, err := chatModel.Generate(ctx, messages)
+	if err != nil {
+		return output, fmt.Errorf("simple fallback generate: %w", err)
+	}
+
+	output.RawOutput = resp.Content
+	output.Duration = time.Since(start)
+
+	// Parse findings
+	if output.RawOutput != "" {
+		findings, err := a.parseFindings(output.RawOutput)
+		if err != nil && a.verbose {
+			fmt.Printf("  [ReAct fallback] Parse warning: %v\n", err)
+		}
+		output.Findings = findings
+	}
+
+	return output, nil
 }

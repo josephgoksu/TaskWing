@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -146,26 +147,30 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey str
 		return nil
 	}
 
-	// Save to memory
-	if len(allFindings) == 0 {
-		fmt.Println("\n⚠️  No findings to save.")
-		return nil
-	}
-
-	memoryPath := GetMemoryBasePath()
-	store, err := memory.NewSQLiteStore(memoryPath)
-	if err != nil {
-		return fmt.Errorf("open memory store: %w", err)
-	}
-	defer store.Close()
-	ensureGitignore(memoryPath)
-
 	// Prepare embedding config
 	embeddingCfg := llm.Config{
 		Provider: provider,
 		APIKey:   apiKey,
 		BaseURL:  viper.GetString("llm.baseURL"),
 	}
+
+	// Save to memory using refactored function
+	return saveToMemory(ctx, allFindings, GetMemoryBasePath(), embeddingCfg)
+}
+
+// saveToMemory persists findings to the SQLite database
+func saveToMemory(ctx context.Context, allFindings []agents.Finding, memoryPath string, embeddingCfg llm.Config) error {
+	if len(allFindings) == 0 {
+		fmt.Println("\n⚠️  No findings to save.")
+		return nil
+	}
+
+	store, err := memory.NewSQLiteStore(memoryPath)
+	if err != nil {
+		return fmt.Errorf("open memory store: %w", err)
+	}
+	defer store.Close()
+	ensureGitignore(memoryPath)
 
 	if !viper.GetBool("quiet") {
 		fmt.Print("  Generating embeddings")
@@ -197,10 +202,13 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey str
 		}
 
 		// Generate embedding for semantic search
-		if embedding, err := knowledge.GenerateEmbedding(ctx, content, embeddingCfg); err == nil {
-			node.Embedding = embedding
-			if !viper.GetBool("quiet") {
-				fmt.Print(".")
+		// Only if API key is present
+		if embeddingCfg.APIKey != "" {
+			if embedding, err := knowledge.GenerateEmbedding(ctx, content, embeddingCfg); err == nil {
+				node.Embedding = embedding
+				if !viper.GetBool("quiet") {
+					fmt.Print(".")
+				}
 			}
 		}
 
@@ -214,7 +222,154 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, apiKey str
 		fmt.Println(" done")
 	}
 
-	fmt.Printf("\n✅ Saved %d knowledge nodes to memory.\n", nodesCreated)
+	// === STRUCTURED STORAGE (V2 Schema) ===
+	if !viper.GetBool("quiet") {
+		fmt.Print("  Saving structured data")
+	}
+
+	featuresCreated := 0
+	decisionsCreated := 0
+	patternsCreated := 0
+
+	// 1. Process Features (from DocAgent)
+	featureIDByName := make(map[string]string)
+
+	// Load existing features to prevent duplicates
+	existingFeatures, err := store.ListFeatures()
+	if err == nil {
+		for _, f := range existingFeatures {
+			featureIDByName[strings.ToLower(f.Name)] = f.ID
+		}
+	}
+
+	for _, f := range allFindings {
+		if f.Type != agents.FindingTypeFeature {
+			continue
+		}
+
+		name := strings.TrimSpace(f.Title)
+		if name == "" {
+			continue
+		}
+
+		key := strings.ToLower(name)
+		if _, exists := featureIDByName[key]; exists {
+			continue // Already exists
+		}
+
+		desc := f.Description
+		if len(desc) > 200 {
+			desc = desc[:197] + "..."
+		}
+
+		newID := "f-" + uuid.New().String()[:8]
+		err := store.CreateFeature(memory.Feature{
+			ID:        newID,
+			Name:      name,
+			OneLiner:  desc,
+			Status:    memory.FeatureStatusActive,
+			CreatedAt: time.Now(),
+		})
+		if err == nil {
+			featureIDByName[key] = newID
+			featuresCreated++
+		}
+	}
+
+	// 2. Process Patterns (from ReactCodeAgent)
+	for _, f := range allFindings {
+		if f.Type != agents.FindingTypePattern {
+			continue
+		}
+
+		name := strings.TrimSpace(f.Title)
+		if name == "" {
+			continue
+		}
+
+		// Extract fields from metadata
+		context, _ := f.Metadata["context"].(string)
+		solution, _ := f.Metadata["solution"].(string)
+		consequences, _ := f.Metadata["consequences"].(string)
+
+		err := store.CreatePattern(memory.Pattern{
+			Name:         name,
+			Context:      context,
+			Solution:     solution,
+			Consequences: consequences,
+		})
+		if err == nil {
+			patternsCreated++
+		}
+	}
+
+	// 3. Process Decisions (Smart Linking)
+	for _, f := range allFindings {
+		if f.Type != agents.FindingTypeDecision {
+			continue
+		}
+
+		title := strings.TrimSpace(f.Title)
+		if title == "" {
+			continue
+		}
+
+		// Get component context from metadata
+		componentName, _ := f.Metadata["component"].(string)
+		componentName = strings.TrimSpace(componentName)
+
+		// Smart Fallback: If no explicit component, infer from source agent
+		if componentName == "" {
+			switch f.SourceAgent {
+			case "git":
+				componentName = "Project Evolution"
+			case "deps":
+				componentName = "Technology Stack"
+			case "doc_agent", "doc":
+				componentName = "Documentation"
+			default:
+				componentName = "Core Architecture"
+			}
+		}
+
+		// Find or Create Feature for Component
+		featKey := strings.ToLower(componentName)
+		featID := featureIDByName[featKey]
+
+		if featID == "" {
+			// Auto-create feature for discovered component
+			featID = "f-" + uuid.New().String()[:8]
+			err := store.CreateFeature(memory.Feature{
+				ID:        featID,
+				Name:      componentName,
+				OneLiner:  "Auto-detected component from decision analysis",
+				Status:    memory.FeatureStatusActive,
+				CreatedAt: time.Now(),
+			})
+			if err != nil {
+				continue
+			}
+			featureIDByName[featKey] = featID
+			featuresCreated++
+		}
+
+		err := store.AddDecision(featID, memory.Decision{
+			Title:     title,
+			Summary:   f.Description,
+			Reasoning: f.Why,
+			Tradeoffs: f.Tradeoffs,
+		})
+		if err == nil {
+			decisionsCreated++
+		}
+	}
+
+	if !viper.GetBool("quiet") {
+		fmt.Println(" done")
+	}
+
+	fmt.Printf("\n✅ Saved %d knowledge nodes, %d features, %d patterns, %d decisions to memory.\n",
+		nodesCreated, featuresCreated, patternsCreated, decisionsCreated)
 	return nil
 }
 
@@ -245,9 +400,10 @@ func renderBootstrapDashboard(findings []agents.Finding) {
 
 	// 2. Counts
 	grouped := agents.GroupFindingsByType(findings)
-	counts := fmt.Sprintf("🎯 %d Decisions • 📦 %d Features",
+	counts := fmt.Sprintf("🎯 %d Decisions • 📦 %d Features • 🧩 %d Patterns",
 		len(grouped[agents.FindingTypeDecision]),
-		len(grouped[agents.FindingTypeFeature]))
+		len(grouped[agents.FindingTypeFeature]),
+		len(grouped[agents.FindingTypePattern]))
 
 	// Render "DNA" Summary
 	fmt.Println()
@@ -528,7 +684,7 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 
 	// === DUAL-WRITE: Create nodes for new knowledge graph ===
 	// This runs alongside legacy feature/decision creation during migration phase
-	nodesCreated := 0
+	nodesCreatedLines := 0
 	embeddingsGenerated := 0
 	nodesSkipped := 0
 
@@ -592,7 +748,7 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 		}
 
 		if err := store.CreateNode(node); err == nil {
-			nodesCreated++
+			nodesCreatedLines++
 			if !viper.GetBool("quiet") && !viper.GetBool("json") {
 				fmt.Print(".")
 			}
@@ -645,7 +801,7 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 			}
 
 			if err := store.CreateNode(decisionNode); err == nil {
-				nodesCreated++
+				nodesCreatedLines++
 				if !viper.GetBool("quiet") && !viper.GetBool("json") {
 					fmt.Print(".")
 				}
@@ -662,13 +818,13 @@ func runLLMBootstrap(ctx context.Context, cwd string, preview bool, apiKey strin
 		fmt.Fprintf(os.Stderr, "  Features created: %d\n", featuresCreated)
 		fmt.Fprintf(os.Stderr, "  Decisions created: %d\n", decisionsCreated)
 		fmt.Fprintf(os.Stderr, "  Relationships created: %d\n", edgesCreated)
-		fmt.Fprintf(os.Stderr, "  Knowledge nodes created: %d (skipped %d duplicates)\n", nodesCreated, nodesSkipped)
+		fmt.Fprintf(os.Stderr, "  Knowledge nodes created: %d (skipped %d duplicates)\n", nodesCreatedLines, nodesSkipped)
 	} else {
 		fmt.Printf("\n✓ Bootstrap complete:\n")
 		fmt.Printf("  • Features created: %d\n", featuresCreated)
 		fmt.Printf("  • Decisions created: %d\n", decisionsCreated)
 		fmt.Printf("  • Relationships created: %d\n", edgesCreated)
-		fmt.Printf("  • Knowledge nodes created: %d (skipped %d duplicates)\n", nodesCreated, nodesSkipped)
+		fmt.Printf("  • Knowledge nodes created: %d (skipped %d duplicates)\n", nodesCreatedLines, nodesSkipped)
 	}
 
 	return nil

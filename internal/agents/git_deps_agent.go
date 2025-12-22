@@ -168,12 +168,14 @@ Identify KEY MILESTONES and EVOLUTION PATTERNS:
 4. Active development areas
 
 For each finding, explain WHAT happened and WHY it matters.
+IMPORTANT: Identify which component/feature each milestone relates to from commit scopes (e.g. "feat(auth):" → scope is "auth").
 
 RESPOND IN JSON:
 {
   "milestones": [
     {
       "title": "Milestone or decision title",
+      "scope": "Component or feature this relates to (from commit scope, e.g. 'auth', 'api', 'ui')",
       "description": "What happened and why it matters",
       "evidence": "Commits or patterns that show this",
       "confidence": "high|medium|low"
@@ -199,6 +201,7 @@ func (a *GitAgent) parseResponse(response string) ([]Finding, error) {
 			Description string `json:"description"`
 			Evidence    string `json:"evidence"`
 			Confidence  string `json:"confidence"`
+			Scope       string `json:"scope"` // Component/feature this applies to
 		} `json:"milestones"`
 	}
 
@@ -208,12 +211,22 @@ func (a *GitAgent) parseResponse(response string) ([]Finding, error) {
 
 	var findings []Finding
 	for _, m := range parsed.Milestones {
+		// Infer component from scope if provided by LLM
+		component := strings.TrimSpace(m.Scope)
+		if component == "" {
+			component = "Project Evolution" // Fallback
+		}
+
 		findings = append(findings, Finding{
 			Type:        FindingTypeDecision,
 			Title:       m.Title,
 			Description: m.Description,
 			Why:         m.Evidence,
 			Confidence:  m.Confidence,
+			SourceAgent: a.Name(),
+			Metadata: map[string]any{
+				"component": component,
+			},
 		})
 	}
 
@@ -339,12 +352,14 @@ Identify KEY TECHNOLOGY DECISIONS from the dependencies:
 5. Notable patterns (e.g., uses OpenTelemetry for observability)
 
 For each finding, explain WHAT was chosen and WHY it matters.
+IMPORTANT: Categorize each decision into a layer (e.g., "CLI Layer", "Storage Layer", "UI Layer", "API Layer", "Testing").
 
 RESPOND IN JSON:
 {
   "tech_decisions": [
     {
       "title": "Technology decision title",
+      "category": "Which layer this belongs to (CLI Layer, Storage Layer, UI Layer, etc.)",
       "what": "What technology/framework/library",
       "why": "Why this choice matters or was likely made",
       "confidence": "high|medium|low"
@@ -367,6 +382,7 @@ func (a *DepsAgent) parseResponse(response string) ([]Finding, error) {
 	var parsed struct {
 		TechDecisions []struct {
 			Title      string `json:"title"`
+			Category   string `json:"category"`
 			What       string `json:"what"`
 			Why        string `json:"why"`
 			Confidence string `json:"confidence"`
@@ -379,12 +395,22 @@ func (a *DepsAgent) parseResponse(response string) ([]Finding, error) {
 
 	var findings []Finding
 	for _, d := range parsed.TechDecisions {
+		// Infer component from category if provided by LLM
+		component := strings.TrimSpace(d.Category)
+		if component == "" {
+			component = "Technology Stack" // Fallback
+		}
+
 		findings = append(findings, Finding{
 			Type:        FindingTypeDecision,
 			Title:       d.Title,
 			Description: d.What,
 			Why:         d.Why,
 			Confidence:  d.Confidence,
+			SourceAgent: a.Name(),
+			Metadata: map[string]any{
+				"component": component,
+			},
 		})
 	}
 

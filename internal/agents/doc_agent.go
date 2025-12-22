@@ -224,6 +224,7 @@ func (a *DocAgent) parseResponse(response string) ([]Finding, error) {
 			Description: f.Description,
 			Confidence:  f.Confidence,
 			SourceFiles: []string{f.SourceFile},
+			SourceAgent: a.Name(),
 		})
 	}
 

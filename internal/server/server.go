@@ -144,7 +144,15 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
-	llmCfg := llm.Config{APIKey: apiKey}
+	provider := llm.Provider(viper.GetString("llm.provider"))
+	if provider == "" {
+		provider = llm.ProviderOpenAI
+	}
+	llmCfg := llm.Config{
+		Provider: provider,
+		APIKey:   apiKey,
+		BaseURL:  viper.GetString("llm.baseURL"),
+	}
 
 	nodes, err := s.store.ListNodes("")
 	if err != nil {
@@ -263,6 +271,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"total":    len(nodes),
 		"feature":  0,
 		"decision": 0,
+		"pattern":  0,
 	}
 
 	for _, n := range nodes {
@@ -271,6 +280,8 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 			stats["feature"]++
 		case "decision":
 			stats["decision"]++
+		case "pattern":
+			stats["pattern"]++
 		}
 	}
 

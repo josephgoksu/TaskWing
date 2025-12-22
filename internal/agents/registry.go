@@ -28,7 +28,7 @@ var Registry = []AgentInfo{
 		Description: "Scans markdown documentation (README, ARCHITECTURE, docs/)",
 	},
 	{
-		ID:          "code",
+		ID:          "react_code",
 		Name:        "CodeAgent",
 		Description: "Analyzes source code structure using dynamic ReAct exploration",
 	},

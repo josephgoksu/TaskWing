@@ -131,6 +131,16 @@ func (s *SQLiteStore) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_node_edges_from ON node_edges(from_node);
 	CREATE INDEX IF NOT EXISTS idx_node_edges_to ON node_edges(to_node);
 	CREATE INDEX IF NOT EXISTS idx_node_edges_relation ON node_edges(relation);
+
+	-- Patterns table (V2 First-Class)
+	CREATE TABLE IF NOT EXISTS patterns (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL UNIQUE,
+		context TEXT NOT NULL,
+		solution TEXT NOT NULL,
+		consequences TEXT,
+		created_at TEXT NOT NULL
+	);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -447,6 +457,60 @@ func (s *SQLiteStore) GetDecisions(featureID string) ([]Decision, error) {
 	}
 
 	return decisions, nil
+}
+
+// === Pattern CRUD ===
+
+type Pattern struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Context      string    `json:"context"`
+	Solution     string    `json:"solution"`
+	Consequences string    `json:"consequences"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (s *SQLiteStore) CreatePattern(p Pattern) error {
+	if p.ID == "" {
+		p.ID = "p-" + uuid.New().String()[:8]
+	}
+	if p.CreatedAt.IsZero() {
+		p.CreatedAt = time.Now().UTC()
+	}
+
+	_, err := s.db.Exec(`
+		INSERT INTO patterns (id, name, context, solution, consequences, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, p.ID, p.Name, p.Context, p.Solution, p.Consequences, p.CreatedAt.Format(time.RFC3339))
+
+	if err != nil {
+		return fmt.Errorf("insert pattern: %w", err)
+	}
+
+	s.indexCache = nil
+	return nil
+}
+
+func (s *SQLiteStore) ListPatterns() ([]Pattern, error) {
+	rows, err := s.db.Query(`
+		SELECT id, name, context, solution, consequences, created_at FROM patterns ORDER BY name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query patterns: %w", err)
+	}
+	defer rows.Close()
+
+	var patterns []Pattern
+	for rows.Next() {
+		var p Pattern
+		var createdAt string
+		if err := rows.Scan(&p.ID, &p.Name, &p.Context, &p.Solution, &p.Consequences, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan pattern: %w", err)
+		}
+		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		patterns = append(patterns, p)
+	}
+	return patterns, nil
 }
 
 // === Relationships ===

@@ -481,7 +481,8 @@ func (d *AgentDispatcher) Dispatch(ctx context.Context, category FileCategory, c
 		}
 
 		// Persist findings to memory store
-		store, err := memory.NewSQLiteStore(d.basePath)
+		memoryPath := filepath.Join(d.basePath, ".taskwing", "memory")
+		store, err := memory.NewSQLiteStore(memoryPath)
 		if err == nil {
 			defer store.Close()
 			for _, f := range output.Findings {
