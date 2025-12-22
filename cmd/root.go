@@ -6,7 +6,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/josephgoksu/TaskWing/internal/telemetry"
 	"github.com/spf13/cobra"
@@ -113,22 +112,4 @@ func init() {
 // GetVersion returns the application version
 func GetVersion() string {
 	return version
-}
-
-// GetMemoryBasePath returns the path to the .taskwing/memory directory
-func GetMemoryBasePath() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error getting current directory: %v\n", err)
-		os.Exit(1)
-	}
-
-	basePath := viper.GetString("memory.path")
-	if basePath == "" {
-		basePath = ".taskwing/memory"
-	}
-	if filepath.IsAbs(basePath) {
-		return basePath
-	}
-	return filepath.Join(cwd, basePath)
 }

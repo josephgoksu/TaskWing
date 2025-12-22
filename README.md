@@ -80,13 +80,13 @@ $ tw bootstrap --preview
      Why: Minimal dependencies, good performance, familiar patterns
      Trade-offs: Less magic than full frameworks like Gin
 
-## 2. Database (MongoDB + LanceDB)
-   Hybrid storage: MongoDB for metadata, LanceDB for vectors.
+## 2. Database (SQLite + Vector Embeddings)
+   Unified storage: SQLite for metadata, graph, and vector embeddings.
 
    **Decisions:**
-   • Embed LanceDB directly into Go backend [high]
-     Why: Avoid separate vector service, single binary deployment
-     Trade-offs: CGO dependency, must manage native libraries
+   • Use SQLite as Single Source of Truth [high]
+     Why: Zero-dependency, ACID compliance, easy backup
+     Trade-offs: No built-in replication (not needed for CLI)
 ```
 
 ## Configuration
@@ -108,7 +108,7 @@ llm:
 
 ## Requirements
 
-- Go 1.21+ (for building from source)
+- Go 1.24+ (for building from source)
 - OpenAI API key (for LLM-powered bootstrap)
 - Git (for commit history analysis)
 

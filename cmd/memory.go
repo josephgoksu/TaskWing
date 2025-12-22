@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -46,14 +47,14 @@ and decisions from the current project's memory store.`,
 		if !force {
 			fmt.Print("⚠️  This will delete ALL project memory. Are you sure? [y/N]: ")
 			var response string
-			fmt.Scanln(&response)
+			_, _ = fmt.Scanln(&response)
 			if response != "y" && response != "Y" {
 				fmt.Println("Reset cancelled.")
 				return nil
 			}
 		}
 
-		basePath := GetMemoryBasePath()
+		basePath := config.GetMemoryBasePath()
 		fmt.Printf("Wiping memory in %s...\n", basePath)
 
 		// Close any open connections by not creating a store, or we can just delete files
@@ -61,9 +62,9 @@ and decisions from the current project's memory store.`,
 		indexPath := filepath.Join(basePath, "index.json")
 		featuresDir := filepath.Join(basePath, "features")
 
-		os.Remove(dbPath)
-		os.Remove(indexPath)
-		os.RemoveAll(featuresDir)
+		_ = os.Remove(dbPath)
+		_ = os.Remove(indexPath)
+		_ = os.RemoveAll(featuresDir)
 
 		fmt.Println("✓ Project memory wiped successfully.")
 		return nil
@@ -81,11 +82,11 @@ Checks for:
   • Orphan edges (relationships to non-existent features)
   • Index cache staleness`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+		store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
 		if err != nil {
 			return fmt.Errorf("open memory store: %w", err)
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		issues, err := store.Check()
 		if err != nil {
@@ -130,11 +131,11 @@ Actions:
   • Remove orphan edges
   • Rebuild the index cache`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+		store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
 		if err != nil {
 			return fmt.Errorf("open memory store: %w", err)
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		// First check what needs repair
 		issues, _ := store.Check()
@@ -170,11 +171,11 @@ var memoryRebuildCmd = &cobra.Command{
 
 This is useful if the cache is out of sync with the database.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+		store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
 		if err != nil {
 			return fmt.Errorf("open memory store: %w", err)
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		if err := store.RebuildIndex(); err != nil {
 			return fmt.Errorf("rebuild index: %w", err)
@@ -206,11 +207,11 @@ Requires OPENAI_API_KEY to be set. Useful after:
 			return fmt.Errorf("OPENAI_API_KEY required for embedding generation")
 		}
 
-		store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+		store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
 		if err != nil {
 			return fmt.Errorf("open memory store: %w", err)
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		nodes, err := store.ListNodes("")
 		if err != nil {

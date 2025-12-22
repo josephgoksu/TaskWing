@@ -35,7 +35,7 @@ func (o *Orchestrator) RunAll(ctx context.Context, input Input) ([]Output, error
 
 	input.Verbose = o.verbose
 
-	fmt.Fprintf(o.out, "   🤖 Running %d agents in parallel...\n", len(o.agents))
+	_, _ = fmt.Fprintf(o.out, "   🤖 Running %d agents in parallel...\n", len(o.agents))
 
 	var wg sync.WaitGroup
 	outputs := make([]Output, len(o.agents))
@@ -48,7 +48,7 @@ func (o *Orchestrator) RunAll(ctx context.Context, input Input) ([]Output, error
 
 			start := time.Now()
 			if o.verbose {
-				fmt.Fprintf(o.out, "      → Starting %s agent\n", a.Name())
+				_, _ = fmt.Fprintf(o.out, "      → Starting %s agent\n", a.Name())
 			}
 
 			out, err := a.Run(ctx, input)
@@ -63,7 +63,7 @@ func (o *Orchestrator) RunAll(ctx context.Context, input Input) ([]Output, error
 			outputs[idx] = out
 
 			if o.verbose {
-				fmt.Fprintf(o.out, "      ✓ %s completed in %.1fs (%d findings)\n",
+				_, _ = fmt.Fprintf(o.out, "      ✓ %s completed in %.1fs (%d findings)\n",
 					a.Name(), out.Duration.Seconds(), len(out.Findings))
 			}
 		}(i, agent)
@@ -76,7 +76,7 @@ func (o *Orchestrator) RunAll(ctx context.Context, input Input) ([]Output, error
 	for _, out := range outputs {
 		totalFindings += len(out.Findings)
 	}
-	fmt.Fprintf(o.out, "   ✓ All agents completed: %d findings total\n", totalFindings)
+	_, _ = fmt.Fprintf(o.out, "   ✓ All agents completed: %d findings total\n", totalFindings)
 
 	return outputs, nil
 }

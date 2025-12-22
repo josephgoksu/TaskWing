@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -38,11 +40,11 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+	store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
 	if err != nil {
 		return fmt.Errorf("open memory store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	var nodeType string
 	if len(args) > 0 {
@@ -111,7 +113,7 @@ func runList(cmd *cobra.Command, args []string) error {
 		for _, n := range groupNodes {
 			summary := n.Summary
 			if summary == "" {
-				summary = truncateSummary(n.Content, 60)
+				summary = utils.Truncate(n.Content, 60)
 			}
 
 			dateStr := n.CreatedAt.Format("Jan 02")
@@ -150,11 +152,4 @@ func capitalizeFirst(s string) string {
 		return s
 	}
 	return string(s[0]-32) + s[1:]
-}
-
-func truncateSummary(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }

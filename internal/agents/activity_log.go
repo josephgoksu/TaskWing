@@ -185,9 +185,9 @@ func (l *ActivityLog) saveEntries(entries []ActivityEntry) {
 
 	// Ensure directory exists
 	dir := filepath.Dir(l.logPath)
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 
-	os.WriteFile(l.logPath, data, 0644)
+	_ = os.WriteFile(l.logPath, data, 0644)
 }
 
 // load reads the log from disk

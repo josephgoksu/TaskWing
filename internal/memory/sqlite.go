@@ -38,7 +38,7 @@ func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
 
 	// Enable foreign keys
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("enable foreign keys: %w", err)
 	}
 
@@ -49,7 +49,7 @@ func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
 
 	// Initialize schema
 	if err := store.initSchema(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
 
@@ -176,7 +176,7 @@ func (s *SQLiteStore) CreateFeature(f Feature) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Insert into SQLite
 	_, err = tx.Exec(`
@@ -188,13 +188,7 @@ func (s *SQLiteStore) CreateFeature(f Feature) error {
 		return fmt.Errorf("insert feature: %w", err)
 	}
 
-	// Create markdown file
-	if err := s.writeMarkdownFile(f); err != nil {
-		return fmt.Errorf("write markdown: %w", err)
-	}
-
 	if err := tx.Commit(); err != nil {
-		os.Remove(f.FilePath)
 		return fmt.Errorf("commit: %w", err)
 	}
 
@@ -237,11 +231,6 @@ func (s *SQLiteStore) UpdateFeature(f Feature) error {
 		return fmt.Errorf("feature not found: %s", f.ID)
 	}
 
-	// Update markdown file
-	if err := s.writeMarkdownFile(f); err != nil {
-		return fmt.Errorf("write markdown: %w", err)
-	}
-
 	s.indexCache = nil
 	return nil
 }
@@ -275,9 +264,6 @@ func (s *SQLiteStore) DeleteFeature(id string) error {
 		return fmt.Errorf("delete feature: %w", err)
 	}
 
-	// Delete markdown file
-	os.Remove(filePath)
-
 	s.indexCache = nil
 	return nil
 }
@@ -301,7 +287,9 @@ func (s *SQLiteStore) GetFeature(id string) (*Feature, error) {
 
 	f.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	f.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
-	json.Unmarshal([]byte(tagsJSON), &f.Tags)
+	if err := json.Unmarshal([]byte(tagsJSON), &f.Tags); err != nil {
+		return nil, fmt.Errorf("unmarshal tags: %w", err)
+	}
 
 	return &f, nil
 }
@@ -313,7 +301,7 @@ func (s *SQLiteStore) ListFeatures() ([]FeatureSummary, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query features: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var features []FeatureSummary
 	for rows.Next() {
@@ -342,7 +330,7 @@ func (s *SQLiteStore) AddDecision(featureID string, d Decision) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.Exec(`
 		INSERT INTO decisions (id, feature_id, title, summary, reasoning, tradeoffs, created_at)
@@ -404,7 +392,7 @@ func (s *SQLiteStore) DeleteDecision(id string) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.Exec("DELETE FROM decisions WHERE id = ?", id)
 	if err != nil {
@@ -437,7 +425,7 @@ func (s *SQLiteStore) GetDecisions(featureID string) ([]Decision, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query decisions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var decisions []Decision
 	for rows.Next() {
@@ -457,6 +445,30 @@ func (s *SQLiteStore) GetDecisions(featureID string) ([]Decision, error) {
 	}
 
 	return decisions, nil
+}
+
+func (s *SQLiteStore) GetDecision(id string) (*Decision, error) {
+	var d Decision
+	var createdAt string
+	var reasoning, tradeoffs sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT id, feature_id, title, summary, reasoning, tradeoffs, created_at
+		FROM decisions WHERE id = ?
+	`, id).Scan(&d.ID, &d.FeatureID, &d.Title, &d.Summary, &reasoning, &tradeoffs, &createdAt)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("decision not found: %s", id)
+		}
+		return nil, fmt.Errorf("get decision: %w", err)
+	}
+
+	d.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	d.Reasoning = reasoning.String
+	d.Tradeoffs = tradeoffs.String
+
+	return &d, nil
 }
 
 // === Pattern CRUD ===
@@ -498,7 +510,7 @@ func (s *SQLiteStore) ListPatterns() ([]Pattern, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query patterns: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var patterns []Pattern
 	for rows.Next() {
@@ -592,7 +604,7 @@ func (s *SQLiteStore) GetDependencies(featureID string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query dependencies: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deps []string
 	for rows.Next() {
@@ -623,7 +635,7 @@ func (s *SQLiteStore) GetDependents(featureID string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query dependents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var dependents []string
 	for rows.Next() {
@@ -661,7 +673,7 @@ func (s *SQLiteStore) GetRelated(featureID string, maxDepth int) ([]string, erro
 	if err != nil {
 		return nil, fmt.Errorf("query related: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var related []string
 	for rows.Next() {
@@ -692,7 +704,7 @@ func (s *SQLiteStore) FindPath(from, to string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query path: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if rows.Next() {
 		var route string
@@ -766,7 +778,7 @@ func (s *SQLiteStore) Check() ([]Issue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query features: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var id, filePath string
@@ -793,7 +805,7 @@ func (s *SQLiteStore) Check() ([]Issue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query orphan edges: %w", err)
 	}
-	defer edgeRows.Close()
+	defer func() { _ = edgeRows.Close() }()
 
 	for edgeRows.Next() {
 		var from, to string
@@ -818,18 +830,18 @@ func (s *SQLiteStore) Repair() error {
 
 	for _, issue := range issues {
 		switch issue.Type {
-		case "missing_file":
-			// Regenerate markdown file from SQLite data
-			f, err := s.GetFeature(issue.FeatureID)
-			if err != nil {
-				continue
-			}
-			if err := s.writeMarkdownFile(*f); err != nil {
-				continue
-			}
+		// case "missing_file":
+		// 	// Regenerate markdown file from SQLite data
+		// 	f, err := s.GetFeature(issue.FeatureID)
+		// 	if err != nil {
+		// 		continue
+		// 	}
+		// 	// if err := s.writeMarkdownFile(*f); err != nil {
+		// 	// 	continue
+		// 	// }
 		case "orphan_edge":
 			// Delete orphan edges
-			s.db.Exec(`
+			_, _ = s.db.Exec(`
 				DELETE FROM edges WHERE from_feature NOT IN (SELECT id FROM features)
 				OR to_feature NOT IN (SELECT id FROM features)
 			`)
@@ -847,40 +859,6 @@ func (s *SQLiteStore) Close() error {
 }
 
 // === Helpers ===
-
-func (s *SQLiteStore) writeMarkdownFile(f Feature) error {
-	featuresDir := filepath.Join(s.basePath, "features")
-	if err := os.MkdirAll(featuresDir, 0755); err != nil {
-		return fmt.Errorf("create features dir: %w", err)
-	}
-
-	// Get decisions for this feature
-	decisions, _ := s.GetDecisions(f.ID)
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# %s\n\n", f.Name))
-	sb.WriteString(fmt.Sprintf("%s\n\n", f.OneLiner))
-
-	if len(decisions) > 0 {
-		sb.WriteString("## Decisions\n\n")
-		for _, d := range decisions {
-			sb.WriteString(fmt.Sprintf("### %s\n", d.Title))
-			sb.WriteString(fmt.Sprintf("- **Summary:** %s\n", d.Summary))
-			if d.Reasoning != "" {
-				sb.WriteString(fmt.Sprintf("- **Why:** %s\n", d.Reasoning))
-			}
-			if d.Tradeoffs != "" {
-				sb.WriteString(fmt.Sprintf("- **Trade-offs:** %s\n", d.Tradeoffs))
-			}
-			sb.WriteString(fmt.Sprintf("- **Date:** %s\n\n", d.CreatedAt.Format("2006-01-02")))
-		}
-	}
-
-	sb.WriteString("## Notes\n\n")
-	sb.WriteString("<!-- Add notes here -->\n")
-
-	return os.WriteFile(f.FilePath, []byte(sb.String()), 0644)
-}
 
 // === Node CRUD (v2 Knowledge Graph) ===
 
@@ -961,7 +939,7 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query nodes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var nodes []Node
 	for rows.Next() {
@@ -1105,7 +1083,7 @@ func (s *SQLiteStore) GetNodeEdges(nodeID string) ([]NodeEdge, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query edges: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var edges []NodeEdge
 	for rows.Next() {
@@ -1119,7 +1097,7 @@ func (s *SQLiteStore) GetNodeEdges(nodeID string) ([]NodeEdge, error) {
 
 		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		if propsJSON.Valid && propsJSON.String != "" {
-			json.Unmarshal([]byte(propsJSON.String), &e.Properties)
+			_ = json.Unmarshal([]byte(propsJSON.String), &e.Properties)
 		}
 		edges = append(edges, e)
 	}

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -71,11 +72,11 @@ func runMCPServer(ctx context.Context) error {
 	cwd, _ := os.Getwd()
 
 	// Initialize memory store
-	store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+	store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
 	if err != nil {
 		return fmt.Errorf("failed to initialize memory store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Create MCP server
 	impl := &mcpsdk.Implementation{

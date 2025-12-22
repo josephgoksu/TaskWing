@@ -13,6 +13,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // ClassifyResult contains the AI-inferred classification of content.
@@ -62,7 +63,7 @@ func Classify(ctx context.Context, content string, cfg llm.Config) (*ClassifyRes
 		// Fallback: try to extract from non-JSON response
 		return &ClassifyResult{
 			Type:    memory.NodeTypeNote,
-			Summary: truncateContent(content, 100),
+			Summary: utils.Truncate(content, 100),
 		}, nil
 	}
 
@@ -130,11 +131,4 @@ func parseClassifyResponse(response string) (*ClassifyResult, error) {
 	}
 
 	return &result, nil
-}
-
-func truncateContent(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }

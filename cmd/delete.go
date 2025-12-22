@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -34,11 +35,11 @@ func init() {
 func runDelete(cmd *cobra.Command, args []string) error {
 	nodeID := args[0]
 
-	store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+	store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
 	if err != nil {
 		return fmt.Errorf("open memory store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Check if node exists
 	node, err := store.GetNode(nodeID)

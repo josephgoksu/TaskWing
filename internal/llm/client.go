@@ -24,10 +24,11 @@ const (
 
 // Config holds configuration for creating an LLM client.
 type Config struct {
-	Provider Provider
-	Model    string
-	APIKey   string // Required for OpenAI
-	BaseURL  string // Required for Ollama (default: http://localhost:11434)
+	Provider       Provider
+	Model          string // Chat model
+	EmbeddingModel string // Embedding model (optional)
+	APIKey         string // Required for OpenAI
+	BaseURL        string // Required for Ollama (default: http://localhost:11434)
 }
 
 // NewChatModel creates a ChatModel instance based on the provider configuration.
@@ -84,7 +85,7 @@ func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, err
 			return nil, fmt.Errorf("OpenAI API key is required")
 		}
 		// Default to text-embedding-3-small if not specified
-		modelName := cfg.Model
+		modelName := cfg.EmbeddingModel
 		if modelName == "" {
 			modelName = "text-embedding-3-small"
 		}
@@ -99,7 +100,7 @@ func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, err
 			baseURL = config.DefaultOllamaURL
 		}
 		// Default to mxbai-embed-large or similar if not specified, but usually caller specifies
-		modelName := cfg.Model
+		modelName := cfg.EmbeddingModel
 		if modelName == "" {
 			modelName = "nomic-embed-text" // Common default for Ollama
 		}

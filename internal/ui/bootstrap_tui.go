@@ -71,7 +71,9 @@ func NewBootstrapModel(ctx context.Context, input agents.Input, agentsList []age
 
 func (m BootstrapModel) Init() tea.Cmd {
 	var cmds []tea.Cmd
-	cmds = append(cmds, spinner.Tick)
+	if len(m.Agents) > 0 {
+		cmds = append(cmds, m.Agents[0].Spinner.Tick)
+	}
 
 	// Start all agents concurrently
 	for _, a := range m.RealAgents {

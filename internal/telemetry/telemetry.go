@@ -115,7 +115,7 @@ func (c *Client) Track(event Event) {
 	c.mu.Unlock()
 
 	if shouldFlush {
-		go c.Flush()
+		go func() { _ = c.Flush() }()
 	}
 }
 
@@ -156,7 +156,7 @@ func (c *Client) Flush() error {
 		// Silently fail - telemetry should never block the user
 		return nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return nil
 }

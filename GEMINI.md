@@ -27,17 +27,17 @@
 The system is composed of a CLI tool with an embedded MCP server and a web dashboard.
 
 ### Core Layers (`internal/`)
-*   **Memory (`internal/memory`):** SQLite-based storage. All writes go through here.
+*   **Memory (`internal/memory`):** Repository pattern. Encapsulates SQLite (Source of Truth) and Markdown (Snapshot).
 *   **Bootstrap (`internal/bootstrap`):** Analyzes codebases.
     *   `scanner.go`: Heuristic analysis (fast, basic).
     *   `llm_analyzer.go`: Deep analysis using LLMs.
-*   **Knowledge (`internal/knowledge`):** Handles embeddings and classification.
-*   **LLM (`internal/llm`):** Interface for AI providers via Eino.
+*   **Knowledge (`internal/knowledge`):** `KnowledgeService` centralizes intelligence (RAG, Embeddings, Search).
+*   **LLM (`internal/llm`):** Interface for AI providers via Eino (Factory pattern).
 
 ### Storage Model (`.taskwing/memory/`)
 1.  **`memory.db`**: SQLite database. **The canonical source of truth.**
 2.  **`index.json`**: Cached index for fast retrieval.
-3.  **`features/*.md`**: Human-readable snapshots (generated from DB). Do not edit manually.
+3.  **`features/*.md`**: Human-readable snapshots (generated via Repository). Do not edit manually.
 
 ### Directory Structure
 
@@ -78,11 +78,12 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 
 ## Development Conventions
 
-1.  **Source of Truth:** Always treat SQLite as the source of truth. Markdown files are derivative.
+1.  **Source of Truth:** Always treat SQLite as the source of truth. The `Repository` handles synchronization.
 2.  **Global Flags:** CLI commands should respect global flags like `--json`, `--verbose`, `--preview`.
 3.  **Testing:**
     *   Use `make test-quick` for rapid iteration.
     *   Ensure MCP tests pass if modifying server logic.
+    *   **New:** Unit tests for `internal/knowledge` and `internal/memory` are required.
 4.  **Style:** Follow standard Go idioms. Use `make lint` to enforce.
 5.  **LLM Integration:** Use the `internal/llm` client factory to support multiple providers (OpenAI, Ollama) agnostic of the specific API.
 

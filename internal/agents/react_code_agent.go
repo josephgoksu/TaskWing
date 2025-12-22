@@ -18,6 +18,7 @@ import (
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // ReactCodeAgent uses ReAct pattern to dynamically explore and analyze codebases
@@ -202,7 +203,7 @@ func (a *ReactCodeAgent) Run(ctx context.Context, input Input) (Output, error) {
 		// Execute tool calls
 		if a.verbose {
 			for _, tc := range resp.ToolCalls {
-				fmt.Printf("  [ReAct] Tool call: %s(%s)\n", tc.Function.Name, truncate(tc.Function.Arguments, 50))
+				fmt.Printf("  [ReAct] Tool call: %s(%s)\n", tc.Function.Name, utils.Truncate(tc.Function.Arguments, 50))
 			}
 		}
 
@@ -219,7 +220,7 @@ func (a *ReactCodeAgent) Run(ctx context.Context, input Input) (Output, error) {
 
 		if a.verbose {
 			for _, tr := range toolResults {
-				fmt.Printf("  [ReAct] Tool result: %s\n", truncate(tr.Content, 100))
+				fmt.Printf("  [ReAct] Tool result: %s\n", utils.Truncate(tr.Content, 100))
 			}
 		}
 	}
@@ -317,15 +318,6 @@ func (a *ReactCodeAgent) parseFindings(response string) ([]Finding, error) {
 	}
 
 	return findings, nil
-}
-
-// truncate shortens a string for logging
-func truncate(s string, maxLen int) string {
-	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) > maxLen {
-		return s[:maxLen] + "..."
-	}
-	return s
 }
 
 // runSimpleFallback is used when tool-calling is not supported by the model

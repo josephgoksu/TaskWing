@@ -6,36 +6,47 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"sort"
+	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 
-	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/agents"
-	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/spf13/viper"
 )
 
+// KnowledgeService abstracts the knowledge logic (Search, Ask)
+type KnowledgeService interface {
+	Search(ctx context.Context, query string, limit int) ([]knowledge.ScoredNode, error)
+	Ask(ctx context.Context, query string, contextNodes []knowledge.ScoredNode) (string, error)
+}
+
 type Server struct {
-	store      *memory.SQLiteStore
+	repo       *memory.Repository
+	knowledge  KnowledgeService
 	cwd        string
 	memoryPath string
 	port       int
 	server     *http.Server
 }
 
-func New(port int, cwd, memoryPath string) (*Server, error) {
+func New(port int, cwd, memoryPath string, llmCfg llm.Config) (*Server, error) {
 	store, err := memory.NewSQLiteStore(memoryPath)
 	if err != nil {
 		return nil, fmt.Errorf("open memory store: %w", err)
 	}
 
+	files := memory.NewMarkdownStore(memoryPath)
+	repo := memory.NewRepository(store, files)
+
+	// Use repo instead of store for consistent access
+	ks := knowledge.NewService(repo, llmCfg)
+
 	s := &Server{
-		store:      store,
+		repo:       repo,
+		knowledge:  ks,
 		cwd:        cwd,
 		memoryPath: memoryPath,
 		port:       port,
@@ -67,7 +78,7 @@ func (s *Server) Start(wg *sync.WaitGroup, errChan chan<- error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer s.store.Close()
+		defer func() { _ = s.repo.Close() }()
 
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errChan <- fmt.Errorf("API server error: %w", err)
@@ -80,16 +91,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 // apiScoredNode for search results
-type apiScoredNode struct {
-	Node  *memory.Node `json:"node"`
-	Score float32      `json:"score"`
-}
 
 // handleListNodes
 func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
 	typeFilter := r.URL.Query().Get("type")
 
-	nodes, err := s.store.ListNodes(typeFilter)
+	nodes, err := s.repo.ListNodes(typeFilter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -106,7 +113,7 @@ func (s *Server) handleGetNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	node, err := s.store.GetNode(id)
+	node, err := s.repo.GetNode(id)
 	if err != nil {
 		http.Error(w, "node not found", http.StatusNotFound)
 		return
@@ -134,60 +141,18 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		req.Limit = 5
 	}
 
-	apiKey := viper.GetString("llm.apiKey")
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-	if apiKey == "" {
-		http.Error(w, "OPENAI_API_KEY not set", http.StatusServiceUnavailable)
-		return
-	}
-
 	ctx := context.Background()
-	provider := llm.Provider(viper.GetString("llm.provider"))
-	if provider == "" {
-		provider = llm.ProviderOpenAI
-	}
-	llmCfg := llm.Config{
-		Provider: provider,
-		APIKey:   apiKey,
-		BaseURL:  viper.GetString("llm.baseURL"),
-	}
 
-	nodes, err := s.store.ListNodes("")
+	// Use KnowledgeService
+	scored, err := s.knowledge.Search(ctx, req.Query, req.Limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	queryEmbedding, err := knowledge.GenerateEmbedding(ctx, req.Query, llmCfg)
-	if err != nil {
-		http.Error(w, "embedding generation failed", http.StatusInternalServerError)
-		return
-	}
-
-	var scored []apiScoredNode
-	for _, n := range nodes {
-		fullNode, err := s.store.GetNode(n.ID)
-		if err != nil || len(fullNode.Embedding) == 0 {
-			continue
-		}
-
-		score := knowledge.CosineSimilarity(queryEmbedding, fullNode.Embedding)
-		scored = append(scored, apiScoredNode{Node: fullNode, Score: score})
-	}
-
-	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].Score > scored[j].Score
-	})
-
-	if len(scored) > req.Limit {
-		scored = scored[:req.Limit]
-	}
-
 	var answer string
 	if req.Answer && len(scored) > 0 {
-		answerText, err := generateSearchAnswer(ctx, req.Query, scored, llmCfg)
+		answerText, err := s.knowledge.Ask(ctx, req.Query, scored)
 		if err != nil {
 			fmt.Printf("[API] Answer generation failed: %v\n", err)
 		} else {
@@ -196,9 +161,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeAPIJSON(w, struct {
-		Query   string          `json:"query"`
-		Results []apiScoredNode `json:"results"`
-		Answer  string          `json:"answer,omitempty"`
+		Query   string                 `json:"query"`
+		Results []knowledge.ScoredNode `json:"results"`
+		Answer  string                 `json:"answer,omitempty"`
 	}{
 		Query:   req.Query,
 		Results: scored,
@@ -206,62 +171,10 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func generateSearchAnswer(ctx context.Context, query string, scored []apiScoredNode, cfg llm.Config) (string, error) {
-	var contextParts []string
-	for _, s := range scored {
-		nodeContext := fmt.Sprintf("[%s] %s\n%s", s.Node.Type, s.Node.Summary, s.Node.Content)
-		contextParts = append(contextParts, nodeContext)
-	}
-	retrievedContext := strings.Join(contextParts, "\n\n---\n\n")
-
-	prompt := fmt.Sprintf(`You are an expert on this codebase. Answer the user's question using ONLY the context below.
-If the context doesn't contain enough information to answer, say so.
-Be concise and direct.
-
-## Retrieved Context:
-%s
-
-## Question:
-%s
-
-## Answer:`, retrievedContext, query)
-
-	provider := llm.Provider(viper.GetString("llm.provider"))
-	if provider == "" {
-		provider = llm.ProviderOpenAI
-	}
-	model := viper.GetString("llm.model")
-	if model == "" {
-		model = llm.DefaultModelForProvider(provider)
-	}
-
-	llmCfg := llm.Config{
-		Provider: provider,
-		Model:    model,
-		APIKey:   cfg.APIKey,
-		BaseURL:  viper.GetString("llm.baseURL"),
-	}
-
-	chatModel, err := llm.NewChatModel(ctx, llmCfg)
-	if err != nil {
-		return "", fmt.Errorf("create chat model: %w", err)
-	}
-
-	messages := []*schema.Message{
-		schema.UserMessage(prompt),
-	}
-
-	resp, err := chatModel.Generate(ctx, messages)
-	if err != nil {
-		return "", fmt.Errorf("generate: %w", err)
-	}
-
-	return resp.Content, nil
-}
-
 // handleStats
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
-	nodes, err := s.store.ListNodes("")
+	// Use DB directly for list (read-only)
+	nodes, err := s.repo.ListNodes("")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -298,7 +211,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 
 // handleAgents
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
-	nodes, _ := s.store.ListNodes("")
+	nodes, _ := s.repo.ListNodes("")
 
 	counts := make(map[string]int)
 	for _, n := range nodes {
@@ -354,39 +267,76 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create LLM Config
+	llmCfg := llm.Config{
+		Provider: llm.Provider(viper.GetString("llm.provider")),
+		Model:    viper.GetString("llm.model"),
+		APIKey:   apiKey,
+		BaseURL:  viper.GetString("llm.baseURL"),
+	}
+
+	// Initialize Agents
+	docAgent := agents.NewDocAgent(llmCfg)
+	codeAgent := agents.NewReactCodeAgent(llmCfg, req.ProjectPath)
+	gitAgent := agents.NewGitAgent(llmCfg)
+	depsAgent := agents.NewDepsAgent(llmCfg)
+
+	agentsList := []agents.Agent{docAgent, codeAgent, gitAgent, depsAgent}
+
+	// Run Agents
 	ctx := context.Background()
-	// Use new internal/bootstrap runner
-	err := bootstrap.RunAPI(ctx, req.ProjectPath, false, apiKey, req.Agents, s.memoryPath)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("bootstrap failed: %v", err), http.StatusInternalServerError)
+	input := agents.Input{
+		BasePath:    req.ProjectPath,
+		ProjectName: filepath.Base(req.ProjectPath),
+		Mode:        agents.ModeBootstrap,
+	}
+
+	// TODO: Parallelize this respecting the "Agents" filter from request if needed.
+	// For now, running all or simplified sequence.
+	// Since this is an API, we can't show TUI. We should probably run them linearly or with waitgroup.
+
+	var results []agents.Output
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for _, agent := range agentsList {
+		wg.Add(1)
+		go func(a agents.Agent) {
+			defer wg.Done()
+			out, err := a.Run(ctx, input)
+			if err != nil {
+				fmt.Printf("[API] Agent %s failed: %v\n", a.Name(), err)
+				return
+			}
+			mu.Lock()
+			results = append(results, out)
+			mu.Unlock()
+		}(agent)
+	}
+	wg.Wait()
+
+	// Aggregate
+	findings := agents.AggregateFindings(results)
+
+	// Ingest
+	ingestSvc, ok := s.knowledge.(*knowledge.Service)
+	if !ok {
+		// Should not happen if initialized correctly
+		http.Error(w, "knowledge service not available", http.StatusInternalServerError)
 		return
 	}
 
-	// Reload the store
-	s.store.Close()
-	newStore, err := memory.NewSQLiteStore(s.memoryPath)
+	err := ingestSvc.IngestFindings(ctx, findings, false)
 	if err != nil {
-		http.Error(w, "failed to reload store", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("ingestion failed: %v", err), http.StatusInternalServerError)
 		return
 	}
-	s.store = newStore
 
-	nodes, _ := s.store.ListNodes("")
+	// Response stats
 	stats := map[string]interface{}{
 		"success":  true,
-		"total":    len(nodes),
-		"feature":  0,
-		"decision": 0,
+		"findings": len(findings),
 	}
-	for _, n := range nodes {
-		switch n.Type {
-		case "feature":
-			stats["feature"] = stats["feature"].(int) + 1
-		case "decision":
-			stats["decision"] = stats["decision"].(int) + 1
-		}
-	}
-
 	writeAPIJSON(w, stats)
 }
 
@@ -442,5 +392,5 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 func writeAPIJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }

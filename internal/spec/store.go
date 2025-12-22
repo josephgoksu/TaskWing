@@ -335,9 +335,10 @@ func (s *Store) specToMarkdown(spec *Spec) string {
 		sb.WriteString("---\n\n# Tasks\n\n")
 		for _, t := range spec.Tasks {
 			status := "[ ]"
-			if t.Status == StatusDone {
+			switch t.Status {
+			case StatusDone:
 				status = "[x]"
-			} else if t.Status == StatusInProgress {
+			case StatusInProgress:
 				status = "[/]"
 			}
 			sb.WriteString(fmt.Sprintf("- %s **%s** (%s) - %s\n", status, t.Title, t.Estimate, t.Description))

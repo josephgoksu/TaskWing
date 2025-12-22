@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/callbacks"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // CallbackHandler provides observability hooks for agent execution
@@ -90,7 +91,7 @@ func (h *CallbackHandler) Build() callbacks.Handler {
 			h.mu.Unlock()
 
 			if h.verbose {
-				fmt.Fprintf(h.out, "  ▶ %s starting (%s)\n", info.Name, info.Type)
+				_, _ = fmt.Fprintf(h.out, "  ▶ %s starting (%s)\n", info.Name, info.Type)
 			}
 
 			if h.onStart != nil {
@@ -108,7 +109,7 @@ func (h *CallbackHandler) Build() callbacks.Handler {
 			duration := time.Since(start)
 
 			if h.verbose {
-				fmt.Fprintf(h.out, "  ✓ %s completed in %.2fs\n", info.Name, duration.Seconds())
+				_, _ = fmt.Fprintf(h.out, "  ✓ %s completed in %.2fs\n", info.Name, duration.Seconds())
 			}
 
 			if h.onEnd != nil {
@@ -118,7 +119,7 @@ func (h *CallbackHandler) Build() callbacks.Handler {
 			return ctx
 		}).
 		OnErrorFn(func(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
-			fmt.Fprintf(h.out, "  ✗ %s error: %v\n", info.Name, err)
+			_, _ = fmt.Fprintf(h.out, "  ✗ %s error: %v\n", info.Name, err)
 
 			if h.onError != nil {
 				h.onError(info.Name, err)
@@ -207,24 +208,16 @@ func CreateStreamingCallbackHandler(stream *StreamingOutput) *CallbackHandler {
 			stream.Emit(EventAgentError, name, err.Error(), nil)
 		}).
 		OnToolCall(func(agent, tool, args string) {
-			stream.Emit(EventToolCall, agent, fmt.Sprintf("%s(%s)", tool, truncateForLog(args, 50)), map[string]any{
+			stream.Emit(EventToolCall, agent, fmt.Sprintf("%s(%s)", tool, utils.Truncate(args, 50)), map[string]any{
 				"tool": tool,
 				"args": args,
 			})
 		}).
 		OnToolResult(func(agent, tool, result string) {
-			stream.Emit(EventToolResult, agent, truncateForLog(result, 100), map[string]any{
+			stream.Emit(EventToolResult, agent, utils.Truncate(result, 100), map[string]any{
 				"tool": tool,
 			})
 		})
-}
-
-// truncateForLog shortens a string for logging purposes
-func truncateForLog(s string, maxLen int) string {
-	if len(s) > maxLen {
-		return s[:maxLen] + "..."
-	}
-	return s
 }
 
 // ProgressReporter provides a simple progress reporting interface
@@ -254,18 +247,18 @@ func (p *ProgressReporter) Step(name string) {
 	p.currentStep = name
 
 	if p.totalSteps > 0 {
-		fmt.Fprintf(p.out, "  [%d/%d] %s\n", p.stepCount, p.totalSteps, name)
+		_, _ = fmt.Fprintf(p.out, "  [%d/%d] %s\n", p.stepCount, p.totalSteps, name)
 	} else {
-		fmt.Fprintf(p.out, "  → %s\n", name)
+		_, _ = fmt.Fprintf(p.out, "  → %s\n", name)
 	}
 }
 
 // Complete marks the overall operation as complete
 func (p *ProgressReporter) Complete(message string) {
-	fmt.Fprintf(p.out, "  ✓ %s\n", message)
+	_, _ = fmt.Fprintf(p.out, "  ✓ %s\n", message)
 }
 
 // Error reports an error
 func (p *ProgressReporter) Error(message string) {
-	fmt.Fprintf(p.out, "  ✗ %s\n", message)
+	_, _ = fmt.Fprintf(p.out, "  ✗ %s\n", message)
 }

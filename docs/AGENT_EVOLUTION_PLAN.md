@@ -12,25 +12,21 @@ This document outlines the evolution of TaskWing's agent architecture from **bat
 
 ## Current State Analysis
 
-### Problem: Agents Don't Explore
+### Problem: Agents Don't Explore (SOLVED)
 
-Current agents in `internal/agents/` follow an anemic pattern:
-1. Read files statically (hardcoded paths)
-2. Build a prompt
-3. Make ONE LLM call
-4. Parse JSON response
-5. Return findings
+*   **Legacy Static Analysis**: The old `internal/bootstrap` package (static, hardcoded analysis) has been **deleted**.
+*   **New ReAct Agents**: `internal/agents/react_code_agent.go` now drives analysis using dynamic tool exploration (`list_dir`, `read_file`, `grep_search`).
 
-### Dead Code
+### Tool Usage
 
-Tools defined in `tools.go` but never used:
+The tools defined in `tools.go` are now **actively used** by the `ReactCodeAgent`.
 
 | Tool | Capability | Usage |
 |------|-----------|-------|
-| `ReadFileTool` | Read any file dynamically | **Unused** |
-| `GrepTool` | Search patterns across codebase | **Unused** |
-| `ListDirTool` | Explore directory structure | **Unused** |
-| `ExecCommandTool` | Run git, cat, head, tail, wc | **Unused** |
+| `ReadFileTool` | Read any file dynamically | **Active (ReAct)** |
+| `GrepTool` | Search patterns across codebase | **Active (ReAct)** |
+| `ListDirTool` | Explore directory structure | **Active (ReAct)** |
+| `ExecCommandTool` | Run git, cat, head, tail, wc | **Active (ReAct)** |
 
 ---
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/agents"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/server"
 	"github.com/spf13/cobra"
@@ -88,9 +89,15 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Error channel to capture startup errors
 	errChan := make(chan error, 2)
 
+	// Configure LLM
+	llmConfig, err := getLLMConfig(cmd)
+	if err != nil {
+		return fmt.Errorf("configure LLM: %w", err)
+	}
+
 	// Start HTTP API server
-	memoryPath := GetMemoryBasePath()
-	srv, err := server.New(startPort, cwd, memoryPath)
+	memoryPath := config.GetMemoryBasePath()
+	srv, err := server.New(startPort, cwd, memoryPath, llmConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create API server: %w", err)
 	}
@@ -99,9 +106,9 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Start watch mode if enabled
 	var watchAgent *agents.WatchAgent
 	if !noWatch {
-		watchAgent, err = startWatchMode(cmd, cwd, verbose, &wg, errChan)
+		watchAgent, err = startWatchMode(cwd, verbose, llmConfig, &wg, errChan)
 		if err != nil {
-			srv.Shutdown(context.Background())
+			_ = srv.Shutdown(context.Background())
 			return fmt.Errorf("failed to start watch mode: %w", err)
 		}
 	}
@@ -158,44 +165,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 }
 
 // startWatchMode starts the watch agent in a goroutine
-func startWatchMode(cmd *cobra.Command, watchPath string, verbose bool, wg *sync.WaitGroup, errChan chan<- error) (*agents.WatchAgent, error) {
-	provider, _ := cmd.Flags().GetString("provider")
-	model, _ := cmd.Flags().GetString("model")
-	apiKey, _ := cmd.Flags().GetString("api-key")
-	ollamaURL, _ := cmd.Flags().GetString("ollama-url")
-
-	// Configure LLM
-	llmProvider, err := llm.ValidateProvider(provider)
-	if err != nil {
-		return nil, fmt.Errorf("invalid provider: %w", err)
-	}
-
-	if model == "" {
-		model = viper.GetString("llm.model")
-	}
-	if model == "" {
-		model = llm.DefaultModelForProvider(llmProvider)
-	}
-
-	if llmProvider == llm.ProviderOpenAI {
-		if apiKey == "" {
-			apiKey = viper.GetString("llm.apiKey")
-		}
-		if apiKey == "" {
-			apiKey = os.Getenv("OPENAI_API_KEY")
-		}
-		if apiKey == "" {
-			return nil, fmt.Errorf("OpenAI API key required: use --api-key or set OPENAI_API_KEY")
-		}
-	}
-
-	llmConfig := llm.Config{
-		Provider: llmProvider,
-		Model:    model,
-		APIKey:   apiKey,
-		BaseURL:  ollamaURL,
-	}
-
+func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sync.WaitGroup, errChan chan<- error) (*agents.WatchAgent, error) {
 	// Create watch agent
 	watchAgent, err := agents.NewWatchAgent(agents.WatchConfig{
 		BasePath:  watchPath,

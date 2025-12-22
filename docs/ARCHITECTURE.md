@@ -32,13 +32,13 @@ Features come and go. **Decisions explain WHY.** That's what new team members, A
 
 See [ROADMAP.md](./ROADMAP.md) for full version planning (v2.0 → v5.0).
 
-**v2.0 Current Scope:**
+**v2.0 Implemented Features:**
 
 - `taskwing add "text"` — Add knowledge (AI classifies)
-- `taskwing list` — View nodes by type
-- `taskwing context "query"` — Semantic search
-- `taskwing bootstrap` — Auto-generate from repo
-- `taskwing mcp` — AI integration
+- `taskwing list` — View all knowledge nodes
+- `taskwing context "query"` — Semantic search with Embeddings
+- `taskwing bootstrap` — Auto-generate from repo (Git + LLM)
+- `taskwing mcp` — AI integration (Model Context Protocol)
 
 ---
 
@@ -46,21 +46,12 @@ See [ROADMAP.md](./ROADMAP.md) for full version planning (v2.0 → v5.0).
 
 MCP must return **relevant** context to AI tools, not everything. Strategy is phased:
 
-| Phase | Strategy | Implementation | Validation Gate |
-|-------|----------|----------------|-----------------|
-| **v2.0** | Graph only | Use `GetRelated()` with edge traversal | Ship, get user feedback |
-| **v2.1** | Add FTS5 | SQLite full-text search on decisions | Only if graph proves insufficient |
-| **v2.2** | Embeddings | Vector similarity on features + decisions | Only if FTS5 fails semantic matching |
+| Phase | Strategy | Implementation | Status |
+|-------|----------|----------------|--------|
+| **v2.0** | Hybrid | Graph traversal + Vector Similarity | **Active** |
 
-### Token Budget (not bytes)
-
-MCP output should target **~500-1000 tokens** for optimal AI context:
-
-| Content | Approx Tokens |
-|---------|---------------|
-| 1 feature + decisions | ~200-400 tokens |
-| 3 related features | ~600-1200 tokens |
-| Full dump (6 features) | ~2000+ tokens |
+### Token Budget
+MCP output targets **~500-1000 tokens** for optimal AI context using `KnowledgeService`.
 
 ### v2.0 Implementation
 
@@ -228,33 +219,23 @@ taskwing task list                 # List tasks
 
 ---
 
-## Core Interface: MemoryStore
+## Core Interface: Repository
 
 > See [DATA_MODEL.md](DATA_MODEL.md) for full implementation.
 
 ```go
-type MemoryStore interface {
+type Repository interface {
     // Features
     CreateFeature(f Feature) error
     UpdateFeature(f Feature) error
     DeleteFeature(id string) error
     GetFeature(id string) (*Feature, error)
-    ListFeatures() ([]FeatureSummary, error)
 
-    // Relationships (renamed from edges)
-    Link(from, to, relationType string) error
-    Unlink(from, to, relationType string) error
-    GetDependencies(featureID string) ([]string, error)
-    GetDependents(featureID string) ([]string, error)
-    GetRelated(featureID string, maxDepth int) ([]string, error)
+    // Knowledge Graph
+    CreateNode(n Node) error
+    ListNodes(filter string) ([]Node, error)
 
-    // Decisions
-    AddDecision(featureID string, d Decision) error
-    GetDecisions(featureID string) ([]Decision, error)
-    DeleteDecision(id string) error
-
-    // Maintenance
-    RebuildIndex() error
+    // Integrity
     Check() ([]Issue, error)
     Repair() error
 }
@@ -315,10 +296,8 @@ internal/
 │   └── react_code_agent.go # Dynamic code analysis
 ├── knowledge/            # Semantic search & embeddings
 ├── server/               # HTTP API server
+├── ui/                   # TUI components (Bubble Tea/Lipgloss)
 ├── telemetry/            # Anonymous usage metrics
-├── bootstrap/
-│   ├── api_runner.go     # Bootstrap implementation
-│   └── llm_analyzer.go   # LLM-powered analysis
 └── llm/
     └── client.go         # Multi-provider ChatModel factory (OpenAI, Ollama)
 
@@ -326,7 +305,7 @@ cmd/
 ├── root.go
 ├── config.go             # Configuration and defaults
 ├── init.go
-├── bootstrap.go
+├── bootstrap.go          # Repository analysis orchestrator
 ├── add.go                # Add knowledge (AI classifies)
 ├── list.go               # List nodes by type
 ├── context.go            # Semantic search

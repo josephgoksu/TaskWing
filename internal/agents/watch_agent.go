@@ -123,7 +123,7 @@ func (w *WatchAgent) Start() error {
 // Stop stops the watch agent
 func (w *WatchAgent) Stop() {
 	w.cancel()
-	w.watcher.Close()
+	_ = w.watcher.Close()
 	w.debouncer.Stop()
 	w.wg.Wait()
 }
@@ -175,7 +175,7 @@ func (w *WatchAgent) handleEvent(event fsnotify.Event) {
 		op = "create"
 		// If a new directory is created, watch it
 		if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-			w.watcher.Add(event.Name)
+			_ = w.watcher.Add(event.Name)
 		}
 	case event.Op&fsnotify.Remove != 0:
 		op = "delete"
@@ -484,7 +484,7 @@ func (d *AgentDispatcher) Dispatch(ctx context.Context, category FileCategory, c
 		memoryPath := filepath.Join(d.basePath, ".taskwing", "memory")
 		store, err := memory.NewSQLiteStore(memoryPath)
 		if err == nil {
-			defer store.Close()
+			defer func() { _ = store.Close() }()
 			for _, f := range output.Findings {
 				node := memory.Node{
 					Content:     f.Description,
@@ -549,7 +549,7 @@ func (t *ContentHashTracker) computeHash(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := md5.New()
 	if _, err := io.Copy(h, f); err != nil {

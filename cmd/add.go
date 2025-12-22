@@ -9,12 +9,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
-	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -56,115 +55,48 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("content cannot be empty")
 	}
 
-	store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+	// 1. Get Unified Config
+	llmCfg, err := getLLMConfig(cmd)
+	if err != nil {
+		// Log but continue if no API key (AddNode handles missing key gracefully)
+		if !viper.GetBool("quiet") {
+			fmt.Fprintf(os.Stderr, "⚠️  Config warning: %v\n", err)
+		}
+	}
+
+	// 2. Initialize Repo
+	memPath := config.GetMemoryBasePath()
+	store, err := memory.NewSQLiteStore(memPath)
 	if err != nil {
 		return fmt.Errorf("open memory store: %w", err)
 	}
-	defer store.Close()
+	files := memory.NewMarkdownStore(memPath)
+	repo := memory.NewRepository(store, files)
+	defer func() { _ = repo.Close() }()
 
-	node := memory.Node{
-		Content:   content,
-		CreatedAt: time.Now().UTC(),
+	// 3. Initialize Service
+	ks := knowledge.NewService(repo, llmCfg)
+
+	// 4. Prepare Input
+	input := knowledge.NodeInput{
+		Content: content,
+		Type:    addType, // from flag
+	}
+	if addSkipAI {
+		if input.Type == "" {
+			input.Type = memory.NodeTypeUnknown
+		}
+		input.Summary = utils.Truncate(content, 100)
 	}
 
-	// If manual type provided or skipping AI
-	if addType != "" {
-		node.Type = addType
-		node.Summary = truncate(content, 100)
-	} else if addSkipAI {
-		node.Type = memory.NodeTypeUnknown
-		node.Summary = truncate(content, 100)
-	} else {
-		// Use AI classification
-		apiKey := viper.GetString("llm.apiKey")
-		if apiKey == "" {
-			apiKey = os.Getenv("OPENAI_API_KEY")
-		}
-
-		if apiKey == "" {
-			// Fallback to manual if no API key
-			node.Type = memory.NodeTypeUnknown
-			node.Summary = truncate(content, 100)
-			if !viper.GetBool("quiet") {
-				fmt.Fprintln(os.Stderr, "⚠️  No API key found, storing without AI classification")
-				fmt.Fprintln(os.Stderr, "   Set OPENAI_API_KEY or use --type to classify manually")
-			}
-		} else {
-			// Classify with LLM
-			ctx := context.Background()
-			model := viper.GetString("llm.model")
-			if model == "" {
-				model = config.DefaultOpenAIModel
-			}
-
-			providerStr := viper.GetString("llm.provider")
-			if providerStr == "" {
-				providerStr = config.DefaultProvider
-			}
-
-			provider, err := llm.ValidateProvider(providerStr)
-			if err != nil {
-				return fmt.Errorf("invalid LLM provider: %w", err)
-			}
-
-			llmCfg := llm.Config{
-				Provider: provider,
-				Model:    model,
-				APIKey:   apiKey,
-				BaseURL:  viper.GetString("llm.baseURL"),
-			}
-
-			if !viper.GetBool("quiet") {
-				fmt.Fprint(os.Stderr, "🧠 Classifying...")
-			}
-
-			result, err := knowledge.Classify(ctx, content, llmCfg)
-			if err != nil {
-				// Fallback on error
-				node.Type = memory.NodeTypeUnknown
-				node.Summary = truncate(content, 100)
-				if !viper.GetBool("quiet") {
-					fmt.Fprintf(os.Stderr, " failed (%v), storing as unknown\n", err)
-				}
-			} else {
-				node.Type = result.Type
-				node.Summary = result.Summary
-				if !viper.GetBool("quiet") {
-					fmt.Fprintf(os.Stderr, " %s\n", result.Type)
-				}
-			}
-		}
+	if !viper.GetBool("quiet") {
+		fmt.Fprint(os.Stderr, "🧠 Processsing...")
 	}
 
-	// Generate embedding for semantic search (if API key available)
-	apiKey := viper.GetString("llm.apiKey")
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-	if apiKey != "" && !addSkipAI {
-		ctx := context.Background()
-		llmCfg := llm.Config{APIKey: apiKey}
-
-		if !viper.GetBool("quiet") {
-			fmt.Fprint(os.Stderr, "📊 Generating embedding...")
-		}
-
-		embedding, err := knowledge.GenerateEmbedding(ctx, content, llmCfg)
-		if err != nil {
-			if !viper.GetBool("quiet") {
-				fmt.Fprintf(os.Stderr, " skipped (%v)\n", err)
-			}
-		} else {
-			node.Embedding = embedding
-			if !viper.GetBool("quiet") {
-				fmt.Fprintln(os.Stderr, " done")
-			}
-		}
-	}
-
-	// Create the node
-	if err := store.CreateNode(node); err != nil {
-		return fmt.Errorf("create node: %w", err)
+	// 5. Execute
+	node, err := ks.AddNode(context.Background(), input)
+	if err != nil {
+		return fmt.Errorf("add node failed: %w", err)
 	}
 
 	if viper.GetBool("json") {
@@ -177,6 +109,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}, "", "  ")
 		fmt.Println(string(output))
 	} else if !viper.GetBool("quiet") {
+		fmt.Fprintln(os.Stderr, " done")
 		embStatus := ""
 		if len(node.Embedding) > 0 {
 			embStatus = " 🔍"
@@ -185,11 +118,4 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }

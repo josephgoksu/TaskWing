@@ -8,14 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
-	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/cloudwego/eino/schema"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
-	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -50,88 +47,43 @@ func init() {
 	contextCmd.Flags().BoolVar(&contextAnswer, "answer", false, "Generate an LLM answer from retrieved context (RAG)")
 }
 
-type scoredNode struct {
-	Node  memory.Node
-	Score float32
-}
-
 func runContext(cmd *cobra.Command, args []string) error {
 	query := args[0]
 
-	store, err := memory.NewSQLiteStore(GetMemoryBasePath())
+	// 1. Get Shared LLM Config
+	llmCfg, err := getLLMConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	// 2. Initialize Memory Repository (Source of Truth)
+	basePath := config.GetMemoryBasePath()
+	db, err := memory.NewSQLiteStore(basePath)
 	if err != nil {
 		return fmt.Errorf("open memory store: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = db.Close() }()
 
-	// Get API key for embeddings
-	apiKey := viper.GetString("llm.apiKey")
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
+	files := memory.NewMarkdownStore(basePath)
+	repo := memory.NewRepository(db, files)
 
-	if apiKey == "" {
-		// Fallback to keyword search if no API key
-		return runKeywordSearch(store, query)
-	}
+	// 3. Initialize Knowledge Service (Intelligence Layer)
+	ks := knowledge.NewService(repo, llmCfg)
 
-	ctx := context.Background()
-	llmCfg := llm.Config{
-		APIKey: apiKey,
-	}
-
-	// Get all nodes with embeddings
-	nodes, err := store.ListNodes("")
-	if err != nil {
-		return fmt.Errorf("list nodes: %w", err)
-	}
-
-	if len(nodes) == 0 {
-		fmt.Println("No knowledge nodes found.")
-		fmt.Println("Add some with: taskwing add \"Your text here\"")
-		return nil
-	}
-
-	// Generate query embedding
 	if !viper.GetBool("quiet") {
 		fmt.Fprint(os.Stderr, "🔍 Searching...")
 	}
 
-	queryEmbedding, err := knowledge.GenerateEmbedding(ctx, query, llmCfg)
+	// 4. Execute Search
+	ctx := context.Background()
+	scored, err := ks.Search(ctx, query, contextLimit)
 	if err != nil {
-		// Fallback to keyword search
 		if !viper.GetBool("quiet") {
-			fmt.Fprintln(os.Stderr, " falling back to keyword search")
+			fmt.Fprintln(os.Stderr, " failed")
 		}
-		return runKeywordSearch(store, query)
-	}
-
-	// Score each node by similarity
-	var scored []scoredNode
-	for _, n := range nodes {
-		// Load full node with embedding
-		fullNode, err := store.GetNode(n.ID)
-		if err != nil {
-			continue
-		}
-
-		if len(fullNode.Embedding) == 0 {
-			// Node has no embedding, skip for now
-			continue
-		}
-
-		score := knowledge.CosineSimilarity(queryEmbedding, fullNode.Embedding)
-		scored = append(scored, scoredNode{Node: *fullNode, Score: score})
-	}
-
-	// Sort by score descending
-	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].Score > scored[j].Score
-	})
-
-	// Limit results
-	if len(scored) > contextLimit {
-		scored = scored[:contextLimit]
+		// Fallback to simpler search or just error out?
+		// For consistency, we error out and let user fix config
+		return fmt.Errorf("search failed: %w", err)
 	}
 
 	if !viper.GetBool("quiet") {
@@ -144,181 +96,36 @@ func runContext(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// If --answer flag, generate RAG response
+	// 5. Generate Answer (if requested)
+	var answer string
 	if contextAnswer {
-		return generateRAGAnswer(ctx, query, scored, llmCfg)
+		if !viper.GetBool("quiet") {
+			fmt.Fprint(os.Stderr, "🧠 Generating answer...")
+		}
+		ans, err := ks.Ask(ctx, query, scored)
+		if err != nil {
+			return fmt.Errorf("ask failed: %w", err)
+		}
+		answer = ans
+		if !viper.GetBool("quiet") {
+			fmt.Fprintln(os.Stderr, " done")
+		}
 	}
 
-	// Output (retrieval only)
+	// 6. Output (JSON or TUI)
 	if viper.GetBool("json") {
 		type result struct {
-			Query   string       `json:"query"`
-			Results []scoredNode `json:"results"`
+			Query   string                 `json:"query"`
+			Results []knowledge.ScoredNode `json:"results"`
+			Answer  string                 `json:"answer,omitempty"`
 		}
-		output, _ := json.MarshalIndent(result{Query: query, Results: scored}, "", "  ")
+		output, _ := json.MarshalIndent(result{Query: query, Results: scored, Answer: answer}, "", "  ")
 		fmt.Println(string(output))
 		return nil
 	}
 
-	// Styles
-	var (
-		titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		sourceTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-		metaStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		barFull     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-		barEmpty    = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
-	)
-
-	fmt.Println(titleStyle.Render(fmt.Sprintf("🔍 Context for: \"%s\"", query)))
-
-	for i, s := range scored {
-		score := int(s.Score * 10)
-		if score > 10 {
-			score = 10
-		}
-		bar := barFull.Render(strings.Repeat("━", score)) + barEmpty.Render(strings.Repeat("━", 10-score))
-
-		summary := s.Node.Summary
-		if summary == "" {
-			summary = truncateSummary(s.Node.Content, 60)
-		}
-
-		id := s.Node.ID
-		if len(id) > 6 {
-			id = id[:6]
-		}
-
-		fmt.Printf(" %d. %s %s %s\n", i+1, typeIcon(s.Node.Type), sourceTitle.Render(summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)))
-	}
-
-	return nil
-}
-
-// generateRAGAnswer passes retrieved context to an LLM to generate an answer
-func generateRAGAnswer(ctx context.Context, query string, scored []scoredNode, cfg llm.Config) error {
-	// Build context from retrieved nodes
-	var contextParts []string
-	for _, s := range scored {
-		nodeContext := fmt.Sprintf("[%s] %s\n%s", s.Node.Type, s.Node.Summary, s.Node.Content)
-		contextParts = append(contextParts, nodeContext)
-	}
-	retrievedContext := strings.Join(contextParts, "\n\n---\n\n")
-
-	// Build prompt
-	prompt := fmt.Sprintf(`You are an expert on this codebase. Answer the user's question using ONLY the context below.
-If the context doesn't contain enough information to answer, say so.
-Be concise and direct.
-
-## Retrieved Context:
-%s
-
-## Question:
-%s
-
-## Answer:`, retrievedContext, query)
-
-	// Get LLM config
-	provider := llm.Provider(viper.GetString("llm.provider"))
-	if provider == "" {
-		provider = llm.ProviderOpenAI
-	}
-	model := viper.GetString("llm.model")
-	if model == "" {
-		model = llm.DefaultModelForProvider(provider)
-	}
-
-	llmCfg := llm.Config{
-		Provider: provider,
-		Model:    model,
-		APIKey:   cfg.APIKey,
-		BaseURL:  viper.GetString("llm.baseURL"),
-	}
-
-	// Create chat model
-	chatModel, err := llm.NewChatModel(ctx, llmCfg)
-	if err != nil {
-		return fmt.Errorf("create chat model: %w", err)
-	}
-
-	if !viper.GetBool("quiet") {
-		fmt.Fprint(os.Stderr, "🧠 Generating answer...")
-	}
-
-	// Stream response
-	messages := []*schema.Message{
-		schema.UserMessage(prompt),
-	}
-
-	stream, err := chatModel.Stream(ctx, messages)
-	if err != nil {
-		return fmt.Errorf("stream: %w", err)
-	}
-
-	// Buffer the response to render in a nice card
-	var sb strings.Builder
-	for {
-		chunk, err := stream.Recv()
-		if err != nil {
-			break
-		}
-		sb.WriteString(chunk.Content)
-	}
-	answer := sb.String()
-
-	if !viper.GetBool("quiet") {
-		fmt.Fprintln(os.Stderr, " done")
-	}
-
-	// Styles
-	var (
-		cardStyle   = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).Padding(0, 2).MarginTop(1).BorderForeground(lipgloss.Color("63"))
-		titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		sourceTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-		metaStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		barFull     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-		barEmpty    = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
-	)
-
-	// Render Answer Summary
-	fmt.Println()
-	fmt.Println(titleStyle.Render(fmt.Sprintf("📖 %s", query)))
-	fmt.Println(cardStyle.Render(answer))
-
-	// Render Sources
-	fmt.Println()
-	fmt.Println(titleStyle.Render("📚 Sources"))
-
-	for i, s := range scored {
-		score := int(s.Score * 10)
-		if score > 10 {
-			score = 10
-		}
-		bar := barFull.Render(strings.Repeat("━", score)) + barEmpty.Render(strings.Repeat("━", 10-score))
-
-		id := s.Node.ID
-		if len(id) > 6 {
-			id = id[:6]
-		}
-
-		fmt.Printf(" %d. %s %s %s\n", i+1, typeIcon(s.Node.Type), sourceTitle.Render(s.Node.Summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)))
-	}
-
-	return nil
-}
-
-func runKeywordSearch(store *memory.SQLiteStore, query string) error {
-	fmt.Println("⚠️  Semantic search requires API key. Showing all nodes instead.")
-	fmt.Println()
-
-	nodes, err := store.ListNodes("")
-	if err != nil {
-		return err
-	}
-
-	for _, n := range nodes {
-		icon := typeIcon(n.Type)
-		fmt.Printf("%s [%s] %s\n", icon, n.Type, n.Summary)
-	}
+	// TUI Output
+	ui.RenderContextResults(query, scored, answer)
 
 	return nil
 }

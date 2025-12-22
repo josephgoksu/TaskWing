@@ -100,6 +100,35 @@ CREATE INDEX idx_edges_from ON edges(from_feature);
 CREATE INDEX idx_edges_to ON edges(to_feature);
 CREATE INDEX idx_edges_type ON edges(edge_type);
 CREATE INDEX idx_decisions_feature ON decisions(feature_id);
+
+-- New knowledge graph tables (v2 pivot)
+CREATE TABLE nodes (
+    id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,              -- Original text input
+    type TEXT,                          -- AI-inferred: decision, feature, plan, note
+    summary TEXT,                       -- AI-extracted title/summary
+    source_agent TEXT DEFAULT '',       -- Agent that created this node (doc, code, git, deps)
+    embedding BLOB,                     -- Vector for similarity search
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE node_edges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_node TEXT NOT NULL,
+    to_node TEXT NOT NULL,
+    relation TEXT NOT NULL,             -- relates_to, depends_on, affects, etc.
+    properties TEXT,                    -- JSON for arbitrary metadata
+    confidence REAL DEFAULT 1.0,        -- AI confidence score
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (from_node) REFERENCES nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_node) REFERENCES nodes(id) ON DELETE CASCADE,
+    UNIQUE(from_node, to_node, relation)
+);
+
+-- Indexes for new tables
+CREATE INDEX idx_nodes_type ON nodes(type);
+CREATE INDEX idx_nodes_source_agent ON nodes(source_agent);
+CREATE INDEX idx_nodes_summary_agent ON nodes(summary, source_agent);
 ```
 
 > **Note:** In v2.0, `decision_count` is maintained by application code (no SQLite triggers).
@@ -170,7 +199,7 @@ Consider adding passkey support in future iteration.
 ## Unified Store Interface
 
 ```go
-type MemoryStore interface {
+type Repository interface {
     // === Feature CRUD (atomic: SQLite + markdown + index) ===
     CreateFeature(f Feature) error
     UpdateFeature(f Feature) error
@@ -184,17 +213,23 @@ type MemoryStore interface {
     DeleteDecision(id string) error
     GetDecisions(featureID string) ([]Decision, error)
 
-    // === Relationships (human-readable) ===
+    // === Relationships ===
     Link(from, to, relationType string) error
     Unlink(from, to, relationType string) error
     GetDependencies(featureID string) ([]string, error)
     GetDependents(featureID string) ([]string, error)
     GetRelated(featureID string, maxDepth int) ([]string, error)
-    FindPath(from, to string) ([]string, error)
+
+    // === Node Access (Knowledge Graph) ===
+    CreateNode(n Node) error
+    GetNode(id string) (*Node, error)
+    ListNodes(filter string) ([]Node, error)
+    UpdateNodeEmbedding(id string, embedding []float32) error
+    DeleteNode(id string) error
+    DeleteNodesByAgent(agent string) error
 
     // === Cache Management ===
-    RebuildIndex() error
-    GetIndex() (*FeatureIndex, error)  // Returns cached if fresh
+    GetIndex() (*FeatureIndex, error)
 
     // === Integrity ===
     Check() ([]Issue, error)
@@ -209,32 +244,21 @@ type MemoryStore interface {
 All mutations go through SQLite first, then propagate.
 
 ```go
-func (s *Store) CreateFeature(f Feature) error {
-    tx, _ := s.db.Begin()
-    defer tx.Rollback()
-
-    // 1. Insert to SQLite (source of truth)
-    _, err := tx.Exec(`
-        INSERT INTO features (id, name, one_liner, status, created_at, updated_at, tags, file_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, f.ID, f.Name, f.OneLiner, f.Status, f.CreatedAt, f.UpdatedAt, f.Tags, f.FilePath)
-    if err != nil {
-        return fmt.Errorf("sqlite insert: %w", err)
+func (r *Repository) CreateFeature(f Feature) error {
+    // 1. Save to DB (Primary)
+    if err := r.db.CreateFeature(f); err != nil {
+        return fmt.Errorf("db create: %w", err)
     }
 
-    // 2. Create markdown file
-    if err := s.writeMarkdownFile(f); err != nil {
-        return fmt.Errorf("markdown write: %w", err)
-    }
+    // 2. Fetch decisions (usually empty on create)
+    decisions, _ := r.db.GetDecisions(f.ID)
 
-    // 3. Commit transaction
-    if err := tx.Commit(); err != nil {
-        os.Remove(f.FilePath)  // Cleanup on failure
-        return fmt.Errorf("commit: %w", err)
+    // 3. Save to File (Secondary)
+    if err := r.files.WriteFeature(f, decisions); err != nil {
+        // Compensating transaction: undo DB change
+        _ = r.db.DeleteFeature(f.ID)
+        return fmt.Errorf("file create: %w", err)
     }
-
-    // 4. Invalidate index cache
-    s.indexCache = nil
 
     return nil
 }
