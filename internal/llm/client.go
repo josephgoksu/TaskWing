@@ -84,10 +84,9 @@ func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, err
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("OpenAI API key is required")
 		}
-		// Default to text-embedding-3-small if not specified
 		modelName := cfg.EmbeddingModel
 		if modelName == "" {
-			modelName = "text-embedding-3-small"
+			modelName = config.DefaultOpenAIEmbeddingModel
 		}
 		return openaiEmbed.NewEmbedder(ctx, &openaiEmbed.EmbeddingConfig{
 			Model:  modelName,
@@ -99,10 +98,9 @@ func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, err
 		if baseURL == "" {
 			baseURL = config.DefaultOllamaURL
 		}
-		// Default to mxbai-embed-large or similar if not specified, but usually caller specifies
 		modelName := cfg.EmbeddingModel
 		if modelName == "" {
-			modelName = "nomic-embed-text" // Common default for Ollama
+			modelName = config.DefaultOllamaEmbeddingModel
 		}
 		return ollamaEmbed.NewEmbedder(ctx, &ollamaEmbed.EmbeddingConfig{
 			BaseURL: baseURL,

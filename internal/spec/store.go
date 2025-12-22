@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // Store manages spec and task persistence
@@ -29,7 +30,7 @@ func NewStore(projectPath string) (*Store, error) {
 // CreateSpec creates a new spec and saves it
 func (s *Store) CreateSpec(title, description string) (*Spec, error) {
 	id := "spec-" + uuid.New().String()[:8]
-	slug := slugify(title)
+	slug := utils.Slugify(title)
 
 	spec := &Spec{
 		ID:          id,
@@ -56,7 +57,7 @@ func (s *Store) CreateSpec(title, description string) (*Spec, error) {
 
 // SaveSpec saves a spec to disk
 func (s *Store) SaveSpec(spec *Spec) error {
-	slug := slugify(spec.Title)
+	slug := utils.Slugify(spec.Title)
 	specDir := filepath.Join(s.basePath, slug)
 	return s.saveSpec(spec, specDir)
 }
@@ -206,7 +207,7 @@ func (s *Store) ListTasks(specSlug string) ([]TaskSummary, error) {
 			return nil, err
 		}
 		for _, summary := range specs {
-			spec, err := s.GetSpec(slugify(summary.Title))
+			spec, err := s.GetSpec(utils.Slugify(summary.Title))
 			if err != nil {
 				continue
 			}
@@ -239,7 +240,7 @@ func (s *Store) GetTask(taskID string) (*Task, *Spec, error) {
 	}
 
 	for _, summary := range specs {
-		spec, err := s.GetSpec(slugify(summary.Title))
+		spec, err := s.GetSpec(utils.Slugify(summary.Title))
 		if err != nil {
 			continue
 		}
@@ -346,21 +347,4 @@ func (s *Store) specToMarkdown(spec *Spec) string {
 	}
 
 	return sb.String()
-}
-
-func slugify(s string) string {
-	s = strings.ToLower(s)
-	s = strings.ReplaceAll(s, " ", "-")
-	var result strings.Builder
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			result.WriteRune(r)
-		}
-	}
-	slug := result.String()
-	slug = strings.Trim(slug, "-")
-	if len(slug) > 50 {
-		slug = slug[:50]
-	}
-	return slug
 }

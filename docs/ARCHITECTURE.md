@@ -283,23 +283,17 @@ type BootstrapScanner interface {
 
 ```
 internal/
-├── memory/
-│   ├── store.go          # MemoryStore implementation
-│   ├── sqlite.go         # SQLite operations
-│   ├── markdown.go       # Markdown read/write
-│   └── index.go          # Cache management
-├── spec/                 # Spec & Task management
-│   ├── models.go         # Spec/Task data models
-│   └── store.go          # JSON/Markdown storage
-├── agents/               # AI Agents (ReAct, Doc, Git)
-│   ├── agent_graph.go    # Parallel execution graph
-│   └── react_code_agent.go # Dynamic code analysis
-├── knowledge/            # Semantic search & embeddings
-├── server/               # HTTP API server
-├── ui/                   # TUI components (Bubble Tea/Lipgloss)
-├── telemetry/            # Anonymous usage metrics
-└── llm/
-    └── client.go         # Multi-provider ChatModel factory (OpenAI, Ollama)
+├── memory/           # Store & Repository (SQLite + Markdown)
+├── knowledge/        # Vector search & RAG
+├── spec/             # Feature specifications
+├── agents/           # ReAct Agents (Doc, Code, Git)
+├── bootstrap/        # [NEW] Headless agent runner & factory
+├── server/           # HTTP API server (uses bootstrap runner)
+├── ui/               # TUI components & styles
+│   ├── init_tui.go   # Init command UI
+│   └── bootstrap_tui.go # Bootstrap command UI
+├── telemetry/        # Anonymous usage metrics
+└── llm/              # Multi-provider ChatModel factory
 
 cmd/
 ├── root.go

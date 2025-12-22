@@ -21,6 +21,12 @@ const (
 
 	// DefaultOllamaModel is the default model for Ollama provider
 	DefaultOllamaModel = "llama3.2"
+
+	// DefaultOpenAIEmbeddingModel is the default embedding model for OpenAI
+	DefaultOpenAIEmbeddingModel = "text-embedding-3-small"
+
+	// DefaultOllamaEmbeddingModel is the default embedding model for Ollama
+	DefaultOllamaEmbeddingModel = "nomic-embed-text"
 )
 
 // DefaultOllamaURL is the default URL for Ollama server

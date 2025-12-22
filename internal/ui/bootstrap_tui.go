@@ -48,7 +48,7 @@ type BootstrapModel struct {
 func NewBootstrapModel(ctx context.Context, input agents.Input, agentsList []agents.Agent) BootstrapModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	s.Style = lipgloss.NewStyle().Foreground(ColorPrimary)
 
 	states := make([]*AgentState, len(agentsList))
 	for i, a := range agentsList {

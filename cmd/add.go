@@ -66,12 +66,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// 2. Initialize Repo
 	memPath := config.GetMemoryBasePath()
-	store, err := memory.NewSQLiteStore(memPath)
+	repo, err := memory.NewDefaultRepository(memPath)
 	if err != nil {
-		return fmt.Errorf("open memory store: %w", err)
+		return fmt.Errorf("open memory repo: %w", err)
 	}
-	files := memory.NewMarkdownStore(memPath)
-	repo := memory.NewRepository(store, files)
 	defer func() { _ = repo.Close() }()
 
 	// 3. Initialize Service

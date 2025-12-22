@@ -51,17 +51,18 @@
 
 ---
 
-## Version 3.0 — Intelligence Layer
+## Version 3.0 — Continuous Intelligence
 
-**Status:** Future
-**Theme:** Proactive knowledge management
+ **Status:** Future
+ **Theme:** Proactive knowledge management (Always-on Watch Agent)
 
-| Feature | Description |
-|---------|-------------|
-| Auto-update nodes | Detect when decisions become stale |
-| Decision impact analysis | "What depends on this?" |
-| Knowledge gaps detection | "You have no docs for auth" |
-| Smart suggestions | "Consider documenting this pattern" |
+ | Feature | Description |
+ |---------|-------------|
+ | `WatchAgent` | Monitor filesystem via fsnotify |
+ | Debounced Analysis | Update memory in real-time (<2s latency) |
+ | Relationship Synthesis | Cross-reference findings across agents |
+ | Auto-update nodes | Detect when decisions become stale |
+ | Knowledge gaps detection | "You have no docs for auth" |
 
 ---
 

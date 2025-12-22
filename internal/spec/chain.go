@@ -7,6 +7,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/agents"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // ChainConfig configures which personas to run
@@ -114,7 +115,7 @@ func (c *Chain) Execute(ctx context.Context, featureRequest string) (*ChainResul
 		result.Outputs = append(result.Outputs, *output)
 
 		// Add to context for next agent
-		previousContext.WriteString(fmt.Sprintf("## %s Analysis\n\n", toTitle(string(persona))))
+		previousContext.WriteString(fmt.Sprintf("## %s Analysis\n\n", utils.ToTitle(string(persona))))
 		previousContext.WriteString(output.Content)
 		previousContext.WriteString("\n\n")
 	}
@@ -133,17 +134,10 @@ func (c *Chain) generateMarkdownSpec(request string, outputs []agents.PromptResu
 	sb.WriteString("---\n\n")
 
 	for _, output := range outputs {
-		sb.WriteString(fmt.Sprintf("# %s Analysis\n\n", toTitle(output.AgentName)))
+		sb.WriteString(fmt.Sprintf("# %s Analysis\n\n", utils.ToTitle(output.AgentName)))
 		sb.WriteString(output.Content)
 		sb.WriteString("\n---\n\n")
 	}
 
 	return sb.String()
-}
-
-func toTitle(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }

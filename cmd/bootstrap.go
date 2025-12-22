@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/josephgoksu/TaskWing/internal/agents"
+	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -69,12 +70,7 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 	projectName := filepath.Base(cwd)
 
 	// Create agents
-	docAgent := agents.NewDocAgent(llmCfg)
-	codeAgent := agents.NewReactCodeAgent(llmCfg, cwd)
-	gitAgent := agents.NewGitAgent(llmCfg)
-	depsAgent := agents.NewDepsAgent(llmCfg)
-
-	agentsList := []agents.Agent{docAgent, codeAgent, gitAgent, depsAgent}
+	agentsList := bootstrap.NewDefaultAgents(llmCfg, cwd)
 
 	// Prepare input
 	input := agents.Input{
@@ -114,13 +110,12 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 	}
 
 	// Save to memory using KnowledgeService
+	// Save to memory using KnowledgeService
 	memoryPath := config.GetMemoryBasePath()
-	store, err := memory.NewSQLiteStore(memoryPath)
+	repo, err := memory.NewDefaultRepository(memoryPath)
 	if err != nil {
-		return fmt.Errorf("open memory store: %w", err)
+		return fmt.Errorf("open memory repo: %w", err)
 	}
-	files := memory.NewMarkdownStore(memoryPath)
-	repo := memory.NewRepository(store, files)
 	defer func() { _ = repo.Close() }()
 
 	// Create Service

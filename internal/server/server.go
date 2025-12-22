@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"sync"
 
 	"github.com/josephgoksu/TaskWing/internal/agents"
+	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -33,13 +33,10 @@ type Server struct {
 }
 
 func New(port int, cwd, memoryPath string, llmCfg llm.Config) (*Server, error) {
-	store, err := memory.NewSQLiteStore(memoryPath)
+	repo, err := memory.NewDefaultRepository(memoryPath)
 	if err != nil {
-		return nil, fmt.Errorf("open memory store: %w", err)
+		return nil, fmt.Errorf("open memory repo: %w", err)
 	}
-
-	files := memory.NewMarkdownStore(memoryPath)
-	repo := memory.NewRepository(store, files)
 
 	// Use repo instead of store for consistent access
 	ks := knowledge.NewService(repo, llmCfg)
@@ -275,48 +272,16 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		BaseURL:  viper.GetString("llm.baseURL"),
 	}
 
-	// Initialize Agents
-	docAgent := agents.NewDocAgent(llmCfg)
-	codeAgent := agents.NewReactCodeAgent(llmCfg, req.ProjectPath)
-	gitAgent := agents.NewGitAgent(llmCfg)
-	depsAgent := agents.NewDepsAgent(llmCfg)
-
-	agentsList := []agents.Agent{docAgent, codeAgent, gitAgent, depsAgent}
+	// Create Bootstrap Runner
+	runner := bootstrap.NewRunner(llmCfg, req.ProjectPath)
 
 	// Run Agents
-	ctx := context.Background()
-	input := agents.Input{
-		BasePath:    req.ProjectPath,
-		ProjectName: filepath.Base(req.ProjectPath),
-		Mode:        agents.ModeBootstrap,
+	findings, err := runner.Run(r.Context(), req.ProjectPath)
+	if err != nil {
+		fmt.Printf("[API] Bootstrap failed: %v\n", err)
+		http.Error(w, fmt.Sprintf("bootstrap failed: %v", err), http.StatusInternalServerError)
+		return
 	}
-
-	// TODO: Parallelize this respecting the "Agents" filter from request if needed.
-	// For now, running all or simplified sequence.
-	// Since this is an API, we can't show TUI. We should probably run them linearly or with waitgroup.
-
-	var results []agents.Output
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	for _, agent := range agentsList {
-		wg.Add(1)
-		go func(a agents.Agent) {
-			defer wg.Done()
-			out, err := a.Run(ctx, input)
-			if err != nil {
-				fmt.Printf("[API] Agent %s failed: %v\n", a.Name(), err)
-				return
-			}
-			mu.Lock()
-			results = append(results, out)
-			mu.Unlock()
-		}(agent)
-	}
-	wg.Wait()
-
-	// Aggregate
-	findings := agents.AggregateFindings(results)
 
 	// Ingest
 	ingestSvc, ok := s.knowledge.(*knowledge.Service)
@@ -326,8 +291,8 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := ingestSvc.IngestFindings(ctx, findings, false)
-	if err != nil {
+	// Reuse err variable or shadow it. Using assignment since err exists.
+	if err := ingestSvc.IngestFindings(r.Context(), findings, false); err != nil {
 		http.Error(w, fmt.Sprintf("ingestion failed: %v", err), http.StatusInternalServerError)
 		return
 	}

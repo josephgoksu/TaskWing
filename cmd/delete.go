@@ -35,20 +35,20 @@ func init() {
 func runDelete(cmd *cobra.Command, args []string) error {
 	nodeID := args[0]
 
-	store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
+	repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 	if err != nil {
-		return fmt.Errorf("open memory store: %w", err)
+		return fmt.Errorf("open memory repo: %w", err)
 	}
-	defer func() { _ = store.Close() }()
+	defer func() { _ = repo.Close() }()
 
 	// Check if node exists
-	node, err := store.GetNode(nodeID)
+	node, err := repo.GetNode(nodeID)
 	if err != nil {
 		return fmt.Errorf("node not found: %s", nodeID)
 	}
 
 	// Delete the node
-	if err := store.DeleteNode(nodeID); err != nil {
+	if err := repo.DeleteNode(nodeID); err != nil {
 		return fmt.Errorf("delete node: %w", err)
 	}
 

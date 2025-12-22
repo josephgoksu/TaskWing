@@ -72,11 +72,12 @@ func runMCPServer(ctx context.Context) error {
 	cwd, _ := os.Getwd()
 
 	// Initialize memory store
-	store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
+	// Initialize memory repository
+	repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 	if err != nil {
-		return fmt.Errorf("failed to initialize memory store: %w", err)
+		return fmt.Errorf("failed to initialize memory repo: %w", err)
 	}
-	defer func() { _ = store.Close() }()
+	defer func() { _ = repo.Close() }()
 
 	// Create MCP server
 	impl := &mcpsdk.Implementation{
@@ -105,15 +106,15 @@ func runMCPServer(ctx context.Context) error {
 		query := strings.TrimSpace(params.Arguments.Query)
 
 		// Try new node-based system first
-		nodes, err := store.ListNodes("")
+		nodes, err := repo.ListNodes("")
 		hasNodes := err == nil && len(nodes) > 0
 
 		if hasNodes {
-			return handleNodeContext(ctx, store, query, nodes)
+			return handleNodeContext(ctx, repo, query, nodes)
 		}
 
 		// Fallback to legacy feature system
-		result, err := handleLegacyContext(store, query)
+		result, err := handleLegacyContext(repo, query)
 		if err != nil && query == "" {
 			// If it's a summary query and it failed/is empty, return a helpful message
 			return &mcpsdk.CallToolResultFor[any]{
@@ -238,7 +239,7 @@ func runMCPServer(ctx context.Context) error {
 }
 
 // handleNodeContext returns context using the new node-based knowledge graph
-func handleNodeContext(ctx context.Context, store *memory.SQLiteStore, query string, nodes []memory.Node) (*mcpsdk.CallToolResultFor[any], error) {
+func handleNodeContext(ctx context.Context, repo *memory.Repository, query string, nodes []memory.Node) (*mcpsdk.CallToolResultFor[any], error) {
 	if query == "" {
 		// Summary response - group by type
 		byType := make(map[string][]memory.Node)
@@ -286,7 +287,7 @@ func handleNodeContext(ctx context.Context, store *memory.SQLiteStore, query str
 			var scoredNodes []scored
 
 			for _, n := range nodes {
-				fullNode, err := store.GetNode(n.ID)
+				fullNode, err := repo.GetNode(n.ID)
 				if err != nil || len(fullNode.Embedding) == 0 {
 					continue
 				}
@@ -341,8 +342,8 @@ func handleNodeContext(ctx context.Context, store *memory.SQLiteStore, query str
 }
 
 // handleLegacyContext returns context using the old feature/decision system
-func handleLegacyContext(store *memory.SQLiteStore, query string) (*mcpsdk.CallToolResultFor[any], error) {
-	index, err := store.GetIndex()
+func handleLegacyContext(repo *memory.Repository, query string) (*mcpsdk.CallToolResultFor[any], error) {
+	index, err := repo.GetIndex()
 	if err != nil {
 		return nil, fmt.Errorf("get index: %w", err)
 	}
@@ -386,8 +387,8 @@ func handleLegacyContext(store *memory.SQLiteStore, query string) (*mcpsdk.CallT
 		return nil, fmt.Errorf("no feature matches query: %q", query)
 	}
 
-	feature, _ := store.GetFeature(seedID)
-	decisions, _ := store.GetDecisions(seedID)
+	feature, _ := repo.GetFeature(seedID)
+	decisions, _ := repo.GetDecisions(seedID)
 
 	result := struct {
 		Query     string            `json:"query"`

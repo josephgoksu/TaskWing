@@ -57,15 +57,13 @@ func runContext(cmd *cobra.Command, args []string) error {
 	}
 
 	// 2. Initialize Memory Repository (Source of Truth)
+	// 2. Initialize Memory Repository (Source of Truth)
 	basePath := config.GetMemoryBasePath()
-	db, err := memory.NewSQLiteStore(basePath)
+	repo, err := memory.NewDefaultRepository(basePath)
 	if err != nil {
-		return fmt.Errorf("open memory store: %w", err)
+		return fmt.Errorf("open memory repo: %w", err)
 	}
-	defer func() { _ = db.Close() }()
-
-	files := memory.NewMarkdownStore(basePath)
-	repo := memory.NewRepository(db, files)
+	defer func() { _ = repo.Close() }()
 
 	// 3. Initialize Knowledge Service (Intelligence Layer)
 	ks := knowledge.NewService(repo, llmCfg)

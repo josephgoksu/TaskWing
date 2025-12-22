@@ -13,15 +13,30 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/memory"
 )
 
-// NodeSource abstracts the data source requirement for the knowledge service
-type NodeSource interface {
+// Repository abstracts all storage operations for the knowledge service.
+// This is the single source of truth for repository interface requirements.
+type Repository interface {
+	// Read operations
 	ListNodes(typeFilter string) ([]memory.Node, error)
 	GetNode(id string) (*memory.Node, error)
+
+	// Write operations
+	CreateNode(n memory.Node) error
+	UpsertNodeBySummary(n memory.Node) error
+	DeleteNodesByAgent(agent string) error
+
+	// Feature/Decision/Pattern operations
+	CreateFeature(f memory.Feature) error
+	CreatePattern(p memory.Pattern) error
+	AddDecision(featureID string, d memory.Decision) error
+	ListFeatures() ([]memory.Feature, error)
+	GetDecisions(featureID string) ([]memory.Decision, error)
+	Link(fromID, toID string, relType string) error
 }
 
 // Service provides high-level knowledge operations
 type Service struct {
-	source           NodeSource
+	repo             Repository
 	llmCfg           llm.Config
 	chatModelFactory func(ctx context.Context, cfg llm.Config) (model.BaseChatModel, error)
 }
@@ -35,9 +50,9 @@ type NodeInput struct {
 }
 
 // NewService creates a new knowledge service
-func NewService(source NodeSource, cfg llm.Config) *Service {
+func NewService(repo Repository, cfg llm.Config) *Service {
 	return &Service{
-		source:           source,
+		repo:             repo,
 		llmCfg:           cfg,
 		chatModelFactory: llm.NewChatModel,
 	}
@@ -58,7 +73,7 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]Scored
 	}
 
 	// 2. Fetch all nodes (Note: Optimization needed here later - Vector Store)
-	nodes, err := s.source.ListNodes("")
+	nodes, err := s.repo.ListNodes("")
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
 	}
@@ -68,7 +83,7 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]Scored
 	for _, n := range nodes {
 		// N+1 query to get full node with embedding
 		// TODO: Optimize this in Phase 2
-		fullNode, err := s.source.GetNode(n.ID)
+		fullNode, err := s.repo.GetNode(n.ID)
 		if err != nil {
 			continue // Skip missing nodes
 		}
@@ -184,22 +199,8 @@ func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, e
 	}
 
 	// 3. Save to Repo
-	// We need to access CreateNode, but NodeSource interface is read-only (List/Get).
-	// We need to type assert or expand the interface.
-	// For now, let's assume the source is a Repository (which it is in implementation).
-
-	// Better architecture: KnowledgeService should depend on Repository interface, not just NodeSource.
-	// But to avoid breaking changes to `NewService` signature right now, we can check.
-	type NodeCreator interface {
-		CreateNode(n memory.Node) error
-	}
-
-	if creator, ok := s.source.(NodeCreator); ok {
-		if err := creator.CreateNode(*node); err != nil {
-			return nil, fmt.Errorf("save node: %w", err)
-		}
-	} else {
-		return nil, fmt.Errorf("storage source does not support creating nodes")
+	if err := s.repo.CreateNode(*node); err != nil {
+		return nil, fmt.Errorf("save node: %w", err)
 	}
 
 	return node, nil

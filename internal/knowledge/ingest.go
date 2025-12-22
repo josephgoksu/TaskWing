@@ -29,22 +29,7 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		}
 	}
 
-	type NodeCreator interface {
-		CreateNode(n memory.Node) error
-		UpsertNodeBySummary(n memory.Node) error
-		DeleteNodesByAgent(agent string) error
-		CreateFeature(f memory.Feature) error
-		CreatePattern(p memory.Pattern) error
-		AddDecision(featureID string, d memory.Decision) error
-		ListFeatures() ([]memory.Feature, error)
-		GetDecisions(featureID string) ([]memory.Decision, error)
-		Link(fromID, toID string, relType string) error
-	}
-
-	repo, ok := s.source.(NodeCreator)
-	if !ok {
-		return fmt.Errorf("storage source does not support ingestion operations")
-	}
+	// s.repo already implements all needed methods via the Repository interface
 
 	// 0. Purge stale nodes for involved agents (Replace Strategy)
 	// This prevents infinite growth due to non-deterministic LLM outputs (different summaries)
@@ -54,7 +39,7 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 			if verbose {
 				fmt.Printf("  ♻️  Purging stale nodes for agent: %s\n", f.SourceAgent)
 			}
-			_ = repo.DeleteNodesByAgent(f.SourceAgent)
+			_ = s.repo.DeleteNodesByAgent(f.SourceAgent)
 			seenAgents[f.SourceAgent] = true
 		}
 	}
@@ -96,7 +81,7 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		}
 
 		// Use Upsert to prevent duplication
-		if err := repo.UpsertNodeBySummary(node); err == nil {
+		if err := s.repo.UpsertNodeBySummary(node); err == nil {
 			nodesCreated++
 		}
 	}
@@ -114,7 +99,7 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 	featureIDByName := make(map[string]string)
 
 	// Load existing features
-	if existing, err := repo.ListFeatures(); err == nil {
+	if existing, err := s.repo.ListFeatures(); err == nil {
 		for _, f := range existing {
 			featureIDByName[strings.ToLower(f.Name)] = f.ID
 		}
@@ -136,7 +121,7 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		}
 
 		newID := "f-" + uuid.New().String()[:8]
-		err := repo.CreateFeature(memory.Feature{
+		err := s.repo.CreateFeature(memory.Feature{
 			ID:        newID,
 			Name:      name,
 			OneLiner:  f.Description, // Truncate if needed in repo
@@ -163,7 +148,7 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		solution, _ := f.Metadata["solution"].(string)
 		consequences, _ := f.Metadata["consequences"].(string)
 
-		err := repo.CreatePattern(memory.Pattern{
+		err := s.repo.CreatePattern(memory.Pattern{
 			Name:         name,
 			Context:      context,
 			Solution:     solution,
@@ -202,7 +187,7 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		featID := featureIDByName[featKey]
 		if featID == "" {
 			featID = "f-" + uuid.New().String()[:8]
-			if err := repo.CreateFeature(memory.Feature{
+			if err := s.repo.CreateFeature(memory.Feature{
 				ID:       featID,
 				Name:     compName,
 				OneLiner: "Auto-detected component",
@@ -214,7 +199,7 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		}
 
 		if featID != "" {
-			if err := repo.AddDecision(featID, memory.Decision{
+			if err := s.repo.AddDecision(featID, memory.Decision{
 				Title:     title,
 				Summary:   f.Description,
 				Reasoning: f.Why,

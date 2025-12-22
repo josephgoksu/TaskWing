@@ -82,13 +82,13 @@ Checks for:
   • Orphan edges (relationships to non-existent features)
   • Index cache staleness`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
+		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 		if err != nil {
-			return fmt.Errorf("open memory store: %w", err)
+			return fmt.Errorf("open memory repo: %w", err)
 		}
-		defer func() { _ = store.Close() }()
+		defer func() { _ = repo.Close() }()
 
-		issues, err := store.Check()
+		issues, err := repo.Check()
 		if err != nil {
 			return fmt.Errorf("check integrity: %w", err)
 		}
@@ -131,14 +131,14 @@ Actions:
   • Remove orphan edges
   • Rebuild the index cache`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
+		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 		if err != nil {
-			return fmt.Errorf("open memory store: %w", err)
+			return fmt.Errorf("open memory repo: %w", err)
 		}
-		defer func() { _ = store.Close() }()
+		defer func() { _ = repo.Close() }()
 
 		// First check what needs repair
-		issues, _ := store.Check()
+		issues, _ := repo.Check()
 		if len(issues) == 0 {
 			fmt.Println("✓ No issues to repair")
 			return nil
@@ -146,12 +146,12 @@ Actions:
 
 		fmt.Printf("Repairing %d issues...\n", len(issues))
 
-		if err := store.Repair(); err != nil {
+		if err := repo.Repair(); err != nil {
 			return fmt.Errorf("repair: %w", err)
 		}
 
 		// Verify repair
-		remaining, _ := store.Check()
+		remaining, _ := repo.Check()
 		if len(remaining) == 0 {
 			fmt.Println("✓ All issues repaired")
 		} else {
@@ -171,17 +171,21 @@ var memoryRebuildCmd = &cobra.Command{
 
 This is useful if the cache is out of sync with the database.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
+		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 		if err != nil {
-			return fmt.Errorf("open memory store: %w", err)
+			return fmt.Errorf("open memory repo: %w", err)
 		}
-		defer func() { _ = store.Close() }()
+		defer func() { _ = repo.Close() }()
 
-		if err := store.RebuildIndex(); err != nil {
+		if err := repo.RebuildFiles(); err != nil {
+			return fmt.Errorf("rebuild files: %w", err)
+		}
+		// Also rebuild index if repo has that method exposed or via internal db access
+		if err := repo.GetDB().RebuildIndex(); err != nil {
 			return fmt.Errorf("rebuild index: %w", err)
 		}
 
-		index, _ := store.GetIndex()
+		index, _ := repo.GetIndex()
 		fmt.Printf("✓ Index rebuilt with %d features\n", len(index.Features))
 		return nil
 	},
@@ -207,13 +211,13 @@ Requires OPENAI_API_KEY to be set. Useful after:
 			return fmt.Errorf("OPENAI_API_KEY required for embedding generation")
 		}
 
-		store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
+		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 		if err != nil {
-			return fmt.Errorf("open memory store: %w", err)
+			return fmt.Errorf("open memory repo: %w", err)
 		}
-		defer func() { _ = store.Close() }()
+		defer func() { _ = repo.Close() }()
 
-		nodes, err := store.ListNodes("")
+		nodes, err := repo.ListNodes("")
 		if err != nil {
 			return fmt.Errorf("list nodes: %w", err)
 		}
@@ -221,7 +225,7 @@ Requires OPENAI_API_KEY to be set. Useful after:
 		// Find nodes without embeddings
 		var toProcess []memory.Node
 		for _, n := range nodes {
-			fullNode, err := store.GetNode(n.ID)
+			fullNode, err := repo.GetNode(n.ID)
 			if err != nil {
 				continue
 			}
@@ -248,7 +252,7 @@ Requires OPENAI_API_KEY to be set. Useful after:
 				continue
 			}
 
-			if err := store.UpdateNodeEmbedding(n.ID, embedding); err != nil {
+			if err := repo.UpdateNodeEmbedding(n.ID, embedding); err != nil {
 				fmt.Printf("  ✗ %s: save failed\n", n.ID)
 				continue
 			}

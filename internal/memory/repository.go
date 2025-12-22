@@ -19,6 +19,16 @@ func NewRepository(db *SQLiteStore, files *MarkdownStore) *Repository {
 	}
 }
 
+// NewDefaultRepository creates a Repository with standard SQLite and Markdown stores.
+func NewDefaultRepository(basePath string) (*Repository, error) {
+	db, err := NewSQLiteStore(basePath)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite store: %w", err)
+	}
+	files := NewMarkdownStore(basePath)
+	return NewRepository(db, files), nil
+}
+
 // GetDB returns the underlying SQLiteStore (temporary helper during refactor)
 func (r *Repository) GetDB() *SQLiteStore {
 	return r.db
@@ -48,6 +58,11 @@ func (r *Repository) CreateFeature(f Feature) error {
 	}
 
 	return nil
+}
+
+// GetFeature retrieves a feature by ID.
+func (r *Repository) GetFeature(id string) (*Feature, error) {
+	return r.db.GetFeature(id)
 }
 
 // UpdateFeature updates a feature in both DB and File.

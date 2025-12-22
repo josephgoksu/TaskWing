@@ -156,3 +156,97 @@ tw context "deployment" --answer > q3.txt
 
 - [ROADMAP.md](./ROADMAP.md) — Version planning
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — System design
+
+---
+
+## Functional Test Cases (MCP)
+
+> Merged from MCP_TESTING.md
+
+### Test Matrix
+
+| Test Case | What to Verify |
+|-----------|----------------|
+| MCP-01 | Server starts, returns valid JSON-RPC |
+| MCP-02 | `project-context` tool returns knowledge |
+| MCP-03 | Query filtering works semantically |
+| MCP-04 | Local install creates correct config |
+| MCP-05 | Global install creates correct config |
+
+### MCP-01: Server Initialization
+
+```bash
+cd ~/taskwing-tests/markwise.app
+
+# Send initialize request
+(echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}'; sleep 2) | tw mcp 2>&1 | head -15
+```
+
+**Expected:**
+- Banner: `🎯 TaskWing MCP Server Starting...`
+- JSON response with `serverInfo.name: "taskwing"`, `version: "2.0.0"`
+- No errors
+
+### MCP-02: Project Context Tool (Full)
+
+```bash
+cd ~/taskwing-tests/markwise.app
+
+(echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}';
+ echo '{"jsonrpc":"2.0","method":"initialized","params":{},"id":2}';
+ echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"project-context","arguments":{}},"id":3}';
+ sleep 2) | tw mcp 2>&1 | tail -20
+```
+
+**Expected:**
+- Response contains `nodes` with features and decisions
+- `total` count matches `tw list` count
+
+### MCP-03: Semantic Query
+
+```bash
+cd ~/taskwing-tests/markwise.app
+
+(echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}';
+ echo '{"jsonrpc":"2.0","method":"initialized","params":{},"id":2}';
+ echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"project-context","arguments":{"query":"database"}},"id":3}';
+ sleep 2) | tw mcp 2>&1 | grep -i "mongo\|lance"
+```
+
+**Expected:**
+- Response contains MongoDB/LanceDB related nodes
+- Results are filtered (not all nodes returned)
+
+### MCP-04: Local Install
+
+```bash
+cd ~/taskwing-tests/markwise.app
+rm -rf .claude .cursor .windsurf .gemini
+
+tw mcp install claude
+tw mcp install cursor
+
+cat .claude/mcp.json
+cat .cursor/mcp.json
+```
+
+**Expected:**
+- Files created in **project directory** (not ~/.claude)
+- Each contains `"taskwing"` server entry
+- `command` points to taskwing binary
+- No `cwd` field (runs from current dir)
+
+### MCP-05: Global Install
+
+```bash
+cd ~/taskwing-tests/markwise.app
+
+tw mcp install claude --global
+
+cat ~/.claude/mcp.json | grep -A 5 "taskwing-markwise"
+```
+
+**Expected:**
+- Server added to `~/.claude/mcp.json`
+- Server name is project-specific: `taskwing-markwise.app`
+- Includes `cwd` pointing to project path

@@ -6,12 +6,10 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
-	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -40,18 +38,18 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	store, err := memory.NewSQLiteStore(config.GetMemoryBasePath())
+	repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 	if err != nil {
-		return fmt.Errorf("open memory store: %w", err)
+		return fmt.Errorf("open memory repo: %w", err)
 	}
-	defer func() { _ = store.Close() }()
+	defer func() { _ = repo.Close() }()
 
 	var nodeType string
 	if len(args) > 0 {
 		nodeType = args[0]
 	}
 
-	nodes, err := store.ListNodes(nodeType)
+	nodes, err := repo.ListNodes(nodeType)
 	if err != nil {
 		return fmt.Errorf("list nodes: %w", err)
 	}
@@ -74,82 +72,7 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	// Styles are now imported from internal/ui
 
-	// Group by type
-	byType := make(map[string][]memory.Node)
-	for _, n := range nodes {
-		t := n.Type
-		if t == "" {
-			t = "unknown"
-		}
-		byType[t] = append(byType[t], n)
-	}
-
-	// Calculate stats
-	typeOrder := []string{"decision", "feature", "plan", "note", "unknown"}
-	var stats []string
-	totalCount := 0
-
-	for _, t := range typeOrder {
-		count := len(byType[t])
-		if count > 0 {
-			totalCount += count
-			stats = append(stats, fmt.Sprintf("%s %d", typeIcon(t), count))
-		}
-	}
-
-	// Render Header Summary
-	cmd.Printf(" 🧠 Knowledge: %d nodes (%s)\n", totalCount, strings.Join(stats, " • "))
-	cmd.Println(ui.StyleSubtle.Render(strings.Repeat("─", 50)))
-
-	// Render Lists
-	for _, t := range typeOrder {
-		groupNodes := byType[t]
-		if len(groupNodes) == 0 {
-			continue
-		}
-
-		cmd.Println(ui.StyleHeader.Render(fmt.Sprintf("%s %ss", typeIcon(t), capitalizeFirst(t))))
-
-		for _, n := range groupNodes {
-			summary := n.Summary
-			if summary == "" {
-				summary = utils.Truncate(n.Content, 60)
-			}
-
-			dateStr := n.CreatedAt.Format("Jan 02")
-			idStr := n.ID
-			if len(idStr) > 6 {
-				idStr = idStr[:6]
-			}
-
-			cmd.Printf(" • %s %s\n", ui.StyleTitle.Render(summary), ui.StyleSubtle.Render(fmt.Sprintf("[%s %s]", idStr, dateStr)))
-		}
-		cmd.Println()
-	}
-
+	// Delegate rendering to UI package
+	ui.RenderNodeList(nodes)
 	return nil
-}
-
-func typeIcon(t string) string {
-	switch t {
-	case "decision":
-		return "🎯"
-	case "feature":
-		return "📦"
-	case "pattern":
-		return "🧩"
-	case "plan":
-		return "📋"
-	case "note":
-		return "📝"
-	default:
-		return "❓"
-	}
-}
-
-func capitalizeFirst(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-	return string(s[0]-32) + s[1:]
 }
