@@ -238,14 +238,59 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	writeAPIJSON(w, result)
 }
 
-// handleEdges returns all edges in the knowledge graph
+// handleEdges returns all edges in the knowledge graph with pre-computed styling
+// Frontend should just render these without additional computation
 func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
 	edges, err := s.repo.GetAllNodeEdges()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeAPIJSON(w, edges)
+
+	// Pre-styled edge for ReactFlow (frontend just renders)
+	type StyledEdge struct {
+		ID          string  `json:"id"`
+		Source      string  `json:"source"` // ReactFlow field name
+		Target      string  `json:"target"` // ReactFlow field name
+		Relation    string  `json:"relation"`
+		StrokeColor string  `json:"strokeColor"` // Pre-computed
+		StrokeWidth int     `json:"strokeWidth"` // Pre-computed
+		Animated    bool    `json:"animated"`    // Pre-computed
+		Opacity     float64 `json:"opacity"`     // Pre-computed
+	}
+
+	styled := make([]StyledEdge, len(edges))
+	for i, e := range edges {
+		isSemantic := e.Relation == "semantically_similar"
+		strokeColor := "#10b981" // emerald for relates_to
+		if isSemantic {
+			strokeColor = "#f59e0b" // amber for semantic
+		}
+		strokeWidth := 2
+		if isSemantic {
+			strokeWidth = int(e.Confidence * 3)
+			if strokeWidth < 1 {
+				strokeWidth = 1
+			}
+		}
+		opacity := e.Confidence
+		if opacity < 0.4 {
+			opacity = 0.4
+		}
+
+		styled[i] = StyledEdge{
+			ID:          fmt.Sprintf("e-%d", e.ID),
+			Source:      e.FromNode,
+			Target:      e.ToNode,
+			Relation:    e.Relation,
+			StrokeColor: strokeColor,
+			StrokeWidth: strokeWidth,
+			Animated:    isSemantic,
+			Opacity:     opacity,
+		}
+	}
+
+	writeAPIJSON(w, styled)
 }
 
 // handleBootstrap
