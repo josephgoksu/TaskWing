@@ -111,8 +111,9 @@ const (
 
 // NodeRelation constants for edge types.
 const (
-	NodeRelationDependsOn = "depends_on"
-	NodeRelationRelatesTo = "relates_to"
-	NodeRelationAffects   = "affects"
-	NodeRelationExtends   = "extends"
+	NodeRelationDependsOn           = "depends_on"
+	NodeRelationRelatesTo           = "relates_to"
+	NodeRelationAffects             = "affects"
+	NodeRelationExtends             = "extends"
+	NodeRelationSemanticallySimilar = "semantically_similar"
 )

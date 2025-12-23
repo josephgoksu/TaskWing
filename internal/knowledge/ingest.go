@@ -59,17 +59,9 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 			ID:          uuid.New().String(),
 			Type:        string(f.Type),
 			Summary:     f.Title,
-			Content:     f.Description,
+			Content:     content, // Use already-built content for DRY
 			SourceAgent: f.SourceAgent,
 			CreatedAt:   time.Now().UTC(),
-		}
-
-		// Append extra context
-		if f.Why != "" {
-			node.Content += "\n\nWhy: " + f.Why
-		}
-		if f.Tradeoffs != "" {
-			node.Content += "\nTradeoffs: " + f.Tradeoffs
 		}
 
 		// Generate embedding
@@ -239,10 +231,48 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		}
 	}
 
+	// 4. Semantic Similarity Edges (Phase 2)
+	// Compare embeddings across ALL nodes and link if similarity > threshold
+	semanticEdges := 0
+	const similarityThreshold = 0.75
+
+	// Get full nodes with embeddings
+	nodesWithEmbeddings := make([]memory.Node, 0)
+	for _, n := range allNodes {
+		fullNode, err := s.repo.GetNode(n.ID)
+		if err == nil && len(fullNode.Embedding) > 0 {
+			nodesWithEmbeddings = append(nodesWithEmbeddings, *fullNode)
+		}
+	}
+
+	// Compare all pairs (O(n^2) but limited by embedding count)
+	// TODO: Use LLM inference for higher quality relationships (future enhancement)
+	for i := 0; i < len(nodesWithEmbeddings); i++ {
+		for j := i + 1; j < len(nodesWithEmbeddings); j++ {
+			nodeA := nodesWithEmbeddings[i]
+			nodeB := nodesWithEmbeddings[j]
+
+			// Skip if same agent (already linked by co-occurrence)
+			if nodeA.SourceAgent == nodeB.SourceAgent {
+				continue
+			}
+
+			similarity := CosineSimilarity(nodeA.Embedding, nodeB.Embedding)
+			if similarity >= similarityThreshold {
+				props := map[string]any{"similarity": similarity}
+				if err := s.repo.LinkNodes(nodeA.ID, nodeB.ID, memory.NodeRelationSemanticallySimilar, float64(similarity), props); err == nil {
+					semanticEdges++
+				}
+			}
+		}
+	}
+
+	totalEdges := edgesCreated + semanticEdges
+
 	if verbose {
 		fmt.Println(" done")
-		fmt.Printf("\n✅ Saved %d knowledge nodes, %d features, %d patterns, %d decisions, %d edges to memory.\n",
-			nodesCreated, featuresCreated, patternsCreated, decisionsCreated, edgesCreated)
+		fmt.Printf("\n✅ Saved %d knowledge nodes, %d features, %d patterns, %d decisions, %d edges (%d semantic) to memory.\n",
+			nodesCreated, featuresCreated, patternsCreated, decisionsCreated, totalEdges, semanticEdges)
 	}
 
 	return nil
