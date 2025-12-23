@@ -210,10 +210,39 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		}
 	}
 
+	// 3. Create Knowledge Graph Edges
+	// Link nodes that share the same component/agent (Phase 1: Co-occurrence)
+	edgesCreated := 0
+	nodesByAgent := make(map[string][]string) // agent -> node IDs
+
+	// Build index of nodes by source agent
+	allNodes, _ := s.repo.ListNodes("")
+	for _, n := range allNodes {
+		if n.SourceAgent != "" {
+			nodesByAgent[n.SourceAgent] = append(nodesByAgent[n.SourceAgent], n.ID)
+		}
+	}
+
+	// Create relates_to edges between nodes from the same agent
+	for _, nodeIDs := range nodesByAgent {
+		if len(nodeIDs) < 2 {
+			continue
+		}
+		// Link each pair (limit to avoid N^2 explosion)
+		maxEdges := 10
+		for i := 0; i < len(nodeIDs) && edgesCreated < maxEdges*len(nodesByAgent); i++ {
+			for j := i + 1; j < len(nodeIDs) && j < i+3; j++ { // Connect up to 2 neighbors
+				if err := s.repo.LinkNodes(nodeIDs[i], nodeIDs[j], memory.NodeRelationRelatesTo, 0.7, nil); err == nil {
+					edgesCreated++
+				}
+			}
+		}
+	}
+
 	if verbose {
 		fmt.Println(" done")
-		fmt.Printf("\n✅ Saved %d knowledge nodes, %d features, %d patterns, %d decisions to memory.\n",
-			nodesCreated, featuresCreated, patternsCreated, decisionsCreated)
+		fmt.Printf("\n✅ Saved %d knowledge nodes, %d features, %d patterns, %d decisions, %d edges to memory.\n",
+			nodesCreated, featuresCreated, patternsCreated, decisionsCreated, edgesCreated)
 	}
 
 	return nil

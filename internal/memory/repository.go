@@ -216,6 +216,11 @@ func (r *Repository) GetRelated(featureID string, maxDepth int) ([]string, error
 	return r.db.GetRelated(featureID, maxDepth)
 }
 
+// LinkNodes creates an edge between two nodes in the knowledge graph.
+func (r *Repository) LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error {
+	return r.db.LinkNodes(from, to, relation, confidence, properties)
+}
+
 // === Index ===
 
 func (r *Repository) GetIndex() (*FeatureIndex, error) {

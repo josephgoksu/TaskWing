@@ -32,6 +32,9 @@ type Repository interface {
 	ListFeatures() ([]memory.Feature, error)
 	GetDecisions(featureID string) ([]memory.Decision, error)
 	Link(fromID, toID string, relType string) error
+
+	// Graph edge operations
+	LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error
 }
 
 // Service provides high-level knowledge operations
