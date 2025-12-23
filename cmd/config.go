@@ -28,19 +28,19 @@ func initConfig() {
 	viper.AutomaticEnv()                                   // Read in environment variables that match
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // Replace dots with underscores
 
-	// Try to find config in .taskwing directory (local project config)
+	home, err := os.UserHomeDir()
+	cobra.CheckErr(err)
+
+	// ALWAYS add global config path first (highest priority for user settings)
+	viper.AddConfigPath(filepath.Join(home, ".taskwing"))
+
+	// Also check local .taskwing directory for project-specific overrides
 	if _, err := os.Stat(".taskwing"); !os.IsNotExist(err) {
 		viper.AddConfigPath(".taskwing")
-		viper.SetConfigName("config") // looks for config.yaml in .taskwing/
-	} else {
-		// Fallback to home directory and ~/.taskwing
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
-
-		// Priority 1: ~/.taskwing/config.yaml (Global)
-		viper.AddConfigPath(filepath.Join(home, ".taskwing"))
-		viper.SetConfigName("config") // looks for config.yaml
 	}
+
+	viper.SetConfigName("config") // looks for config.yaml
+	viper.SetConfigType("yaml")
 
 	// Attempt to read the configuration file
 	if err := viper.ReadInConfig(); err == nil {
@@ -59,10 +59,8 @@ func initConfig() {
 	viper.SetDefault("memory.path", ".taskwing/memory")
 
 	// LLM defaults (for bootstrap scanner)
-	// Do NOT set a default for llm.provider - we want interactive selection if not set
-	// viper.SetDefault("llm.provider", config.DefaultProvider)
+	// Do NOT set defaults for llm.provider or llm.apiKey - we want interactive selection if not set
 	viper.SetDefault("llm.model", config.DefaultOpenAIModel)
-	viper.SetDefault("llm.apiKey", "")
 	viper.SetDefault("llm.baseURL", config.DefaultOllamaURL)
 	viper.SetDefault("llm.maxOutputTokens", 0)
 	viper.SetDefault("llm.temperature", 0.7)
