@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -30,13 +31,21 @@ func initConfig() {
 	// Try to find config in .taskwing directory
 	if _, err := os.Stat(".taskwing"); !os.IsNotExist(err) {
 		viper.AddConfigPath(".taskwing")
-		viper.SetConfigName(configName)
+		viper.SetConfigName(configName) // ".taskwing" (which means .taskwing.yaml inside .taskwing/ dir)
 	} else {
-		// Fallback to home directory
+		// Fallback to home directory and ~/.taskwing
 		home, err := os.UserHomeDir()
 		cobra.CheckErr(err)
+
+		// Priority 1: ~/.taskwing/config.yaml (Global)
+		viper.AddConfigPath(filepath.Join(home, ".taskwing"))
+
+		// Priority 2: ~/.taskwing.yaml (Home)
 		viper.AddConfigPath(home)
+
+		// Priority 3: Current directory
 		viper.AddConfigPath(".")
+
 		viper.SetConfigName(configName)
 	}
 
@@ -57,7 +66,8 @@ func initConfig() {
 	viper.SetDefault("memory.path", ".taskwing/memory")
 
 	// LLM defaults (for bootstrap scanner)
-	viper.SetDefault("llm.provider", config.DefaultProvider)
+	// Do NOT set a default for llm.provider - we want interactive selection if not set
+	// viper.SetDefault("llm.provider", config.DefaultProvider)
 	viper.SetDefault("llm.model", config.DefaultOpenAIModel)
 	viper.SetDefault("llm.apiKey", "")
 	viper.SetDefault("llm.baseURL", config.DefaultOllamaURL)

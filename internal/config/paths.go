@@ -7,6 +7,16 @@ import (
 	"github.com/spf13/viper"
 )
 
+// GetGlobalConfigDir returns the path to the global configuration directory (~/.taskwing).
+// This is the source of truth for where global config lives.
+func GetGlobalConfigDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".taskwing"), nil
+}
+
 // GetMemoryBasePath returns the path to the memory directory.
 // It prioritizes Viper config "memory.path", then XDG_DATA_HOME/taskwing/memory,
 // then defaults to ~/.taskwing/memory.
@@ -22,10 +32,9 @@ func GetMemoryBasePath() string {
 	}
 
 	// 3. Fallback to ~/.taskwing/memory
-	home, err := os.UserHomeDir()
+	dir, err := GetGlobalConfigDir()
 	if err != nil {
-		// Should rarely happen, fallback to ./memory
 		return "./memory"
 	}
-	return filepath.Join(home, ".taskwing", "memory")
+	return filepath.Join(dir, "memory")
 }

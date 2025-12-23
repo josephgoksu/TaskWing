@@ -57,7 +57,7 @@ func init() {
 	startCmd.Flags().StringVar(&dashboardURL, "dashboard-url", "", "Dashboard URL (default: https://hub.taskwing.app, use http://localhost:5173 for local dev)")
 
 	// LLM configuration (reuse from watch)
-	startCmd.Flags().String("provider", "openai", "LLM provider (openai, ollama)")
+	startCmd.Flags().String("provider", "", "LLM provider (openai, ollama, anthropic, gemini)")
 	startCmd.Flags().String("model", "", "Model to use")
 	startCmd.Flags().String("api-key", "", "OpenAI API key (or set OPENAI_API_KEY)")
 	startCmd.Flags().String("ollama-url", "http://localhost:11434", "Ollama server URL")

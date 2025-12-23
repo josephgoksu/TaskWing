@@ -12,6 +12,12 @@ const (
 
 	// ProviderOllama represents the Ollama provider
 	ProviderOllama = "ollama"
+
+	// ProviderAnthropic represents the Anthropic provider
+	ProviderAnthropic = "anthropic"
+
+	// ProviderGemini represents the Google Gemini provider
+	ProviderGemini = "gemini"
 )
 
 // Default model constants for each provider
@@ -21,6 +27,12 @@ const (
 
 	// DefaultOllamaModel is the default model for Ollama provider
 	DefaultOllamaModel = "llama3.2"
+
+	// DefaultAnthropicModel is the default model for Anthropic provider
+	DefaultAnthropicModel = "claude-3-5-sonnet-latest"
+
+	// DefaultGeminiModel is the default model for Gemini provider
+	DefaultGeminiModel = "gemini-2.0-flash"
 
 	// DefaultOpenAIEmbeddingModel is the default embedding model for OpenAI
 	DefaultOpenAIEmbeddingModel = "text-embedding-3-small"
@@ -39,6 +51,10 @@ func DefaultModelForProvider(provider string) string {
 		return DefaultOpenAIModel
 	case ProviderOllama:
 		return DefaultOllamaModel
+	case ProviderAnthropic:
+		return DefaultAnthropicModel
+	case ProviderGemini:
+		return DefaultGeminiModel
 	default:
 		return ""
 	}

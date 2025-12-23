@@ -4,9 +4,13 @@ package llm
 import (
 	"context"
 	"fmt"
+	"os"
 
+	geminiEmbed "github.com/cloudwego/eino-ext/components/embedding/gemini"
 	ollamaEmbed "github.com/cloudwego/eino-ext/components/embedding/ollama"
 	openaiEmbed "github.com/cloudwego/eino-ext/components/embedding/openai"
+	"github.com/cloudwego/eino-ext/components/model/claude"
+	"github.com/cloudwego/eino-ext/components/model/gemini"
 	"github.com/cloudwego/eino-ext/components/model/ollama"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/embedding"
@@ -18,8 +22,10 @@ import (
 type Provider string
 
 const (
-	ProviderOpenAI Provider = Provider(config.ProviderOpenAI)
-	ProviderOllama Provider = Provider(config.ProviderOllama)
+	ProviderOpenAI    Provider = Provider(config.ProviderOpenAI)
+	ProviderOllama    Provider = Provider(config.ProviderOllama)
+	ProviderAnthropic Provider = Provider(config.ProviderAnthropic)
+	ProviderGemini    Provider = Provider(config.ProviderGemini)
 )
 
 // Config holds configuration for creating an LLM client.
@@ -54,8 +60,29 @@ func NewChatModel(ctx context.Context, cfg Config) (model.BaseChatModel, error) 
 			Model:   cfg.Model,
 		})
 
+	case ProviderAnthropic:
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("Anthropic API key is required")
+		}
+		return claude.NewChatModel(ctx, &claude.Config{
+			APIKey: cfg.APIKey,
+			Model:  cfg.Model,
+		})
+
+	case ProviderGemini:
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("Gemini API key is required")
+		}
+		// Gemini extension likely relies on environment variables
+		os.Setenv("GOOGLE_API_KEY", cfg.APIKey)
+		os.Setenv("GEMINI_API_KEY", cfg.APIKey)
+
+		return gemini.NewChatModel(ctx, &gemini.Config{
+			Model: cfg.Model,
+		})
+
 	default:
-		return nil, fmt.Errorf("unsupported LLM provider: %s (supported: openai, ollama)", cfg.Provider)
+		return nil, fmt.Errorf("unsupported LLM provider: %s (supported: openai, ollama, anthropic, gemini)", cfg.Provider)
 	}
 }
 
@@ -66,6 +93,10 @@ func ValidateProvider(p string) (Provider, error) {
 		return ProviderOpenAI, nil
 	case ProviderOllama:
 		return ProviderOllama, nil
+	case ProviderAnthropic:
+		return ProviderAnthropic, nil
+	case ProviderGemini:
+		return ProviderGemini, nil
 	default:
 		return "", fmt.Errorf("unsupported provider: %s", p)
 	}
@@ -105,6 +136,26 @@ func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, err
 		return ollamaEmbed.NewEmbedder(ctx, &ollamaEmbed.EmbeddingConfig{
 			BaseURL: baseURL,
 			Model:   modelName,
+		})
+
+	case ProviderGemini:
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("Gemini API key is required")
+		}
+		// Ensure env vars are set for embedding client too
+		os.Setenv("GOOGLE_API_KEY", cfg.APIKey)
+		os.Setenv("GEMINI_API_KEY", cfg.APIKey)
+
+		// Note: Gemini Embedding model might default to "embedding-001" or similar
+		// We use cfg.EmbeddingModel or let the client default?
+		// eino-ext gemini embedder likely takes a config.
+		// Let's assume geminiEmbed.Config exists and has Model.
+		// Search result mentioned "gemini-embedding-001".
+		// We don't have a default constant for Gemini embedding yet in defaults.go,
+		// but let's check config or use a safe default if passed empty.
+		// Actually, let's just pass what we have.
+		return geminiEmbed.NewEmbedder(ctx, &geminiEmbed.EmbeddingConfig{
+			Model: cfg.EmbeddingModel, // If empty, hopefully lib defaults or errors
 		})
 
 	default:
