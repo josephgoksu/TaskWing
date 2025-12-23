@@ -1105,6 +1105,37 @@ func (s *SQLiteStore) GetNodeEdges(nodeID string) ([]NodeEdge, error) {
 	return edges, nil
 }
 
+// GetAllNodeEdges returns all edges in the knowledge graph.
+func (s *SQLiteStore) GetAllNodeEdges() ([]NodeEdge, error) {
+	rows, err := s.db.Query(`
+		SELECT id, from_node, to_node, relation, properties, confidence, created_at
+		FROM node_edges ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query all edges: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var edges []NodeEdge
+	for rows.Next() {
+		var e NodeEdge
+		var createdAt string
+		var propsJSON sql.NullString
+
+		if err := rows.Scan(&e.ID, &e.FromNode, &e.ToNode, &e.Relation, &propsJSON, &e.Confidence, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan edge: %w", err)
+		}
+
+		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		if propsJSON.Valid && propsJSON.String != "" {
+			_ = json.Unmarshal([]byte(propsJSON.String), &e.Properties)
+		}
+		edges = append(edges, e)
+	}
+
+	return edges, nil
+}
+
 // === Embedding Helpers ===
 
 func float32SliceToBytes(floats []float32) []byte {

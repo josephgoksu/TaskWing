@@ -221,6 +221,11 @@ func (r *Repository) LinkNodes(from, to, relation string, confidence float64, pr
 	return r.db.LinkNodes(from, to, relation, confidence, properties)
 }
 
+// GetAllNodeEdges returns all edges in the knowledge graph.
+func (r *Repository) GetAllNodeEdges() ([]NodeEdge, error) {
+	return r.db.GetAllNodeEdges()
+}
+
 // === Index ===
 
 func (r *Repository) GetIndex() (*FeatureIndex, error) {

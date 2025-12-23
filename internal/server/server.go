@@ -56,6 +56,7 @@ func New(port int, cwd, memoryPath string, llmCfg llm.Config) (*Server, error) {
 	mux.HandleFunc("GET /api/stats", s.handleStats)
 	mux.HandleFunc("GET /api/info", s.handleInfo)
 	mux.HandleFunc("GET /api/agents", s.handleAgents)
+	mux.HandleFunc("GET /api/edges", s.handleEdges)
 	mux.HandleFunc("POST /api/bootstrap", s.handleBootstrap)
 	mux.HandleFunc("GET /api/activity", s.handleActivity)
 	mux.HandleFunc("DELETE /api/activity", s.handleClearActivity)
@@ -235,6 +236,16 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeAPIJSON(w, result)
+}
+
+// handleEdges returns all edges in the knowledge graph
+func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
+	edges, err := s.repo.GetAllNodeEdges()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeAPIJSON(w, edges)
 }
 
 // handleBootstrap
