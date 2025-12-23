@@ -1,6 +1,4 @@
-// Package config provides centralized configuration constants for TaskWing.
-// All default values should be defined here to ensure a single source of truth.
-package config
+package llm
 
 // LLM provider constants
 const (

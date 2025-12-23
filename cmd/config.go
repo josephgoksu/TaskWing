@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/josephgoksu/TaskWing/internal/config"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -60,8 +60,8 @@ func initConfig() {
 
 	// LLM defaults (for bootstrap scanner)
 	// Do NOT set defaults for llm.provider or llm.apiKey - we want interactive selection if not set
-	viper.SetDefault("llm.model", config.DefaultOpenAIModel)
-	viper.SetDefault("llm.baseURL", config.DefaultOllamaURL)
+	viper.SetDefault("llm.model", llm.DefaultOpenAIModel)
+	viper.SetDefault("llm.baseURL", llm.DefaultOllamaURL)
 	viper.SetDefault("llm.maxOutputTokens", 0)
 	viper.SetDefault("llm.temperature", 0.7)
 }

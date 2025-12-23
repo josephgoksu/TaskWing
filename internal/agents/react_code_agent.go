@@ -328,54 +328,16 @@ func (a *ReactCodeAgent) runSimpleFallback(ctx context.Context, chatModel model.
 	start := time.Now()
 
 	// Gather context using tools directly (no LLM tool-calling)
-	tools := CreateEinoTools(a.basePath)
+	gatherer := NewContextGatherer(a.basePath)
 	var contextBuilder strings.Builder
 
 	// List root directory
-	for _, t := range tools {
-		info, _ := t.Info(ctx)
-		if info.Name == "list_dir" {
-			result, err := t.InvokableRun(ctx, `{"path": "."}`)
-			if err == nil {
-				contextBuilder.WriteString("## Directory Structure\n")
-				contextBuilder.WriteString(result)
-				contextBuilder.WriteString("\n\n")
-			}
-			break
-		}
-	}
+	contextBuilder.WriteString("## Directory Structure\n")
+	contextBuilder.WriteString(gatherer.ListDirectoryTree(2))
+	contextBuilder.WriteString("\n\n")
 
-	// Read README if exists
-	for _, t := range tools {
-		info, _ := t.Info(ctx)
-		if info.Name == "read_file" {
-			result, err := t.InvokableRun(ctx, `{"path": "README.md"}`)
-			if err == nil && len(result) > 0 {
-				content := result
-				if len(content) > 2000 {
-					content = content[:2000] + "...[truncated]"
-				}
-				contextBuilder.WriteString("## README.md\n")
-				contextBuilder.WriteString(content)
-				contextBuilder.WriteString("\n\n")
-			}
-			break
-		}
-	}
-
-	// Read go.mod if exists
-	for _, t := range tools {
-		info, _ := t.Info(ctx)
-		if info.Name == "read_file" {
-			result, err := t.InvokableRun(ctx, `{"path": "go.mod"}`)
-			if err == nil && len(result) > 0 {
-				contextBuilder.WriteString("## go.mod\n")
-				contextBuilder.WriteString(result)
-				contextBuilder.WriteString("\n\n")
-			}
-			break
-		}
-	}
+	// Read key files
+	contextBuilder.WriteString(gatherer.GatherKeyFiles())
 
 	// Build simple prompt
 	simplePrompt := fmt.Sprintf(`You are an expert software architect. Analyze this codebase context and extract architectural patterns and decisions.

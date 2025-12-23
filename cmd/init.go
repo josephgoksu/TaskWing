@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/config"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -212,7 +212,7 @@ llm:
 # Memory settings
 memory:
   path: .taskwing/memory
-`, config.DefaultOpenAIModel)
+`, llm.DefaultOpenAIModel)
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		return fmt.Errorf("failed to create config.yaml: %w", err)
 	}

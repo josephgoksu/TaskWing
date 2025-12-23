@@ -277,6 +277,12 @@ func (r *Repository) UpsertNodeBySummary(n Node) error {
 	return r.db.UpsertNodeBySummary(n)
 }
 
+// ClearAllKnowledge removes all nodes, edges, features, decisions, and patterns.
+// Used for clean-slate re-bootstrapping.
+func (r *Repository) ClearAllKnowledge() error {
+	return r.db.ClearAllKnowledge()
+}
+
 // CreatePattern stores a new pattern in the DB.
 func (r *Repository) CreatePattern(p Pattern) error {
 	return r.db.CreatePattern(p)

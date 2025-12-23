@@ -1046,6 +1046,31 @@ func (s *SQLiteStore) DeleteNodesByAgent(agentName string) error {
 	return nil
 }
 
+// ClearAllKnowledge removes all nodes, edges, features, decisions, and patterns.
+// Used for clean-slate re-bootstrapping when the user wants to start fresh.
+func (s *SQLiteStore) ClearAllKnowledge() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Clear in order respecting foreign key constraints (if any)
+	tables := []string{"node_edges", "nodes", "decisions", "edges", "patterns", "features"}
+	for _, table := range tables {
+		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
+			return fmt.Errorf("clear %s: %w", table, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	s.indexCache = nil
+	return nil
+}
+
 // UpsertNodeBySummary inserts a new node or updates existing one matched by summary and agent.
 // This is used for incremental watch mode - findings with same title from same agent are updated.
 func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {

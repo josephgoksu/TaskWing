@@ -15,18 +15,10 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/model"
-	"github.com/josephgoksu/TaskWing/internal/config"
 )
 
 // Provider identifies the LLM provider to use.
 type Provider string
-
-const (
-	ProviderOpenAI    Provider = Provider(config.ProviderOpenAI)
-	ProviderOllama    Provider = Provider(config.ProviderOllama)
-	ProviderAnthropic Provider = Provider(config.ProviderAnthropic)
-	ProviderGemini    Provider = Provider(config.ProviderGemini)
-)
 
 // Config holds configuration for creating an LLM client.
 type Config struct {
@@ -53,7 +45,7 @@ func NewChatModel(ctx context.Context, cfg Config) (model.BaseChatModel, error) 
 	case ProviderOllama:
 		baseURL := cfg.BaseURL
 		if baseURL == "" {
-			baseURL = config.DefaultOllamaURL
+			baseURL = DefaultOllamaURL
 		}
 		return ollama.NewChatModel(ctx, &ollama.ChatModelConfig{
 			BaseURL: baseURL,
@@ -102,12 +94,6 @@ func ValidateProvider(p string) (Provider, error) {
 	}
 }
 
-// DefaultModelForProvider returns the default model for a given provider.
-// This is a convenience wrapper around config.DefaultModelForProvider.
-func DefaultModelForProvider(p Provider) string {
-	return config.DefaultModelForProvider(string(p))
-}
-
 // NewEmbeddingModel creates an EmbeddingModel instance based on the provider configuration.
 func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, error) {
 	switch cfg.Provider {
@@ -117,7 +103,7 @@ func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, err
 		}
 		modelName := cfg.EmbeddingModel
 		if modelName == "" {
-			modelName = config.DefaultOpenAIEmbeddingModel
+			modelName = DefaultOpenAIEmbeddingModel
 		}
 		return openaiEmbed.NewEmbedder(ctx, &openaiEmbed.EmbeddingConfig{
 			Model:  modelName,
@@ -127,11 +113,11 @@ func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, err
 	case ProviderOllama:
 		baseURL := cfg.BaseURL
 		if baseURL == "" {
-			baseURL = config.DefaultOllamaURL
+			baseURL = DefaultOllamaURL
 		}
 		modelName := cfg.EmbeddingModel
 		if modelName == "" {
-			modelName = config.DefaultOllamaEmbeddingModel
+			modelName = DefaultOllamaEmbeddingModel
 		}
 		return ollamaEmbed.NewEmbedder(ctx, &ollamaEmbed.EmbeddingConfig{
 			BaseURL: baseURL,
@@ -146,14 +132,6 @@ func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, err
 		_ = os.Setenv("GOOGLE_API_KEY", cfg.APIKey)
 		_ = os.Setenv("GEMINI_API_KEY", cfg.APIKey)
 
-		// Note: Gemini Embedding model might default to "embedding-001" or similar
-		// We use cfg.EmbeddingModel or let the client default?
-		// eino-ext gemini embedder likely takes a config.
-		// Let's assume geminiEmbed.Config exists and has Model.
-		// Search result mentioned "gemini-embedding-001".
-		// We don't have a default constant for Gemini embedding yet in defaults.go,
-		// but let's check config or use a safe default if passed empty.
-		// Actually, let's just pass what we have.
 		return geminiEmbed.NewEmbedder(ctx, &geminiEmbed.EmbeddingConfig{
 			Model: cfg.EmbeddingModel, // If empty, hopefully lib defaults or errors
 		})

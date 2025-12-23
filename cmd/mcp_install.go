@@ -21,19 +21,18 @@ var mcpInstallCmd = &cobra.Command{
 	Short: "Install MCP server configuration for an editor",
 	Long: `Automatically configure your editor to use TaskWing's MCP server.
 
-By default, installs locally in the current project directory.
-Use --global to install in your home directory (for Claude/Gemini).
+By default, installs locally in the current project directory for Cursor/Windsurf.
+For Claude, installation is always global (User level).
 
 Supported editors:
   - cursor    (Creates .cursor/mcp.json in current project)
   - windsurf  (Creates .windsurf/mcp.json in current project)
-  - claude    (Creates .claude/mcp.json in project, or ~/.claude/mcp.json with --global)
+  - claude    (Configures local Claude Code CLI and Claude Desktop App)
   - gemini    (Creates .gemini/settings.json in project, or ~/.gemini/settings.json with --global)
 
 Examples:
   taskwing mcp install cursor
   taskwing mcp install claude
-  taskwing mcp install claude --global
   taskwing mcp install all`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
@@ -60,7 +59,7 @@ Examples:
 		}
 
 		installType := "local"
-		if globalInstall {
+		if globalInstall || target == "claude" {
 			installType = "global"
 		}
 		fmt.Printf("Installing TaskWing MCP for %s (%s)...\n", target, installType)
@@ -73,11 +72,7 @@ Examples:
 		case "windsurf":
 			installLocalMCP(cwd, ".windsurf", "mcp.json", binPath)
 		case "claude":
-			if globalInstall {
-				installGlobalMCP("claude", binPath, cwd)
-			} else {
-				installLocalMCP(cwd, ".claude", "mcp.json", binPath)
-			}
+			installClaude(binPath, cwd)
 		case "gemini":
 			if globalInstall {
 				installGlobalMCP("gemini", binPath, cwd)
@@ -87,11 +82,10 @@ Examples:
 		case "all":
 			installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
 			installLocalMCP(cwd, ".windsurf", "mcp.json", binPath)
+			installClaude(binPath, cwd)
 			if globalInstall {
-				installGlobalMCP("claude", binPath, cwd)
 				installGlobalMCP("gemini", binPath, cwd)
 			} else {
-				installLocalMCP(cwd, ".claude", "mcp.json", binPath)
 				installLocalMCP(cwd, ".gemini", "settings.json", binPath)
 			}
 		default:
@@ -107,9 +101,10 @@ func init() {
 }
 
 type MCPServerConfig struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
-	Cwd     string   `json:"cwd,omitempty"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Cwd     string            `json:"cwd,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
 }
 
 type MCPConfig struct {
@@ -154,11 +149,17 @@ func installLocalMCP(projectDir, configDirName, configFileName, binPath string) 
 
 func installGlobalMCP(app string, binPath, projectDir string) {
 	switch app {
-	case "claude":
-		installClaudeCodeCLI(binPath, projectDir)
 	case "gemini":
 		installGeminiGlobal(binPath, projectDir)
 	}
+}
+
+func installClaude(binPath, projectDir string) {
+	// 1. Install for Claude Code CLI
+	installClaudeCodeCLI(binPath, projectDir)
+
+	// 2. Install for Claude Desktop (macOS only for now)
+	installClaudeDesktop(binPath, projectDir)
 }
 
 func installClaudeCodeCLI(binPath, projectDir string) {
@@ -167,26 +168,74 @@ func installClaudeCodeCLI(binPath, projectDir string) {
 	projectName = strings.ReplaceAll(projectName, ".", "_")
 	serverName := fmt.Sprintf("taskwing-%s", projectName)
 
+	fmt.Println("👉 Configuring Claude Code CLI...")
+
 	if viper.GetBool("preview") {
 		fmt.Printf("[PREVIEW] Would run: claude mcp add --transport stdio %s -- %s mcp\n", serverName, binPath)
-		fmt.Printf("✅ Would install for claude as '%s'\n", serverName)
+		fmt.Printf("✅ Would install for claude code as '%s'\n", serverName)
 		return
 	}
 
 	// Run: claude mcp add --transport stdio <name> -- <binPath> mcp
 	cmd := exec.Command("claude", "mcp", "add", "--transport", "stdio", serverName, "--", binPath, "mcp")
 	cmd.Dir = projectDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Capture output to suppress noise, unless verbose
+	if viper.GetBool("verbose") {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("❌ Failed to run 'claude mcp add': %v\n", err)
-		fmt.Printf("   Make sure Claude Code CLI is installed and in PATH.\n")
-		fmt.Printf("   Manual command: claude mcp add --transport stdio %s -- %s mcp\n", serverName, binPath)
+		fmt.Printf("⚠️  Failed to run 'claude mcp add': %v\n", err)
+		fmt.Printf("   (This is expected if 'claude' CLI is not installed)\n")
+	} else {
+		fmt.Printf("✅ Installed for Claude Code as '%s'\n", serverName)
+	}
+}
+
+func installClaudeDesktop(binPath, projectDir string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
 		return
 	}
 
-	fmt.Printf("✅ Installed for claude as '%s'\n", serverName)
+	// macOS standard path
+	configPath := filepath.Join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json")
+	if _, err := os.Stat(filepath.Dir(configPath)); os.IsNotExist(err) {
+		// Claude Desktop not installed or different OS
+		return
+	}
+
+	fmt.Println("👉 Configuring Claude Desktop App...")
+
+	var config MCPConfig
+	// Read existing config or create new
+	if content, err := os.ReadFile(configPath); err == nil {
+		if err := json.Unmarshal(content, &config); err != nil {
+			fmt.Printf("⚠️  Existing Claude Desktop config was invalid json, skipping integration.\n")
+			return
+		}
+	} else {
+		config.MCPServers = make(map[string]MCPServerConfig)
+	}
+
+	if config.MCPServers == nil {
+		config.MCPServers = make(map[string]MCPServerConfig)
+	}
+
+	projectName := filepath.Base(projectDir)
+	serverName := fmt.Sprintf("taskwing-%s", projectName)
+
+	// Update configuration
+	config.MCPServers[serverName] = MCPServerConfig{
+		Command: binPath,
+		Args:    []string{"mcp"},
+		Env:     map[string]string{}, // Claude desktop might need empty env to not inherit messy envs
+	}
+
+	writeJSON(configPath, config)
+	fmt.Printf("✅ Installed for Claude Desktop as '%s' in %s\n", serverName, configPath)
+	fmt.Println("   (You may need to restart Claude Desktop to see the changes)")
 }
 
 func installGeminiGlobal(binPath, projectDir string) {

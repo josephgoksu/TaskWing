@@ -32,4 +32,12 @@ const (
 	// DeduplicationThreshold is used to detect near-duplicate nodes during ingest.
 	// Nodes with content similarity >= this value are considered duplicates and merged.
 	DeduplicationThreshold = 0.92
+
+	// Edge Weights for Knowledge Graph
+	// These values represent the confidence/strength of relationships.
+	EdgeWeightDependsOn = 0.9
+	EdgeWeightAffects   = 0.8
+	EdgeWeightExtends   = 0.75
+	EdgeWeightRelatesTo = 0.7
+	EdgeWeightSemantic  = 0.6 // For secondary semantic links
 )

@@ -55,7 +55,7 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		model = viper.GetString("llm.model")
 	}
 	if model == "" {
-		model = llm.DefaultModelForProvider(llmProvider)
+		model = llm.DefaultModelForProvider(string(llmProvider))
 	}
 
 	// 3. API Key

@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/spec"
 	"github.com/spf13/cobra"
@@ -61,12 +60,12 @@ var specCreateCmd = &cobra.Command{
 
 		model := viper.GetString("llm.model")
 		if model == "" {
-			model = config.DefaultOpenAIModel
+			model = llm.DefaultOpenAIModel
 		}
 
 		providerStr := viper.GetString("llm.provider")
 		if providerStr == "" {
-			providerStr = config.DefaultProvider
+			providerStr = llm.DefaultProvider
 		}
 
 		provider, err := llm.ValidateProvider(providerStr)
