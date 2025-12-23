@@ -28,10 +28,10 @@ func initConfig() {
 	viper.AutomaticEnv()                                   // Read in environment variables that match
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // Replace dots with underscores
 
-	// Try to find config in .taskwing directory
+	// Try to find config in .taskwing directory (local project config)
 	if _, err := os.Stat(".taskwing"); !os.IsNotExist(err) {
 		viper.AddConfigPath(".taskwing")
-		viper.SetConfigName(configName) // ".taskwing" (which means .taskwing.yaml inside .taskwing/ dir)
+		viper.SetConfigName("config") // looks for config.yaml in .taskwing/
 	} else {
 		// Fallback to home directory and ~/.taskwing
 		home, err := os.UserHomeDir()
@@ -39,14 +39,7 @@ func initConfig() {
 
 		// Priority 1: ~/.taskwing/config.yaml (Global)
 		viper.AddConfigPath(filepath.Join(home, ".taskwing"))
-
-		// Priority 2: ~/.taskwing.yaml (Home)
-		viper.AddConfigPath(home)
-
-		// Priority 3: Current directory
-		viper.AddConfigPath(".")
-
-		viper.SetConfigName(configName)
+		viper.SetConfigName("config") // looks for config.yaml
 	}
 
 	// Attempt to read the configuration file
