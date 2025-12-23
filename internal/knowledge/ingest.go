@@ -45,6 +45,22 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 	}
 
 	nodesCreated := 0
+	skippedDuplicates := 0
+
+	// Helper to generate dedup key (first 200 chars of content)
+	dedupKey := func(content string) string {
+		if len(content) > 200 {
+			return content[:200]
+		}
+		return content
+	}
+
+	// Load existing nodes for deduplication check
+	existingNodes, _ := s.repo.ListNodesWithEmbeddings()
+	existingByContent := make(map[string]bool)
+	for _, n := range existingNodes {
+		existingByContent[dedupKey(n.Content)] = true
+	}
 
 	for _, f := range findings {
 		content := f.Title + "\n" + f.Description
@@ -55,11 +71,19 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 			content += "\nTradeoffs: " + f.Tradeoffs
 		}
 
+		// Deduplication: skip if near-identical content already exists
+		key := dedupKey(content)
+		if existingByContent[key] {
+			skippedDuplicates++
+			continue
+		}
+		existingByContent[key] = true // Prevent duplicates within same batch
+
 		node := memory.Node{
 			ID:          uuid.New().String(),
 			Type:        string(f.Type),
 			Summary:     f.Title,
-			Content:     content, // Use already-built content for DRY
+			Content:     content,
 			SourceAgent: f.SourceAgent,
 			CreatedAt:   time.Now().UTC(),
 		}
@@ -234,7 +258,7 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 	// 4. Semantic Similarity Edges (Phase 2)
 	// Compare embeddings across ALL nodes and link if similarity > threshold
 	semanticEdges := 0
-	const similarityThreshold = 0.75
+	const similarityThreshold = SemanticSimilarityThreshold
 
 	// Get full nodes with embeddings
 	nodesWithEmbeddings := make([]memory.Node, 0)
@@ -271,8 +295,8 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 
 	if verbose {
 		fmt.Println(" done")
-		fmt.Printf("\n✅ Saved %d knowledge nodes, %d features, %d patterns, %d decisions, %d edges (%d semantic) to memory.\n",
-			nodesCreated, featuresCreated, patternsCreated, decisionsCreated, totalEdges, semanticEdges)
+		fmt.Printf("\n✅ Saved %d knowledge nodes (%d duplicates skipped), %d features, %d patterns, %d decisions, %d edges (%d semantic) to memory.\n",
+			nodesCreated, skippedDuplicates, featuresCreated, patternsCreated, decisionsCreated, totalEdges, semanticEdges)
 	}
 
 	return nil

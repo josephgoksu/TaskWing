@@ -141,10 +141,67 @@ func (s *SQLiteStore) initSchema() error {
 		consequences TEXT,
 		created_at TEXT NOT NULL
 	);
+
+	-- FTS5 for keyword search (hybrid with vector similarity)
+	CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+		id UNINDEXED,
+		summary,
+		content,
+		content='nodes',
+		content_rowid='rowid'
+	);
 	`
 
-	_, err := s.db.Exec(schema)
-	return err
+	// Execute main schema
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// Add triggers separately (SQLite doesn't support IF NOT EXISTS for triggers)
+	// We use INSERT OR REPLACE pattern by checking if trigger exists first
+	triggers := []struct {
+		name string
+		sql  string
+	}{
+		{
+			name: "nodes_fts_ai",
+			sql: `CREATE TRIGGER nodes_fts_ai AFTER INSERT ON nodes BEGIN
+				INSERT INTO nodes_fts(rowid, id, summary, content)
+				VALUES (NEW.rowid, NEW.id, COALESCE(NEW.summary, ''), NEW.content);
+			END`,
+		},
+		{
+			name: "nodes_fts_ad",
+			sql: `CREATE TRIGGER nodes_fts_ad AFTER DELETE ON nodes BEGIN
+				INSERT INTO nodes_fts(nodes_fts, rowid, id, summary, content)
+				VALUES('delete', OLD.rowid, OLD.id, COALESCE(OLD.summary, ''), OLD.content);
+			END`,
+		},
+		{
+			name: "nodes_fts_au",
+			sql: `CREATE TRIGGER nodes_fts_au AFTER UPDATE ON nodes BEGIN
+				INSERT INTO nodes_fts(nodes_fts, rowid, id, summary, content)
+				VALUES('delete', OLD.rowid, OLD.id, COALESCE(OLD.summary, ''), OLD.content);
+				INSERT INTO nodes_fts(rowid, id, summary, content)
+				VALUES (NEW.rowid, NEW.id, COALESCE(NEW.summary, ''), NEW.content);
+			END`,
+		},
+	}
+
+	for _, t := range triggers {
+		var count int
+		err := s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name=?", t.name).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("check trigger %s: %w", t.name, err)
+		}
+		if count == 0 {
+			if _, err := s.db.Exec(t.sql); err != nil {
+				return fmt.Errorf("create trigger %s: %w", t.name, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // === Feature CRUD ===
@@ -860,6 +917,20 @@ func (s *SQLiteStore) Close() error {
 
 // === Helpers ===
 
+// === Node Helpers ===
+
+// populateNodeFromScan populates a Node struct from scanned nullable fields.
+// This centralizes the repetitive null-handling and type conversion logic.
+func populateNodeFromScan(n *Node, nodeType, summary, sourceAgent sql.NullString, createdAt string, embeddingBytes []byte) {
+	n.Type = nodeType.String
+	n.Summary = summary.String
+	n.SourceAgent = sourceAgent.String
+	n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	if len(embeddingBytes) > 0 {
+		n.Embedding = bytesToFloat32Slice(embeddingBytes)
+	}
+}
+
 // === Node CRUD (v2 Knowledge Graph) ===
 
 // CreateNode stores a new node in the knowledge graph.
@@ -908,14 +979,7 @@ func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 		return nil, fmt.Errorf("query node: %w", err)
 	}
 
-	n.Type = nodeType.String
-	n.Summary = summary.String
-	n.SourceAgent = sourceAgent.String
-	n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-	if len(embeddingBytes) > 0 {
-		n.Embedding = bytesToFloat32Slice(embeddingBytes)
-	}
-
+	populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
 	return &n, nil
 }
 
@@ -950,11 +1014,7 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &createdAt); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
-
-		n.Type = nodeTypeStr.String
-		n.Summary = summary.String
-		n.SourceAgent = sourceAgent.String
-		n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, createdAt, nil)
 		nodes = append(nodes, n)
 	}
 
@@ -1134,6 +1194,103 @@ func (s *SQLiteStore) GetAllNodeEdges() ([]NodeEdge, error) {
 	}
 
 	return edges, nil
+}
+
+// === FTS5 Search Methods ===
+
+// FTSResult represents a full-text search result with relevance rank
+type FTSResult struct {
+	Node Node
+	Rank float64 // BM25 rank (lower is more relevant)
+}
+
+// ListNodesWithEmbeddings returns all nodes with embeddings in a single query.
+// This fixes the N+1 query pattern in search - one query instead of 1+N.
+func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
+	rows, err := s.db.Query(`
+		SELECT id, content, type, summary, source_agent, embedding, created_at
+		FROM nodes WHERE embedding IS NOT NULL
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query nodes with embeddings: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var nodes []Node
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeType, summary, sourceAgent sql.NullString
+		var embeddingBytes []byte
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan node: %w", err)
+		}
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+		nodes = append(nodes, n)
+	}
+
+	return nodes, nil
+}
+
+// SearchFTS performs full-text search using FTS5 with BM25 ranking.
+// Returns nodes matching the query, ordered by relevance.
+func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	rows, err := s.db.Query(`
+		SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.embedding, n.created_at,
+		       bm25(nodes_fts) as rank
+		FROM nodes_fts f
+		JOIN nodes n ON f.id = n.id
+		WHERE nodes_fts MATCH ?
+		ORDER BY rank
+		LIMIT ?
+	`, query, limit)
+	if err != nil {
+		return nil, nil // Graceful degradation if FTS unavailable
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []FTSResult
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeType, summary, sourceAgent sql.NullString
+		var embeddingBytes []byte
+		var rank float64
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt, &rank); err != nil {
+			continue
+		}
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+		results = append(results, FTSResult{Node: n, Rank: rank})
+	}
+
+	return results, nil
+}
+
+// RebuildFTS rebuilds the FTS5 index from existing nodes.
+// Call this after schema migration to populate FTS for existing data.
+func (s *SQLiteStore) RebuildFTS() error {
+	// First, clear the FTS index
+	if _, err := s.db.Exec("DELETE FROM nodes_fts"); err != nil {
+		return fmt.Errorf("clear fts index: %w", err)
+	}
+
+	// Repopulate from nodes table
+	_, err := s.db.Exec(`
+		INSERT INTO nodes_fts(rowid, id, summary, content)
+		SELECT rowid, id, COALESCE(summary, ''), content FROM nodes
+	`)
+	if err != nil {
+		return fmt.Errorf("rebuild fts index: %w", err)
+	}
+
+	return nil
 }
 
 // === Embedding Helpers ===

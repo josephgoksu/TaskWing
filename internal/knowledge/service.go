@@ -35,6 +35,10 @@ type Repository interface {
 
 	// Graph edge operations
 	LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error
+
+	// FTS5 Hybrid Search (new)
+	ListNodesWithEmbeddings() ([]memory.Node, error)
+	SearchFTS(query string, limit int) ([]memory.FTSResult, error)
 }
 
 // Service provides high-level knowledge operations
@@ -67,44 +71,76 @@ type ScoredNode struct {
 	Score float32      `json:"score"`
 }
 
-// Search performs a semantic search over the knowledge base
+// Search performs a hybrid search combining FTS5 keyword matching and vector similarity.
+// This fixes the N+1 query pattern and provides keyword fallback when embeddings fail.
+// Weights and thresholds are defined in config.go for centralized tuning.
 func (s *Service) Search(ctx context.Context, query string, limit int) ([]ScoredNode, error) {
-	// 1. Generate embedding for query
-	queryEmbedding, err := GenerateEmbedding(ctx, query, s.llmCfg)
-	if err != nil {
-		return nil, fmt.Errorf("generate embedding: %w", err)
+	if limit <= 0 {
+		limit = 5
 	}
 
-	// 2. Fetch all nodes (Note: Optimization needed here later - Vector Store)
-	nodes, err := s.repo.ListNodes("")
-	if err != nil {
-		return nil, fmt.Errorf("list nodes: %w", err)
+	// Collect results from both search methods
+	scoreByID := make(map[string]float32)
+	nodeByID := make(map[string]*memory.Node)
+
+	// 1. FTS5 keyword search (fast, no API call, always works)
+	ftsResults, _ := s.repo.SearchFTS(query, limit*2)
+	for _, r := range ftsResults {
+		// Convert BM25 rank to score (BM25 is negative, more negative = better)
+		// Normalize to 0-1 range where 1 is best match
+		ftsScore := float32(1.0 / (1.0 - r.Rank)) // Convert negative rank to positive score
+		if ftsScore > 1.0 {
+			ftsScore = 1.0
+		}
+		node := r.Node // Copy to avoid pointer issues
+		nodeByID[r.Node.ID] = &node
+		scoreByID[r.Node.ID] = ftsScore * FTSWeight
 	}
 
-	// 3. Compute similarity
+	// 2. Vector similarity search (single query, not N+1)
+	queryEmbedding, embErr := GenerateEmbedding(ctx, query, s.llmCfg)
+	if embErr == nil && len(queryEmbedding) > 0 {
+		// Use the optimized single-query method
+		nodes, err := s.repo.ListNodesWithEmbeddings()
+		if err == nil {
+			for i := range nodes {
+				n := &nodes[i]
+				if len(n.Embedding) == 0 {
+					continue
+				}
+
+				vectorScore := CosineSimilarity(queryEmbedding, n.Embedding)
+				if vectorScore < VectorScoreThreshold {
+					continue // Skip low-relevance results
+				}
+
+				if _, exists := nodeByID[n.ID]; !exists {
+					nodeByID[n.ID] = n
+					scoreByID[n.ID] = 0
+				}
+				scoreByID[n.ID] += vectorScore * VectorWeight
+			}
+		}
+	}
+
+	// 3. Merge, filter low-confidence, and sort by combined score
 	var scored []ScoredNode
-	for _, n := range nodes {
-		// N+1 query to get full node with embedding
-		// TODO: Optimize this in Phase 2
-		fullNode, err := s.repo.GetNode(n.ID)
-		if err != nil {
-			continue // Skip missing nodes
+	for id, score := range scoreByID {
+		// Filter out noise: only include results above minimum threshold
+		if score < MinResultScoreThreshold {
+			continue
 		}
-		if len(fullNode.Embedding) == 0 {
-			continue // Skip nodes without embeddings
+		if node, ok := nodeByID[id]; ok {
+			scored = append(scored, ScoredNode{Node: node, Score: score})
 		}
-
-		score := CosineSimilarity(queryEmbedding, fullNode.Embedding)
-		scored = append(scored, ScoredNode{Node: fullNode, Score: score})
 	}
 
-	// 4. Sort by score
 	sort.Slice(scored, func(i, j int) bool {
 		return scored[i].Score > scored[j].Score
 	})
 
-	// 5. Limit results
-	if limit > 0 && len(scored) > limit {
+	// 4. Limit results
+	if len(scored) > limit {
 		scored = scored[:limit]
 	}
 

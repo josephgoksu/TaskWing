@@ -100,12 +100,8 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		// If Viper doesn't have it, save it?
 		if !viper.IsSet("llm.provider") && ui.IsInteractive() {
 			// This means it wasn't in config/flags, so it came from our prompt (or default fallback).
-			// If it came from prompt, save it.
-			// Let's blindly save if we interactively selected.
-			// Re-saving is cheap.
-			if err := config.SaveGlobalLLMConfig(provider, apiKey); err != nil {
-				// ignore error
-			}
+			// Re-save is cheap, ignore error.
+			_ = config.SaveGlobalLLMConfig(provider, apiKey)
 		}
 	}
 

@@ -303,6 +303,24 @@ func (r *Repository) GetDecisions(featureID string) ([]Decision, error) {
 	return r.db.GetDecisions(featureID)
 }
 
+// === FTS5 Hybrid Search ===
+
+// ListNodesWithEmbeddings returns all nodes with embeddings in a single query.
+// This fixes the N+1 query pattern - one query instead of 1+N.
+func (r *Repository) ListNodesWithEmbeddings() ([]Node, error) {
+	return r.db.ListNodesWithEmbeddings()
+}
+
+// SearchFTS performs full-text search using FTS5 with BM25 ranking.
+func (r *Repository) SearchFTS(query string, limit int) ([]FTSResult, error) {
+	return r.db.SearchFTS(query, limit)
+}
+
+// RebuildFTS rebuilds the FTS5 index from existing nodes.
+func (r *Repository) RebuildFTS() error {
+	return r.db.RebuildFTS()
+}
+
 // Close closes the underlying database connection.
 func (r *Repository) Close() error {
 	return r.db.Close()

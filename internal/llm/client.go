@@ -62,7 +62,7 @@ func NewChatModel(ctx context.Context, cfg Config) (model.BaseChatModel, error) 
 
 	case ProviderAnthropic:
 		if cfg.APIKey == "" {
-			return nil, fmt.Errorf("Anthropic API key is required")
+			return nil, fmt.Errorf("anthropic API key is required")
 		}
 		return claude.NewChatModel(ctx, &claude.Config{
 			APIKey: cfg.APIKey,
@@ -71,11 +71,11 @@ func NewChatModel(ctx context.Context, cfg Config) (model.BaseChatModel, error) 
 
 	case ProviderGemini:
 		if cfg.APIKey == "" {
-			return nil, fmt.Errorf("Gemini API key is required")
+			return nil, fmt.Errorf("gemini API key is required")
 		}
 		// Gemini extension likely relies on environment variables
-		os.Setenv("GOOGLE_API_KEY", cfg.APIKey)
-		os.Setenv("GEMINI_API_KEY", cfg.APIKey)
+		_ = os.Setenv("GOOGLE_API_KEY", cfg.APIKey)
+		_ = os.Setenv("GEMINI_API_KEY", cfg.APIKey)
 
 		return gemini.NewChatModel(ctx, &gemini.Config{
 			Model: cfg.Model,
@@ -140,11 +140,11 @@ func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, err
 
 	case ProviderGemini:
 		if cfg.APIKey == "" {
-			return nil, fmt.Errorf("Gemini API key is required")
+			return nil, fmt.Errorf("gemini API key is required")
 		}
 		// Ensure env vars are set for embedding client too
-		os.Setenv("GOOGLE_API_KEY", cfg.APIKey)
-		os.Setenv("GEMINI_API_KEY", cfg.APIKey)
+		_ = os.Setenv("GOOGLE_API_KEY", cfg.APIKey)
+		_ = os.Setenv("GEMINI_API_KEY", cfg.APIKey)
 
 		// Note: Gemini Embedding model might default to "embedding-001" or similar
 		// We use cfg.EmbeddingModel or let the client default?
