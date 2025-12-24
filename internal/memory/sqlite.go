@@ -142,6 +142,69 @@ func (s *SQLiteStore) initSchema() error {
 		created_at TEXT NOT NULL
 	);
 
+	-- Plans table (High-level goals)
+	CREATE TABLE IF NOT EXISTS plans (
+		id TEXT PRIMARY KEY,
+		goal TEXT NOT NULL,                -- Original user intent
+		enriched_goal TEXT,                -- Refined after clarification
+		status TEXT DEFAULT 'draft',       -- draft, active, completed, archived
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+
+	-- Tasks table (atomic work units)
+	CREATE TABLE IF NOT EXISTS tasks (
+		id TEXT PRIMARY KEY,
+		plan_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		description TEXT,
+		acceptance_criteria TEXT,          -- JSON array
+		validation_steps TEXT,             -- JSON array
+		status TEXT DEFAULT 'pending',     -- pending, in_progress, verifying, completed, failed
+		priority INTEGER DEFAULT 50,
+		assigned_agent TEXT,
+		parent_task_id TEXT,
+		context_summary TEXT,              -- Summary of linked knowledge nodes
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+		FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE SET NULL
+	);
+
+	-- Task dependencies (DAG structure)
+	CREATE TABLE IF NOT EXISTS task_dependencies (
+		task_id TEXT NOT NULL,
+		depends_on TEXT NOT NULL,
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+		FOREIGN KEY (depends_on) REFERENCES tasks(id) ON DELETE CASCADE,
+		PRIMARY KEY (task_id, depends_on)
+	);
+
+	-- Link tasks to Knowledge Graph nodes
+	CREATE TABLE IF NOT EXISTS task_node_links (
+		task_id TEXT NOT NULL,
+		node_id TEXT NOT NULL,
+		link_type TEXT NOT NULL,           -- context, modifies, references
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+		-- Note: We don't enforce FK on node_id rigidly because nodes might be in FTS or different tables,
+		-- but conceptually it refers to 'nodes.id' or 'features.id'.
+		-- For strictness, we'd reference nodes(id), but legacy features are in a different table.
+		-- So we keep it soft for now, or we'll ensure everything is a node in v2 migration.
+		PRIMARY KEY (task_id, node_id, link_type)
+	);
+
+	-- Clarification history (Audit trail for the agent)
+	CREATE TABLE IF NOT EXISTS plan_clarifications (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		plan_id TEXT NOT NULL,
+		question TEXT NOT NULL,
+		answer TEXT,
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+	);
+
 	-- FTS5 for keyword search (hybrid with vector similarity)
 	CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
 		id UNINDEXED,

@@ -7,8 +7,11 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/cloudwego/eino v0.7.11
+	github.com/cloudwego/eino-ext/components/embedding/gemini v0.0.0-20251219073121-0fff9abbb56c
 	github.com/cloudwego/eino-ext/components/embedding/ollama v0.0.0-20251219073121-0fff9abbb56c
 	github.com/cloudwego/eino-ext/components/embedding/openai v0.0.0-20251219073121-0fff9abbb56c
+	github.com/cloudwego/eino-ext/components/model/claude v0.1.11
+	github.com/cloudwego/eino-ext/components/model/gemini v0.1.20
 	github.com/cloudwego/eino-ext/components/model/ollama v0.1.7
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.6
 	github.com/fsnotify/fsnotify v1.8.0
@@ -51,9 +54,6 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/cloudwego/eino-ext/components/embedding/gemini v0.0.0-20251219073121-0fff9abbb56c // indirect
-	github.com/cloudwego/eino-ext/components/model/claude v0.1.11 // indirect
-	github.com/cloudwego/eino-ext/components/model/gemini v0.1.20 // indirect
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.10 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/eino-contrib/jsonschema v1.0.3 // indirect

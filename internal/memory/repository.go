@@ -2,6 +2,8 @@ package memory
 
 import (
 	"fmt"
+
+	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
 // Repository orchestrates access to both the database and the filesystem.
@@ -307,6 +309,32 @@ func (r *Repository) ListFeatures() ([]Feature, error) {
 // GetDecisions returns all decisions for a feature.
 func (r *Repository) GetDecisions(featureID string) ([]Decision, error) {
 	return r.db.GetDecisions(featureID)
+}
+
+// === Task & Plan Management ===
+
+func (r *Repository) CreatePlan(p *task.Plan) error {
+	return r.db.CreatePlan(p)
+}
+
+func (r *Repository) GetPlan(id string) (*task.Plan, error) {
+	return r.db.GetPlan(id)
+}
+
+func (r *Repository) ListPlans() ([]task.Plan, error) {
+	return r.db.ListPlans()
+}
+
+func (r *Repository) CreateTask(t *task.Task) error {
+	return r.db.CreateTask(t)
+}
+
+func (r *Repository) GetTask(id string) (*task.Task, error) {
+	return r.db.GetTask(id)
+}
+
+func (r *Repository) ListTasks(planID string) ([]task.Task, error) {
+	return r.db.ListTasks(planID)
 }
 
 // === FTS5 Hybrid Search ===

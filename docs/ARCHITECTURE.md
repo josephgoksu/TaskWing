@@ -1,268 +1,306 @@
-# TaskWing v2 — Architecture & Roadmap
+# TaskWing Architecture
 
-> **Created:** 2025-12-15
-> **Updated:** 2025-12-17
-> **Status:** Active Development
-
----
-
-## Vision
-
-**Institutional Knowledge Layer for Engineering Teams.**
-
-TaskWing captures the decisions, context, and rationale behind your codebase—making it queryable by humans and AI.
-
-**Problem:** The codebase shows WHAT exists. Nothing shows WHY it exists or HOW it evolved.
-
-**Solution:** A structured, AI-queryable record of decisions, features, and relationships.
-
-### Why Decisions Are the Moat
-
-| What Others Build | What TaskWing Builds |
-|-------------------|----------------------|
-| Feature lists (Notion, Linear) | **Decision history** with rationale |
-| Static docs (CLAUDE.md) | **Living context** that evolves |
-| Single-user tools | **Team knowledge** that persists |
-
-Features come and go. **Decisions explain WHY.** That's what new team members, AI tools, and auditors need.
+> **Version:** 2.x
+> **Updated:** 2025-12-23
 
 ---
 
-## Strategic Roadmap
+## What is TaskWing?
 
-See [ROADMAP.md](./ROADMAP.md) for full version planning (v2.0 → v5.0).
+**TaskWing is a Planning + Knowledge Layer for engineering teams.**
 
-**v2.0 Implemented Features:**
+It's NOT an execution engine. It's the intelligence layer that sits between **human intent** and **AI-powered development**.
 
-- `taskwing add "text"` — Add knowledge (AI classifies)
-- `taskwing list` — View all knowledge nodes
-- `taskwing context "query"` — Semantic search with Embeddings
-- `taskwing bootstrap` — Auto-generate from repo (Git + LLM)
-- `taskwing mcp` — AI integration (Model Context Protocol)
+```
+┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
+│   Human Intent   │ ───▶ │    TaskWing      │ ───▶ │    AI Tools      │
+│  "Build OAuth"   │      │ Planning + Context│      │ Claude/Cursor/etc│
+└──────────────────┘      └──────────────────┘      └──────────────────┘
+```
+
+### Core Value Proposition
+
+| Traditional Tools | TaskWing |
+|-------------------|----------|
+| Static task lists (Linear, Jira) | **Dynamic plans** enriched with project context |
+| Manual task creation | **AI-assisted decomposition** with clarifying questions |
+| Isolated from codebase | **Knowledge graph** connects tasks to features, decisions, patterns |
+| Designed for humans | **Designed for AI consumption** via MCP, markdown, spec files |
 
 ---
 
-## Context Retrieval Strategy
+## System Architecture
 
-MCP must return **relevant** context to AI tools, not everything. Strategy is phased:
+```mermaid
+flowchart TB
+    subgraph UserLayer["User Layer"]
+        CLI["CLI (tw)"]
+        Dashboard["Web Dashboard"]
+        MCP["MCP Server"]
+    end
 
-| Phase | Strategy | Implementation | Status |
-|-------|----------|----------------|--------|
-| **v2.0** | Hybrid | Graph traversal + Vector Similarity | **Active** |
+    subgraph IntelligenceLayer["Intelligence Layer"]
+        Clarify["Clarifying Agent"]
+        Plan["Planning Agent"]
+        Validate["Validation Agent"]
+        Bootstrap["Bootstrap Agents"]
+    end
 
-### Token Budget
-MCP output targets **~500-1000 tokens** for optimal AI context using `KnowledgeService`.
+    subgraph KnowledgeLayer["Knowledge Layer"]
+        Graph["Knowledge Graph"]
+        Tasks["Plans & Tasks"]
+        Store["SQLite Store"]
+    end
 
-### v2.0 Implementation
+    subgraph ExternalLayer["External (AI Tools)"]
+        Claude["Claude"]
+        Cursor["Cursor"]
+        Gemini["Gemini"]
+        Other["Other AI Tools"]
+    end
 
-```go
-// MCP tool accepts optional scope parameter
-func projectContext(scope string) Context {
-    if scope != "" {
-        feature := store.FindFeature(scope)
-        related := store.GetRelated(feature.ID, depth=2)
-        return loadContext(related)  // ~500 tokens
-    }
-    return store.GetIndex()  // Summary only
-}
+    CLI --> Clarify
+    Dashboard --> Clarify
+    Clarify --> Plan
+    Plan --> Graph
+    Plan --> Tasks
+    Tasks --> Store
+    Graph --> Store
+
+    MCP --> Graph
+    MCP --> Tasks
+
+    Tasks -->|"Markdown Export"| Claude
+    Tasks -->|"Markdown Export"| Cursor
+    Tasks -->|"MCP Query"| Gemini
+    Tasks -->|"Spec Files"| Other
+
+    Bootstrap --> Graph
+    Validate --> Tasks
 ```
 
 ---
 
-## System Overview
+## Information Flow
+
+When a user creates a plan, TaskWing orchestrates the following flow:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Clarifying Agent
+    participant P as Planning Agent
+    participant K as Knowledge Graph
+    participant T as Task Store
+    participant AI as AI Tool (External)
+    participant V as Validation Agent
+
+    U->>C: "Build OAuth authentication"
+    C->>U: "Which providers? JWT or sessions?"
+    U->>C: "Google + GitHub, JWT"
+    C->>P: Enriched goal with context
+
+    P->>K: Query related nodes (auth, security, decisions)
+    K-->>P: Existing context
+    P->>T: Create Plan with Tasks
+
+    Note over T: Tasks are nodes in the graph
+
+    T->>AI: Export (Markdown / MCP / Spec)
+    AI->>AI: Execute development
+
+    Note over V: File watcher detects changes
+
+    V->>K: Compare changes vs acceptance criteria
+    V->>T: Mark task complete/failed
+```
+
+---
+
+## Core Concepts
+
+### Tasks are Knowledge Nodes
+
+Unlike traditional task managers, TaskWing tasks live in the knowledge graph:
+
+```mermaid
+graph LR
+    subgraph KnowledgeGraph["Knowledge Graph"]
+        F1["Feature: Auth"]
+        D1["Decision: Use JWT"]
+        P1["Pattern: Middleware"]
+        T1["Task: Add OAuth"]
+        T2["Task: Token Refresh"]
+    end
+
+    T1 -->|implements| F1
+    T1 -->|follows| D1
+    T2 -->|depends_on| T1
+    F1 -->|uses| P1
+```
+
+This means:
+- When creating a task, the **full project context** is available
+- Tasks can link to existing features, decisions, and patterns
+- AI tools get rich context, not just task descriptions
+
+### Validation via File Watching
+
+TaskWing already monitors file changes via its watch functionality. For task validation:
+
+1. **Watch agent** detects file changes after AI execution
+2. **Validation agent** compares changes against task acceptance criteria
+3. **LLM judgment**: "Did this implementation satisfy the requirements?"
+4. Task status updated automatically
+
+---
+
+## Package Structure
 
 ```
-                              ┌─────────────────────────────────────┐
-                              │           USER INTERFACES           │
-                              └─────────────────────────────────────┘
-                                              │
-                 ┌──────────────────────────────────────────────────────────┐
-                 │                          │                               │
-                 ▼                          ▼                               ▼
-    ┌────────────────────┐     ┌────────────────────┐          ┌────────────────────┐
-    │    CLI (Go)        │     │   MCP Server (Go)  │          │   Web UI (Future)  │
-    │                    │     │                    │          │                    │
-    │  taskwing add      │     │  project-context   │          │  Vite + React +    │
-    │  taskwing context  │     │       tool         │          │  shadcn/ui         │
-    │  taskwing bootstrap│     │                    │          │                    │
-    └─────────┬──────────┘     └─────────┬──────────┘          └─────────┬──────────┘
-              │                          │                               │
-              └──────────────────────────┼───────────────────────────────┘
-                                         │
-                                         ▼
-                        ┌─────────────────────────────────────┐
-                        │          MEMORY STORE               │
-                        │       (Unified Interface)           │
-                        │                                     │
-                        │  • CreateFeature()    • Link()      │
-                        │  • AddDecision()      • Unlink()    │
-                        │  • GetDependencies()  • Check()     │
-                        └─────────────────┬───────────────────┘
-                                          │
-           ┌──────────────────────────────┼──────────────────────────────┐
-           │                              │                              │
-           ▼                              ▼                              ▼
-┌───────────────────────┐    ┌───────────────────────┐    ┌───────────────────────┐
-│     memory.db         │    │   features/*.md       │    │    index.json         │
-│     (SQLite)          │    │    (Markdown)         │    │     (Cache)           │
-│                       │    │                       │    │                       │
-│ ┌───────────────────┐ │    │  ┌─────────────────┐  │    │  {                    │
-│ │ features          │ │    │  │ # Auth          │  │    │    "features": [...], │
-│ │ decisions         │◄┼────┼──│                 │  │    │    "lastUpdated": ... │
-│ │ edges             │ │    │  │ ## Decisions    │  │    │  }                    │
-│ └───────────────────┘ │    │  │ - Use JWT...    │  │    │                       │
-│                       │    │  └─────────────────┘  │    │  Regenerated from     │
-│  SOURCE OF TRUTH      │    │  Human-readable      │    │  SQLite on demand     │
-└───────────────────────┘    └───────────────────────┘    └───────────────────────┘
+internal/
+├── task/             # Plans, Tasks, and execution
+│   ├── models.go     # Task, Plan, TaskStatus
+│   ├── store.go      # SQLite persistence
+│   └── exporter.go   # Markdown/spec export
+├── agents/           # LLM-powered agents
+│   ├── clarifying_agent.go   # Asks clarifying questions
+│   ├── planning_agent.go     # Decomposes goals into tasks
+│   ├── validation_agent.go   # Verifies task completion
+│   ├── doc_agent.go          # Documentation analysis
+│   ├── react_code_agent.go   # Code pattern detection
+│   └── git_deps_agent.go     # Git + dependency analysis
+├── knowledge/        # Vector search, embeddings, RAG
+├── memory/           # SQLite store + Markdown sync
+├── server/           # HTTP API
+└── llm/              # Multi-provider (OpenAI, Ollama)
 
-
-
-                         ┌─────────────────────────────────────┐
-                         │         BOOTSTRAP SCANNER           │
-                         └─────────────────────────────────────┘
-                                          │
-         ┌────────────────────────────────┼────────────────────────────────┐
-         │                                │                                │
-         ▼                                ▼                                ▼
-┌─────────────────┐            ┌─────────────────┐            ┌─────────────────┐
-│   Git History   │            │   Directories   │            │   ADR Files     │
-│                 │            │                 │            │                 │
-│  feat: commits  │            │  src/features/  │            │  docs/decisions │
-│  git tags       │            │  packages/      │            │  CHANGELOG.md   │
-└─────────────────┘            └─────────────────┘            └─────────────────┘
-
-
-
-                              DATA FLOW (Context Loading)
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                                                                 │
-│   1. AI asks: "I want to add payment webhooks"                                  │
-│                              │                                                  │
-│                              ▼                                                  │
-│   2. Load index.json (~500 bytes) ─────────────────────────────────────────┐    │
-│                              │                                             │    │
-│                              ▼                                             │    │
-│   3. Query SQLite: GetRelated("payments") → ["users", "orders"]            │    │
-│                              │                                             │    │
-│                              ▼                                             │    │
-│   4. Load features/payments.md + features/users.md                         │    │
-│                              │                                             │    │
-│                              ▼                                             │    │
-│   5. Return combined context (~3KB) ◄──────────────────────────────────────┘    │
-│                                                                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
+cmd/
+├── root.go
+├── plan.go           # tw plan new/list/export
+├── task.go           # tw task list/validate
+├── bootstrap.go      # tw bootstrap
+├── context.go        # tw context "query"
+└── mcp_server.go     # tw mcp
 ```
 
 ---
 
 ## Storage
 
-> **Source of truth:** [DATA_MODEL.md](DATA_MODEL.md)
+**SQLite is the source of truth.** Markdown files are human-readable snapshots.
+
+```mermaid
+erDiagram
+    plans ||--o{ tasks : contains
+    tasks ||--o{ task_dependencies : has
+    tasks ||--o{ task_node_links : links_to
+    plans ||--o{ plan_clarifications : has
+
+    plans {
+        string id PK
+        string goal
+        string enriched_goal
+        string status
+        datetime created_at
+    }
+
+    tasks {
+        string id PK
+        string plan_id FK
+        string title
+        string description
+        json acceptance_criteria
+        json validation_steps
+        string status
+        int priority
+        string assigned_agent
+    }
+
+    task_node_links {
+        string task_id FK
+        string node_id
+        string link_type
+    }
+
+    plan_clarifications {
+        int id PK
+        string plan_id FK
+        string question
+        string answer
+    }
+```
+
+---
+
+## AI Tool Integration
+
+TaskWing feeds AI tools—it doesn't control them.
+
+### Export Options
+
+| Method | Use Case | Status |
+|--------|----------|--------|
+| **Markdown Export** | Copy/paste into any AI tool | ✅ POC |
+| **MCP Server** | AI tools query TaskWing directly | 🚧 Planned |
+| **Spec Files** | Store specs in repo (`.taskwing/specs/`) | 🚧 Planned |
+
+### Markdown Export Format
+
+```markdown
+# Task: Implement OAuth Callback Handler
+
+**Status:** pending
+**Priority:** High
+**Depends On:** task-001 (OAuth Config)
+
+## Context
+This task implements the callback handler for OAuth flow.
+Related to: Feature:Auth, Decision:JWT-over-sessions
+
+## Acceptance Criteria
+- [ ] Handle callback from Google OAuth
+- [ ] Exchange code for tokens
+- [ ] Create/update user record
+- [ ] Set JWT cookie
+
+## Validation
+```bash
+go test ./internal/auth/...
+```
+
+## Related Knowledge
+- **Decision:** We use JWT over sessions for stateless auth
+- **Pattern:** All auth middleware in `internal/middleware/`
+```
 
 ---
 
 ## CLI Commands
 
-### Setup
+### Planning
 
 ```bash
-taskwing bootstrap               # Initialize + auto-generate from repo (LLM-powered if OPENAI_API_KEY set)
-taskwing bootstrap --preview     # Preview without saving
-taskwing bootstrap --basic       # Heuristic scan only (no LLM calls)
+tw plan new "Build OAuth authentication"   # Start clarifying flow
+tw plan list                                # Show all plans
+tw plan show <plan-id>                      # Show plan with tasks
+tw plan export <plan-id>                    # Export as markdown
+```
+
+### Tasks
+
+```bash
+tw task list [--plan-id <id>]     # List tasks (optionally filtered)
+tw task show <task-id>            # Show task details + context
+tw task validate <task-id>        # Run validation agent
 ```
 
 ### Knowledge
 
 ```bash
-taskwing add "We chose Go for performance"          # AI classifies as decision
-taskwing add "Auth handles OAuth2 and sessions"    # AI classifies as feature
-taskwing add "TODO: implement retry logic"         # AI classifies as plan
-taskwing list                                       # View all nodes
-taskwing list decision                              # Filter by type
-taskwing context "error handling"                  # Semantic search
-```
-
-### Maintenance
-
-```bash
-taskwing memory check            # Validate integrity
-taskwing memory repair           # Fix issues
-taskwing memory rebuild-index    # Regenerate cache
-```
-
-### MCP
-
-```bash
-taskwing mcp                     # Start MCP server (default: stdio transport)
-taskwing mcp --port 3000         # (Planned) SSE transport on port 3000
-```
-
-### Spec & Planning
-
-```bash
-taskwing spec "Add OAuth"          # Create a feature spec with AI agents
-taskwing spec list                 # List specifications
-taskwing task "Implement login"    # Create a dev task from a spec
-taskwing task list                 # List tasks
-```
-
----
-
-## Global Flags
-
-| Flag | Description |
-|------|-------------|
-| `--json` | Output as JSON |
-| `--quiet` | Minimal output |
-| `--verbose` | Detailed output |
-| `--preview` | Dry run (no changes) |
-
----
-
-## Core Interface: Repository
-
-> See [DATA_MODEL.md](DATA_MODEL.md) for full implementation.
-
-```go
-type Repository interface {
-    // Features
-    CreateFeature(f Feature) error
-    UpdateFeature(f Feature) error
-    DeleteFeature(id string) error
-    GetFeature(id string) (*Feature, error)
-
-    // Knowledge Graph
-    CreateNode(n Node) error
-    ListNodes(filter string) ([]Node, error)
-
-    // Integrity
-    Check() ([]Issue, error)
-    Repair() error
-}
-```
-
----
-
-## Bootstrap Scanner
-
-> See [BOOTSTRAP.md](BOOTSTRAP.md)
-
-```go
-type BootstrapScanner interface {
-    Preview() (*BootstrapResult, error)  // Dry run
-    Execute() error                       // Actually write
-}
-```
-
----
-
-## MCP Interface
-
-```go
-{
-    "name": "project-context",
-    "description": "Get project memory for AI context"
-}
+tw bootstrap                      # Auto-extract knowledge from repo
+tw context "error handling"       # Semantic search
+tw add "We use Redis for caching" # Add knowledge manually
 ```
 
 ---
@@ -271,49 +309,20 @@ type BootstrapScanner interface {
 
 | Component | Technology |
 |-----------|------------|
-| CLI | Go + Cobra |
+| CLI | Go 1.24 + Cobra |
 | Storage | SQLite (`modernc.org/sqlite`) |
-| LLM | CloudWeGo Eino (multi-provider: OpenAI, Ollama) |
+| LLM | CloudWeGo Eino (OpenAI, Ollama) |
+| Embeddings | OpenAI text-embedding-3-small |
 | MCP | `mcp-go-sdk` |
-| Web UI | Vite + React + TS + Tailwind v4 + shadcn/ui |
+| Web Dashboard | Vite + React + TypeScript + Tailwind v4 |
 
 ---
 
-## Package Structure
-
-```
-internal/
-├── memory/           # Store & Repository (SQLite + Markdown)
-├── knowledge/        # Vector search & RAG
-├── spec/             # Feature specifications
-├── agents/           # ReAct Agents (Doc, Code, Git)
-├── bootstrap/        # [NEW] Headless agent runner & factory
-├── server/           # HTTP API server (uses bootstrap runner)
-├── ui/               # TUI components & styles
-│   ├── init_tui.go   # Init command UI
-│   └── bootstrap_tui.go # Bootstrap command UI
-├── telemetry/        # Anonymous usage metrics
-└── llm/              # Multi-provider ChatModel factory
-
-cmd/
-├── root.go
-├── config.go             # Configuration and defaults
-├── init.go
-├── bootstrap.go          # Repository analysis orchestrator
-├── add.go                # Add knowledge (AI classifies)
-├── list.go               # List nodes by type
-├── context.go            # Semantic search
-├── memory.go             # memory check/repair
-└── mcp_server.go         # MCP server
-```
-
----
-
-## Related Docs
+## Related Documentation
 
 | Document | Purpose |
 |----------|---------|
-| [GETTING_STARTED.md](GETTING_STARTED.md) | Quick start guide |
-| [DATA_MODEL.md](DATA_MODEL.md) | Storage schema |
-| [BOOTSTRAP.md](BOOTSTRAP.md) | Repo scanning |
-| [ERRORS.md](ERRORS.md) | Error messages |
+| [ROADMAP.md](./ROADMAP.md) | Version planning |
+| [DATA_MODEL.md](./DATA_MODEL.md) | Storage schema details |
+| [BOOTSTRAP.md](./BOOTSTRAP.md) | Bootstrap scanner internals |
+| [MCP.md](./MCP.md) | MCP integration guide |
