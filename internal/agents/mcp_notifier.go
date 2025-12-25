@@ -86,7 +86,9 @@ func (n *MCPNotifier) NotifyFindingAdded(ctx context.Context, finding Finding) {
 
 	for _, sub := range subs {
 		go func(s MCPSubscriber) {
-			_ = s.OnFindingAdded(ctx, finding)
+			notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			_ = s.OnFindingAdded(notifyCtx, finding)
 		}(sub)
 	}
 }
@@ -101,7 +103,9 @@ func (n *MCPNotifier) NotifyFindingUpdated(ctx context.Context, finding Finding)
 
 	for _, sub := range subs {
 		go func(s MCPSubscriber) {
-			_ = s.OnFindingUpdated(ctx, finding)
+			notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			_ = s.OnFindingUpdated(notifyCtx, finding)
 		}(sub)
 	}
 }
@@ -116,7 +120,9 @@ func (n *MCPNotifier) NotifyFindingRemoved(ctx context.Context, findingID string
 
 	for _, sub := range subs {
 		go func(s MCPSubscriber) {
-			_ = s.OnFindingRemoved(ctx, findingID)
+			notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			_ = s.OnFindingRemoved(notifyCtx, findingID)
 		}(sub)
 	}
 }
@@ -131,7 +137,9 @@ func (n *MCPNotifier) NotifyBatchComplete(ctx context.Context, summary MCPBatchS
 
 	for _, sub := range subs {
 		go func(s MCPSubscriber) {
-			_ = s.OnBatchComplete(ctx, summary)
+			notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			_ = s.OnBatchComplete(notifyCtx, summary)
 		}(sub)
 	}
 }

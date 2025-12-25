@@ -120,5 +120,4 @@ const (
 	FindingTypeDependency FindingType = "dependency"
 	FindingTypePattern    FindingType = "pattern"
 	FindingTypeRisk       FindingType = "risk"
-	FindingTypeTodo       FindingType = "todo"
 )

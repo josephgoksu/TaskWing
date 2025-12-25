@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,6 +21,19 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 )
+
+// errPathTraversal is returned when a path attempts directory traversal
+var errPathTraversal = errors.New("path traversal not allowed")
+
+// validateRelativePath cleans a path and checks for directory traversal attacks.
+// Returns the cleaned path or an error if traversal is detected.
+func validateRelativePath(path string) (string, error) {
+	cleanPath := filepath.Clean(path)
+	if strings.HasPrefix(cleanPath, "..") {
+		return "", errPathTraversal
+	}
+	return cleanPath, nil
+}
 
 // =============================================================================
 // EinoReadFileTool - Read file contents with line limits
@@ -80,9 +94,9 @@ func (t *EinoReadFileTool) InvokableRun(ctx context.Context, argumentsInJSON str
 	}
 
 	// Security: prevent path traversal
-	cleanPath := filepath.Clean(params.Path)
-	if strings.HasPrefix(cleanPath, "..") {
-		return "", fmt.Errorf("path traversal not allowed")
+	cleanPath, err := validateRelativePath(params.Path)
+	if err != nil {
+		return "", err
 	}
 
 	fullPath := filepath.Join(t.basePath, cleanPath)
@@ -175,9 +189,9 @@ func (t *EinoGrepTool) InvokableRun(ctx context.Context, argumentsInJSON string,
 
 	searchPath := t.basePath
 	if params.Path != "" {
-		cleanPath := filepath.Clean(params.Path)
-		if strings.HasPrefix(cleanPath, "..") {
-			return "", fmt.Errorf("path traversal not allowed")
+		cleanPath, err := validateRelativePath(params.Path)
+		if err != nil {
+			return "", err
 		}
 		searchPath = filepath.Join(t.basePath, cleanPath)
 	}
@@ -298,9 +312,9 @@ func (t *EinoListDirTool) InvokableRun(ctx context.Context, argumentsInJSON stri
 
 	targetPath := t.basePath
 	if params.Path != "" {
-		cleanPath := filepath.Clean(params.Path)
-		if strings.HasPrefix(cleanPath, "..") {
-			return "", fmt.Errorf("path traversal not allowed")
+		cleanPath, err := validateRelativePath(params.Path)
+		if err != nil {
+			return "", err
 		}
 		targetPath = filepath.Join(t.basePath, cleanPath)
 	}
