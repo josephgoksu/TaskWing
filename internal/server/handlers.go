@@ -12,6 +12,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
 // handleListNodes
@@ -285,6 +286,102 @@ func (s *Server) handleClearActivity(w http.ResponseWriter, r *http.Request) {
 	writeAPIJSON(w, map[string]any{
 		"success": true,
 	})
+}
+
+// handleListPlans
+func (s *Server) handleListPlans(w http.ResponseWriter, r *http.Request) {
+	plans, err := s.repo.ListPlans()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeAPIJSON(w, plans)
+}
+
+// handleCreatePlan
+func (s *Server) handleCreatePlan(w http.ResponseWriter, r *http.Request) {
+	var p task.Plan
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.repo.CreatePlan(&p); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeAPIJSON(w, p)
+}
+
+// handleGetPlan
+func (s *Server) handleGetPlan(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	p, err := s.repo.GetPlan(id)
+	if err != nil {
+		http.Error(w, "plan not found", http.StatusNotFound)
+		return
+	}
+
+	writeAPIJSON(w, p)
+}
+
+// handlePromoteToTask
+func (s *Server) handlePromoteToTask(w http.ResponseWriter, r *http.Request) {
+	var req PromoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	activityLog := agents.NewActivityLog(s.cwd)
+	entries := activityLog.GetRecent(500) // Large enough to find the id
+
+	var finding *agents.ActivityEntry
+	for i := range entries {
+		if entries[i].ID == req.FindingID {
+			finding = &entries[i]
+			break
+		}
+	}
+
+	if finding == nil {
+		http.Error(w, "finding not found in activity log", http.StatusNotFound)
+		return
+	}
+
+	// Create a task from the finding
+	planID := req.PlanID
+	if planID == "" {
+		newPlan := &task.Plan{
+			Goal: fmt.Sprintf("Address finding: %s", finding.Message),
+		}
+		if err := s.repo.CreatePlan(newPlan); err != nil {
+			http.Error(w, fmt.Sprintf("create plan failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+		planID = newPlan.ID
+	}
+
+	newTask := &task.Task{
+		PlanID:      planID,
+		Title:       finding.Message,
+		Description: fmt.Sprintf("Automatically promoted from activity finding. Original agent: %s", finding.Agent),
+		Status:      task.StatusPending,
+		Priority:    50,
+	}
+
+	if err := s.repo.CreateTask(newTask); err != nil {
+		http.Error(w, fmt.Sprintf("create task failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	writeAPIJSON(w, newTask)
 }
 
 func writeAPIJSON(w http.ResponseWriter, data interface{}) {

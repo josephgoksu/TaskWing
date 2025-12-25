@@ -16,6 +16,13 @@ func (s *Server) registerRoutes() http.Handler {
 	mux.HandleFunc("POST /api/bootstrap", s.handleBootstrap)
 	mux.HandleFunc("GET /api/activity", s.handleActivity)
 	mux.HandleFunc("DELETE /api/activity", s.handleClearActivity)
+
+	// Task Management API
+	mux.HandleFunc("GET /api/plans", s.handleListPlans)
+	mux.HandleFunc("POST /api/plans", s.handleCreatePlan)
+	mux.HandleFunc("GET /api/plans/{id}", s.handleGetPlan)
+	mux.HandleFunc("POST /api/tasks/promote", s.handlePromoteToTask)
+
 	mux.HandleFunc("OPTIONS /api/", s.handleCORS)
 
 	return corsMiddleware(mux)

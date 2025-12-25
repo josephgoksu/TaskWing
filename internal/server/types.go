@@ -43,3 +43,9 @@ type StyledEdge struct {
 	Animated    bool    `json:"animated"`    // Pre-computed
 	Opacity     float64 `json:"opacity"`     // Pre-computed
 }
+
+// PromoteRequest is the payload for /api/tasks/promote
+type PromoteRequest struct {
+	FindingID int64  `json:"findingId"`
+	PlanID    string `json:"planId,omitempty"` // If empty, a new plan will be created
+}
