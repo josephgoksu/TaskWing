@@ -81,6 +81,78 @@ flowchart TB
 
 ---
 
+## Bootstrap: The Map-Reduce Pipeline
+
+The `bootstrap` command uses a **Map-Reduce architecture** to extract knowledge from a codebase:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           BOOTSTRAP PIPELINE                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    MAP PHASE (Parallel Agents)                   │   │
+│  │                                                                  │   │
+│  │   Orchestrator.RunAll() spawns goroutines:                       │   │
+│  │                                                                  │   │
+│  │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │   │
+│  │   │ DocAgent │  │CodeAgent │  │ GitAgent │  │DepsAgent │        │   │
+│  │   │          │  │          │  │          │  │          │        │   │
+│  │   │ Features │  │ Patterns │  │Decisions │  │   Deps   │        │   │
+│  │   │Constraints│ │   Risks  │  │(commits) │  │ Licenses │        │   │
+│  │   └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘        │   │
+│  │        │             │             │             │               │   │
+│  │        └─────────────┴──────┬──────┴─────────────┘               │   │
+│  │                             ▼                                    │   │
+│  │                    []Finding (raw outputs)                       │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                │                                        │
+│                                ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                  REDUCE PHASE (Aggregate + Ingest)               │   │
+│  │                                                                  │   │
+│  │   AggregateFindings()                                            │   │
+│  │       └─► Combine all agent outputs into single []Finding        │   │
+│  │                                                                  │   │
+│  │   KnowledgeService.IngestFindings()                              │   │
+│  │       ├─► 1. purgeStaleData()     - Remove old agent nodes       │   │
+│  │       ├─► 2. ingestNodes()        - Dedupe + create nodes        │   │
+│  │       ├─► 3. ingestStructuredData() - Features/Decisions/etc    │   │
+│  │       └─► 4. linkKnowledgeGraph() - Create edges (semantic)      │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                │                                        │
+│                                ▼                                        │
+│                     SQLite Knowledge Graph                              │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Agent Responsibilities
+
+| Agent | Analyzes | Extracts |
+|-------|----------|----------|
+| **DocAgent** | `*.md` files (README, docs/) | Features, **Constraints** (CRITICAL/MUST rules) |
+| **ReactCodeAgent** | Source code files | Patterns, Risks, Code structure |
+| **GitAgent** | Git history, commits | Decisions, Architecture evolution |
+| **DepsAgent** | go.mod, package.json, etc. | Dependencies, Licenses, Tech stack |
+
+### Key Design Principles
+
+1. **Agents are independent** — They don't communicate with each other during analysis
+2. **Agents are parallel** — `Orchestrator.RunAll()` uses goroutines for concurrent execution
+3. **Deduplication happens centrally** — `ingestNodes()` checks `existingByContent` map
+4. **Linking is semantic** — Nodes are connected by cosine similarity of embeddings
+
+### Code References
+
+| Component | File | Function |
+|-----------|------|----------|
+| Parallel execution | `internal/agents/orchestrator.go` | `RunAll()` |
+| Finding aggregation | `internal/agents/orchestrator.go` | `AggregateFindings()` |
+| Deduplication | `internal/knowledge/ingest.go` | `ingestNodes()` |
+| Node creation | `internal/knowledge/ingest.go` | `IngestFindings()` |
+| Graph linking | `internal/knowledge/ingest.go` | `linkKnowledgeGraph()` |
+
+
 ## Information Flow
 
 When a user creates a plan, TaskWing orchestrates the following flow:

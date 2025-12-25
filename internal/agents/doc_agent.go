@@ -63,23 +63,32 @@ func (a *DocAgent) Run(ctx context.Context, input Input) (Output, error) {
 	return BuildOutput(a.Name(), findings, rawOutput, time.Since(start)), nil
 }
 
-// docFeaturesResponse is the expected JSON structure from LLM.
-type docFeaturesResponse struct {
+// docAnalysisResponse is the expected JSON structure from LLM.
+// It captures both product features and architectural constraints.
+type docAnalysisResponse struct {
 	Features []struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		SourceFile  string `json:"source_file"`
 		Confidence  string `json:"confidence"`
 	} `json:"features"`
+	Constraints []struct {
+		Rule       string `json:"rule"`
+		Reason     string `json:"reason"`
+		SourceFile string `json:"source_file"`
+		Severity   string `json:"severity"` // critical, high, medium
+	} `json:"constraints"`
 }
 
 func (a *DocAgent) parseResponse(response string) ([]Finding, error) {
-	parsed, err := ParseJSONResponse[docFeaturesResponse](response)
+	parsed, err := ParseJSONResponse[docAnalysisResponse](response)
 	if err != nil {
 		return nil, err
 	}
 
 	var findings []Finding
+
+	// Extract features
 	for _, f := range parsed.Features {
 		findings = append(findings, Finding{
 			Type:        FindingTypeFeature,
@@ -88,6 +97,21 @@ func (a *DocAgent) parseResponse(response string) ([]Finding, error) {
 			Confidence:  f.Confidence,
 			SourceFiles: []string{f.SourceFile},
 			SourceAgent: a.Name(),
+		})
+	}
+
+	// Extract constraints (architectural rules)
+	for _, c := range parsed.Constraints {
+		findings = append(findings, Finding{
+			Type:        FindingTypeConstraint,
+			Title:       c.Rule,
+			Description: c.Reason,
+			Confidence:  c.Severity, // Map severity to confidence field for consistency
+			SourceFiles: []string{c.SourceFile},
+			SourceAgent: a.Name(),
+			Metadata: map[string]any{
+				"severity": c.Severity,
+			},
 		})
 	}
 
@@ -105,14 +129,28 @@ func filterMarkdown(files []string) []string {
 }
 
 func (a *DocAgent) buildPrompt(projectName, docContent string) string {
-	return fmt.Sprintf(`You are a product analyst. Analyze the following documentation for project "%s".
+	return fmt.Sprintf(`You are a technical analyst. Analyze the following documentation for project "%s".
 
-Extract PRODUCT FEATURES - things the product does for users, not technical implementation details.
+Extract TWO types of information:
 
-For each feature, identify:
-1. Name - concise feature name
-2. Description - what it does for users
-3. Evidence - where in the docs this is mentioned
+## 1. PRODUCT FEATURES
+Things the product does for users (not technical implementation).
+- Name: concise feature name
+- Description: what it does for users
+- Source: where in the docs this is mentioned
+
+## 2. ARCHITECTURAL CONSTRAINTS
+Mandatory rules developers MUST follow. Look for:
+- Words like: CRITICAL, MUST, REQUIRED, mandatory, always, never
+- Database access rules (replicas, connection pools)
+- Caching requirements
+- Security requirements
+- Performance mandates
+
+For each constraint:
+- Rule: the exact requirement
+- Reason: why it's important
+- Severity: critical, high, or medium
 
 RESPOND IN JSON:
 {
@@ -122,6 +160,14 @@ RESPOND IN JSON:
       "description": "What it does for users",
       "source_file": "README.md",
       "confidence": "high|medium|low"
+    }
+  ],
+  "constraints": [
+    {
+      "rule": "Use ReadReplica for high-volume reads",
+      "reason": "Prevents primary DB overload",
+      "source_file": "docs/architecture.md",
+      "severity": "critical|high|medium"
     }
   ]
 }

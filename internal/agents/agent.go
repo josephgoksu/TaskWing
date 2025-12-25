@@ -120,4 +120,5 @@ const (
 	FindingTypeDependency FindingType = "dependency"
 	FindingTypePattern    FindingType = "pattern"
 	FindingTypeRisk       FindingType = "risk"
+	FindingTypeConstraint FindingType = "constraint" // Architectural constraints/rules (CRITICAL, MUST, mandatory)
 )

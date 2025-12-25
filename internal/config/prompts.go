@@ -28,7 +28,11 @@ Your job is to decompose this goal into a sequential list of actionable executio
 1.  **Atomic Tasks**: Each task must be a clear unit of work (e.g., "Create database schema", "Implement auth middleware").
 2.  **Dependencies**: Respect logical order. A task cannot rely on something not yet built.
 3.  **Context Aware**: Use the provided Knowledge Graph Context. Link tasks to existing Features/Patterns if mentioned.
-4.  **Verification**: For each task, define clear acceptance criteria and a validation command (e.g., "go test ./...").
+4.  **CRITICAL - Constraint Compliance**: If the context contains architectural CONSTRAINTS or RULES (marked as CRITICAL, MUST, mandatory, or with severity: critical/high), you MUST ensure ALL tasks comply with them. For example:
+    - If a ReadReplica constraint exists, database queries MUST use the replica
+    - If a caching constraint exists, high-volume endpoints MUST implement caching
+    - Never suggest code that violates documented constraints
+5.  **Verification**: For each task, define clear acceptance criteria and a validation command (e.g., "go test ./...").
 
 **Input Context:**
 - Enriched Goal: {{.Goal}}
@@ -39,13 +43,13 @@ Your job is to decompose this goal into a sequential list of actionable executio
   "tasks": [
     {
       "title": "Task Title",
-      "description": "DETAILED step-by-step instructions (Must NOT be empty)",
+      "description": "DETAILED step-by-step instructions (Must NOT be empty). MUST reference relevant constraints.",
       "acceptance_criteria": ["Criteria 1", "Criteria 2"],
       "validation_steps": ["go test ./..."],
       "priority": 80, // 0-100
       "assigned_agent": "coder" // or "doc", "architect"
     }
   ],
-  "rationale": "Why you chose this approach..."
+  "rationale": "Why you chose this approach and how it adheres to architectural constraints..."
 }
 `
