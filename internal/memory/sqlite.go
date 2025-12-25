@@ -1136,6 +1136,8 @@ func (s *SQLiteStore) ClearAllKnowledge() error {
 
 // UpsertNodeBySummary inserts a new node or updates existing one matched by summary and agent.
 // This is used for incremental watch mode - findings with same title from same agent are updated.
+// If no exact match is found, it checks for semantically similar summaries and updates those instead
+// to prevent duplicate nodes from accumulating.
 func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 	if n.ID == "" {
 		n.ID = "n-" + uuid.New().String()[:8]
@@ -1150,15 +1152,14 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 		embeddingBytes = float32SliceToBytes(n.Embedding)
 	}
 
-	// Use INSERT OR REPLACE with a check for existing summary+agent combo
-	// First check if node with same summary+agent exists
+	// First check if node with exact summary+agent exists
 	var existingID string
 	err := s.db.QueryRow(`
 		SELECT id FROM nodes WHERE summary = ? AND source_agent = ?
 	`, n.Summary, n.SourceAgent).Scan(&existingID)
 
 	if err == nil && existingID != "" {
-		// Update existing node
+		// Update existing node with exact match
 		_, err = s.db.Exec(`
 			UPDATE nodes SET content = ?, type = ?, embedding = ?
 			WHERE id = ?
@@ -1169,7 +1170,45 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 		return nil
 	}
 
-	// Insert new node
+	// No exact match - check for semantically similar summaries from same agent
+	// This prevents duplicate nodes when LLM generates slightly different titles
+	rows, err := s.db.Query(`
+		SELECT id, summary, content FROM nodes WHERE source_agent = ?
+	`, n.SourceAgent)
+	if err != nil {
+		return fmt.Errorf("query similar nodes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var similarID string
+	var similarContent string
+	for rows.Next() {
+		var existingSummary string
+		if err := rows.Scan(&similarID, &existingSummary, &similarContent); err != nil {
+			continue
+		}
+		sim := textSimilarity(n.Summary, existingSummary)
+		if sim >= textSimilarityThreshold {
+			// Found a similar node - update it instead of inserting new
+			if n.Content != similarContent {
+				_, err = s.db.Exec(`
+					UPDATE nodes SET content = ?, type = ?, embedding = ?, summary = ?
+					WHERE id = ?
+				`, n.Content, n.Type, embeddingBytes, n.Summary, similarID)
+			} else {
+				_, err = s.db.Exec(`
+					UPDATE nodes SET type = ?, embedding = ?, summary = ?
+					WHERE id = ?
+				`, n.Type, embeddingBytes, n.Summary, similarID)
+			}
+			if err != nil {
+				return fmt.Errorf("update similar node: %w", err)
+			}
+			return nil
+		}
+	}
+
+	// No similar node found - insert new node
 	_, err = s.db.Exec(`
 		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1402,4 +1441,72 @@ func bytesToFloat32Slice(buf []byte) []float32 {
 		floats[i] = *(*float32)(unsafe.Pointer(&bits))
 	}
 	return floats
+}
+
+const (
+	textSimilarityThreshold = 0.35
+)
+
+var stopWords = map[string]bool{
+	"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
+	"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
+	"with": true, "by": true, "is": true, "are": true, "was": true, "were": true,
+	"be": true, "been": true, "being": true, "have": true, "has": true, "had": true,
+	"do": true, "does": true, "did": true, "will": true, "would": true, "could": true,
+	"should": true, "may": true, "might": true, "must": true, "shall": true,
+	"can": true, "need": true, "dare": true, "ought": true, "used": true,
+	"it": true, "its": true, "this": true, "that": true, "these": true, "those": true,
+	"which": true, "who": true, "whom": true, "where": true, "when": true, "why": true, "how": true,
+	"all": true, "each": true, "every": true, "both": true, "few": true, "more": true,
+	"most": true, "other": true, "some": true, "such": true, "no": true, "not": true,
+	"only": true, "same": true, "so": true, "than": true, "too": true, "very": true,
+	"just": true, "also": true, "now": true, "here": true, "there": true, "then": true,
+}
+
+func wordTokens(s string) map[string]bool {
+	tokens := make(map[string]bool)
+	s = strings.ToLower(s)
+	// Replace hyphens and underscores with spaces before tokenizing
+	s = strings.ReplaceAll(s, "-", " ")
+	s = strings.ReplaceAll(s, "_", " ")
+	words := strings.Fields(s)
+	for _, w := range words {
+		if len(w) > 2 && !stopWords[w] {
+			tokens[w] = true
+		}
+	}
+	return tokens
+}
+
+func jaccardSimilarity(a, b string) float64 {
+	tokensA := wordTokens(a)
+	tokensB := wordTokens(b)
+
+	if len(tokensA) == 0 && len(tokensB) == 0 {
+		return 1.0
+	}
+	if len(tokensA) == 0 || len(tokensB) == 0 {
+		return 0.0
+	}
+
+	intersection := 0
+	for token := range tokensA {
+		if tokensB[token] {
+			intersection++
+		}
+	}
+
+	union := len(tokensA) + len(tokensB) - intersection
+	return float64(intersection) / float64(union)
+}
+
+func textSimilarity(a, b string) float64 {
+	if a == b {
+		return 1.0
+	}
+	if len(a) == 0 || len(b) == 0 {
+		return 0.0
+	}
+
+	return jaccardSimilarity(a, b)
 }

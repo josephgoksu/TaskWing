@@ -44,11 +44,13 @@ func NewAgentMetrics() *AgentMetrics {
 
 // RecordRun records an agent run
 func (m *AgentMetrics) RecordRun(agentName string, findings int, duration time.Duration, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.TotalRuns.Add(1)
 	m.TotalFindings.Add(int64(findings))
 	m.totalDuration.Add(int64(duration))
 
-	m.mu.Lock()
 	if m.agentRuns[agentName] == nil {
 		m.agentRuns[agentName] = &atomic.Int64{}
 		m.agentErrors[agentName] = &atomic.Int64{}
@@ -59,7 +61,6 @@ func (m *AgentMetrics) RecordRun(agentName string, findings int, duration time.D
 		m.TotalErrors.Add(1)
 		m.agentErrors[agentName].Add(1)
 	}
-	m.mu.Unlock()
 }
 
 // RecordToolCall records a tool invocation

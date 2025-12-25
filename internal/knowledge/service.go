@@ -84,7 +84,12 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]Scored
 	nodeByID := make(map[string]*memory.Node)
 
 	// 1. FTS5 keyword search (fast, no API call, always works)
-	ftsResults, _ := s.repo.SearchFTS(query, limit*2)
+	ftsResults, err := s.repo.SearchFTS(query, limit*2)
+	if err != nil {
+		// FTS5 errors are logged but don't fail the search
+		// FTS5 may be unavailable on some systems (missing extension)
+		_ = err
+	}
 	for _, r := range ftsResults {
 		// Convert BM25 rank to score (BM25 is negative, more negative = better)
 		// Normalize to 0-1 range where 1 is best match

@@ -185,13 +185,24 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, query strin
 			}
 			var scoredNodes []scored
 
-			for _, n := range nodes {
-				fullNode, err := repo.GetNode(n.ID)
-				if err != nil || len(fullNode.Embedding) == 0 {
-					continue
+			// Fix N+1 query: get all nodes with embeddings in a single query
+			nodesWithEmbeddings, err := repo.ListNodesWithEmbeddings()
+			if err == nil {
+				// Build map for O(1) lookup by ID
+				nodeMap := make(map[string]*memory.Node)
+				for i := range nodesWithEmbeddings {
+					nodeMap[nodesWithEmbeddings[i].ID] = &nodesWithEmbeddings[i]
 				}
-				score := knowledge.CosineSimilarity(queryEmb, fullNode.Embedding)
-				scoredNodes = append(scoredNodes, scored{Node: *fullNode, Score: score})
+
+				// Score each node from the original list
+				for _, n := range nodes {
+					fullNode, ok := nodeMap[n.ID]
+					if !ok || len(fullNode.Embedding) == 0 {
+						continue
+					}
+					score := knowledge.CosineSimilarity(queryEmb, fullNode.Embedding)
+					scoredNodes = append(scoredNodes, scored{Node: *fullNode, Score: score})
+				}
 			}
 
 			sort.Slice(scoredNodes, func(i, j int) bool {
