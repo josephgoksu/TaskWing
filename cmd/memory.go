@@ -242,7 +242,23 @@ Requires OPENAI_API_KEY to be set. Useful after:
 		fmt.Printf("Generating embeddings for %d nodes...\n", len(toProcess))
 
 		ctx := context.Background()
-		llmCfg := llm.Config{APIKey: apiKey}
+
+		// Read provider from config - this was missing
+		providerStr := viper.GetString("llm.provider")
+		if providerStr == "" {
+			providerStr = "openai" // Default to OpenAI
+		}
+		provider, err := llm.ValidateProvider(providerStr)
+		if err != nil {
+			return fmt.Errorf("invalid LLM provider in config: %w", err)
+		}
+
+		llmCfg := llm.Config{
+			Provider:       provider,
+			APIKey:         apiKey,
+			EmbeddingModel: viper.GetString("llm.embeddingModel"),
+			BaseURL:        viper.GetString("llm.baseUrl"),
+		}
 		generated := 0
 
 		for _, n := range toProcess {
