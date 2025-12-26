@@ -20,8 +20,8 @@ func RenderNodeList(nodes []memory.Node) {
 		byType[t] = append(byType[t], n)
 	}
 
-	// Calculate stats
-	typeOrder := []string{"decision", "feature", "plan", "note", "unknown"}
+	// Calculate stats - include all known types
+	typeOrder := []string{"decision", "feature", "constraint", "pattern", "plan", "note", "unknown"}
 	var stats []string
 	totalCount := 0
 
@@ -70,6 +70,8 @@ func TypeIcon(t string) string {
 		return "🎯"
 	case "feature":
 		return "📦"
+	case "constraint":
+		return "⚠️"
 	case "pattern":
 		return "🧩"
 	case "plan":
