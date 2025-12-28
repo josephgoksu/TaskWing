@@ -20,6 +20,7 @@ tw mcp install cursor     # For Cursor
 tw mcp install claude     # For Claude Code
 tw mcp install windsurf   # For Windsurf
 tw mcp install gemini     # For Gemini
+# Codex uses manual config (see Codex section below)
 tw mcp install all        # Install for all supported editors
 
 # Use --global to install in home directory instead

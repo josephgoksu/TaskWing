@@ -165,12 +165,29 @@ Now when you ask AI about your code, it has full project context with semantic s
 | `tw list` | List all nodes |
 | `tw list <type>` | List nodes by type (decision/feature/plan/note) |
 | `tw context "query"` | Semantic search |
+| `tw node show <id>` | Show a node |
+| `tw node update <id> --summary/--type` | Update node fields |
+| `tw node delete --type <type>` | Bulk delete nodes by type (safe prompt) |
+
+### Planning & Tasks
+
+| Command | Description |
+|---------|-------------|
+| `tw plan new "goal"` | Create a plan from a goal |
+| `tw plan show <id>` | Show a plan |
+| `tw plan update <id> --goal/--status` | Update plan fields |
+| `tw plan archive <id>` | Archive a plan |
+| `tw plan unarchive <id>` | Unarchive a plan |
+| `tw task list` | List tasks grouped by plan |
+| `tw task show <id>` | Show a task |
+| `tw task update <id> --status` | Update task status |
+| `tw task complete <id>` | Mark task as completed |
+| `tw task delete <id>` | Delete a task |
 
 ### Bootstrap & Maintenance
 
 | Command | Description |
 |---------|-------------|
-| `tw init` | Initialize TaskWing in project |
 | `tw bootstrap` | Auto-generate from repo with LLM |
 | `tw bootstrap --preview` | Preview without saving |
 | `tw bootstrap --basic` | Heuristic scan only (no LLM) |

@@ -1,10 +1,10 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 
-Package agents provides the WatchAgent for continuous codebase monitoring.
+Package watch provides the WatchAgent for continuous codebase monitoring.
 It watches for file changes and triggers appropriate agents for incremental analysis.
 */
-package agents
+package watch
 
 import (
 	"context"
@@ -18,8 +18,10 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/josephgoksu/TaskWing/internal/agents/analysis"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/patterns"
 )
 
 // FileCategory represents the type of file for routing purposes
@@ -49,7 +51,7 @@ type WatchAgent struct {
 	watcher     *fsnotify.Watcher
 	debouncer   *ChangeDebouncer
 	dispatcher  *AgentDispatcher
-	stream      *StreamingOutput
+	stream      *core.StreamingOutput
 	activityLog *ActivityLog
 	hashTracker *ContentHashTracker
 	verbose     bool
@@ -67,7 +69,7 @@ type WatchConfig struct {
 	Verbose      bool
 	IncludeGlobs []string // Only watch paths matching these globs
 	ExcludeGlobs []string // Skip paths matching these globs
-	Stream       *StreamingOutput
+	Stream       *core.StreamingOutput
 }
 
 // NewWatchAgent creates a new file watching agent
@@ -126,6 +128,12 @@ func (w *WatchAgent) Stop() {
 	_ = w.watcher.Close()
 	w.debouncer.Stop()
 	w.wg.Wait()
+}
+
+// SetFindingsHandler sets the callback for handling agent findings.
+// This MUST be set for proper deduplication via knowledge.Service.IngestFindings.
+func (w *WatchAgent) SetFindingsHandler(handler FindingsHandler) {
+	w.dispatcher.SetFindingsHandler(handler)
 }
 
 // eventLoop processes filesystem events
@@ -216,7 +224,7 @@ func (w *WatchAgent) handleEvent(event fsnotify.Event) {
 	}
 
 	if w.stream != nil {
-		w.stream.Emit(EventAgentStart, "watch", fmt.Sprintf("%s: %s", op, relPath), map[string]any{
+		w.stream.Emit(core.EventAgentStart, "watch", fmt.Sprintf("%s: %s", op, relPath), map[string]any{
 			"category": string(category),
 		})
 	}
@@ -228,24 +236,20 @@ func (w *WatchAgent) categorize(relPath string) FileCategory {
 	ext := strings.ToLower(filepath.Ext(name))
 	dir := filepath.Dir(relPath)
 
-	// Ignore patterns
+	// Ignore hidden files (except .env.example)
 	if strings.HasPrefix(name, ".") && name != ".env.example" {
 		return FileCategoryIgnore
 	}
-	ignoreDirs := []string{"node_modules", "vendor", ".git", "dist", "build", "__pycache__", ".next"}
-	for _, ig := range ignoreDirs {
+
+	// Check ignored directories using centralized patterns
+	for ig := range patterns.IgnoredDirs {
 		if strings.Contains(relPath, ig+string(os.PathSeparator)) || name == ig {
 			return FileCategoryIgnore
 		}
 	}
 
 	// Dependency files (high priority)
-	depFiles := map[string]bool{
-		"go.mod": true, "go.sum": true, "package.json": true, "package-lock.json": true,
-		"yarn.lock": true, "pnpm-lock.yaml": true, "Cargo.toml": true, "Cargo.lock": true,
-		"requirements.txt": true, "Pipfile": true, "pyproject.toml": true,
-	}
-	if depFiles[name] {
+	if patterns.IsDependencyFile(name) {
 		return FileCategoryDeps
 	}
 
@@ -255,23 +259,12 @@ func (w *WatchAgent) categorize(relPath string) FileCategory {
 	}
 
 	// Config files
-	configExts := map[string]bool{".yaml": true, ".yml": true, ".toml": true}
-	configFiles := map[string]bool{
-		"Dockerfile": true, "docker-compose.yaml": true, "docker-compose.yml": true,
-		"Makefile": true, "justfile": true, ".env.example": true,
-	}
-	if configExts[ext] || configFiles[name] {
+	if patterns.IsConfigFile(name, ext) {
 		return FileCategoryConfig
 	}
 
 	// Code files
-	codeExts := map[string]bool{
-		".go": true, ".ts": true, ".tsx": true, ".js": true, ".jsx": true,
-		".py": true, ".rs": true, ".java": true, ".kt": true, ".swift": true,
-		".c": true, ".cpp": true, ".h": true, ".hpp": true, ".cs": true,
-		".rb": true, ".php": true, ".vue": true, ".svelte": true,
-	}
-	if codeExts[ext] {
+	if patterns.IsCodeFile(ext) {
 		return FileCategoryCode
 	}
 
@@ -399,12 +392,17 @@ func (d *ChangeDebouncer) Stop() {
 	}
 }
 
+// FindingsHandler is called when an agent produces findings.
+// This allows the caller to handle persistence (e.g., via knowledge.Service.IngestFindings).
+type FindingsHandler func(ctx context.Context, findings []core.Finding) error
+
 // AgentDispatcher routes file changes to appropriate agents
 type AgentDispatcher struct {
-	llmConfig   llm.Config
-	basePath    string
-	activityLog *ActivityLog
-	mu          sync.Mutex
+	llmConfig       llm.Config
+	basePath        string
+	activityLog     *ActivityLog
+	findingsHandler FindingsHandler
+	mu              sync.Mutex
 }
 
 // NewAgentDispatcher creates a new agent dispatcher
@@ -424,23 +422,30 @@ func NewAgentDispatcherWithLog(cfg llm.Config, basePath string, log *ActivityLog
 	}
 }
 
+// SetFindingsHandler sets the callback for handling agent findings.
+// This MUST be set for proper deduplication - without it, findings are logged but not persisted.
+func (d *AgentDispatcher) SetFindingsHandler(handler FindingsHandler) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.findingsHandler = handler
+}
+
 // Dispatch routes changes to the appropriate agent
 func (d *AgentDispatcher) Dispatch(ctx context.Context, category FileCategory, changes []FileChangeEvent) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
+	handler := d.findingsHandler
+	d.mu.Unlock()
 
 	// Determine which agent to use
-	var agent Agent
+	var agent core.Agent
 	switch category {
 	case FileCategoryCode:
-		// Use ReAct agent for code analysis
-		reactAgent := NewReactCodeAgent(d.llmConfig, d.basePath)
-		reactAgent.SetMaxIterations(5) // Limit iterations for incremental analysis
-		agent = reactAgent
+		// Use deterministic CodeAgent for code analysis
+		agent = analysis.NewCodeAgent(d.llmConfig, d.basePath)
 	case FileCategoryDocs:
-		agent = NewDocAgent(d.llmConfig)
+		agent = analysis.NewDocAgent(d.llmConfig)
 	case FileCategoryDeps:
-		agent = NewDepsAgent(d.llmConfig)
+		agent = analysis.NewDepsAgent(d.llmConfig)
 	default:
 		return
 	}
@@ -451,10 +456,10 @@ func (d *AgentDispatcher) Dispatch(ctx context.Context, category FileCategory, c
 		changedPaths[i] = c.Path
 	}
 
-	input := Input{
+	input := core.Input{
 		BasePath:     d.basePath,
 		ProjectName:  filepath.Base(d.basePath),
-		Mode:         ModeWatch,
+		Mode:         core.ModeWatch,
 		ChangedFiles: changedPaths,
 	}
 
@@ -480,22 +485,13 @@ func (d *AgentDispatcher) Dispatch(ctx context.Context, category FileCategory, c
 			}
 		}
 
-		// Persist findings to memory store
-		memoryPath := filepath.Join(d.basePath, ".taskwing", "memory")
-		store, err := memory.NewSQLiteStore(memoryPath)
-		if err == nil {
-			defer func() { _ = store.Close() }()
-			for _, f := range output.Findings {
-				node := memory.Node{
-					Content:     f.Description,
-					Type:        string(f.Type),
-					Summary:     f.Title,
-					SourceAgent: agent.Name(),
-				}
-				if err := store.UpsertNodeBySummary(node); err != nil {
-					fmt.Printf("  ⚠️  persist finding error: %v\n", err)
-				}
+		// Persist findings via handler (uses knowledge.Service.IngestFindings for proper deduplication)
+		if handler != nil && len(output.Findings) > 0 {
+			if err := handler(ctx, output.Findings); err != nil {
+				fmt.Printf("  ⚠️  persist findings error: %v\n", err)
 			}
+		} else if handler == nil && len(output.Findings) > 0 {
+			fmt.Printf("  ⚠️  no findings handler configured - findings not persisted\n")
 		}
 	}()
 }

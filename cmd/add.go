@@ -5,17 +5,14 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // addCmd represents the add command
@@ -59,14 +56,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	llmCfg, err := getLLMConfig(cmd)
 	if err != nil {
 		// Log but continue if no API key (AddNode handles missing key gracefully)
-		if !viper.GetBool("quiet") {
+		if !isQuiet() {
 			fmt.Fprintf(os.Stderr, "⚠️  Config warning: %v\n", err)
 		}
 	}
 
 	// 2. Initialize Repo
-	memPath := config.GetMemoryBasePath()
-	repo, err := memory.NewDefaultRepository(memPath)
+	repo, err := openRepo()
 	if err != nil {
 		return fmt.Errorf("open memory repo: %w", err)
 	}
@@ -87,8 +83,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		input.Summary = utils.Truncate(content, 100)
 	}
 
-	if !viper.GetBool("quiet") {
-		fmt.Fprint(os.Stderr, "🧠 Processsing...")
+	if !isQuiet() {
+		fmt.Fprint(os.Stderr, "🧠 Processing...")
 	}
 
 	// 5. Execute
@@ -97,16 +93,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("add node failed: %w", err)
 	}
 
-	if viper.GetBool("json") {
-		output, _ := json.MarshalIndent(map[string]interface{}{
-			"status":       "created",
-			"id":           node.ID,
-			"type":         node.Type,
-			"summary":      node.Summary,
-			"hasEmbedding": len(node.Embedding) > 0,
-		}, "", "  ")
-		fmt.Println(string(output))
-	} else if !viper.GetBool("quiet") {
+	if isJSON() {
+		return printJSON(nodeCreatedResponse{
+			Status:       "created",
+			ID:           node.ID,
+			Type:         node.Type,
+			Summary:      node.Summary,
+			HasEmbedding: len(node.Embedding) > 0,
+		})
+	} else if !isQuiet() {
 		fmt.Fprintln(os.Stderr, " done")
 		embStatus := ""
 		if len(node.Embedding) > 0 {

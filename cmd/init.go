@@ -24,7 +24,7 @@ type aiConfig struct {
 }
 
 // Ordered list for consistent display
-var aiConfigOrder = []string{"claude", "cursor", "copilot", "gemini"}
+var aiConfigOrder = []string{"claude", "cursor", "copilot", "gemini", "codex"}
 
 var aiConfigs = map[string]aiConfig{
 	"claude": {
@@ -47,29 +47,17 @@ var aiConfigs = map[string]aiConfig{
 		displayName: "Gemini CLI",
 		commandsDir: ".gemini/commands",
 	},
+	"codex": {
+		name:        "codex",
+		displayName: "OpenAI Codex",
+		commandsDir: ".codex/commands",
+	},
 }
 
-var initCmd = &cobra.Command{
-	Use:   "init [path]",
-	Short: "Initialize TaskWing in a project",
-	Long: `Initialize TaskWing in a project directory.
+// NOTE: initCmd is deprecated - use 'tw bootstrap' which auto-initializes
+// The structs and functions below are kept for use by bootstrap.go
 
-Creates the .taskwing/ structure and sets up slash commands
-for your AI assistant.
-
-Examples:
-  tw init                    # Initialize in current directory
-  tw init .                  # Same as above
-  tw init my-project         # Create and initialize new directory
-  tw init . --ai claude      # Skip AI selection prompt`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runInit,
-}
-
-func init() {
-	rootCmd.AddCommand(initCmd)
-	initCmd.Flags().String("ai", "", "AI assistant preset (claude, cursor, copilot, gemini)")
-}
+// (init command removed - bootstrap handles initialization automatically)
 
 func runInit(cmd *cobra.Command, args []string) error {
 	// Determine target directory
@@ -85,7 +73,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print banner
-	printInitBanner()
+	ui.RenderPageHeader("TaskWing Initialization", fmt.Sprintf("Setting up in %s", targetDir))
 
 	// Check if directory exists
 	if targetDir != "." {
@@ -128,7 +116,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Validate all selections
 	for _, ai := range selectedAIs {
 		if _, ok := aiConfigs[ai]; !ok {
-			return fmt.Errorf("unknown AI assistant: %s (available: claude, cursor, copilot, gemini)", ai)
+			return fmt.Errorf("unknown AI assistant: %s (available: claude, cursor, copilot, gemini, codex)", ai)
 		}
 	}
 
@@ -153,17 +141,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 	printSuccessMessageMulti(absPath, selectedAIs)
 
 	return nil
-}
-
-func printInitBanner() {
-	fmt.Println(`
-████████╗ █████╗ ███████╗██╗  ██╗██╗    ██╗██╗███╗   ██╗ ██████╗
-╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝██║    ██║██║████╗  ██║██╔════╝
-   ██║   ███████║███████╗█████╔╝ ██║ █╗ ██║██║██╔██╗ ██║██║  ███╗
-   ██║   ██╔══██║╚════██║██╔═██╗ ██║███╗██║██║██║╚██╗██║██║   ██║
-   ██║   ██║  ██║███████║██║  ██╗╚███╔███╔╝██║██║ ╚████║╚██████╔╝
-   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝
-                    Project Initialization`)
 }
 
 func promptAISelection() []string {

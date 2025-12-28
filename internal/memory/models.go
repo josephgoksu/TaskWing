@@ -87,6 +87,21 @@ type Node struct {
 	SourceAgent string    `json:"sourceAgent,omitempty"` // Agent that created this node (doc, code, git, deps)
 	Embedding   []float32 `json:"embedding,omitempty"`   // Vector for similarity search
 	CreatedAt   time.Time `json:"createdAt"`
+
+	// Evidence-Based Verification fields (v2.1+)
+	// These support the verification pipeline that validates agent findings
+
+	// VerificationStatus tracks validation state: pending_verification, verified, partial, rejected, skipped
+	VerificationStatus string `json:"verificationStatus,omitempty"`
+
+	// Evidence is JSON-serialized []Evidence containing file:line references and snippets
+	Evidence string `json:"evidence,omitempty"`
+
+	// VerificationResult is JSON-serialized VerificationResult with detailed check outcomes
+	VerificationResult string `json:"verificationResult,omitempty"`
+
+	// ConfidenceScore is numeric confidence (0.0-1.0) adjusted by verification
+	ConfidenceScore float64 `json:"confidenceScore,omitempty"`
 }
 
 // NodeEdge represents a relationship between two nodes.
@@ -116,4 +131,5 @@ const (
 	NodeRelationAffects             = "affects"
 	NodeRelationExtends             = "extends"
 	NodeRelationSemanticallySimilar = "semantically_similar"
+	NodeRelationSharesEvidence      = "shares_evidence" // Nodes referencing same files
 )

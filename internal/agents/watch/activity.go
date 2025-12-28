@@ -1,9 +1,9 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 
-Package agents provides activity logging for watch mode.
+Package watch provides activity logging for watch mode.
 */
-package agents
+package watch
 
 import (
 	"encoding/json"

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -92,6 +93,70 @@ func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 	// Note: We don't fetch tasks here to keep it lightweight. Use GetPlan for details.
 
 	return plans, nil
+}
+
+// UpdatePlan updates mutable plan fields.
+func (s *SQLiteStore) UpdatePlan(id string, goal, enrichedGoal string, status task.PlanStatus) error {
+	if id == "" {
+		return fmt.Errorf("plan id is required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Build dynamic update based on provided fields
+	query := "UPDATE plans SET "
+	args := []any{}
+	sets := []string{}
+
+	if goal != "" {
+		sets = append(sets, "goal = ?")
+		args = append(args, goal)
+	}
+	if enrichedGoal != "" {
+		sets = append(sets, "enriched_goal = ?")
+		args = append(args, enrichedGoal)
+	}
+	if status != "" {
+		sets = append(sets, "status = ?")
+		args = append(args, status)
+	}
+	// Always update updated_at when any field changes
+	if len(sets) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+	sets = append(sets, "updated_at = ?")
+	args = append(args, now)
+
+	query += strings.Join(sets, ", ") + " WHERE id = ?"
+	args = append(args, id)
+
+	res, err := s.db.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("update plan: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update plan rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("plan not found: %s", id)
+	}
+	return nil
+}
+
+// DeletePlan removes a plan and its tasks (via FK cascade).
+func (s *SQLiteStore) DeletePlan(id string) error {
+	res, err := s.db.Exec(`DELETE FROM plans WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete plan: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete plan rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("plan not found: %s", id)
+	}
+	return nil
 }
 
 // === Task CRUD ===
@@ -260,6 +325,45 @@ func (s *SQLiteStore) ListTasks(planID string) ([]task.Task, error) {
 		tasks = append(tasks, t)
 	}
 	return tasks, nil
+}
+
+// UpdateTaskStatus updates a task's status and updated_at timestamp.
+func (s *SQLiteStore) UpdateTaskStatus(id string, status task.TaskStatus) error {
+	if id == "" {
+		return fmt.Errorf("task id is required")
+	}
+	if status == "" {
+		return fmt.Errorf("status is required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.db.Exec(`UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?`, status, now, id)
+	if err != nil {
+		return fmt.Errorf("update task status: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update task status rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("task not found: %s", id)
+	}
+	return nil
+}
+
+// DeleteTask removes a task and its links.
+func (s *SQLiteStore) DeleteTask(id string) error {
+	res, err := s.db.Exec(`DELETE FROM tasks WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete task: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete task rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("task not found: %s", id)
+	}
+	return nil
 }
 
 // === Task Helpers ===

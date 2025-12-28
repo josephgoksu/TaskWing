@@ -1,10 +1,10 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 
-Package agents provides MCP (Model Context Protocol) integration for
+Package core provides MCP (Model Context Protocol) integration for
 live updates when agents discover new findings.
 */
-package agents
+package core
 
 import (
 	"context"
@@ -20,6 +20,7 @@ type MCPNotifier struct {
 	mu          sync.RWMutex
 	buffer      []MCPNotification
 	bufferSize  int
+	stream      *StreamingOutput
 }
 
 // MCPSubscriber receives notifications about agent findings
@@ -56,6 +57,13 @@ func NewMCPNotifier() *MCPNotifier {
 	}
 }
 
+// AttachStream connects the notifier to a streaming output for UI observability.
+func (n *MCPNotifier) AttachStream(stream *StreamingOutput) {
+	n.mu.Lock()
+	n.stream = stream
+	n.mu.Unlock()
+}
+
 // Subscribe adds a subscriber to receive notifications
 func (n *MCPNotifier) Subscribe(sub MCPSubscriber) {
 	n.mu.Lock()
@@ -83,6 +91,9 @@ func (n *MCPNotifier) NotifyFindingAdded(ctx context.Context, finding Finding) {
 	n.mu.RUnlock()
 
 	n.addToBuffer("finding_added", finding)
+	n.emitStream(EventFinding, "mcp", "finding_added", map[string]any{
+		"title": finding.Title,
+	})
 
 	for _, sub := range subs {
 		go func(s MCPSubscriber) {
@@ -100,6 +111,9 @@ func (n *MCPNotifier) NotifyFindingUpdated(ctx context.Context, finding Finding)
 	n.mu.RUnlock()
 
 	n.addToBuffer("finding_updated", finding)
+	n.emitStream(EventFinding, "mcp", "finding_updated", map[string]any{
+		"title": finding.Title,
+	})
 
 	for _, sub := range subs {
 		go func(s MCPSubscriber) {
@@ -117,6 +131,9 @@ func (n *MCPNotifier) NotifyFindingRemoved(ctx context.Context, findingID string
 	n.mu.RUnlock()
 
 	n.addToBuffer("finding_removed", map[string]string{"id": findingID})
+	n.emitStream(EventFinding, "mcp", "finding_removed", map[string]any{
+		"finding_id": findingID,
+	})
 
 	for _, sub := range subs {
 		go func(s MCPSubscriber) {
@@ -134,6 +151,13 @@ func (n *MCPNotifier) NotifyBatchComplete(ctx context.Context, summary MCPBatchS
 	n.mu.RUnlock()
 
 	n.addToBuffer("batch_complete", summary)
+	n.emitStream(EventSynthesis, "mcp", "batch_complete", map[string]any{
+		"agent":         summary.AgentName,
+		"total":         summary.TotalFindings,
+		"new_findings":  summary.NewFindings,
+		"updated_count": summary.UpdatedCount,
+		"duration":      summary.Duration,
+	})
 
 	for _, sub := range subs {
 		go func(s MCPSubscriber) {
@@ -142,6 +166,16 @@ func (n *MCPNotifier) NotifyBatchComplete(ctx context.Context, summary MCPBatchS
 			_ = s.OnBatchComplete(notifyCtx, summary)
 		}(sub)
 	}
+}
+
+func (n *MCPNotifier) emitStream(eventType StreamEventType, agent, content string, metadata map[string]any) {
+	n.mu.RLock()
+	stream := n.stream
+	n.mu.RUnlock()
+	if stream == nil {
+		return
+	}
+	stream.Emit(eventType, agent, content, metadata)
 }
 
 // addToBuffer adds a notification to the circular buffer

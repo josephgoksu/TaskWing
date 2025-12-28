@@ -5,23 +5,23 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/josephgoksu/TaskWing/internal/agents"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
 )
 
 // RenderBootstrapDashboard displays the summary of the bootstrap process
-func RenderBootstrapDashboard(findings []agents.Finding) {
+func RenderBootstrapDashboard(findings []core.Finding) {
 	var (
-		headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-		cardStyle   = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).Padding(0, 1).BorderForeground(lipgloss.Color("63")).MarginLeft(1)
-		keyStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("205")) // Pink
-		valStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("252")) // White
-		subtleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241")) // Gray
+		headerStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary)
+		cardStyle   = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).Padding(0, 1).BorderForeground(ColorSecondary).MarginLeft(1)
+		keyStyle    = lipgloss.NewStyle().Foreground(ColorPrimary)
+		valStyle    = lipgloss.NewStyle().Foreground(ColorText)
+		subtleStyle = lipgloss.NewStyle().Foreground(ColorSecondary)
 	)
 
 	// 1. Extract Stack
 	var stack []string
 	for _, f := range findings {
-		if f.Type == agents.FindingTypeDependency {
+		if f.Type == core.FindingTypeDependency {
 			stack = append(stack, f.Title)
 		}
 	}
@@ -35,11 +35,11 @@ func RenderBootstrapDashboard(findings []agents.Finding) {
 	}
 
 	// 2. Counts
-	grouped := agents.GroupFindingsByType(findings)
+	grouped := core.GroupFindingsByType(findings)
 	counts := fmt.Sprintf("🎯 %d Decisions • 📦 %d Features • 🧩 %d Patterns",
-		len(grouped[agents.FindingTypeDecision]),
-		len(grouped[agents.FindingTypeFeature]),
-		len(grouped[agents.FindingTypePattern]))
+		len(grouped[core.FindingTypeDecision]),
+		len(grouped[core.FindingTypeFeature]),
+		len(grouped[core.FindingTypePattern]))
 
 	// Render "DNA" Summary
 	fmt.Println()
@@ -52,9 +52,9 @@ func RenderBootstrapDashboard(findings []agents.Finding) {
 	fmt.Println()
 
 	// 3. Highlights (Top 3 Decisions)
-	var highlights []agents.Finding
+	var highlights []core.Finding
 	for _, f := range findings {
-		if f.Type == agents.FindingTypeDecision && f.Why != "" {
+		if f.Type == core.FindingTypeDecision && f.Why != "" {
 			highlights = append(highlights, f)
 		}
 	}

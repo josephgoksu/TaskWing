@@ -5,16 +5,12 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 
-	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
-	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // contextCmd represents the context command
@@ -49,6 +45,9 @@ func init() {
 
 func runContext(cmd *cobra.Command, args []string) error {
 	query := args[0]
+	if !isJSON() && !isQuiet() {
+		ui.RenderPageHeader("TaskWing Context", fmt.Sprintf("Query: \"%s\"", query))
+	}
 
 	// 1. Get Shared LLM Config
 	llmCfg, err := getLLMConfig(cmd)
@@ -58,8 +57,7 @@ func runContext(cmd *cobra.Command, args []string) error {
 
 	// 2. Initialize Memory Repository (Source of Truth)
 	// 2. Initialize Memory Repository (Source of Truth)
-	basePath := config.GetMemoryBasePath()
-	repo, err := memory.NewDefaultRepository(basePath)
+	repo, err := openRepo()
 	if err != nil {
 		return fmt.Errorf("open memory repo: %w", err)
 	}
@@ -68,7 +66,7 @@ func runContext(cmd *cobra.Command, args []string) error {
 	// 3. Initialize Knowledge Service (Intelligence Layer)
 	ks := knowledge.NewService(repo, llmCfg)
 
-	if !viper.GetBool("quiet") {
+	if !isQuiet() {
 		fmt.Fprint(os.Stderr, "🔍 Searching...")
 	}
 
@@ -76,7 +74,7 @@ func runContext(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	scored, err := ks.Search(ctx, query, contextLimit)
 	if err != nil {
-		if !viper.GetBool("quiet") {
+		if !isQuiet() {
 			fmt.Fprintln(os.Stderr, " failed")
 		}
 		// Fallback to simpler search or just error out?
@@ -84,7 +82,7 @@ func runContext(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("search failed: %w", err)
 	}
 
-	if !viper.GetBool("quiet") {
+	if !isQuiet() {
 		fmt.Fprintln(os.Stderr, " done")
 	}
 
@@ -97,7 +95,7 @@ func runContext(cmd *cobra.Command, args []string) error {
 	// 5. Generate Answer (if requested)
 	var answer string
 	if contextAnswer {
-		if !viper.GetBool("quiet") {
+		if !isQuiet() {
 			fmt.Fprint(os.Stderr, "🧠 Generating answer...")
 		}
 		ans, err := ks.Ask(ctx, query, scored)
@@ -105,21 +103,19 @@ func runContext(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("ask failed: %w", err)
 		}
 		answer = ans
-		if !viper.GetBool("quiet") {
+		if !isQuiet() {
 			fmt.Fprintln(os.Stderr, " done")
 		}
 	}
 
 	// 6. Output (JSON or TUI)
-	if viper.GetBool("json") {
+	if isJSON() {
 		type result struct {
 			Query   string                 `json:"query"`
 			Results []knowledge.ScoredNode `json:"results"`
 			Answer  string                 `json:"answer,omitempty"`
 		}
-		output, _ := json.MarshalIndent(result{Query: query, Results: scored, Answer: answer}, "", "  ")
-		fmt.Println(string(output))
-		return nil
+		return printJSON(result{Query: query, Results: scored, Answer: answer})
 	}
 
 	// TUI Output

@@ -1,9 +1,9 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 
-Package agents provides metrics collection for agent performance monitoring.
+Package core provides metrics collection for agent performance monitoring.
 */
-package agents
+package core
 
 import (
 	"sync"

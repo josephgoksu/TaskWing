@@ -5,12 +5,15 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/josephgoksu/TaskWing/internal/agents"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
@@ -27,20 +30,41 @@ var bootstrapCmd = &cobra.Command{
 	Short: "Auto-generate project memory from existing repo",
 	Long: `Scan your repository and automatically generate features and decisions.
 
+If this is the first run, TaskWing will initialize the project:
+  • Create .taskwing/ directory structure
+  • Set up AI assistant integration (Claude, Cursor, etc.)
+  • Configure LLM settings
+
 The bootstrap command analyzes:
   • Directory structure → Detects features
   • Git history → Extracts decisions from conventional commits
   • LLM inference → Understands WHY decisions were made
 
 Examples:
-  taskwing bootstrap --preview              # Preview with LLM analysis
-  taskwing bootstrap                        # Generate with parallel agent analysis`,
+  tw bootstrap                        # Initialize (if needed) + analyze
+  tw bootstrap --preview              # Preview without saving
+  tw bootstrap --skip-init            # Skip initialization prompt`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		preview, _ := cmd.Flags().GetBool("preview")
+		skipInit, _ := cmd.Flags().GetBool("skip-init")
+		trace, _ := cmd.Flags().GetBool("trace")
+		traceFile, _ := cmd.Flags().GetString("trace-file")
+		traceStdout, _ := cmd.Flags().GetBool("trace-stdout")
 
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("get current directory: %w", err)
+		}
+
+		// Check if .taskwing exists - if not, initialize first
+		taskwingDir := filepath.Join(cwd, ".taskwing")
+		if _, err := os.Stat(taskwingDir); os.IsNotExist(err) && !skipInit {
+			fmt.Println("🚀 First time setup detected!")
+			fmt.Println()
+			if err := runAutoInit(cwd, cmd); err != nil {
+				return fmt.Errorf("initialization failed: %w", err)
+			}
+			fmt.Println()
 		}
 
 		// Use centralized config loader
@@ -50,38 +74,78 @@ Examples:
 		}
 
 		// Default: use parallel agent architecture
-		return runAgentBootstrap(cmd.Context(), cwd, preview, llmCfg)
+		return runAgentBootstrap(cmd.Context(), cwd, preview, llmCfg, trace, traceFile, traceStdout)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(bootstrapCmd)
+	bootstrapCmd.Flags().Bool("skip-init", false, "Skip initialization prompt")
+	bootstrapCmd.Flags().Bool("trace", false, "Emit JSON event stream to stderr")
+	bootstrapCmd.Flags().String("trace-file", "", "Write JSON event stream to file (default: .taskwing/logs/bootstrap.trace.jsonl)")
+	bootstrapCmd.Flags().Bool("trace-stdout", false, "Emit JSON event stream to stderr (overrides trace file)")
 }
 
 // runAgentBootstrap uses the parallel agent architecture for analysis
-func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm.Config) error {
+func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm.Config, trace bool, traceFile string, traceStdout bool) error {
 	fmt.Println("")
-	fmt.Println("┌──────────────────────────────────────────────────────────────┐")
-	fmt.Println("│  🤖 TaskWing Agent Bootstrap                        	        │")
-	fmt.Println("└──────────────────────────────────────────────────────────────┘")
-	fmt.Println("")
-	fmt.Printf("  ⚡ Using: %s (%s) with parallel agents\n", llmCfg.Model, llmCfg.Provider)
+	ui.RenderPageHeader("TaskWing Bootstrap", fmt.Sprintf("Using: %s (%s)", llmCfg.Model, llmCfg.Provider))
 
 	projectName := filepath.Base(cwd)
 
-	// Create agents
+	// Create agents (all deterministic - no ReAct loops)
 	agentsList := bootstrap.NewDefaultAgents(llmCfg, cwd)
 
 	// Prepare input
-	input := agents.Input{
+	input := core.Input{
 		BasePath:    cwd,
 		ProjectName: projectName,
-		Mode:        agents.ModeBootstrap,
+		Mode:        core.ModeBootstrap,
 		Verbose:     true, // Will be suppressed in TUI
 	}
 
+	// Initialize streaming output for "The Pulse"
+	stream := core.NewStreamingOutput(100)
+	defer stream.Close()
+	if trace {
+		if traceFile == "" {
+			traceFile = filepath.Join(cwd, ".taskwing", "logs", "bootstrap.trace.jsonl")
+		}
+		var out *os.File
+		if traceStdout {
+			out = os.Stderr
+		} else {
+			_ = os.MkdirAll(filepath.Dir(traceFile), 0755)
+			f, err := os.OpenFile(traceFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("open trace file: %w", err)
+			}
+			out = f
+			defer func() { _ = f.Close() }()
+			if !viper.GetBool("quiet") {
+				fmt.Fprintf(os.Stderr, "🧾 Trace: %s\n", traceFile)
+			}
+		}
+
+		var mu sync.Mutex
+		stream.AddObserver(func(e core.StreamEvent) {
+			payload := map[string]any{
+				"type":      e.Type,
+				"timestamp": e.Timestamp.Format(time.RFC3339Nano),
+				"agent":     e.Agent,
+				"content":   e.Content,
+				"metadata":  e.Metadata,
+			}
+			if b, err := json.Marshal(payload); err == nil {
+				mu.Lock()
+				_, _ = fmt.Fprintln(out, string(b))
+				mu.Unlock()
+			}
+		})
+	}
+
 	// Run TUI
-	tuiModel := ui.NewBootstrapModel(ctx, input, agentsList)
+	tuiModel := ui.NewBootstrapModel(ctx, input, agentsList, stream)
 	p := tea.NewProgram(tuiModel)
 	finalModel, err := p.Run()
 	if err != nil {
@@ -98,18 +162,33 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 		return nil
 	}
 
-	// Aggregate findings
-	allFindings := agents.AggregateFindings(bootstrapModel.Results)
+	var failedAgents []string
+	for _, state := range bootstrapModel.Agents {
+		if state.Status == ui.StatusError || state.Err != nil {
+			errMsg := "unknown error"
+			if state.Err != nil {
+				errMsg = state.Err.Error()
+			}
+			failedAgents = append(failedAgents, fmt.Sprintf("%s: %s", state.Name, errMsg))
+		}
+	}
+	if len(failedAgents) > 0 {
+		fmt.Fprintln(os.Stderr, "\n✗ Bootstrap failed. Some agents errored:")
+		for _, line := range failedAgents {
+			fmt.Fprintf(os.Stderr, "  - %s\n", line)
+		}
+		return fmt.Errorf("bootstrap failed: %d agent(s) errored", len(failedAgents))
+	}
 
-	// Render the dashboard summary using new UI component
-	ui.RenderBootstrapDashboard(allFindings)
+	// Aggregate findings and relationships
+	allFindings := core.AggregateFindings(bootstrapModel.Results)
+	allRelationships := core.AggregateRelationships(bootstrapModel.Results)
 
 	if preview || viper.GetBool("preview") {
 		fmt.Println("\n💡 This was a preview. Run 'taskwing bootstrap' to save to memory.")
 		return nil
 	}
 
-	// Save to memory using KnowledgeService
 	// Save to memory using KnowledgeService
 	memoryPath := config.GetMemoryBasePath()
 	repo, err := memory.NewDefaultRepository(memoryPath)
@@ -120,7 +199,111 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 
 	// Create Service
 	ks := knowledge.NewService(repo, llmCfg)
+	ks.SetBasePath(cwd) // Enable evidence verification
 
-	// Ingest
-	return ks.IngestFindings(ctx, allFindings, !viper.GetBool("quiet"))
+	// Ingest (with verification and LLM-extracted relationships)
+	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, !viper.GetBool("quiet"))
+}
+
+// runAutoInit initializes .taskwing/ structure when first running bootstrap
+func runAutoInit(basePath string, cmd *cobra.Command) error {
+	verbose := viper.GetBool("verbose")
+
+	// Create .taskwing structure
+	fmt.Println("📁 Creating .taskwing/ structure...")
+	dirs := []string{
+		".taskwing",
+		".taskwing/memory",
+		".taskwing/plans",
+	}
+	for _, dir := range dirs {
+		fullPath := filepath.Join(basePath, dir)
+		if err := os.MkdirAll(fullPath, 0755); err != nil {
+			return fmt.Errorf("create %s: %w", dir, err)
+		}
+		if verbose {
+			fmt.Printf("  ✓ Created %s\n", dir)
+		}
+	}
+
+	// Create config.yaml
+	configPath := filepath.Join(basePath, ".taskwing", "config.yaml")
+	configContent := fmt.Sprintf(`# TaskWing Configuration
+version: "1"
+llm:
+  provider: openai
+  model: %s
+memory:
+  path: .taskwing/memory
+`, llm.DefaultOpenAIModel)
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		return fmt.Errorf("create config.yaml: %w", err)
+	}
+
+	// Prompt for AI selection
+	fmt.Println()
+	fmt.Println("🤖 Which AI assistant(s) do you use?")
+	selectedAIs := promptAISelection()
+	if len(selectedAIs) == 0 {
+		fmt.Println("  Skipping AI setup (rerun 'tw bootstrap' to add assistants)")
+	} else {
+		for _, ai := range selectedAIs {
+			aiCfg := aiConfigs[ai]
+			fmt.Printf("📝 Creating %s commands...\n", aiCfg.displayName)
+			if err := createSingleSlashCommand(basePath, aiCfg, verbose); err != nil {
+				return err
+			}
+		}
+	}
+
+	fmt.Println("\n✓ TaskWing initialized!")
+	return nil
+}
+
+// createSingleSlashCommand creates the unified /taskwing command
+func createSingleSlashCommand(basePath string, aiCfg aiConfig, verbose bool) error {
+	commandsDir := filepath.Join(basePath, aiCfg.commandsDir)
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		return fmt.Errorf("create commands dir: %w", err)
+	}
+
+	// Single unified command
+	content := `# /taskwing
+
+Work on the current TaskWing plan for this project.
+
+## Quick Start
+1. Check the latest plan: ` + "`cat .taskwing/plans/latest.md`" + `
+2. List tasks: ` + "`tw task list`" + `
+3. Ask me to implement a specific task
+
+## Available Commands
+` + "```bash" + `
+tw plan list              # View all plans
+tw plan export latest     # Export latest plan to .taskwing/plans/
+tw task list              # View all tasks
+tw task list --plan X     # Filter by plan
+tw context "query"        # Search project knowledge
+` + "```" + `
+
+## How to Use
+1. Review the plan in .taskwing/plans/latest.md
+2. Tell me which task to work on
+3. I'll implement it following the acceptance criteria
+
+The plan contains:
+- Task titles and descriptions
+- Acceptance criteria (checkboxes)
+- Validation commands to verify completion
+`
+
+	filePath := filepath.Join(commandsDir, "taskwing.md")
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("create taskwing.md: %w", err)
+	}
+	if verbose {
+		fmt.Printf("  ✓ Created %s/taskwing.md\n", aiCfg.commandsDir)
+	}
+
+	return nil
 }

@@ -19,6 +19,8 @@
 | `tw mcp` — AI tool integration | ✅ |
 | `tw delete` — Remove nodes | ✅ |
 | Dynamic file discovery (40+ patterns) | ✅ |
+| Evidence-based findings (file:line refs) | ✅ |
+| Deterministic verification (VerificationAgent) | ✅ |
 
 ---
 
@@ -37,17 +39,40 @@
 
 ---
 
-## Version 2.2 — Integrations
+## Version 2.2 — Integrations + Semantic Verification
 
 **Status:** Not Started
-**Theme:** Meet developers where they work
+**Theme:** Meet developers where they work + smarter verification
 
 | Feature | Priority |
 |---------|----------|
 | GitHub PR comments (auto-context) | P0 |
+| **Semantic LLM Verification** | P0 |
 | Slack notifications | P1 |
 | Linear integration | P2 |
 | VSCode extension | P2 |
+
+### Semantic LLM Verification (v2.2)
+
+After deterministic checks pass, use an LLM to semantically validate findings:
+
+| Check | Purpose |
+|-------|---------|
+| **Evidence Relevance** | Does the snippet actually support the claimed decision? |
+| **Reasoning Validation** | Does the "why" make sense given the code context? |
+| **Staleness Detection** | Has the code changed since the finding was created? |
+| **Cross-Reference** | Do multiple findings about the same topic contradict? |
+
+**Implementation Plan:**
+1. Create `SemanticVerificationAgent` (uses LLM, not deterministic)
+2. Run after `VerificationAgent` for findings with `status=verified` or `status=partial`
+3. Add `semantic_verification_result` column to nodes table
+4. Configurable: opt-in via `--semantic-verify` flag (costs API tokens)
+
+**Why Separate from Deterministic?**
+- Deterministic verification is fast, free, and catches obvious errors
+- Semantic verification is slow, costs tokens, but catches subtle issues
+- Users can choose their quality/cost tradeoff
 
 ---
 

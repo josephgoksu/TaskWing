@@ -7,13 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/agents"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 )
 
 // Runner manages the execution of multiple agents
 type Runner struct {
-	agents []agents.Agent
+	agents []core.Agent
 }
 
 // NewRunner creates a standard runner with default agents
@@ -24,22 +24,22 @@ func NewRunner(cfg llm.Config, projectPath string) *Runner {
 }
 
 // Run executes all agents in parallel and returns aggregated findings
-func (r *Runner) Run(ctx context.Context, projectPath string) ([]agents.Finding, error) {
-	input := agents.Input{
+func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Finding, error) {
+	input := core.Input{
 		BasePath:    projectPath,
 		ProjectName: filepath.Base(projectPath),
-		Mode:        agents.ModeBootstrap,
+		Mode:        core.ModeBootstrap,
 		Verbose:     true, // or configurable
 	}
 
-	var results []agents.Output
+	var results []core.Output
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var errs []error
 
 	for _, agent := range r.agents {
 		wg.Add(1)
-		go func(a agents.Agent) {
+		go func(a core.Agent) {
 			defer wg.Done()
 
 			// Run agent
@@ -72,5 +72,5 @@ func (r *Runner) Run(ctx context.Context, projectPath string) ([]agents.Finding,
 	}
 
 	// Aggregate findings
-	return agents.AggregateFindings(results), nil
+	return core.AggregateFindings(results), nil
 }

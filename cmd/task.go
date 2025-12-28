@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/config"
-	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/josephgoksu/TaskWing/internal/task"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -17,31 +19,313 @@ var taskCmd = &cobra.Command{
 var taskListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all tasks",
+	Long:  `List all tasks, grouped by plan. Use --plan to filter by a specific plan.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Use the correct helper from root.go or viper directly
-		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+		repo, err := openRepo()
 		if err != nil {
 			return err
 		}
 		defer repo.Close()
 
-		// For now, listing plans and their tasks might be better done via plans list
-		// but let's implement listing all active tasks?
-		// Store API supports ListTasks(planID).
-		// We might need ListAllTasks() in store if we want global list.
-		// For POC, let's iterate plans.
+		planFilter, _ := cmd.Flags().GetString("plan")
 
 		plans, err := repo.ListPlans()
 		if err != nil {
 			return err
 		}
 
-		fmt.Println("STATUS\t\tPRIORITY\tTITLE")
-		for _, p := range plans {
-			tasks, _ := repo.ListTasks(p.ID)
-			for _, t := range tasks {
-				fmt.Printf("[%s]\t%d\t\t%s\n", t.Status, t.Priority, t.Title)
+		if len(plans) == 0 {
+			if isJSON() {
+				return printJSON([]any{})
 			}
+			fmt.Println("No plans found. Create one with: tw plan new \"Your goal\"")
+			return nil
+		}
+
+		// Handle JSON output
+		if isJSON() {
+			type taskJSON struct {
+				ID          string   `json:"id"`
+				PlanID      string   `json:"plan_id"`
+				Title       string   `json:"title"`
+				Description string   `json:"description"`
+				Status      string   `json:"status"`
+				Priority    int      `json:"priority"`
+				Agent       string   `json:"assigned_agent"`
+				Acceptance  []string `json:"acceptance_criteria"`
+				Validation  []string `json:"validation_steps"`
+			}
+			var allTasks []taskJSON
+			for _, p := range plans {
+				if planFilter != "" && !strings.HasPrefix(p.ID, planFilter) {
+					continue
+				}
+				tasks, _ := repo.ListTasks(p.ID)
+				for _, t := range tasks {
+					allTasks = append(allTasks, taskJSON{
+						ID:          t.ID,
+						PlanID:      p.ID,
+						Title:       t.Title,
+						Description: t.Description,
+						Status:      string(t.Status),
+						Priority:    t.Priority,
+						Agent:       t.AssignedAgent,
+						Acceptance:  t.AcceptanceCriteria,
+						Validation:  t.ValidationSteps,
+					})
+				}
+			}
+			return printJSON(allTasks)
+		}
+
+		// Render header
+		ui.RenderPageHeader("TaskWing Task List", "")
+
+		// Styles
+		planHeader := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("205")).
+			Bold(true)
+		taskID := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
+		statusPending := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("214"))
+		statusDone := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("42"))
+		priority := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("75"))
+		subtle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
+
+		totalTasks := 0
+		plansShown := 0
+
+		for _, p := range plans {
+			// Filter by plan ID if specified
+			if planFilter != "" && !strings.HasPrefix(p.ID, planFilter) {
+				continue
+			}
+
+			tasks, _ := repo.ListTasks(p.ID)
+			if len(tasks) == 0 {
+				continue
+			}
+
+			plansShown++
+			totalTasks += len(tasks)
+
+			// Truncate goal for display
+			goal := p.Goal
+			if len(goal) > 60 {
+				goal = goal[:57] + "..."
+			}
+
+			// Plan header
+			fmt.Printf("\n%s %s\n", planHeader.Render("◆"), planHeader.Render(goal))
+			fmt.Printf("  %s %s\n\n", subtle.Render("Plan:"), subtle.Render(p.ID))
+
+			// Column headers
+			fmt.Printf("  %-14s %-12s %4s   %s\n",
+				subtle.Render("ID"),
+				subtle.Render("STATUS"),
+				subtle.Render("PRI"),
+				subtle.Render("TITLE"))
+
+			// Tasks
+			for _, t := range tasks {
+				// Format status with color
+				var statusStr string
+				switch t.Status {
+				case "done", "completed":
+					statusStr = statusDone.Render("[done]")
+				case "in_progress":
+					statusStr = statusPending.Render("[in-prog]")
+				default:
+					statusStr = statusPending.Render("[pending]")
+				}
+
+				// Truncate title
+				title := t.Title
+				if len(title) > 50 {
+					title = title[:47] + "..."
+				}
+
+				// Format task ID (shorter display)
+				tid := t.ID
+				if len(tid) > 12 {
+					tid = tid[:12]
+				}
+
+				fmt.Printf("  %-14s %-12s %s   %s\n",
+					taskID.Render(tid),
+					statusStr,
+					priority.Render(fmt.Sprintf("%3d", t.Priority)),
+					title)
+			}
+		}
+
+		if plansShown == 0 && planFilter != "" {
+			fmt.Printf("\nNo plan found matching: %s\n", planFilter)
+			fmt.Println("Run 'tw plan list' to see available plans.")
+		} else {
+			fmt.Printf("\n%s\n", subtle.Render(fmt.Sprintf("Total: %d tasks across %d plan(s)", totalTasks, plansShown)))
+		}
+
+		return nil
+	},
+}
+
+var taskShowCmd = &cobra.Command{
+	Use:   "show [task-id]",
+	Short: "Show a task",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskID := args[0]
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		t, err := repo.GetTask(taskID)
+		if err != nil {
+			return err
+		}
+
+		if isJSON() {
+			return printJSON(t)
+		}
+
+		fmt.Printf("Task: %s\n", t.ID)
+		fmt.Printf("Plan: %s\n", t.PlanID)
+		fmt.Printf("Title: %s\n", t.Title)
+		if t.Description != "" {
+			fmt.Printf("Description: %s\n", t.Description)
+		}
+		fmt.Printf("Status: %s\n", t.Status)
+		fmt.Printf("Priority: %d\n", t.Priority)
+		if t.AssignedAgent != "" {
+			fmt.Printf("Assigned Agent: %s\n", t.AssignedAgent)
+		}
+		if len(t.AcceptanceCriteria) > 0 {
+			fmt.Println("\nAcceptance Criteria:")
+			for _, a := range t.AcceptanceCriteria {
+				fmt.Printf("  - %s\n", a)
+			}
+		}
+		if len(t.ValidationSteps) > 0 {
+			fmt.Println("\nValidation Steps:")
+			for _, v := range t.ValidationSteps {
+				fmt.Printf("  - %s\n", v)
+			}
+		}
+		return nil
+	},
+}
+
+var taskUpdateCmd = &cobra.Command{
+	Use:   "update [task-id]",
+	Short: "Update a task",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskID := args[0]
+		statusStr, _ := cmd.Flags().GetString("status")
+		if statusStr == "" {
+			return fmt.Errorf("status is required")
+		}
+		status := task.TaskStatus(statusStr)
+		if !isValidTaskStatus(status) {
+			return fmt.Errorf("invalid status: %s", statusStr)
+		}
+
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		if err := repo.UpdateTaskStatus(taskID, status); err != nil {
+			return err
+		}
+
+		if isJSON() {
+			updated, _ := repo.GetTask(taskID)
+			return printJSON(updated)
+		}
+
+		if !isQuiet() {
+			fmt.Printf("✓ Updated task %s\n", taskID)
+		}
+		return nil
+	},
+}
+
+var taskCompleteCmd = &cobra.Command{
+	Use:   "complete [task-id]",
+	Short: "Mark a task as completed",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskID := args[0]
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		if err := repo.UpdateTaskStatus(taskID, task.StatusCompleted); err != nil {
+			return err
+		}
+
+		if isJSON() {
+			updated, _ := repo.GetTask(taskID)
+			return printJSON(updated)
+		}
+
+		if !isQuiet() {
+			fmt.Printf("✓ Completed task %s\n", taskID)
+		}
+		return nil
+	},
+}
+
+var taskDeleteCmd = &cobra.Command{
+	Use:   "delete [task-id]",
+	Short: "Delete a task",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskID := args[0]
+		force, _ := cmd.Flags().GetBool("force")
+
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		if !force && !isJSON() {
+			t, err := repo.GetTask(taskID)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("\n  Task:  %s\n", t.ID)
+			fmt.Printf("  Title: %s\n\n", t.Title)
+			if !confirmOrAbort("⚠️  Delete this task? [y/N]: ") {
+				return nil
+			}
+		}
+
+		if err := repo.DeleteTask(taskID); err != nil {
+			return err
+		}
+
+		if isJSON() {
+			return printJSON(deleteResult{
+				ID:      taskID,
+				Deleted: true,
+			})
+		}
+
+		if !isQuiet() {
+			fmt.Printf("✓ Deleted task %s\n", taskID)
 		}
 		return nil
 	},
@@ -62,5 +346,14 @@ var taskValidateCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(taskCmd)
 	taskCmd.AddCommand(taskListCmd)
+	taskCmd.AddCommand(taskShowCmd)
+	taskCmd.AddCommand(taskUpdateCmd)
+	taskCmd.AddCommand(taskCompleteCmd)
+	taskCmd.AddCommand(taskDeleteCmd)
 	taskCmd.AddCommand(taskValidateCmd)
+
+	// Task list flags
+	taskListCmd.Flags().StringP("plan", "p", "", "Filter by plan ID (prefix match)")
+	taskUpdateCmd.Flags().String("status", "", "Update the task status (draft, pending, in_progress, verifying, completed, failed)")
+	taskDeleteCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 }

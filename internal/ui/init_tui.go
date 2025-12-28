@@ -46,6 +46,7 @@ type aiSelectModel struct {
 	cursor       int
 	selected     map[string]bool
 	quit         bool
+	skipped      bool
 }
 
 func (m aiSelectModel) Init() tea.Cmd {
@@ -72,7 +73,7 @@ func (m aiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			choice := m.choices[m.cursor]
 			m.selected[choice] = !m.selected[choice]
 		case "enter":
-			// Confirm selection (must have at least one selected)
+			// Confirm selection or skip if nothing selected
 			hasSelection := false
 			for _, v := range m.selected {
 				if v {
@@ -83,6 +84,13 @@ func (m aiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if hasSelection {
 				return m, tea.Quit
 			}
+			// No selection = skip
+			m.skipped = true
+			return m, tea.Quit
+		case "s":
+			// Skip AI setup
+			m.skipped = true
+			return m, tea.Quit
 		case "a":
 			// Select all
 			for _, c := range m.choices {
@@ -124,6 +132,6 @@ func (m aiSelectModel) View() string {
 		s += cursor + checkbox + " " + style.Render(fmt.Sprintf("%-10s", choice)) + dimStyle.Render(" - "+displayName) + "\n"
 	}
 
-	s += "\n" + dimStyle.Render("↑/↓ navigate • space toggle • a all • enter confirm • esc cancel") + "\n"
+	s += "\n" + dimStyle.Render("↑/↓ navigate • space toggle • a all • enter confirm • s skip • esc cancel") + "\n"
 	return s
 }

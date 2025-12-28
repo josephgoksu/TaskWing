@@ -264,6 +264,49 @@ func (s *SQLiteStore) initSchema() error {
 		}
 	}
 
+	// Migration: Add verification columns to nodes table for Evidence-Based Findings
+	// These columns support the verification pipeline that validates agent findings
+	migrations := []struct {
+		column string
+		ddl    string
+	}{
+		{"verification_status", "ALTER TABLE nodes ADD COLUMN verification_status TEXT DEFAULT 'pending_verification'"},
+		{"evidence", "ALTER TABLE nodes ADD COLUMN evidence TEXT"},                       // JSON blob of []Evidence
+		{"verification_result", "ALTER TABLE nodes ADD COLUMN verification_result TEXT"}, // JSON blob of VerificationResult
+		{"confidence_score", "ALTER TABLE nodes ADD COLUMN confidence_score REAL DEFAULT 0.5"},
+	}
+
+	for _, m := range migrations {
+		// Check if column exists by querying table info
+		var exists bool
+		rows, err := s.db.Query("PRAGMA table_info(nodes)")
+		if err == nil {
+			for rows.Next() {
+				var cid int
+				var name, ctype string
+				var notnull, pk int
+				var dflt any
+				if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
+					if name == m.column {
+						exists = true
+						break
+					}
+				}
+			}
+			rows.Close()
+		}
+
+		if !exists {
+			if _, err := s.db.Exec(m.ddl); err != nil {
+				// Ignore errors - column may already exist from a previous partial migration
+				_ = err
+			}
+		}
+	}
+
+	// Add index for verification status queries (enables efficient filtering)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_nodes_verification_status ON nodes(verification_status)`)
+
 	return nil
 }
 
@@ -1084,6 +1127,47 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 	return nodes, nil
 }
 
+// UpdateNode updates mutable node fields.
+func (s *SQLiteStore) UpdateNode(id, content, nodeType, summary string) error {
+	if id == "" {
+		return fmt.Errorf("node id is required")
+	}
+	sets := []string{}
+	args := []any{}
+
+	if content != "" {
+		sets = append(sets, "content = ?")
+		args = append(args, content)
+	}
+	if nodeType != "" {
+		sets = append(sets, "type = ?")
+		args = append(args, nodeType)
+	}
+	if summary != "" {
+		sets = append(sets, "summary = ?")
+		args = append(args, summary)
+	}
+	if len(sets) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+
+	query := "UPDATE nodes SET " + strings.Join(sets, ", ") + " WHERE id = ?"
+	args = append(args, id)
+
+	result, err := s.db.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("update node: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update node rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("node not found: %s", id)
+	}
+	return nil
+}
+
 // DeleteNode removes a node and its edges.
 func (s *SQLiteStore) DeleteNode(id string) error {
 	result, err := s.db.Exec("DELETE FROM nodes WHERE id = ?", id)
@@ -1097,6 +1181,22 @@ func (s *SQLiteStore) DeleteNode(id string) error {
 	}
 
 	return nil
+}
+
+// DeleteNodesByType removes all nodes of a specific type.
+func (s *SQLiteStore) DeleteNodesByType(nodeType string) (int64, error) {
+	if nodeType == "" {
+		return 0, fmt.Errorf("node type is required")
+	}
+	result, err := s.db.Exec("DELETE FROM nodes WHERE type = ?", nodeType)
+	if err != nil {
+		return 0, fmt.Errorf("delete nodes by type: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete nodes by type rows affected: %w", err)
+	}
+	return rows, nil
 }
 
 // DeleteNodesByAgent removes all nodes created by a specific agent.

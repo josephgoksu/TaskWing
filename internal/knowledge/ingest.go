@@ -2,17 +2,24 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/josephgoksu/TaskWing/internal/agents"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
+	"github.com/josephgoksu/TaskWing/internal/agents/verification"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 )
 
 // IngestFindings processes a list of agent findings and saves them to the repository
-func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding, verbose bool) error {
+func (s *Service) IngestFindings(ctx context.Context, findings []core.Finding, verbose bool) error {
+	return s.IngestFindingsWithRelationships(ctx, findings, nil, verbose)
+}
+
+// IngestFindingsWithRelationships processes findings and LLM-extracted relationships
+func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings []core.Finding, relationships []core.Relationship, verbose bool) error {
 	if len(findings) == 0 {
 		return nil
 	}
@@ -21,13 +28,25 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		fmt.Println("  Ingesting findings...")
 	}
 
+	// 0. Verify Findings (if basePath is set)
+	verifiedCount, rejectedCount := 0, 0
+	if s.basePath != "" {
+		if verbose {
+			fmt.Print("  Verifying evidence")
+		}
+		findings, verifiedCount, rejectedCount = s.verifyFindings(ctx, findings, verbose)
+		if verbose {
+			fmt.Printf(" done (%d verified, %d rejected)\n", verifiedCount, rejectedCount)
+		}
+	}
+
 	// 1. Purge Stale Data
 	if err := s.purgeStaleData(findings, verbose); err != nil {
 		return err
 	}
 
 	// 2. Ingest Nodes (Documents)
-	nodesCreated, skippedDuplicates, err := s.ingestNodes(ctx, findings, verbose)
+	nodesCreated, skippedDuplicates, nodesByTitle, err := s.ingestNodesWithIndex(ctx, findings, verbose)
 	if err != nil {
 		return err
 	}
@@ -38,23 +57,71 @@ func (s *Service) IngestFindings(ctx context.Context, findings []agents.Finding,
 		return err
 	}
 
-	// 4. Link Knowledge Graph
-	edgesCreated, semanticEdges, err := s.linkKnowledgeGraph(verbose)
+	// 4. Link Knowledge Graph (evidence-based + semantic)
+	evidenceEdges, semanticEdges, err := s.linkKnowledgeGraph(verbose)
 	if err != nil {
 		return err
 	}
 
+	// 5. Process LLM-extracted relationships
+	llmEdges := s.linkByLLMRelationships(relationships, nodesByTitle)
+
+	totalEdges := evidenceEdges + semanticEdges + llmEdges
+
 	if verbose {
 		fmt.Println(" done")
-		fmt.Printf("\n✅ Saved %d knowledge nodes (%d duplicates skipped), %d features, %d patterns, %d decisions, %d edges (%d semantic) to memory.\n",
-			nodesCreated, skippedDuplicates, featuresCreated, patternsCreated, decisionsCreated, edgesCreated, semanticEdges)
+		if rejectedCount > 0 {
+			fmt.Printf("\n⚠️  Rejected %d findings with unverifiable evidence.\n", rejectedCount)
+		}
+		fmt.Printf("\n✅ Saved %d knowledge nodes (%d duplicates skipped), %d features, %d patterns, %d decisions, %d edges (%d evidence, %d semantic, %d llm) to memory.\n",
+			nodesCreated, skippedDuplicates, featuresCreated, patternsCreated, decisionsCreated, totalEdges, evidenceEdges, semanticEdges, llmEdges)
 	}
 
 	return nil
 }
 
+// verifyFindings runs the VerificationAgent on findings and filters out rejected ones.
+// Returns the filtered findings and counts of verified/rejected.
+func (s *Service) verifyFindings(ctx context.Context, findings []core.Finding, verbose bool) ([]core.Finding, int, int) {
+	verifier := verification.NewAgent(s.basePath)
+
+	verified := verifier.VerifyFindings(ctx, findings)
+
+	// Filter out rejected findings
+	filtered := verification.FilterVerifiedFindings(verified)
+
+	// Count results
+	verifiedCount := 0
+	rejectedCount := 0
+	for _, f := range verified {
+		switch f.VerificationStatus {
+		case core.VerificationStatusVerified:
+			verifiedCount++
+			if verbose {
+				fmt.Print("✓")
+			}
+		case core.VerificationStatusPartial:
+			verifiedCount++ // Partial counts as verified (kept)
+			if verbose {
+				fmt.Print("~")
+			}
+		case core.VerificationStatusRejected:
+			rejectedCount++
+			if verbose {
+				fmt.Print("✗")
+			}
+		default:
+			if verbose {
+				fmt.Print(".")
+			}
+		}
+	}
+
+	return filtered, verifiedCount, rejectedCount
+}
+
 // purgeStaleData removes nodes from agents involved in the current finding set
-func (s *Service) purgeStaleData(findings []agents.Finding, verbose bool) error {
+func (s *Service) purgeStaleData(findings []core.Finding, verbose bool) error {
 	seenAgents := make(map[string]bool)
 	for _, f := range findings {
 		if f.SourceAgent != "" && !seenAgents[f.SourceAgent] {
@@ -70,14 +137,21 @@ func (s *Service) purgeStaleData(findings []agents.Finding, verbose bool) error 
 	return nil
 }
 
-// ingestNodes creates document nodes from findings
-func (s *Service) ingestNodes(ctx context.Context, findings []agents.Finding, verbose bool) (int, int, error) {
+// ingestNodes creates document nodes from findings (legacy, no title index)
+func (s *Service) ingestNodes(ctx context.Context, findings []core.Finding, verbose bool) (int, int, error) {
+	created, skipped, _, err := s.ingestNodesWithIndex(ctx, findings, verbose)
+	return created, skipped, err
+}
+
+// ingestNodesWithIndex creates document nodes and returns a title->nodeID index for LLM relationship linking
+func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Finding, verbose bool) (int, int, map[string]string, error) {
 	if verbose {
 		fmt.Print("  Generating embeddings")
 	}
 
 	nodesCreated := 0
 	skippedDuplicates := 0
+	nodesByTitle := make(map[string]string) // title -> nodeID
 
 	// Deduplication index
 	existingNodes, _ := s.repo.ListNodesWithEmbeddings()
@@ -90,6 +164,8 @@ func (s *Service) ingestNodes(ctx context.Context, findings []agents.Finding, ve
 	}
 	for _, n := range existingNodes {
 		existingByContent[dedupKey(n.Content)] = true
+		// Also index existing nodes by title for relationship linking
+		nodesByTitle[strings.ToLower(n.Summary)] = n.ID
 	}
 
 	for _, f := range findings {
@@ -109,13 +185,41 @@ func (s *Service) ingestNodes(ctx context.Context, findings []agents.Finding, ve
 		}
 		existingByContent[key] = true
 
+		nodeID := uuid.New().String()
 		node := memory.Node{
-			ID:          uuid.New().String(),
+			ID:          nodeID,
 			Type:        string(f.Type),
 			Summary:     f.Title,
 			Content:     content,
 			SourceAgent: f.SourceAgent,
 			CreatedAt:   time.Now().UTC(),
+		}
+
+		// Store verification status
+		if f.VerificationStatus != "" {
+			node.VerificationStatus = string(f.VerificationStatus)
+		} else {
+			node.VerificationStatus = string(core.VerificationStatusPending)
+		}
+
+		// Store confidence score
+		node.ConfidenceScore = f.ConfidenceScore
+		if node.ConfidenceScore == 0 {
+			node.ConfidenceScore = 0.5 // Default
+		}
+
+		// Serialize evidence to JSON
+		if len(f.Evidence) > 0 {
+			if evidenceJSON, err := json.Marshal(f.Evidence); err == nil {
+				node.Evidence = string(evidenceJSON)
+			}
+		}
+
+		// Serialize verification result to JSON
+		if f.VerificationResult != nil {
+			if resultJSON, err := json.Marshal(f.VerificationResult); err == nil {
+				node.VerificationResult = string(resultJSON)
+			}
 		}
 
 		// Generate embedding
@@ -130,13 +234,14 @@ func (s *Service) ingestNodes(ctx context.Context, findings []agents.Finding, ve
 
 		if err := s.repo.UpsertNodeBySummary(node); err == nil {
 			nodesCreated++
+			nodesByTitle[strings.ToLower(f.Title)] = nodeID
 		}
 	}
-	return nodesCreated, skippedDuplicates, nil
+	return nodesCreated, skippedDuplicates, nodesByTitle, nil
 }
 
 // ingestStructuredData processes Features, Decisions, and Patterns
-func (s *Service) ingestStructuredData(findings []agents.Finding) (int, int, int, error) {
+func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, error) {
 	featuresCreated := 0
 	decisionsCreated := 0
 	patternsCreated := 0
@@ -151,7 +256,7 @@ func (s *Service) ingestStructuredData(findings []agents.Finding) (int, int, int
 
 	for _, f := range findings {
 		switch f.Type {
-		case agents.FindingTypeFeature:
+		case core.FindingTypeFeature:
 			name := strings.TrimSpace(f.Title)
 			if name == "" {
 				continue
@@ -173,7 +278,7 @@ func (s *Service) ingestStructuredData(findings []agents.Finding) (int, int, int
 				featuresCreated++
 			}
 
-		case agents.FindingTypePattern:
+		case core.FindingTypePattern:
 			name := strings.TrimSpace(f.Title)
 			if name == "" {
 				continue
@@ -191,7 +296,7 @@ func (s *Service) ingestStructuredData(findings []agents.Finding) (int, int, int
 				patternsCreated++
 			}
 
-		case agents.FindingTypeDecision:
+		case core.FindingTypeDecision:
 			title := strings.TrimSpace(f.Title)
 			if title == "" {
 				continue
@@ -241,7 +346,10 @@ func (s *Service) ingestStructuredData(findings []agents.Finding) (int, int, int
 	return featuresCreated, decisionsCreated, patternsCreated, nil
 }
 
-// linkKnowledgeGraph orchestrates all edge creation phases
+// linkKnowledgeGraph creates meaningful edges based on:
+// 1. Shared evidence (nodes referencing the same files)
+// 2. Semantic similarity (embedding-based)
+// Returns (evidenceEdges, semanticEdges, error)
 func (s *Service) linkKnowledgeGraph(verbose bool) (int, int, error) {
 	if verbose {
 		fmt.Print("  Linking knowledge graph")
@@ -252,94 +360,104 @@ func (s *Service) linkKnowledgeGraph(verbose bool) (int, int, error) {
 		return 0, 0, err
 	}
 
-	// Build indexes
-	nodesByAgent := make(map[string][]string)
-	nodesByType := make(map[string][]string)
+	// Phase 1: Evidence-based linking (shared file references)
+	evidenceEdges := s.linkByEvidence(allNodes)
+
+	// Phase 2: Semantic similarity-based edges
+	semanticEdges := s.linkSemantic(allNodes)
+
+	return evidenceEdges, semanticEdges, nil
+}
+
+// linkByEvidence creates edges between nodes that reference the same files.
+// This creates meaningful relationships based on actual code context.
+func (s *Service) linkByEvidence(allNodes []memory.Node) int {
+	count := 0
+
+	// Build map: file path -> list of node IDs that reference it
+	fileToNodes := make(map[string][]string)
+	nodeEvidence := make(map[string][]string) // nodeID -> file paths
+
 	for _, n := range allNodes {
-		if n.SourceAgent != "" {
-			nodesByAgent[n.SourceAgent] = append(nodesByAgent[n.SourceAgent], n.ID)
+		full, err := s.repo.GetNode(n.ID)
+		if err != nil || full.Evidence == "" {
+			continue
 		}
-		if n.Type != "" {
-			nodesByType[n.Type] = append(nodesByType[n.Type], n.ID)
+
+		// Parse evidence JSON
+		var evidenceList []struct {
+			FilePath string `json:"file_path"`
+		}
+		if err := json.Unmarshal([]byte(full.Evidence), &evidenceList); err != nil {
+			continue
+		}
+
+		// Track which files this node references
+		seenFiles := make(map[string]bool)
+		for _, ev := range evidenceList {
+			if ev.FilePath == "" || seenFiles[ev.FilePath] {
+				continue
+			}
+			seenFiles[ev.FilePath] = true
+			fileToNodes[ev.FilePath] = append(fileToNodes[ev.FilePath], n.ID)
+			nodeEvidence[n.ID] = append(nodeEvidence[n.ID], ev.FilePath)
 		}
 	}
 
-	// Phase 1: Co-occurrence
-	edgesCreated := s.linkCoOccurrence(nodesByAgent)
+	// Create edges between nodes that share file references
+	// Only link if they share at least one file
+	linkedPairs := make(map[string]bool) // "nodeA:nodeB" to avoid duplicates
 
-	// Phase 2: Structural (Type-based)
-	structuralEdges := s.linkStructural(nodesByType)
-	edgesCreated += structuralEdges
-
-	// Phase 3: Semantic Similarity
-	semanticEdges := s.linkSemantic(allNodes)
-
-	return edgesCreated + semanticEdges, semanticEdges, nil
-}
-
-func (s *Service) linkCoOccurrence(nodesByAgent map[string][]string) int {
-	count := 0
-	for _, nodeIDs := range nodesByAgent {
+	for filePath, nodeIDs := range fileToNodes {
 		if len(nodeIDs) < 2 {
 			continue
 		}
-		maxEdges := 10
-		limit := len(nodeIDs) * maxEdges // Safety cap
-		if limit > 200 {
-			limit = 200
-		}
 
-		created := 0
-		for i := 0; i < len(nodeIDs) && created < limit; i++ {
-			for j := i + 1; j < len(nodeIDs) && j < i+3; j++ {
-				if err := s.repo.LinkNodes(nodeIDs[i], nodeIDs[j], memory.NodeRelationRelatesTo, EdgeWeightRelatesTo, nil); err == nil {
+		// Link all pairs of nodes that share this file
+		for i := 0; i < len(nodeIDs); i++ {
+			for j := i + 1; j < len(nodeIDs); j++ {
+				nodeA, nodeB := nodeIDs[i], nodeIDs[j]
+				pairKey := nodeA + ":" + nodeB
+				if nodeA > nodeB {
+					pairKey = nodeB + ":" + nodeA
+				}
+
+				if linkedPairs[pairKey] {
+					continue
+				}
+				linkedPairs[pairKey] = true
+
+				// Calculate weight based on number of shared files
+				sharedFiles := countSharedFiles(nodeEvidence[nodeA], nodeEvidence[nodeB])
+				weight := EdgeWeightRelatesTo
+				if sharedFiles >= 2 {
+					weight = EdgeWeightDependsOn
+				}
+
+				props := map[string]any{
+					"shared_file":  filePath,
+					"shared_count": sharedFiles,
+				}
+				if err := s.repo.LinkNodes(nodeA, nodeB, memory.NodeRelationSharesEvidence, weight, props); err == nil {
 					count++
-					created++
 				}
 			}
 		}
 	}
+
 	return count
 }
 
-func (s *Service) linkStructural(nodesByType map[string][]string) int {
-	count := 0
-	features := nodesByType["feature"]
-	decisions := nodesByType["decision"]
-	patterns := nodesByType["pattern"]
-
-	// Link decisions to features
-	if len(features) > 0 && len(decisions) > 0 {
-		for i, decisionID := range decisions {
-			featureIdx := i % len(features)
-			if err := s.repo.LinkNodes(decisionID, features[featureIdx], memory.NodeRelationAffects, EdgeWeightAffects, nil); err == nil {
-				count++
-			}
-			// Secondary link
-			if len(features) > 1 {
-				idx2 := (i + 1) % len(features)
-				if idx2 != featureIdx {
-					s.repo.LinkNodes(decisionID, features[idx2], memory.NodeRelationRelatesTo, EdgeWeightRelatesTo, nil)
-				}
-			}
-		}
+// countSharedFiles returns how many files two nodes share in common.
+func countSharedFiles(filesA, filesB []string) int {
+	setA := make(map[string]bool)
+	for _, f := range filesA {
+		setA[f] = true
 	}
-
-	// Link patterns to features and decisions
-	if len(patterns) > 0 {
-		for i, patternID := range patterns {
-			if len(features) > 0 {
-				idx := i % len(features)
-				if err := s.repo.LinkNodes(patternID, features[idx], memory.NodeRelationExtends, EdgeWeightExtends, nil); err == nil {
-					count++
-				}
-			}
-			if len(decisions) > 0 {
-				idx := i % len(decisions)
-				if err := s.repo.LinkNodes(patternID, decisions[idx], memory.NodeRelationRelatesTo, EdgeWeightRelatesTo, nil); err == nil {
-					count++
-				}
-			}
+	count := 0
+	for _, f := range filesB {
+		if setA[f] {
+			count++
 		}
 	}
 	return count
@@ -364,10 +482,8 @@ func (s *Service) linkSemantic(allNodes []memory.Node) int {
 			nodeA := nodesWithEmbeddings[i]
 			nodeB := nodesWithEmbeddings[j]
 
-			// Skip if same agent (covered by co-occurrence)
-			if nodeA.SourceAgent == nodeB.SourceAgent {
-				continue
-			}
+			// Allow same-agent comparisons for semantic similarity
+			// (nodes from same agent can still be semantically related)
 
 			similarity := CosineSimilarity(nodeA.Embedding, nodeB.Embedding)
 			if similarity >= float32(threshold) {
@@ -379,4 +495,66 @@ func (s *Service) linkSemantic(allNodes []memory.Node) int {
 		}
 	}
 	return count
+}
+
+// linkByLLMRelationships creates edges from LLM-extracted relationships.
+// The LLM explicitly identifies relationships during analysis (Phase 3).
+func (s *Service) linkByLLMRelationships(relationships []core.Relationship, nodesByTitle map[string]string) int {
+	if len(relationships) == 0 {
+		return 0
+	}
+
+	count := 0
+	for _, rel := range relationships {
+		// Look up node IDs by title (case-insensitive)
+		fromID := nodesByTitle[strings.ToLower(rel.From)]
+		toID := nodesByTitle[strings.ToLower(rel.To)]
+
+		if fromID == "" || toID == "" {
+			// Try partial matching if exact match fails
+			fromID = findNodeByPartialTitle(nodesByTitle, rel.From)
+			toID = findNodeByPartialTitle(nodesByTitle, rel.To)
+		}
+
+		if fromID == "" || toID == "" || fromID == toID {
+			continue
+		}
+
+		// Map relation type
+		relationType := memory.NodeRelationRelatesTo
+		weight := EdgeWeightRelatesTo
+		switch rel.Relation {
+		case "depends_on":
+			relationType = memory.NodeRelationDependsOn
+			weight = EdgeWeightDependsOn
+		case "affects":
+			relationType = memory.NodeRelationAffects
+			weight = EdgeWeightDependsOn
+		case "extends":
+			relationType = memory.NodeRelationExtends
+			weight = EdgeWeightDependsOn
+		}
+
+		props := map[string]any{
+			"llm_extracted": true,
+			"reason":        rel.Reason,
+		}
+
+		if err := s.repo.LinkNodes(fromID, toID, relationType, weight, props); err == nil {
+			count++
+		}
+	}
+
+	return count
+}
+
+// findNodeByPartialTitle finds a node ID where the title contains the search string.
+func findNodeByPartialTitle(nodesByTitle map[string]string, search string) string {
+	searchLower := strings.ToLower(search)
+	for title, id := range nodesByTitle {
+		if strings.Contains(title, searchLower) || strings.Contains(searchLower, title) {
+			return id
+		}
+	}
+	return ""
 }

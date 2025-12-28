@@ -263,12 +263,20 @@ func (r *Repository) CreateNode(n Node) error {
 	return r.db.CreateNode(n)
 }
 
+func (r *Repository) UpdateNode(id, content, nodeType, summary string) error {
+	return r.db.UpdateNode(id, content, nodeType, summary)
+}
+
 func (r *Repository) UpdateNodeEmbedding(id string, embedding []float32) error {
 	return r.db.UpdateNodeEmbedding(id, embedding)
 }
 
 func (r *Repository) DeleteNode(id string) error {
 	return r.db.DeleteNode(id)
+}
+
+func (r *Repository) DeleteNodesByType(nodeType string) (int64, error) {
+	return r.db.DeleteNodesByType(nodeType)
 }
 
 func (r *Repository) DeleteNodesByAgent(agent string) error {
@@ -325,6 +333,14 @@ func (r *Repository) ListPlans() ([]task.Plan, error) {
 	return r.db.ListPlans()
 }
 
+func (r *Repository) UpdatePlan(id string, goal, enrichedGoal string, status task.PlanStatus) error {
+	return r.db.UpdatePlan(id, goal, enrichedGoal, status)
+}
+
+func (r *Repository) DeletePlan(id string) error {
+	return r.db.DeletePlan(id)
+}
+
 func (r *Repository) CreateTask(t *task.Task) error {
 	return r.db.CreateTask(t)
 }
@@ -335,6 +351,14 @@ func (r *Repository) GetTask(id string) (*task.Task, error) {
 
 func (r *Repository) ListTasks(planID string) ([]task.Task, error) {
 	return r.db.ListTasks(planID)
+}
+
+func (r *Repository) UpdateTaskStatus(id string, status task.TaskStatus) error {
+	return r.db.UpdateTaskStatus(id, status)
+}
+
+func (r *Repository) DeleteTask(id string) error {
+	return r.db.DeleteTask(id)
 }
 
 // === FTS5 Hybrid Search ===

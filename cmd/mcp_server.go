@@ -15,6 +15,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -62,10 +63,8 @@ type ProjectContextParams struct {
 }
 
 func runMCPServer(ctx context.Context) error {
-	fmt.Fprintf(os.Stderr, "\n🎯 TaskWing MCP Server Starting...\n")
-	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	fmt.Fprintf(os.Stderr, "Knowledge Graph for Engineering Teams\n")
-	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	ui.RenderPageHeader("TaskWing MCP Server", "Knowledge Graph for Engineering Teams")
+	fmt.Fprintf(os.Stderr, "\n")
 
 	// Get current working directory
 	// Initialize memory repository
@@ -101,25 +100,19 @@ func runMCPServer(ctx context.Context) error {
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		query := strings.TrimSpace(params.Arguments.Query)
 
-		// Try new node-based system first
+		// Node-based system only
 		nodes, err := repo.ListNodes("")
-		hasNodes := err == nil && len(nodes) > 0
-
-		if hasNodes {
-			return handleNodeContext(ctx, repo, query, nodes)
+		if err != nil {
+			return nil, fmt.Errorf("list nodes: %w", err)
 		}
-
-		// Fallback to legacy feature system
-		result, err := handleLegacyContext(repo, query)
-		if err != nil && query == "" {
-			// If it's a summary query and it failed/is empty, return a helpful message
+		if len(nodes) == 0 {
 			return &mcpsdk.CallToolResultFor[any]{
 				Content: []mcpsdk.Content{
 					&mcpsdk.TextContent{Text: "Project memory is empty. Run 'taskwing bootstrap' to analyze this repository and generate context."},
 				},
 			}, nil
 		}
-		return result, err
+		return handleNodeContext(ctx, repo, query, nodes)
 	})
 
 	// Spec tools removed as part of cleanup
@@ -241,73 +234,6 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, query strin
 		Query:   query,
 		Results: results,
 		Total:   len(results),
-	}
-
-	jsonBytes, _ := json.MarshalIndent(result, "", "  ")
-	return &mcpsdk.CallToolResultFor[any]{
-		Content: []mcpsdk.Content{
-			&mcpsdk.TextContent{Text: string(jsonBytes)},
-		},
-	}, nil
-}
-
-// handleLegacyContext returns context using the old feature/decision system
-func handleLegacyContext(repo *memory.Repository, query string) (*mcpsdk.CallToolResultFor[any], error) {
-	index, err := repo.GetIndex()
-	if err != nil {
-		return nil, fmt.Errorf("get index: %w", err)
-	}
-
-	if query == "" {
-		result := struct {
-			Features []memory.FeatureSummary `json:"features"`
-			Total    int                     `json:"total"`
-		}{
-			Features: index.Features,
-			Total:    len(index.Features),
-		}
-
-		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
-		return &mcpsdk.CallToolResultFor[any]{
-			Content: []mcpsdk.Content{
-				&mcpsdk.TextContent{Text: string(jsonBytes)},
-			},
-		}, nil
-	}
-
-	// Feature query (legacy)
-	featureIDByName := make(map[string]string, len(index.Features))
-	featureNameByID := make(map[string]string, len(index.Features))
-	for _, f := range index.Features {
-		featureNameByID[f.ID] = f.Name
-		featureIDByName[strings.ToLower(strings.TrimSpace(f.Name))] = f.ID
-	}
-
-	queryKey := strings.ToLower(query)
-	seedID := featureIDByName[queryKey]
-	if seedID == "" {
-		for _, f := range index.Features {
-			if strings.Contains(strings.ToLower(f.Name), queryKey) {
-				seedID = f.ID
-				break
-			}
-		}
-	}
-	if seedID == "" {
-		return nil, fmt.Errorf("no feature matches query: %q", query)
-	}
-
-	feature, _ := repo.GetFeature(seedID)
-	decisions, _ := repo.GetDecisions(seedID)
-
-	result := struct {
-		Query     string            `json:"query"`
-		Feature   *memory.Feature   `json:"feature"`
-		Decisions []memory.Decision `json:"decisions"`
-	}{
-		Query:     query,
-		Feature:   feature,
-		Decisions: decisions,
 	}
 
 	jsonBytes, _ := json.MarshalIndent(result, "", "  ")

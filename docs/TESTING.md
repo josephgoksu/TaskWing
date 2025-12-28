@@ -250,3 +250,28 @@ cat ~/.claude/mcp.json | grep -A 5 "taskwing-markwise"
 - Server added to `~/.claude/mcp.json`
 - Server name is project-specific: `taskwing-markwise.app`
 - Includes `cwd` pointing to project path
+
+### MCP-06: Codex Manual Config
+
+```bash
+cd ~/taskwing-tests/markwise.app
+mkdir -p .codex
+cat > .codex/mcp.json <<'JSON'
+{
+  "mcp": {
+    "servers": {
+      "taskwing": {
+        "command": "/usr/local/bin/taskwing",
+        "args": ["mcp"]
+      }
+    }
+  }
+}
+JSON
+
+cat .codex/mcp.json
+```
+
+**Expected:**
+- `.codex/mcp.json` exists in project root
+- Contains a `taskwing` server entry

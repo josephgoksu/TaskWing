@@ -8,7 +8,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/josephgoksu/TaskWing/internal/agents"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
+	"github.com/josephgoksu/TaskWing/internal/agents/watch"
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
@@ -136,7 +137,7 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var result []AgentWithCount
-	for _, a := range agents.Registry() {
+	for _, a := range core.Registry() {
 		result = append(result, AgentWithCount{
 			ID:          a.ID,
 			Name:        a.Name,
@@ -259,7 +260,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 
 // handleActivity
 func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
-	activityLog := agents.NewActivityLog(s.cwd)
+	activityLog := watch.NewActivityLog(s.cwd)
 
 	limitStr := r.URL.Query().Get("limit")
 	limit := 50
@@ -280,7 +281,7 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 
 // handleClearActivity
 func (s *Server) handleClearActivity(w http.ResponseWriter, r *http.Request) {
-	activityLog := agents.NewActivityLog(s.cwd)
+	activityLog := watch.NewActivityLog(s.cwd)
 	activityLog.Clear()
 
 	writeAPIJSON(w, map[string]any{
@@ -339,10 +340,10 @@ func (s *Server) handlePromoteToTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	activityLog := agents.NewActivityLog(s.cwd)
+	activityLog := watch.NewActivityLog(s.cwd)
 	entries := activityLog.GetRecent(500) // Large enough to find the id
 
-	var finding *agents.ActivityEntry
+	var finding *watch.ActivityEntry
 	for i := range entries {
 		if entries[i].ID == req.FindingID {
 			finding = &entries[i]

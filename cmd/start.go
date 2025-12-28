@@ -14,9 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/agents"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
+	"github.com/josephgoksu/TaskWing/internal/agents/watch"
 	"github.com/josephgoksu/TaskWing/internal/config"
+	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/server"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -104,7 +107,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	srv.Start(&wg, errChan)
 
 	// Start watch mode if enabled
-	var watchAgent *agents.WatchAgent
+	var watchAgent *watch.WatchAgent
 	if !noWatch {
 		watchAgent, err = startWatchMode(cwd, verbose, llmConfig, &wg, errChan)
 		if err != nil {
@@ -165,9 +168,9 @@ func runStart(cmd *cobra.Command, args []string) error {
 }
 
 // startWatchMode starts the watch agent in a goroutine
-func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sync.WaitGroup, errChan chan<- error) (*agents.WatchAgent, error) {
+func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sync.WaitGroup, errChan chan<- error) (*watch.WatchAgent, error) {
 	// Create watch agent
-	watchAgent, err := agents.NewWatchAgent(agents.WatchConfig{
+	watchAgent, err := watch.NewWatchAgent(watch.WatchConfig{
 		BasePath:  watchPath,
 		LLMConfig: llmConfig,
 		Verbose:   verbose,
@@ -175,6 +178,18 @@ func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sy
 	if err != nil {
 		return nil, fmt.Errorf("create watch agent: %w", err)
 	}
+
+	// Set up findings handler for proper deduplication via knowledge.Service.IngestFindings
+	memoryPath := config.GetMemoryBasePath()
+	repo, err := memory.NewDefaultRepository(memoryPath)
+	if err != nil {
+		return nil, fmt.Errorf("create memory repository: %w", err)
+	}
+
+	ks := knowledge.NewService(repo, llmConfig)
+	watchAgent.SetFindingsHandler(func(ctx context.Context, findings []core.Finding) error {
+		return ks.IngestFindings(ctx, findings, verbose)
+	})
 
 	// Start watching
 	if err := watchAgent.Start(); err != nil {

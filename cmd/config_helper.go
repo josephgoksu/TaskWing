@@ -63,7 +63,18 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		apiKey = viper.GetString("llm.apiKey")
 	}
 	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
+		// Check provider-specific environment variables
+		switch llmProvider {
+		case llm.ProviderOpenAI:
+			apiKey = os.Getenv("OPENAI_API_KEY")
+		case llm.ProviderAnthropic:
+			apiKey = os.Getenv("ANTHROPIC_API_KEY")
+		case llm.ProviderGemini:
+			apiKey = os.Getenv("GEMINI_API_KEY")
+			if apiKey == "" {
+				apiKey = os.Getenv("GOOGLE_API_KEY")
+			}
+		}
 	}
 
 	// Interactive Prompt for API Key (Only if needed for the selected provider)

@@ -1,392 +1,694 @@
 # TaskWing Architecture
 
-> **Version:** 2.x
-> **Updated:** 2025-12-23
+> **Version:** 2.1
+> **Updated:** 2025-12-26
+> **Audience:** Developers contributing to or integrating with TaskWing
 
 ---
 
-## What is TaskWing?
+## Table of Contents
 
-**TaskWing is a Planning + Knowledge Layer for engineering teams.**
-
-It's NOT an execution engine. It's the intelligence layer that sits between **human intent** and **AI-powered development**.
-
-```
-┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│   Human Intent   │ ───▶ │    TaskWing      │ ───▶ │    AI Tools      │
-│  "Build OAuth"   │      │ Planning + Context│      │ Claude/Cursor/etc│
-└──────────────────┘      └──────────────────┘      └──────────────────┘
-```
-
-### Core Value Proposition
-
-| Traditional Tools | TaskWing |
-|-------------------|----------|
-| Static task lists (Linear, Jira) | **Dynamic plans** enriched with project context |
-| Manual task creation | **AI-assisted decomposition** with clarifying questions |
-| Isolated from codebase | **Knowledge graph** connects tasks to features, decisions, patterns |
-| Designed for humans | **Designed for AI consumption** via MCP, markdown, spec files |
+1. [Overview](#overview)
+2. [High-Level Architecture](#high-level-architecture)
+3. [Core Concepts](#core-concepts)
+4. [The Bootstrap Pipeline](#the-bootstrap-pipeline)
+5. [Evidence-Based Verification](#evidence-based-verification)
+6. [Knowledge Graph](#knowledge-graph)
+7. [Package Structure](#package-structure)
+8. [Data Flow Examples](#data-flow-examples)
+9. [Extension Points](#extension-points)
+10. [Tech Stack](#tech-stack)
 
 ---
 
-## System Architecture
+## Overview
 
-```mermaid
-flowchart TB
-    subgraph UserLayer["User Layer"]
-        CLI["CLI (tw)"]
-        Dashboard["Web Dashboard"]
-        MCP["MCP Server"]
-    end
+### What is TaskWing?
 
-    subgraph IntelligenceLayer["Intelligence Layer"]
-        Clarify["Clarifying Agent"]
-        Plan["Planning Agent"]
-        Validate["Validation Agent"]
-        Bootstrap["Bootstrap Agents"]
-    end
+TaskWing is a **knowledge extraction and context layer** for codebases. It analyzes your repository to build a queryable knowledge graph of:
 
-    subgraph KnowledgeLayer["Knowledge Layer"]
-        Graph["Knowledge Graph"]
-        Tasks["Plans & Tasks"]
-        Store["SQLite Store"]
-    end
+- **Features** — What the product does
+- **Decisions** — Why things are built a certain way
+- **Patterns** — Recurring architectural solutions
+- **Constraints** — Rules that must be followed
 
-    subgraph ExternalLayer["External (AI Tools)"]
-        Claude["Claude"]
-        Cursor["Cursor"]
-        Gemini["Gemini"]
-        Other["Other AI Tools"]
-    end
+### Why Does This Matter?
 
-    CLI --> Clarify
-    Dashboard --> Clarify
-    Clarify --> Plan
-    Plan --> Graph
-    Plan --> Tasks
-    Tasks --> Store
-    Graph --> Store
-
-    MCP --> Graph
-    MCP --> Tasks
-
-    Tasks -->|"Markdown Export"| Claude
-    Tasks -->|"Markdown Export"| Cursor
-    Tasks -->|"MCP Query"| Gemini
-    Tasks -->|"Spec Files"| Other
-
-    Bootstrap --> Graph
-    Validate --> Tasks
 ```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           THE PROBLEM                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   AI Coding Assistants (Claude, Cursor, Copilot) are powerful but:          │
+│                                                                             │
+│   ❌ They don't know WHY your code is structured a certain way              │
+│   ❌ They can't see architectural decisions made 6 months ago               │
+│   ❌ They suggest patterns that violate your team's conventions             │
+│   ❌ They lack context about constraints ("always use read replica")        │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                           THE SOLUTION                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   TaskWing extracts and serves this context:                                │
+│                                                                             │
+│   ✅ Analyzes docs, code, git history, and dependencies                     │
+│   ✅ Builds a knowledge graph with semantic search                          │
+│   ✅ Serves context via MCP (Model Context Protocol)                        │
+│   ✅ Verifies all findings against actual code (no hallucinations)          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### One-Line Summary
+
+> **TaskWing turns your codebase into a queryable knowledge base that AI tools can use for context.**
 
 ---
 
-## Bootstrap: The Map-Reduce Pipeline
-
-The `bootstrap` command uses a **Map-Reduce architecture** to extract knowledge from a codebase:
+## High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           BOOTSTRAP PIPELINE                            │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                    MAP PHASE (Parallel Agents)                   │   │
-│  │                                                                  │   │
-│  │   Orchestrator.RunAll() spawns goroutines:                       │   │
-│  │                                                                  │   │
-│  │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │   │
-│  │   │ DocAgent │  │CodeAgent │  │ GitAgent │  │DepsAgent │        │   │
-│  │   │          │  │          │  │          │  │          │        │   │
-│  │   │ Features │  │ Patterns │  │Decisions │  │   Deps   │        │   │
-│  │   │Constraints│ │   Risks  │  │(commits) │  │ Licenses │        │   │
-│  │   └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘        │   │
-│  │        │             │             │             │               │   │
-│  │        └─────────────┴──────┬──────┴─────────────┘               │   │
-│  │                             ▼                                    │   │
-│  │                    []Finding (raw outputs)                       │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                │                                        │
-│                                ▼                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                  REDUCE PHASE (Aggregate + Ingest)               │   │
-│  │                                                                  │   │
-│  │   AggregateFindings()                                            │   │
-│  │       └─► Combine all agent outputs into single []Finding        │   │
-│  │                                                                  │   │
-│  │   KnowledgeService.IngestFindings()                              │   │
-│  │       ├─► 1. purgeStaleData()     - Remove old agent nodes       │   │
-│  │       ├─► 2. ingestNodes()        - Dedupe + create nodes        │   │
-│  │       ├─► 3. ingestStructuredData() - Features/Decisions/etc    │   │
-│  │       └─► 4. linkKnowledgeGraph() - Create edges (semantic)      │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                │                                        │
-│                                ▼                                        │
-│                     SQLite Knowledge Graph                              │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### Agent Responsibilities
-
-| Agent | Analyzes | Extracts |
-|-------|----------|----------|
-| **DocAgent** | `*.md` files (README, docs/) | Features, **Constraints** (CRITICAL/MUST rules) |
-| **ReactCodeAgent** | Source code files | Patterns, Risks, Code structure |
-| **GitAgent** | Git history, commits | Decisions, Architecture evolution |
-| **DepsAgent** | go.mod, package.json, etc. | Dependencies, Licenses, Tech stack |
-
-### Key Design Principles
-
-1. **Agents are independent** — They don't communicate with each other during analysis
-2. **Agents are parallel** — `Orchestrator.RunAll()` uses goroutines for concurrent execution
-3. **Deduplication happens centrally** — `ingestNodes()` checks `existingByContent` map
-4. **Linking is semantic** — Nodes are connected by cosine similarity of embeddings
-
-### Code References
-
-| Component | File | Function |
-|-----------|------|----------|
-| Parallel execution | `internal/agents/orchestrator.go` | `RunAll()` |
-| Finding aggregation | `internal/agents/orchestrator.go` | `AggregateFindings()` |
-| Deduplication | `internal/knowledge/ingest.go` | `ingestNodes()` |
-| Node creation | `internal/knowledge/ingest.go` | `IngestFindings()` |
-| Graph linking | `internal/knowledge/ingest.go` | `linkKnowledgeGraph()` |
-
-
-## Information Flow
-
-When a user creates a plan, TaskWing orchestrates the following flow:
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant C as Clarifying Agent
-    participant P as Planning Agent
-    participant K as Knowledge Graph
-    participant T as Task Store
-    participant AI as AI Tool (External)
-    participant V as Validation Agent
-
-    U->>C: "Build OAuth authentication"
-    C->>U: "Which providers? JWT or sessions?"
-    U->>C: "Google + GitHub, JWT"
-    C->>P: Enriched goal with context
-
-    P->>K: Query related nodes (auth, security, decisions)
-    K-->>P: Existing context
-    P->>T: Create Plan with Tasks
-
-    Note over T: Tasks are nodes in the graph
-
-    T->>AI: Export (Markdown / MCP / Spec)
-    AI->>AI: Execute development
-
-    Note over V: File watcher detects changes
-
-    V->>K: Compare changes vs acceptance criteria
-    V->>T: Mark task complete/failed
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER INTERFACES                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                     │
+│   │   CLI (tw)  │    │ MCP Server  │    │  (Future)   │                     │
+│   │             │    │             │    │ Web Dashboard│                    │
+│   │ • bootstrap │    │ • project-  │    │             │                     │
+│   │ • context   │    │   context   │    │             │                     │
+│   │ • add/list  │    │   tool      │    │             │                     │
+│   └──────┬──────┘    └──────┬──────┘    └─────────────┘                     │
+│          │                  │                                               │
+│          └────────┬─────────┘                                               │
+│                   ▼                                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                           INTELLIGENCE LAYER                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                      ANALYSIS AGENTS                                │   │
+│   │                                                                     │   │
+│   │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐           │   │
+│   │   │ DocAgent │  │CodeAgent │  │ GitAgent │  │DepsAgent │           │   │
+│   │   │ (docs)   │  │ (code)   │  │ (commits)│  │(deps)    │           │   │
+│   │   └──────────┘  └──────────┘  └──────────┘  └──────────┘           │   │
+│   │                                                                     │   │
+│   └─────────────────────────────┬───────────────────────────────────────┘   │
+│                                 │                                           │
+│                                 ▼                                           │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                   VERIFICATION AGENT                                │   │
+│   │                                                                     │   │
+│   │   • Checks file existence        • Validates line numbers          │   │
+│   │   • Verifies code snippets       • Rejects hallucinations          │   │
+│   │                                                                     │   │
+│   └─────────────────────────────┬───────────────────────────────────────┘   │
+│                                 │                                           │
+│                                 ▼                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                            KNOWLEDGE LAYER                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                    KNOWLEDGE SERVICE                                │   │
+│   │                                                                     │   │
+│   │   • Semantic search (embeddings + FTS5)                             │   │
+│   │   • RAG answers ("tw context --answer")                             │   │
+│   │   • Graph linking (co-occurrence, semantic similarity)              │   │
+│   │                                                                     │   │
+│   └─────────────────────────────┬───────────────────────────────────────┘   │
+│                                 │                                           │
+│                                 ▼                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                            STORAGE LAYER                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                         SQLite                                      │   │
+│   │                   (Single Source of Truth)                          │   │
+│   │                                                                     │   │
+│   │   Tables: nodes, node_edges, features, decisions, patterns          │   │
+│   │   Location: .taskwing/memory/memory.db                              │   │
+│   │                                                                     │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Core Concepts
 
-### Tasks are Knowledge Nodes
+### 1. Findings
 
-Unlike traditional task managers, TaskWing tasks live in the knowledge graph:
+A **Finding** is a piece of knowledge extracted by an agent:
 
-```mermaid
-graph LR
-    subgraph KnowledgeGraph["Knowledge Graph"]
-        F1["Feature: Auth"]
-        D1["Decision: Use JWT"]
-        P1["Pattern: Middleware"]
-        T1["Task: Add OAuth"]
-        T2["Task: Token Refresh"]
-    end
+```go
+type Finding struct {
+    Type        FindingType  // decision, feature, pattern, constraint
+    Title       string       // "Use JWT for authentication"
+    Description string       // What was decided/implemented
+    Why         string       // Reasoning behind the decision
+    Tradeoffs   string       // Known tradeoffs
 
-    T1 -->|implements| F1
-    T1 -->|follows| D1
-    T2 -->|depends_on| T1
-    F1 -->|uses| P1
+    // Evidence (required for verification)
+    Evidence           []Evidence          // File:line references
+    ConfidenceScore    float64             // 0.0-1.0
+    VerificationStatus VerificationStatus  // pending, verified, rejected
+
+    SourceAgent string         // Which agent produced this
+    Metadata    map[string]any // Agent-specific data
+}
 ```
 
-This means:
-- When creating a task, the **full project context** is available
-- Tasks can link to existing features, decisions, and patterns
-- AI tools get rich context, not just task descriptions
+### 2. Evidence
 
-### Validation via File Watching
+Every finding must include **evidence** — proof from the codebase:
 
-TaskWing already monitors file changes via its watch functionality. For task validation:
+```go
+type Evidence struct {
+    FilePath    string  // "internal/auth/jwt.go"
+    StartLine   int     // 45
+    EndLine     int     // 52
+    Snippet     string  // Actual code from the file
+    GrepPattern string  // Pattern to verify snippet exists
+}
+```
 
-1. **Watch agent** detects file changes after AI execution
-2. **Validation agent** compares changes against task acceptance criteria
-3. **LLM judgment**: "Did this implementation satisfy the requirements?"
-4. Task status updated automatically
+**Why evidence matters:**
+- LLMs can hallucinate (invent files/code that don't exist)
+- Evidence enables automated verification
+- Users can click through to see the actual code
+
+### 3. Nodes
+
+Findings are stored as **Nodes** in the knowledge graph:
+
+```go
+type Node struct {
+    ID                 string    // Unique identifier
+    Type               string    // decision, feature, pattern, constraint
+    Summary            string    // Short title
+    Content            string    // Full description
+    SourceAgent        string    // Agent that created this
+
+    // Verification
+    VerificationStatus string    // pending_verification, verified, rejected
+    Evidence           string    // JSON: [{file_path, snippet, ...}]
+    ConfidenceScore    float64   // 0.0-1.0 (adjusted by verification)
+
+    // Embeddings for semantic search
+    Embedding          []float32 // Vector from OpenAI
+}
+```
+
+### 4. Verification Status
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| `pending_verification` | Not yet checked | Will be verified on ingest |
+| `verified` | All evidence confirmed | Stored with +0.1 confidence boost |
+| `partial` | Some evidence confirmed | Stored with warning |
+| `rejected` | Evidence not found | **Discarded** (not stored) |
+| `skipped` | No evidence provided | Stored with lower confidence |
+
+---
+
+## The Bootstrap Pipeline
+
+When you run `tw bootstrap`, TaskWing executes a **Map-Reduce pipeline**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         BOOTSTRAP PIPELINE                                  │
+│                                                                             │
+│  tw bootstrap                                                               │
+│       │                                                                     │
+│       ▼                                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                     PHASE 1: MAP (Parallel Analysis)                │   │
+│  │                                                                     │   │
+│  │   Each agent runs in its own goroutine:                             │   │
+│  │                                                                     │   │
+│  │   ┌──────────────────────────────────────────────────────────────┐  │   │
+│  │   │  DocAgent          │  Reads: *.md files                      │  │   │
+│  │   │                    │  Extracts: Features, Constraints        │  │   │
+│  │   │                    │  Prompt: config.PromptTemplateDocAgent  │  │   │
+│  │   ├────────────────────┼─────────────────────────────────────────┤  │   │
+│  │   │  CodeAgent         │  Reads: Entry points, handlers, configs │  │   │
+│  │   │                    │  Extracts: Patterns, Decisions          │  │   │
+│  │   │                    │  Prompt: config.PromptTemplateCodeAgent │  │   │
+│  │   ├────────────────────┼─────────────────────────────────────────┤  │   │
+│  │   │  GitAgent          │  Reads: git log, git shortlog           │  │   │
+│  │   │                    │  Extracts: Milestones, Evolution        │  │   │
+│  │   │                    │  Prompt: config.PromptTemplateGitAgent  │  │   │
+│  │   ├────────────────────┼─────────────────────────────────────────┤  │   │
+│  │   │  DepsAgent         │  Reads: go.mod, package.json            │  │   │
+│  │   │                    │  Extracts: Tech decisions, Stack        │  │   │
+│  │   │                    │  Prompt: config.PromptTemplateDepsAgent │  │   │
+│  │   └──────────────────────────────────────────────────────────────┘  │   │
+│  │                                                                     │   │
+│  │   Output: []agents.Output (one per agent)                           │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                     PHASE 2: AGGREGATE                              │   │
+│  │                                                                     │   │
+│  │   agents.AggregateFindings(outputs) → []Finding                     │   │
+│  │                                                                     │   │
+│  │   • Combines all agent outputs into single slice                    │   │
+│  │   • Each finding tagged with SourceAgent                            │   │
+│  │                                                                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                     PHASE 3: VERIFY                                 │   │
+│  │                                                                     │   │
+│  │   VerificationAgent.VerifyFindings(findings)                        │   │
+│  │                                                                     │   │
+│  │   For each finding:                                                 │   │
+│  │   1. Check if file exists at cited path                             │   │
+│  │   2. Read file content                                              │   │
+│  │   3. Check if snippet exists (exact or fuzzy match)                 │   │
+│  │   4. Validate line numbers match                                    │   │
+│  │   5. Calculate similarity score                                     │   │
+│  │   6. Set status: verified | partial | rejected                      │   │
+│  │   7. Adjust confidence score                                        │   │
+│  │                                                                     │   │
+│  │   FilterVerifiedFindings() → Reject findings that failed            │   │
+│  │                                                                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    ▼                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                     PHASE 4: INGEST                                 │   │
+│  │                                                                     │   │
+│  │   KnowledgeService.IngestFindings()                                 │   │
+│  │                                                                     │   │
+│  │   Step 1: purgeStaleData()                                          │   │
+│  │           Delete old nodes from agents being re-run                 │   │
+│  │                                                                     │   │
+│  │   Step 2: ingestNodes()                                             │   │
+│  │           • Deduplicate by content hash                             │   │
+│  │           • Generate embeddings (OpenAI API)                        │   │
+│  │           • Store verification status + evidence                    │   │
+│  │           • Insert into SQLite                                      │   │
+│  │                                                                     │   │
+│  │   Step 3: ingestStructuredData()                                    │   │
+│  │           • Create Feature records                                  │   │
+│  │           • Create Decision records (linked to features)            │   │
+│  │           • Create Pattern records                                  │   │
+│  │                                                                     │   │
+│  │   Step 4: linkKnowledgeGraph()                                      │   │
+│  │           • Co-occurrence edges (same agent → relates_to)           │   │
+│  │           • Structural edges (decision → affects → feature)         │   │
+│  │           • Semantic edges (cosine similarity > 0.7)                │   │
+│  │                                                                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                                    ▼                                        │
+│                           SQLite Knowledge Graph                            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Code Path
+
+```
+cmd/bootstrap.go
+    └── runAgentBootstrap()
+        ├── bootstrap.NewDefaultAgents()          # Create agent instances
+        ├── ui.NewBootstrapModel()                # TUI for progress
+        ├── agents.AggregateFindings()            # Combine outputs
+        └── knowledge.Service.IngestFindings()    # Store to DB
+            ├── verifyFindings()                  # Run VerificationAgent
+            ├── purgeStaleData()                  # Delete old nodes
+            ├── ingestNodes()                     # Create nodes + embeddings
+            ├── ingestStructuredData()            # Features, Decisions
+            └── linkKnowledgeGraph()              # Create edges
+```
+
+---
+
+## Evidence-Based Verification
+
+### The Problem: LLM Hallucinations
+
+LLMs can confidently claim things that aren't true:
+
+```json
+{
+  "title": "Uses Redis for session storage",
+  "evidence": [{
+    "file_path": "internal/session/redis.go",  // ← This file doesn't exist!
+    "snippet": "func NewRedisStore()..."
+  }]
+}
+```
+
+### The Solution: VerificationAgent
+
+A **deterministic** (no LLM) agent that validates evidence:
+
+```go
+// internal/agents/verification_agent.go
+
+func (v *VerificationAgent) checkEvidence(evidence Evidence) EvidenceCheckResult {
+    result := EvidenceCheckResult{}
+
+    // 1. Check file exists
+    fullPath := filepath.Join(v.basePath, evidence.FilePath)
+    if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+        result.ErrorMessage = "file not found"
+        return result
+    }
+    result.FileExists = true
+
+    // 2. Read file content
+    content, _ := os.ReadFile(fullPath)
+
+    // 3. Check if snippet exists anywhere in file
+    if containsNormalized(string(content), evidence.Snippet) {
+        result.SnippetFound = true
+    }
+
+    // 4. Check line numbers match
+    if evidence.StartLine > 0 {
+        actualContent := extractLines(string(content), evidence.StartLine, evidence.EndLine)
+        if strings.Contains(actualContent, evidence.Snippet) {
+            result.LineNumbersMatch = true
+        } else {
+            result.SimilarityScore = calculateSimilarity(actualContent, evidence.Snippet)
+        }
+    }
+
+    return result
+}
+```
+
+### Verification Flow
+
+```
+Finding with Evidence
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  For each Evidence item:            │
+│                                     │
+│  1. Does file exist?                │
+│     NO  → ErrorMessage = "not found"│
+│     YES → Continue                  │
+│                                     │
+│  2. Is snippet in file?             │
+│     YES → SnippetFound = true       │
+│     NO  → Try grep pattern          │
+│                                     │
+│  3. Do line numbers match?          │
+│     YES → LineNumbersMatch = true   │
+│     NO  → Calculate similarity      │
+│                                     │
+└─────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  Determine Overall Status:          │
+│                                     │
+│  All evidence verified → VERIFIED   │
+│  Some verified         → PARTIAL    │
+│  None verified         → REJECTED   │
+│  No evidence provided  → SKIPPED    │
+│                                     │
+└─────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  Adjust Confidence:                 │
+│                                     │
+│  VERIFIED: +0.1                     │
+│  PARTIAL:  0 to -0.1                │
+│  REJECTED: -0.3 (then discarded)    │
+│                                     │
+└─────────────────────────────────────┘
+```
+
+### Security: Path Traversal Protection
+
+```go
+// Prevent access outside project directory
+fullPath = filepath.Clean(fullPath)
+if !strings.HasPrefix(fullPath, filepath.Clean(v.basePath)) {
+    result.ErrorMessage = "path traversal detected"
+    return result
+}
+```
+
+---
+
+## Knowledge Graph
+
+### Node Types
+
+| Type | Description | Extracted By |
+|------|-------------|--------------|
+| `feature` | Product capability (what it does) | DocAgent |
+| `decision` | Architectural choice (why) | GitAgent, CodeAgent |
+| `pattern` | Recurring solution | CodeAgent |
+| `constraint` | Rule that must be followed | DocAgent |
+
+### Edge Types
+
+| Relation | Meaning | Example |
+|----------|---------|---------|
+| `depends_on` | A requires B | Auth depends_on Database |
+| `affects` | A influences B | Decision affects Feature |
+| `extends` | A adds to B | Pattern extends Feature |
+| `relates_to` | Loose association | Co-occurrence |
+| `semantically_similar` | Vector similarity > 0.7 | Auto-detected |
+
+### Graph Queries
+
+**Semantic search** (used by `tw context`):
+
+```go
+// Hybrid search: FTS5 + Vector similarity
+func (s *Service) Search(ctx context.Context, query string, limit int) ([]ScoredNode, error) {
+    // 1. FTS5 keyword search (fast, free)
+    ftsResults, _ := s.repo.SearchFTS(query, limit*2)
+
+    // 2. Vector similarity search (requires embedding)
+    queryEmbedding, _ := GenerateEmbedding(ctx, query, s.llmCfg)
+    nodes, _ := s.repo.ListNodesWithEmbeddings()
+    for _, n := range nodes {
+        similarity := CosineSimilarity(queryEmbedding, n.Embedding)
+        if similarity > threshold {
+            // Add to results
+        }
+    }
+
+    // 3. Merge and rank by combined score
+    return mergedResults, nil
+}
+```
 
 ---
 
 ## Package Structure
 
 ```
-internal/
-├── task/             # Plans, Tasks, and execution
-│   ├── models.go     # Task, Plan, TaskStatus
-│   ├── store.go      # SQLite persistence
-│   └── exporter.go   # Markdown/spec export
-├── agents/           # LLM-powered agents
-│   ├── clarifying_agent.go   # Asks clarifying questions
-│   ├── planning_agent.go     # Decomposes goals into tasks
-│   ├── validation_agent.go   # Verifies task completion
-│   ├── doc_agent.go          # Documentation analysis
-│   ├── react_code_agent.go   # Code pattern detection
-│   └── git_deps_agent.go     # Git + dependency analysis
-├── knowledge/        # Vector search, embeddings, RAG
-├── memory/           # SQLite store + Markdown sync
-├── server/           # HTTP API
-└── llm/              # Multi-provider (OpenAI, Ollama)
-
-cmd/
-├── root.go
-├── plan.go           # tw plan new/list/export
-├── task.go           # tw task list/validate
-├── bootstrap.go      # tw bootstrap
-├── context.go        # tw context "query"
-└── mcp_server.go     # tw mcp
+taskWing-cli/
+├── cmd/                          # CLI commands (Cobra)
+│   ├── root.go                   # Base command, global flags
+│   ├── bootstrap.go              # tw bootstrap
+│   ├── context.go                # tw context "query"
+│   ├── add.go                    # tw add "knowledge"
+│   ├── list.go                   # tw list [--type X]
+│   ├── plan.go                   # tw plan new/list/export
+│   ├── start.go                  # tw start (watch mode)
+│   └── mcp_server.go             # tw mcp (MCP server)
+│
+├── internal/
+│   ├── agents/                   # LLM-powered analysis agents
+│   │   ├── agent.go              # Finding, Output types
+│   │   ├── base_agent.go         # BaseAgent with Generate()
+│   │   ├── evidence.go           # Evidence, VerificationStatus types
+│   │   ├── verification_agent.go # Deterministic evidence checker
+│   │   ├── doc_agent.go          # Analyzes *.md files
+│   │   ├── analysis/code.go      # ReactAgent (interactive exploration)
+│   │   ├── git_deps_agent.go     # Git history + dependencies
+│   │   ├── watch_agent.go        # File change detection
+│   │   ├── context_gatherer.go   # File reading utilities
+│   │   └── tools/eino.go         # Tools for ReactAgent
+│   │
+│   ├── knowledge/                # Semantic search + RAG
+│   │   ├── service.go            # KnowledgeService (search, ask)
+│   │   ├── ingest.go             # IngestFindings pipeline
+│   │   ├── embed.go              # GenerateEmbedding()
+│   │   ├── classify.go           # AI classification
+│   │   └── config.go             # Thresholds and weights
+│   │
+│   ├── memory/                   # Storage layer
+│   │   ├── models.go             # Node, Feature, Decision types
+│   │   ├── sqlite.go             # SQLite implementation
+│   │   └── repository.go         # Repository interface
+│   │
+│   ├── llm/                      # Multi-provider LLM client
+│   │   └── client.go             # NewChatModel (OpenAI, Ollama)
+│   │
+│   ├── config/                   # Configuration
+│   │   └── prompts.go            # All agent prompts (single source)
+│   │
+│   ├── bootstrap/                # Bootstrap orchestration
+│   │   └── agents.go             # NewDefaultAgents()
+│   │
+│   └── ui/                       # Terminal UI (Bubble Tea)
+│       ├── bootstrap_model.go    # Progress display
+│       └── dashboard.go          # Results rendering
+│
+├── docs/                         # Documentation
+│   ├── ARCHITECTURE.md           # This file
+│   ├── DATA_MODEL.md             # Schema details
+│   ├── ROADMAP.md                # Version planning
+│   └── BOOTSTRAP.md              # Bootstrap internals
+│
+└── .taskwing/                    # Project data (created by tw)
+    └── memory/
+        ├── memory.db             # SQLite database
+        ├── index.json            # Cache (regenerated)
+        └── features/*.md         # Generated markdown
 ```
 
 ---
 
-## Storage
+## Data Flow Examples
 
-**SQLite is the source of truth.** Markdown files are human-readable snapshots.
+### Example 1: Bootstrap
 
-```mermaid
-erDiagram
-    plans ||--o{ tasks : contains
-    tasks ||--o{ task_dependencies : has
-    tasks ||--o{ task_node_links : links_to
-    plans ||--o{ plan_clarifications : has
+```
+User runs: tw bootstrap
 
-    plans {
-        string id PK
-        string goal
-        string enriched_goal
-        string status
-        datetime created_at
-    }
+1. cmd/bootstrap.go:runAgentBootstrap()
+2. Creates agents: DocAgent, CodeAgent, GitAgent, DepsAgent
+3. TUI shows progress as agents run in parallel
+4. Each agent calls LLM with prompts from config/prompts.go
+5. LLM returns JSON with findings + evidence
+6. Agents parse JSON into []Finding
+7. AggregateFindings() combines all agent outputs
+8. VerificationAgent checks each finding's evidence
+9. Rejected findings are filtered out
+10. IngestFindings() stores verified findings
+11. Embeddings generated for semantic search
+12. Graph edges created based on similarity
+13. SQLite now contains queryable knowledge
+```
 
-    tasks {
-        string id PK
-        string plan_id FK
-        string title
-        string description
-        json acceptance_criteria
-        json validation_steps
-        string status
-        int priority
-        string assigned_agent
-    }
+### Example 2: Context Query
 
-    task_node_links {
-        string task_id FK
-        string node_id
-        string link_type
-    }
+```
+User runs: tw context "authentication"
 
-    plan_clarifications {
-        int id PK
-        string plan_id FK
-        string question
-        string answer
-    }
+1. cmd/context.go handles command
+2. knowledge.Service.Search() called
+3. FTS5 search: "authentication" → keyword matches
+4. Embedding generated for query
+5. Vector similarity calculated against all nodes
+6. Results merged, ranked by combined score
+7. Top N results returned
+8. If --answer flag: RAG prompt sent to LLM
+9. LLM generates answer using retrieved context
+```
+
+### Example 3: MCP Query
+
+```
+AI tool queries: project-context tool
+
+1. internal/server/mcp.go handles request
+2. Query embedded + searched
+3. Top results formatted as context
+4. Returned to AI tool (Claude, Cursor, etc.)
+5. AI uses context for better responses
 ```
 
 ---
 
-## AI Tool Integration
+## Extension Points
 
-TaskWing feeds AI tools—it doesn't control them.
+### Adding a New Agent
 
-### Export Options
+1. Create `internal/agents/my_agent.go`:
 
-| Method | Use Case | Status |
-|--------|----------|--------|
-| **Markdown Export** | Copy/paste into any AI tool | ✅ POC |
-| **MCP Server** | AI tools query TaskWing directly | 🚧 Planned |
-| **Spec Files** | Store specs in repo (`.taskwing/specs/`) | 🚧 Planned |
+```go
+type MyAgent struct {
+    BaseAgent
+}
 
-### Markdown Export Format
+func NewMyAgent(cfg llm.Config) *MyAgent {
+    return &MyAgent{
+        BaseAgent: NewBaseAgent("my_agent", "Description", cfg),
+    }
+}
 
-```markdown
-# Task: Implement OAuth Callback Handler
+func (a *MyAgent) Run(ctx context.Context, input Input) (Output, error) {
+    // 1. Gather context
+    content := gatherMyContent(input.BasePath)
 
-**Status:** pending
-**Priority:** High
-**Depends On:** task-001 (OAuth Config)
+    // 2. Build prompt
+    prompt := fmt.Sprintf(config.PromptTemplateMyAgent, content)
 
-## Context
-This task implements the callback handler for OAuth flow.
-Related to: Feature:Auth, Decision:JWT-over-sessions
+    // 3. Call LLM
+    rawOutput, err := a.Generate(ctx, []*schema.Message{
+        schema.UserMessage(prompt),
+    })
 
-## Acceptance Criteria
-- [ ] Handle callback from Google OAuth
-- [ ] Exchange code for tokens
-- [ ] Create/update user record
-- [ ] Set JWT cookie
+    // 4. Parse response
+    findings, err := a.parseResponse(rawOutput)
 
-## Validation
-```bash
-go test ./internal/auth/...
+    // 5. Return output
+    return BuildOutput(a.Name(), findings, rawOutput, time.Since(start)), nil
+}
 ```
 
-## Related Knowledge
-- **Decision:** We use JWT over sessions for stateless auth
-- **Pattern:** All auth middleware in `internal/middleware/`
+2. Add prompt to `internal/config/prompts.go`
+3. Register in `internal/bootstrap/agents.go`
+
+### Adding a New Finding Type
+
+1. Add to `internal/agents/agent.go`:
+
+```go
+const (
+    FindingTypeDecision   FindingType = "decision"
+    FindingTypeFeature    FindingType = "feature"
+    FindingTypePattern    FindingType = "pattern"
+    FindingTypeConstraint FindingType = "constraint"
+    FindingTypeMyType     FindingType = "my_type"  // New
+)
 ```
 
----
+2. Handle in `internal/knowledge/ingest.go`:
 
-## CLI Commands
-
-### Planning
-
-```bash
-tw plan new "Build OAuth authentication"   # Start clarifying flow
-tw plan list                                # Show all plans
-tw plan show <plan-id>                      # Show plan with tasks
-tw plan export <plan-id>                    # Export as markdown
-```
-
-### Tasks
-
-```bash
-tw task list [--plan-id <id>]     # List tasks (optionally filtered)
-tw task show <task-id>            # Show task details + context
-tw task validate <task-id>        # Run validation agent
-```
-
-### Knowledge
-
-```bash
-tw bootstrap                      # Auto-extract knowledge from repo
-tw context "error handling"       # Semantic search
-tw add "We use Redis for caching" # Add knowledge manually
+```go
+case agents.FindingTypeMyType:
+    // Custom ingestion logic
 ```
 
 ---
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| CLI | Go 1.24 + Cobra |
-| Storage | SQLite (`modernc.org/sqlite`) |
-| LLM | CloudWeGo Eino (OpenAI, Ollama) |
-| Embeddings | OpenAI text-embedding-3-small |
-| MCP | `mcp-go-sdk` |
-| Web Dashboard | Vite + React + TypeScript + Tailwind v4 |
+| Component | Technology | Why |
+|-----------|------------|-----|
+| Language | Go 1.24 | Fast, single binary, great concurrency |
+| CLI Framework | Cobra | Industry standard, great UX |
+| Storage | SQLite (modernc.org/sqlite) | Zero dependencies, embedded, fast |
+| LLM Client | CloudWeGo Eino | Multi-provider, tool support |
+| Embeddings | OpenAI text-embedding-3-small | Best quality/cost ratio |
+| MCP | mcp-go-sdk | Standard for AI tool integration |
+| TUI | Bubble Tea | Beautiful terminal UIs |
 
 ---
 
@@ -394,7 +696,8 @@ tw add "We use Redis for caching" # Add knowledge manually
 
 | Document | Purpose |
 |----------|---------|
-| [ROADMAP.md](./ROADMAP.md) | Version planning |
-| [DATA_MODEL.md](./DATA_MODEL.md) | Storage schema details |
-| [BOOTSTRAP.md](./BOOTSTRAP.md) | Bootstrap scanner internals |
-| [MCP.md](./MCP.md) | MCP integration guide |
+| [DATA_MODEL.md](./DATA_MODEL.md) | Database schema, node types, verification |
+| [ROADMAP.md](./ROADMAP.md) | Version planning, upcoming features |
+| [BOOTSTRAP.md](./BOOTSTRAP.md) | Bootstrap scanner details |
+| [GETTING_STARTED.md](./GETTING_STARTED.md) | User guide |
+| [MCP_INTEGRATION.md](./MCP_INTEGRATION.md) | MCP server setup |

@@ -19,6 +19,8 @@ Empty memory = useless AI context. Manual entry = too much friction.
 taskwing bootstrap                   # Execute (LLM-powered if OPENAI_API_KEY set)
 taskwing bootstrap --preview         # Preview without saving
 taskwing bootstrap --preview --json  # Machine-readable output
+taskwing bootstrap --trace           # JSON event stream to file (.taskwing/logs/...)
+taskwing bootstrap --trace --trace-stdout  # JSON event stream to stderr
 
 taskwing bootstrap --basic           # Execute heuristic scan only (no LLM calls)
 taskwing bootstrap --basic --preview # Preview heuristic scan only
@@ -42,15 +44,6 @@ Writes to `.taskwing/memory/`.
 | Config files | .env.example, vite.config.ts, Makefile, tsconfig.json |
 | Import statements | Go internal package dependency graph |
 
-## Data Sources (Planned)
-
-| Source | What We Extract |
-|--------|-----------------|
-| Git tags | Releases, versions |
-| `CHANGELOG.md` | Timeline, features |
-| ADR files (`docs/decisions/`) | Architecture decisions |
-
----
 
 ## LLM Provider Configuration
 
@@ -132,6 +125,26 @@ $ taskwing bootstrap --preview
 💡 This was a preview. Run 'taskwing bootstrap' to save to memory.
 ```
 
+---
+
+## Observability
+
+TaskWing streams agent execution events into the Bootstrap TUI.
+
+**Modes:**
+- **Compact (default):** Per-agent status with current activity.
+- **Details (toggle `t`):** Shows the last ~12 events for the selected agent.
+- **Cycle agent (tab):** Switch the details pane between agents.
+- **Trace (`--trace`):** Writes JSON event stream to `.taskwing/logs/bootstrap.trace.jsonl`.
+- **Trace to stderr (`--trace-stdout`):** Emits JSON events to stderr (can interleave with TUI).
+
+**Event fields (trace JSON):**
+- `type` — event type (`agent_start`, `node_start`, `tool_call`, etc.)
+- `timestamp` — RFC3339 timestamp
+- `agent` — agent name
+- `content` — human-friendly summary
+- `metadata` — structured info (node type, tool args, durations)
+
 ### Bootstrap Summary
 
 ```
@@ -153,28 +166,10 @@ src/modules/payments/   → Feature: Payments
 packages/api/           → Feature: API
 ```
 
-### From Imports
-
-> **Planned (not yet implemented in v2.0).**
-
-```go
-import "app/auth"  // in users/service.go
-// → Users depends_on Auth
-```
 
 ---
 
 ## Decision Extraction
-
-### From ADR Files
-
-> **Planned (not yet implemented in v2.0).**
-
-```
-docs/decisions/001-jwt-auth.md
-```
-
-Parsed into decision memory.
 
 ### From Conventional Commits (Subject Line)
 
@@ -256,4 +251,4 @@ git add .taskwing/memory/memory.db
 taskwing bootstrap
 ```
 
-`taskwing sync` (markdown → SQLite) is planned but not implemented in v2.0.
+For future/roadmap items, see ROADMAP.md.

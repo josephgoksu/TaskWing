@@ -14,6 +14,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -43,6 +44,7 @@ var memoryResetCmd = &cobra.Command{
 This action is irreversible. It will delete all nodes, edges, features,
 and decisions from the current project's memory store.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.RenderPageHeader("TaskWing Memory Reset", "Wiping all project context")
 		force, _ := cmd.Flags().GetBool("force")
 		if !force {
 			fmt.Print("⚠️  This will delete ALL project memory. Are you sure? [y/N]: ")
@@ -203,6 +205,7 @@ Requires OPENAI_API_KEY to be set. Useful after:
   • Running bootstrap without API key
   • Adding nodes with --skip-ai`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.RenderPageHeader("TaskWing Embeddings", "Generating missing vectors")
 		apiKey := viper.GetString("llm.apiKey")
 		if apiKey == "" {
 			apiKey = os.Getenv("OPENAI_API_KEY")

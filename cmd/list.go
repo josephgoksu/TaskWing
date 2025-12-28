@@ -4,14 +4,10 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 
-	"github.com/josephgoksu/TaskWing/internal/config"
-	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // listCmd represents the list command
@@ -38,7 +34,7 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+	repo, err := openRepo()
 	if err != nil {
 		return fmt.Errorf("open memory repo: %w", err)
 	}
@@ -54,10 +50,8 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("list nodes: %w", err)
 	}
 
-	if viper.GetBool("json") {
-		output, _ := json.MarshalIndent(nodes, "", "  ")
-		cmd.Println(string(output))
-		return nil
+	if isJSON() {
+		return printJSON(nodes)
 	}
 
 	if len(nodes) == 0 {

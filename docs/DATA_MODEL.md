@@ -109,7 +109,12 @@ CREATE TABLE nodes (
     summary TEXT,                       -- AI-extracted title/summary
     source_agent TEXT DEFAULT '',       -- Agent that created this node (doc, code, git, deps)
     embedding BLOB,                     -- Vector for similarity search
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    -- Evidence-Based Verification fields (v2.1+)
+    verification_status TEXT DEFAULT 'pending_verification',  -- pending_verification, verified, partial, rejected, skipped
+    evidence TEXT,                      -- JSON: [{file_path, start_line, end_line, snippet, grep_pattern}]
+    verification_result TEXT,           -- JSON: {status, evidence_results, confidence_adjustment, verified_at, verifier_version}
+    confidence_score REAL DEFAULT 0.5   -- Numeric confidence 0.0-1.0
 );
 
 CREATE TABLE node_edges (
@@ -339,6 +344,77 @@ func (s *Store) Check() ([]Issue, error) {
     return issues, nil
 }
 ```
+
+---
+
+## Evidence-Based Verification (v2.1+)
+
+All findings from agents must include **evidence** — file paths, line numbers, and code snippets that support each claim. This prevents LLM hallucinations and enables automated verification.
+
+### Evidence Structure
+
+```json
+{
+  "file_path": "internal/api/handler.go",
+  "start_line": 45,
+  "end_line": 52,
+  "snippet": "func NewHandler(db *sql.DB) *Handler {\n    return &Handler{db: db}\n}",
+  "grep_pattern": "func NewHandler"
+}
+```
+
+### Verification Status
+
+| Status | Meaning |
+|--------|---------|
+| `pending_verification` | Finding not yet verified |
+| `verified` | All evidence confirmed |
+| `partial` | Some evidence confirmed |
+| `rejected` | Evidence could not be confirmed (finding discarded) |
+| `skipped` | No evidence to verify |
+
+### Confidence Scores
+
+Confidence is a numeric value between 0.0 and 1.0:
+
+| Range | Label | Meaning |
+|-------|-------|---------|
+| 0.9-1.0 | High | Direct evidence (exact code match) |
+| 0.7-0.89 | Medium-High | Strong inference (pattern clearly visible) |
+| 0.5-0.69 | Medium | Reasonable inference (based on conventions) |
+| Below 0.5 | Low | Weak inference (speculation — avoid) |
+
+### Verification Pipeline
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                     VERIFICATION PIPELINE                            │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   Agent Output   →   VerificationAgent   →   Filtered Findings       │
+│   (with evidence)    (deterministic)         (verified only)         │
+│                                                                      │
+│   Checks performed per evidence item:                                │
+│   1. FileExists: Does the file exist at the cited path?              │
+│   2. SnippetFound: Is the snippet present anywhere in the file?      │
+│   3. LineNumbersMatch: Does content at specified lines match?        │
+│   4. SimilarityScore: Fuzzy match fallback (Jaccard similarity)      │
+│                                                                      │
+│   Confidence Adjustment:                                             │
+│   • Verified: +0.1                                                   │
+│   • Partial: 0 to -0.1                                               │
+│   • Rejected: -0.3                                                   │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Future: Semantic LLM Verification
+
+After deterministic verification, a future phase will add **semantic verification** using an LLM to:
+- Validate that the snippet actually supports the claimed decision
+- Check if the reasoning makes sense given the code context
+- Detect outdated evidence (code changed but finding not updated)
+
+This is planned for v2.2+ and documented in [ROADMAP.md](./ROADMAP.md).
 
 ---
 

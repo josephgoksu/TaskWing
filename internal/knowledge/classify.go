@@ -5,12 +5,12 @@ package knowledge
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/utils"
@@ -71,52 +71,13 @@ func Classify(ctx context.Context, content string, cfg llm.Config) (*ClassifyRes
 }
 
 func buildClassifyPrompt(content string) string {
-	return fmt.Sprintf(`Classify this text and extract key information.
-
-TEXT:
-%s
-
-Respond in JSON format only:
-{
-  "type": "decision|feature|plan|note",
-  "summary": "Brief 1-line summary (max 100 chars)",
-  "relations": ["topic1", "topic2"]
-}
-
-CLASSIFICATION RULES:
-- "decision": Explains WHY something was chosen, trade-offs, architectural choices
-- "feature": Describes WHAT a component/capability does
-- "plan": Future work, TODOs, proposed changes
-- "note": General information, documentation, context
-
-JSON ONLY, no explanation:`, content)
+	return fmt.Sprintf(config.PromptTemplateClassify, content)
 }
 
 func parseClassifyResponse(response string) (*ClassifyResult, error) {
-	// Try to extract JSON from response
-	response = strings.TrimSpace(response)
-
-	// Handle markdown code blocks
-	if strings.HasPrefix(response, "```json") {
-		response = strings.TrimPrefix(response, "```json")
-		response = strings.TrimSuffix(response, "```")
-		response = strings.TrimSpace(response)
-	} else if strings.HasPrefix(response, "```") {
-		response = strings.TrimPrefix(response, "```")
-		response = strings.TrimSuffix(response, "```")
-		response = strings.TrimSpace(response)
-	}
-
-	// Find JSON object
-	start := strings.Index(response, "{")
-	end := strings.LastIndex(response, "}")
-	if start >= 0 && end > start {
-		response = response[start : end+1]
-	}
-
-	var result ClassifyResult
-	if err := json.Unmarshal([]byte(response), &result); err != nil {
-		return nil, fmt.Errorf("parse JSON: %w", err)
+	result, err := utils.ExtractAndParseJSON[ClassifyResult](response)
+	if err != nil {
+		return nil, err
 	}
 
 	// Validate type

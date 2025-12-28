@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -45,6 +46,7 @@ type Repository interface {
 type Service struct {
 	repo             Repository
 	llmCfg           llm.Config
+	basePath         string // Project base path for verification
 	chatModelFactory func(ctx context.Context, cfg llm.Config) (model.BaseChatModel, error)
 }
 
@@ -63,6 +65,12 @@ func NewService(repo Repository, cfg llm.Config) *Service {
 		llmCfg:           cfg,
 		chatModelFactory: llm.NewChatModel,
 	}
+}
+
+// SetBasePath sets the project base path for verification.
+// This should be called before IngestFindings if verification is desired.
+func (s *Service) SetBasePath(basePath string) {
+	s.basePath = basePath
 }
 
 // ScoredNode represents a search result with visual relevance score
@@ -248,4 +256,52 @@ func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, e
 	}
 
 	return node, nil
+}
+
+// SuggestContextQueries runs a lightweight LLM call to strategize what knowledge is needed.
+func (s *Service) SuggestContextQueries(ctx context.Context, goal string) ([]string, error) {
+	prompt := fmt.Sprintf(`You are a Research Specialist.
+Your goal is to retrieve the most relevant architectural context to help an agent achieve: "%s".
+
+Generate a JSON list of 3-5 short, natural language search phrases.
+DO NOT use boolean operators like AND, OR, NOT.
+DO NOT key-value pairs or file paths.
+Just simple concepts.
+
+Focus on:
+1. Technology Stack (e.g. "Technology Stack", "Framework Decision")
+2. Relevant Architectural Patterns (e.g. "Error Handling", "Auth Pattern")
+3. Domain Knowledge (e.g. "User Model", "Pricing Logic")
+
+Return JSON ONLY: ["concept 1", "concept 2"]`, goal)
+
+	chatModel, err := s.chatModelFactory(ctx, s.llmCfg)
+	if err != nil {
+		return nil, fmt.Errorf("create chat model: %w", err)
+	}
+
+	messages := []*schema.Message{
+		schema.UserMessage(prompt),
+	}
+
+	// We expect a small JSON list
+	resp, err := chatModel.Generate(ctx, messages)
+	if err != nil {
+		return nil, fmt.Errorf("generate queries: %w", err)
+	}
+
+	// Simple cleaning of markdown code blocks if present
+	content := resp.Content
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	var queries []string
+	if err := json.Unmarshal([]byte(content), &queries); err != nil {
+		// Fallback: just return the goal + tech stack if parsing fails
+		return []string{goal, "Technology Stack and Architecture"}, nil
+	}
+
+	return queries, nil
 }

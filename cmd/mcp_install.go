@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -62,7 +63,8 @@ Examples:
 		if globalInstall || target == "claude" {
 			installType = "global"
 		}
-		fmt.Printf("Installing TaskWing MCP for %s (%s)...\n", target, installType)
+
+		ui.RenderPageHeader("TaskWing MCP Install", fmt.Sprintf("Configuring for %s (%s)", target, installType))
 		fmt.Printf("Binary: %s\n", binPath)
 		fmt.Printf("Project: %s\n", cwd)
 
@@ -111,23 +113,18 @@ type MCPConfig struct {
 	MCPServers map[string]MCPServerConfig `json:"mcpServers"`
 }
 
-func installLocalMCP(projectDir, configDirName, configFileName, binPath string) {
-	configDir := filepath.Join(projectDir, configDirName)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		fmt.Printf("❌ Failed to create %s directory: %v\n", configDirName, err)
-		return
+// upsertMCPServer reads an MCP config file, adds/updates the server, and writes it back.
+// This is the SINGLE implementation for all MCP config operations.
+func upsertMCPServer(configPath, serverName string, serverCfg MCPServerConfig) error {
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return fmt.Errorf("create directory: %w", err)
 	}
 
-	configFile := filepath.Join(configDir, configFileName)
-
-	// Check if file exists to avoid overwriting other servers (though unlikely in a pure .cursor/mcp.json)
-	// For Cursor/Windsurf, it's usually safe to read/modify.
-
+	// Read existing config or create empty
 	var config MCPConfig
-	if content, err := os.ReadFile(configFile); err == nil {
+	if content, err := os.ReadFile(configPath); err == nil {
 		if err := json.Unmarshal(content, &config); err != nil {
-			// If invalid JSON, start fresh but warn
-			fmt.Printf("⚠️  Existing %s/%s was invalid, creating new one.\n", configDirName, configFileName)
 			config.MCPServers = make(map[string]MCPServerConfig)
 		}
 	} else {
@@ -138,13 +135,40 @@ func installLocalMCP(projectDir, configDirName, configFileName, binPath string) 
 		config.MCPServers = make(map[string]MCPServerConfig)
 	}
 
-	config.MCPServers["taskwing"] = MCPServerConfig{
-		Command: binPath,
-		Args:    []string{"mcp"},
+	// Upsert server
+	config.MCPServers[serverName] = serverCfg
+
+	// Write back
+	return writeJSONFile(configPath, config)
+}
+
+// writeJSONFile writes data to a file as indented JSON.
+func writeJSONFile(path string, data interface{}) error {
+	if viper.GetBool("preview") {
+		fmt.Printf("[PREVIEW] Would write JSON to %s\n", path)
+		return nil
 	}
 
-	writeJSON(configFile, config)
-	fmt.Printf("✅ Installed for %s in %s\n", strings.TrimPrefix(configDirName, "."), configFile)
+	bytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+
+	return os.WriteFile(path, bytes, 0644)
+}
+
+func installLocalMCP(projectDir, configDirName, configFileName, binPath string) {
+	configPath := filepath.Join(projectDir, configDirName, configFileName)
+
+	err := upsertMCPServer(configPath, "taskwing", MCPServerConfig{
+		Command: binPath,
+		Args:    []string{"mcp"},
+	})
+	if err != nil {
+		fmt.Printf("❌ Failed to install for %s: %v\n", configDirName, err)
+		return
+	}
+	fmt.Printf("✅ Installed for %s in %s\n", strings.TrimPrefix(configDirName, "."), configPath)
 }
 
 func installGlobalMCP(app string, binPath, projectDir string) {
@@ -208,32 +232,18 @@ func installClaudeDesktop(binPath, projectDir string) {
 
 	fmt.Println("👉 Configuring Claude Desktop App...")
 
-	var config MCPConfig
-	// Read existing config or create new
-	if content, err := os.ReadFile(configPath); err == nil {
-		if err := json.Unmarshal(content, &config); err != nil {
-			fmt.Printf("⚠️  Existing Claude Desktop config was invalid json, skipping integration.\n")
-			return
-		}
-	} else {
-		config.MCPServers = make(map[string]MCPServerConfig)
-	}
-
-	if config.MCPServers == nil {
-		config.MCPServers = make(map[string]MCPServerConfig)
-	}
-
 	projectName := filepath.Base(projectDir)
 	serverName := fmt.Sprintf("taskwing-%s", projectName)
 
-	// Update configuration
-	config.MCPServers[serverName] = MCPServerConfig{
+	err = upsertMCPServer(configPath, serverName, MCPServerConfig{
 		Command: binPath,
 		Args:    []string{"mcp"},
-		Env:     map[string]string{}, // Claude desktop might need empty env to not inherit messy envs
+		Env:     map[string]string{},
+	})
+	if err != nil {
+		fmt.Printf("⚠️  Failed to configure Claude Desktop: %v\n", err)
+		return
 	}
-
-	writeJSON(configPath, config)
 	fmt.Printf("✅ Installed for Claude Desktop as '%s' in %s\n", serverName, configPath)
 	fmt.Println("   (You may need to restart Claude Desktop to see the changes)")
 }
@@ -245,57 +255,18 @@ func installGeminiGlobal(binPath, projectDir string) {
 		return
 	}
 
-	configFile := filepath.Join(home, ".gemini", "settings.json")
-
-	// Ensure dir exists
-	configDir := filepath.Dir(configFile)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		fmt.Printf("❌ Failed to create config directory for gemini: %v\n", err)
-		return
-	}
-
-	var config MCPConfig
-
-	// Read existing
-	if content, err := os.ReadFile(configFile); err == nil {
-		if err := json.Unmarshal(content, &config); err != nil {
-			fmt.Printf("❌ Failed to parse existing gemini config. Please add manually.\n")
-			return
-		}
-	} else {
-		config.MCPServers = make(map[string]MCPServerConfig)
-	}
-
-	if config.MCPServers == nil {
-		config.MCPServers = make(map[string]MCPServerConfig)
-	}
-
+	configPath := filepath.Join(home, ".gemini", "settings.json")
 	projectName := filepath.Base(projectDir)
 	serverName := fmt.Sprintf("taskwing-%s", projectName)
 
-	config.MCPServers[serverName] = MCPServerConfig{
+	err = upsertMCPServer(configPath, serverName, MCPServerConfig{
 		Command: binPath,
 		Args:    []string{"mcp"},
 		Cwd:     projectDir,
-	}
-
-	writeJSON(configFile, config)
-	fmt.Printf("✅ Installed for gemini as '%s' in %s\n", serverName, configFile)
-}
-
-func writeJSON(path string, data interface{}) {
-	if viper.GetBool("preview") {
-		fmt.Printf("[PREVIEW] Would write JSON to %s\n", path)
-		return
-	}
-
-	bytes, err := json.MarshalIndent(data, "", "  ")
+	})
 	if err != nil {
-		fmt.Printf("❌ Failed to marshal JSON: %v\n", err)
+		fmt.Printf("❌ Failed to install for gemini: %v\n", err)
 		return
 	}
-
-	if err := os.WriteFile(path, bytes, 0644); err != nil {
-		fmt.Printf("❌ Failed to write config file: %v\n", err)
-	}
+	fmt.Printf("✅ Installed for gemini as '%s' in %s\n", serverName, configPath)
 }

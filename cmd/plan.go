@@ -1,16 +1,20 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/agents"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
+	"github.com/josephgoksu/TaskWing/internal/agents/planning"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
-	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
@@ -20,7 +24,23 @@ import (
 var planCmd = &cobra.Command{
 	Use:   "plan",
 	Short: "Manage development plans",
-	Long:  `Create, view, and export development plans using AI agents.`,
+	Long: `Create, view, and export development plans using AI agents.
+
+Examples:
+  # Create a new plan interactively
+  tw plan new "Add OAuth2 authentication"
+
+  # List all existing plans
+  tw plan list
+
+  # Export the most recent plan to a file
+  tw plan export latest
+
+  # Export a specific plan to a custom path
+  tw plan export plan-123456 -o auth-plan.md
+
+  # Export plan to stdout for piping
+  tw plan export latest --stdout | pbcopy`,
 }
 
 var planNewCmd = &cobra.Command{
@@ -36,171 +56,73 @@ var planNewCmd = &cobra.Command{
 			return fmt.Errorf("llm config: %w", err)
 		}
 
-		repo, err := memory.NewDefaultRepository(viper.GetString("memory.path"))
+		repo, err := openRepo()
 		if err != nil {
 			return fmt.Errorf("open repo: %w", err)
 		}
 		defer repo.Close()
 
-		fmt.Printf("\n🤖 I'll help you plan: \"%s\"\n\n", goal)
-
-		// 1. Clarification Loop
-		clarifyingAgent := agents.NewClarifyingAgent(cfg)
-		history := ""
-		enrichedGoal := goal
-
-		for i := 0; i < 3; i++ { // Max 3 turns
-			fmt.Print("   Thinking...\r")
-			out, err := clarifyingAgent.Run(ctx, agents.Input{
-				ExistingContext: map[string]any{
-					"goal":    goal,
-					"history": history,
-				},
-				Verbose: false,
-			})
-			if err != nil {
-				return err
-			}
-
-			// Extract metadata (should be safe as we built it)
-			if len(out.Findings) == 0 {
-				return fmt.Errorf("agent returned no findings")
-			}
-			finding := out.Findings[0]
-			meta := finding.Metadata
-			isReady, _ := meta["is_ready_to_plan"].(bool)
-			if val, ok := meta["enriched_goal"].(string); ok && val != "" {
-				enrichedGoal = val
-			}
-			questions, _ := meta["questions"].([]interface{})
-
-			if isReady {
-				fmt.Println("✅ Goal is clear!")
-				break
-			}
-
-			if len(questions) > 0 {
-				fmt.Println("❓ Please clarify:")
-				for _, q := range questions {
-					fmt.Printf("   - %s\n", q)
-				}
-				fmt.Print("\n> ")
-
-				reader := bufio.NewReader(os.Stdin)
-				answer, _ := reader.ReadString('\n')
-				answer = strings.TrimSpace(answer)
-
-				history += fmt.Sprintf("Q: %v\nA: %s\n", questions, answer)
-				fmt.Println()
-			} else {
-				break
-			}
-		}
-
-		// 2. Planning
-
-		// Start spinner for planning phase
-		s := ui.NewSpinner(fmt.Sprintf("Creating implementation plan for: %s", enrichedGoal))
-		s.Start()
-
-		planningAgent := agents.NewPlanningAgent(cfg)
-
-		// RAG: Retrieve relevant context from Knowledge Graph
+		// Initialize Agents
+		clarifyingAgent := planning.NewClarifyingAgent(cfg)
+		planningAgent := planning.NewPlanningAgent(cfg)
 		ks := knowledge.NewService(repo, cfg)
 
-		// Search for context using the enriched goal
-		// We use a generous limit (5) to give the agent options
-		scoredNodes, err := ks.Search(ctx, enrichedGoal, 5)
+		// Create Streaming Output for "The Pulse"
+		stream := core.NewStreamingOutput(100)
+		defer stream.Close()
 
-		// Format context for the agent
-		var kgContext string
+		// Initialize TUI Model
+		model := ui.NewPlanModel(
+			ctx,
+			goal,
+			clarifyingAgent,
+			planningAgent,
+			ks,
+			repo,
+			stream,
+		)
+
+		// Run TUI
+		p := tea.NewProgram(model)
+		finalModel, err := p.Run()
 		if err != nil {
-			// Don't fail the whole command if search fails, just warn (maybe log if verbose)
-			kgContext = "Note: Context search unavailable."
-		} else if len(scoredNodes) > 0 {
-			var sb strings.Builder
-			sb.WriteString("RELEVANT ARCHITECTURAL CONTEXT:\n")
-			for _, node := range scoredNodes {
-				// Include title/summary and content
-				title := node.Node.Summary
-				if title == "" {
-					title = "Snippet"
+			return fmt.Errorf("tui error: %w", err)
+		}
+
+		// Check result
+		m, ok := finalModel.(ui.PlanModel)
+		if !ok {
+			return fmt.Errorf("internal error: invalid model type")
+		}
+
+		if m.State == ui.StateError {
+			return m.Err
+		}
+
+		if m.State == ui.StateSuccess && m.PlanID != "" {
+			// Fetch and print final plan
+			createdPlan, err := repo.GetPlan(m.PlanID)
+			if err != nil {
+				return fmt.Errorf("fetch created plan: %w", err)
+			}
+
+			fmt.Println()
+			printPlanView(createdPlan)
+
+			noExport, _ := cmd.Flags().GetBool("no-export")
+			exportPath, _ := cmd.Flags().GetString("export-path")
+			if !noExport && !viper.GetBool("preview") {
+				content := formatPlanMarkdown(createdPlan)
+				output, err := exportPlanToFile(createdPlan, content, exportPath)
+				if err != nil {
+					return fmt.Errorf("export plan: %w", err)
 				}
-				source := node.Node.SourceAgent
-				if source == "" {
-					source = "unknown"
+				if !isQuiet() && !isJSON() {
+					fmt.Printf("\nSaved: %s (latest.md updated)\n", output)
 				}
-				// Format: [Type] Title (Source: Agent, Score: 0.xx)
-				sb.WriteString(fmt.Sprintf("### [%s] %s\n**Source**: %s | **Score**: %.2f\n%s\n\n",
-					strings.ToUpper(node.Node.Type), title, source, node.Score, node.Node.Content))
-			}
-			kgContext = sb.String()
-		} else {
-			kgContext = "No specific existing patterns or decisions found relevant to this goal."
-		}
-
-		planOut, err := planningAgent.Run(ctx, agents.Input{
-			ExistingContext: map[string]any{
-				"enriched_goal": enrichedGoal,
-				"goal":          goal, // Fallback
-				"context":       kgContext,
-			},
-			Verbose: true, // Show progress
-		})
-		s.Stop() // Stop spinner
-
-		if err != nil {
-			return err
-		}
-
-		// 3. Persist Plan
-		planFinding := planOut.Findings[0]
-
-		// Unmarshal tasks using the typed struct we verified in agents package
-		var tasksData []agents.PlanningTask
-		if rawTasks, ok := planFinding.Metadata["tasks"].([]agents.PlanningTask); ok {
-			tasksData = rawTasks
-		} else {
-			// Fallback or error if strict type fails (should not happen with our fix)
-			return fmt.Errorf("internal error: invalid tasks format received from agent")
-		}
-
-		planID := "plan-" + fmt.Sprintf("%d", time.Now().Unix())
-		newPlan := &task.Plan{
-			ID:           planID,
-			Goal:         goal,
-			EnrichedGoal: enrichedGoal,
-			Status:       "active",
-		}
-
-		if err := repo.CreatePlan(newPlan); err != nil {
-			return fmt.Errorf("save plan: %w", err)
-		}
-
-		for _, tData := range tasksData {
-			newTask := &task.Task{
-				PlanID:             planID,
-				Title:              tData.Title,
-				Description:        tData.Description,
-				Priority:           tData.Priority,
-				AssignedAgent:      tData.AssignedAgent,
-				AcceptanceCriteria: tData.AcceptanceCriteria,
-				ValidationSteps:    tData.ValidationSteps,
-			}
-
-			if err := repo.CreateTask(newTask); err != nil {
-				fmt.Printf("   ⚠️ Failed to save task %s: %v\n", newTask.Title, err)
 			}
 		}
 
-		// Fetch the complete plan with tasks and print inline
-		createdPlan, err := repo.GetPlan(planID)
-		if err != nil {
-			return fmt.Errorf("fetch created plan: %w", err)
-		}
-
-		fmt.Println() // Blank line before output
-		printPlanDetails(createdPlan)
 		return nil
 	},
 }
@@ -208,8 +130,9 @@ var planNewCmd = &cobra.Command{
 var planListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all plans",
+	Long:  `List all development plans. Use --json for machine-readable output.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repo, err := memory.NewDefaultRepository(viper.GetString("memory.path"))
+		repo, err := openRepo()
 		if err != nil {
 			return err
 		}
@@ -220,10 +143,74 @@ var planListCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Println("ID\t\tCREATED\t\tGOAL")
-		for _, p := range plans {
-			fmt.Printf("%s\t%s\t%s\n", p.ID, p.CreatedAt.Format("2006-01-02"), p.Goal)
+		// Handle JSON output
+		if isJSON() {
+			type planSummary struct {
+				ID        string `json:"id"`
+				Goal      string `json:"goal"`
+				CreatedAt string `json:"created_at"`
+				TaskCount int    `json:"task_count"`
+			}
+			var summaries []planSummary
+			for _, p := range plans {
+				tasks, _ := repo.ListTasks(p.ID)
+				summaries = append(summaries, planSummary{
+					ID:        p.ID,
+					Goal:      p.Goal,
+					CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+					TaskCount: len(tasks),
+				})
+			}
+			return printJSON(summaries)
 		}
+
+		// Handle empty state
+		if len(plans) == 0 {
+			fmt.Println("No plans found.")
+			fmt.Println("\nCreate one with: tw plan new \"Your goal\"")
+			return nil
+		}
+
+		ui.RenderPageHeader("TaskWing Plan List", "")
+
+		// Table header with proper formatting
+		headerStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Bold(true)
+		idStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("75"))
+		dateStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
+		goalStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("255"))
+
+		fmt.Printf("%-18s %-12s %-6s %s\n",
+			headerStyle.Render("ID"),
+			headerStyle.Render("CREATED"),
+			headerStyle.Render("TASKS"),
+			headerStyle.Render("GOAL"))
+
+		for _, p := range plans {
+			// Get task count
+			tasks, _ := repo.ListTasks(p.ID)
+			taskCount := len(tasks)
+
+			// Truncate goal for display
+			goal := p.Goal
+			if len(goal) > 60 {
+				goal = goal[:57] + "..."
+			}
+
+			fmt.Printf("%-18s %-12s %-6s %s\n",
+				idStyle.Render(p.ID),
+				dateStyle.Render(p.CreatedAt.Format("2006-01-02")),
+				dateStyle.Render(fmt.Sprintf("%d", taskCount)),
+				goalStyle.Render(goal))
+		}
+
+		fmt.Printf("\n%s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(
+			fmt.Sprintf("Total: %d plan(s)", len(plans))))
+
 		return nil
 	},
 }
@@ -259,25 +246,479 @@ func printPlanDetails(plan *task.Plan) {
 	}
 }
 
+// printPlanView renders a plan-first view, then next steps.
+func printPlanView(plan *task.Plan) {
+	taskCount := len(plan.Tasks)
+	fmt.Printf("Plan: %s | %d tasks\n\n", plan.ID, taskCount)
+
+	printPlanDetails(plan)
+
+	fmt.Println("Next steps:")
+	fmt.Println("  • tw task list --plan " + plan.ID)
+	fmt.Println("  • tw context <query>")
+}
+
 var planExportCmd = &cobra.Command{
 	Use:   "export [plan-id]",
 	Short: "Export plan to Markdown",
-	Args:  cobra.ExactArgs(1),
+	Long: `Export a plan to Markdown format in .taskwing/plans/.
+
+By default, creates a semantically named file from the plan goal.
+Use --stdout to print to stdout for piping to other tools.
+Use --output to specify a custom file path.
+
+Special values for plan-id:
+  latest    Export the most recently created plan
+
+Examples:
+  tw plan export latest                    # Export to .taskwing/plans/
+  tw plan export latest --stdout | pbcopy  # Copy to clipboard
+  tw plan export plan-123 -o custom.md     # Custom path`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repo, err := memory.NewDefaultRepository(viper.GetString("memory.path"))
+		repo, err := openRepo()
 		if err != nil {
 			return err
 		}
 		defer repo.Close()
 
-		plan, err := repo.GetPlan(args[0])
+		// Resolve plan ID (support "latest" alias)
+		planID := args[0]
+		if planID == "latest" {
+			planID, err = resolveLatestPlanID(repo)
+			if err != nil {
+				return err
+			}
+		}
+
+		plan, err := repo.GetPlan(planID)
+		if err != nil {
+			return fmt.Errorf("plan not found: %s", planID)
+		}
+
+		content := formatPlanMarkdown(plan)
+		taskCount := len(plan.Tasks)
+
+		// Check flags
+		toStdout, _ := cmd.Flags().GetBool("stdout")
+		customOutput, _ := cmd.Flags().GetString("output")
+
+		if toStdout {
+			fmt.Print(content)
+			return nil
+		}
+
+		output, err := exportPlanToFile(plan, content, customOutput)
 		if err != nil {
 			return err
 		}
 
-		printPlanDetails(plan)
+		// Success message
+		fileSize := len(content)
+		sizeStr := formatFileSize(fileSize)
+
+		fmt.Println()
+		fmt.Printf("✓ Plan exported to %s\n", output)
+		fmt.Printf("  %d tasks | %s\n\n", taskCount, sizeStr)
+
+		fmt.Println("Next steps:")
+		fmt.Println("  • Open in your AI assistant and run /taskwing")
+		fmt.Println("  • Or: tw task list --plan " + planID)
 		return nil
 	},
+}
+
+var planShowCmd = &cobra.Command{
+	Use:   "show [plan-id]",
+	Short: "Show a plan in the terminal",
+	Long: `Print a plan to stdout for quick inspection.
+
+Special values for plan-id:
+  latest    Show the most recently created plan
+
+Examples:
+  tw plan show latest
+  tw plan show plan-123456`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		planID := args[0]
+		if planID == "latest" {
+			plans, err := repo.ListPlans()
+			if err != nil {
+				return fmt.Errorf("list plans: %w", err)
+			}
+			if len(plans) == 0 {
+				return fmt.Errorf("no plans found. Create one with: tw plan new \"Your goal\"")
+			}
+			planID = plans[0].ID
+		}
+
+		plan, err := repo.GetPlan(planID)
+		if err != nil {
+			return fmt.Errorf("plan not found: %s", planID)
+		}
+
+		printPlanView(plan)
+		return nil
+	},
+}
+
+var planDeleteCmd = &cobra.Command{
+	Use:   "delete [plan-id]",
+	Short: "Delete a plan and its tasks",
+	Long: `Delete a plan by ID. Associated tasks are removed automatically.
+
+Special values for plan-id:
+  latest    Delete the most recently created plan
+
+Examples:
+  tw plan delete plan-123456
+  tw plan delete latest --force`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		planID := args[0]
+		if planID == "latest" {
+			plans, err := repo.ListPlans()
+			if err != nil {
+				return fmt.Errorf("list plans: %w", err)
+			}
+			if len(plans) == 0 {
+				return fmt.Errorf("no plans found. Create one with: tw plan new \"Your goal\"")
+			}
+			planID = plans[0].ID
+		}
+
+		plan, err := repo.GetPlan(planID)
+		if err != nil {
+			return fmt.Errorf("plan not found: %s", planID)
+		}
+
+		force, _ := cmd.Flags().GetBool("force")
+		if !force && !isJSON() {
+			fmt.Printf("\n  Plan:  %s\n", plan.ID)
+			fmt.Printf("  Goal:  %s\n", plan.Goal)
+			fmt.Printf("  Tasks: %d\n\n", len(plan.Tasks))
+			if !confirmOrAbort("⚠️  Delete this plan and all its tasks? [y/N]: ") {
+				return nil
+			}
+		}
+
+		if err := repo.DeletePlan(planID); err != nil {
+			return fmt.Errorf("delete plan: %w", err)
+		}
+
+		if isJSON() {
+			return printJSON(deletedResponse{
+				Status: "deleted",
+				ID:     planID,
+				Goal:   plan.Goal,
+				Tasks:  len(plan.Tasks),
+			})
+		} else if !isQuiet() {
+			fmt.Printf("✓ Deleted plan %s (%d tasks)\n", planID, len(plan.Tasks))
+		}
+
+		return nil
+	},
+}
+
+var planUpdateCmd = &cobra.Command{
+	Use:   "update [plan-id]",
+	Short: "Update a plan",
+	Long: `Update a plan's goal, enriched goal, or status.
+
+Special values for plan-id:
+  latest    Update the most recently created plan
+
+Examples:
+  tw plan update plan-123456 --goal "New goal"
+  tw plan update latest --enriched-goal "Refined goal"
+  tw plan update plan-123456 --status active`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		planID := args[0]
+		goal, _ := cmd.Flags().GetString("goal")
+		enrichedGoal, _ := cmd.Flags().GetString("enriched-goal")
+		statusStr, _ := cmd.Flags().GetString("status")
+
+		if goal == "" && enrichedGoal == "" && statusStr == "" {
+			return fmt.Errorf("no fields to update")
+		}
+
+		var status task.PlanStatus
+		if statusStr != "" {
+			status = task.PlanStatus(statusStr)
+			if !isValidPlanStatus(status) {
+				return fmt.Errorf("invalid status: %s", statusStr)
+			}
+		}
+
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		if planID == "latest" {
+			planID, err = resolveLatestPlanID(repo)
+			if err != nil {
+				return err
+			}
+		}
+
+		if err := repo.UpdatePlan(planID, goal, enrichedGoal, status); err != nil {
+			return err
+		}
+
+		updated, err := repo.GetPlan(planID)
+		if err != nil {
+			return fmt.Errorf("fetch updated plan: %w", err)
+		}
+
+		if isJSON() {
+			return printJSON(updated)
+		}
+
+		if !isQuiet() {
+			fmt.Printf("✓ Updated plan %s\n", planID)
+		}
+		return nil
+	},
+}
+
+var planRenameCmd = &cobra.Command{
+	Use:   "rename [plan-id] \"new goal\"",
+	Short: "Rename a plan goal",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		planID := args[0]
+		newGoal := strings.TrimSpace(args[1])
+		if newGoal == "" {
+			return fmt.Errorf("new goal is required")
+		}
+
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		if planID == "latest" {
+			planID, err = resolveLatestPlanID(repo)
+			if err != nil {
+				return err
+			}
+		}
+
+		if err := repo.UpdatePlan(planID, newGoal, "", ""); err != nil {
+			return err
+		}
+
+		if isJSON() {
+			updated, _ := repo.GetPlan(planID)
+			return printJSON(updated)
+		}
+
+		if !isQuiet() {
+			fmt.Printf("✓ Renamed plan %s\n", planID)
+		}
+		return nil
+	},
+}
+
+var planArchiveCmd = &cobra.Command{
+	Use:   "archive [plan-id]",
+	Short: "Archive a plan",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		planID := args[0]
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		if planID == "latest" {
+			planID, err = resolveLatestPlanID(repo)
+			if err != nil {
+				return err
+			}
+		}
+
+		if err := repo.UpdatePlan(planID, "", "", task.PlanStatusArchived); err != nil {
+			return err
+		}
+
+		if isJSON() {
+			updated, _ := repo.GetPlan(planID)
+			return printJSON(updated)
+		}
+
+		if !isQuiet() {
+			fmt.Printf("✓ Archived plan %s\n", planID)
+		}
+		return nil
+	},
+}
+
+var planUnarchiveCmd = &cobra.Command{
+	Use:   "unarchive [plan-id]",
+	Short: "Unarchive a plan",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		planID := args[0]
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		if planID == "latest" {
+			planID, err = resolveLatestPlanID(repo)
+			if err != nil {
+				return err
+			}
+		}
+
+		if err := repo.UpdatePlan(planID, "", "", task.PlanStatusActive); err != nil {
+			return err
+		}
+
+		if isJSON() {
+			updated, _ := repo.GetPlan(planID)
+			return printJSON(updated)
+		}
+
+		if !isQuiet() {
+			fmt.Printf("✓ Unarchived plan %s\n", planID)
+		}
+		return nil
+	},
+}
+
+// formatPlanMarkdown returns the plan as a markdown string
+func formatPlanMarkdown(plan *task.Plan) string {
+	var buf strings.Builder
+	buf.WriteString(fmt.Sprintf("# Plan: %s\n\n", plan.Goal))
+	buf.WriteString(fmt.Sprintf("**Refined Goal**: %s\n\n", plan.EnrichedGoal))
+
+	for _, t := range plan.Tasks {
+		buf.WriteString(fmt.Sprintf("## Task: %s\n", t.Title))
+		buf.WriteString(fmt.Sprintf("**Priority**: %d | **Agent**: %s\n\n", t.Priority, t.AssignedAgent))
+		buf.WriteString(fmt.Sprintf("%s\n\n", t.Description))
+
+		if len(t.AcceptanceCriteria) > 0 {
+			buf.WriteString("### Acceptance Criteria\n")
+			for _, ac := range t.AcceptanceCriteria {
+				buf.WriteString(fmt.Sprintf("- [ ] %s\n", ac))
+			}
+			buf.WriteString("\n")
+		}
+
+		if len(t.ValidationSteps) > 0 {
+			buf.WriteString("### Validation\n```bash\n")
+			for _, vs := range t.ValidationSteps {
+				buf.WriteString(vs + "\n")
+			}
+			buf.WriteString("```\n\n")
+		}
+	}
+	return buf.String()
+}
+
+func exportPlanToFile(plan *task.Plan, content, customOutput string) (string, error) {
+	var output string
+	var plansDir string
+
+	if customOutput != "" {
+		output = customOutput
+	} else {
+		plansDir = filepath.Join(config.GetMemoryBasePath(), "plans")
+		if err := os.MkdirAll(plansDir, 0755); err != nil {
+			return "", fmt.Errorf("create plans directory: %w", err)
+		}
+		filename := generatePlanFilename(plan.Goal, plan.CreatedAt)
+		output = filepath.Join(plansDir, filename)
+	}
+
+	if err := writeFile(output, content); err != nil {
+		return "", fmt.Errorf("write file: %w", err)
+	}
+
+	if plansDir != "" {
+		latestPath := filepath.Join(plansDir, "latest.md")
+		_ = os.Remove(latestPath)
+		if err := os.Symlink(filepath.Base(output), latestPath); err != nil {
+			_ = writeFile(latestPath, content)
+		}
+	}
+
+	return output, nil
+}
+
+func writeFile(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0644)
+}
+
+// formatFileSize returns a human-readable file size
+func formatFileSize(bytes int) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := unit, 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// generatePlanFilename creates a semantic filename from the plan goal
+// Format: YYYY-MM-DD-slugified-goal.md
+func generatePlanFilename(goal string, createdAt time.Time) string {
+	// Date prefix
+	dateStr := createdAt.Format("2006-01-02")
+
+	// Slugify the goal
+	slug := strings.ToLower(goal)
+
+	// Replace common words and clean up
+	slug = strings.ReplaceAll(slug, " and ", "-")
+	slug = strings.ReplaceAll(slug, " or ", "-")
+	slug = strings.ReplaceAll(slug, " the ", "-")
+	slug = strings.ReplaceAll(slug, " a ", "-")
+	slug = strings.ReplaceAll(slug, " ", "-")
+
+	// Remove non-alphanumeric (keep hyphens)
+	reg := regexp.MustCompile(`[^a-z0-9-]`)
+	slug = reg.ReplaceAllString(slug, "")
+
+	// Clean up multiple hyphens
+	reg = regexp.MustCompile(`-+`)
+	slug = reg.ReplaceAllString(slug, "-")
+	slug = strings.Trim(slug, "-")
+
+	// Truncate if too long
+	if len(slug) > 50 {
+		slug = slug[:50]
+		// Don't end with hyphen
+		slug = strings.TrimRight(slug, "-")
+	}
+
+	return fmt.Sprintf("%s-%s.md", dateStr, slug)
 }
 
 func init() {
@@ -285,4 +726,20 @@ func init() {
 	planCmd.AddCommand(planNewCmd)
 	planCmd.AddCommand(planListCmd)
 	planCmd.AddCommand(planExportCmd)
+	planCmd.AddCommand(planShowCmd)
+	planCmd.AddCommand(planDeleteCmd)
+	planCmd.AddCommand(planUpdateCmd)
+	planCmd.AddCommand(planRenameCmd)
+	planCmd.AddCommand(planArchiveCmd)
+	planCmd.AddCommand(planUnarchiveCmd)
+
+	// Export flags
+	planExportCmd.Flags().StringP("output", "o", "", "Output file path (e.g., plan.md)")
+	planExportCmd.Flags().Bool("stdout", false, "Print to stdout instead of file (for piping)")
+	planDeleteCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
+	planNewCmd.Flags().Bool("no-export", false, "Skip writing the plan to .taskwing/plans")
+	planNewCmd.Flags().String("export-path", "", "Custom output path for plan export")
+	planUpdateCmd.Flags().String("goal", "", "Update the plan goal")
+	planUpdateCmd.Flags().String("enriched-goal", "", "Update the enriched goal")
+	planUpdateCmd.Flags().String("status", "", "Update the plan status (draft, active, completed, archived)")
 }
