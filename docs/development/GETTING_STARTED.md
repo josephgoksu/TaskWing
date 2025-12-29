@@ -7,10 +7,10 @@
 ## Installation
 
 ```bash
-# One-liner install
-curl -sSfL https://raw.githubusercontent.com/josephgoksu/TaskWing/main/install.sh | sh
+# One-liner install (Mac/Linux)
+curl -fsSL https://taskwing.app/install.sh | bash
 
-# Or with Go
+# Or with Go (Requires Go 1.24+)
 go install github.com/josephgoksu/TaskWing@latest
 ```
 
@@ -23,7 +23,7 @@ go install github.com/josephgoksu/TaskWing@latest
 ```bash
 cd your-project
 
-# Required: set your LLM API key
+# Required: set your LLM API key (provider-specific)
 export OPENAI_API_KEY=...
 
 # Preview what TaskWing will detect
@@ -34,7 +34,7 @@ taskwing bootstrap
 
 # Alternative: use local Ollama models (no API key needed)
 export TASKWING_LLM_PROVIDER=ollama
-export TASKWING_LLM_MODELNAME=llama2
+export TASKWING_LLM_MODEL=llama2
 taskwing bootstrap --preview
 ```
 
@@ -224,6 +224,6 @@ Now when you ask AI about your code, it has full project context with semantic s
 
 ## Next Steps
 
-- [BOOTSTRAP.md](BOOTSTRAP.md) — How repo scanning works
-- [DATA_MODEL.md](DATA_MODEL.md) — Storage format details
-- [ARCHITECTURE.md](ARCHITECTURE.md) — Technical design
+- [Bootstrap Internals](BOOTSTRAP_INTERNALS.md) — How repo scanning works
+- [Data Model](../architecture/DATA_MODEL.md) — Storage format details
+- [System Design](../architecture/SYSTEM_DESIGN.md) — Technical design

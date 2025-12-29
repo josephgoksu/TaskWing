@@ -19,7 +19,13 @@ import (
 func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	// Flags support (if the command defined them)
 	provider, _ := cmd.Flags().GetString("provider")
-	model, _ := cmd.Flags().GetString("model")
+	model, err := cmd.Flags().GetString("model")
+	if err != nil {
+		// Fallback: If "model" is a StringSlice (e.g. eval command), take the first one
+		if s, err2 := cmd.Flags().GetStringSlice("model"); err2 == nil && len(s) > 0 {
+			model = s[0]
+		}
+	}
 	apiKey, _ := cmd.Flags().GetString("api-key")
 	ollamaURL, _ := cmd.Flags().GetString("ollama-url")
 
@@ -60,21 +66,7 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 
 	// 3. API Key
 	if apiKey == "" {
-		apiKey = viper.GetString("llm.apiKey")
-	}
-	if apiKey == "" {
-		// Check provider-specific environment variables
-		switch llmProvider {
-		case llm.ProviderOpenAI:
-			apiKey = os.Getenv("OPENAI_API_KEY")
-		case llm.ProviderAnthropic:
-			apiKey = os.Getenv("ANTHROPIC_API_KEY")
-		case llm.ProviderGemini:
-			apiKey = os.Getenv("GEMINI_API_KEY")
-			if apiKey == "" {
-				apiKey = os.Getenv("GOOGLE_API_KEY")
-			}
-		}
+		apiKey = config.ResolveAPIKey(llmProvider)
 	}
 
 	// Interactive Prompt for API Key (Only if needed for the selected provider)
@@ -117,7 +109,7 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	}
 
 	if requiresKey && apiKey == "" {
-		return llm.Config{}, fmt.Errorf("API key required for %s: use --api-key, set config 'llm.apiKey', or set env var", provider)
+		return llm.Config{}, fmt.Errorf("API key required for %s: use --api-key, set config 'llm.apiKeys.%s' (or legacy 'llm.apiKey'), or set provider env var (OPENAI_API_KEY/ANTHROPIC_API_KEY/GEMINI_API_KEY)", provider, provider)
 	}
 
 	// 4. Base URL (Ollama)

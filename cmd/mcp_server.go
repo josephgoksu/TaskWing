@@ -159,55 +159,49 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, query strin
 		}, nil
 	}
 
-	// Semantic search
-	apiKey := viper.GetString("llm.apiKey")
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-
 	var results []memory.Node
-
-	if apiKey != "" {
-		// Use embeddings for semantic search
-		llmCfg := llm.Config{APIKey: apiKey}
-		queryEmb, err := knowledge.GenerateEmbedding(ctx, query, llmCfg)
-		if err == nil {
-			type scored struct {
-				Node  memory.Node
-				Score float32
-			}
-			var scoredNodes []scored
-
-			// Fix N+1 query: get all nodes with embeddings in a single query
-			nodesWithEmbeddings, err := repo.ListNodesWithEmbeddings()
+	// Semantic search
+	if llmCfg, cfgErr := config.LoadLLMConfig(); cfgErr == nil {
+		if llmCfg.Provider != llm.ProviderAnthropic && (llmCfg.APIKey != "" || llmCfg.Provider == llm.ProviderOllama) {
+			queryEmb, err := knowledge.GenerateEmbedding(ctx, query, llmCfg)
 			if err == nil {
-				// Build map for O(1) lookup by ID
-				nodeMap := make(map[string]*memory.Node)
-				for i := range nodesWithEmbeddings {
-					nodeMap[nodesWithEmbeddings[i].ID] = &nodesWithEmbeddings[i]
+				type scored struct {
+					Node  memory.Node
+					Score float32
 				}
+				var scoredNodes []scored
 
-				// Score each node from the original list
-				for _, n := range nodes {
-					fullNode, ok := nodeMap[n.ID]
-					if !ok || len(fullNode.Embedding) == 0 {
-						continue
+				// Fix N+1 query: get all nodes with embeddings in a single query
+				nodesWithEmbeddings, err := repo.ListNodesWithEmbeddings()
+				if err == nil {
+					// Build map for O(1) lookup by ID
+					nodeMap := make(map[string]*memory.Node)
+					for i := range nodesWithEmbeddings {
+						nodeMap[nodesWithEmbeddings[i].ID] = &nodesWithEmbeddings[i]
 					}
-					score := knowledge.CosineSimilarity(queryEmb, fullNode.Embedding)
-					scoredNodes = append(scoredNodes, scored{Node: *fullNode, Score: score})
+
+					// Score each node from the original list
+					for _, n := range nodes {
+						fullNode, ok := nodeMap[n.ID]
+						if !ok || len(fullNode.Embedding) == 0 {
+							continue
+						}
+						score := knowledge.CosineSimilarity(queryEmb, fullNode.Embedding)
+						scoredNodes = append(scoredNodes, scored{Node: *fullNode, Score: score})
+					}
 				}
-			}
 
-			sort.Slice(scoredNodes, func(i, j int) bool {
-				return scoredNodes[i].Score > scoredNodes[j].Score
-			})
+				sort.Slice(scoredNodes, func(i, j int) bool {
+					return scoredNodes[i].Score > scoredNodes[j].Score
+				})
 
-			limit := 5
-			if len(scoredNodes) < limit {
-				limit = len(scoredNodes)
-			}
-			for i := 0; i < limit; i++ {
-				results = append(results, scoredNodes[i].Node)
+				limit := 5
+				if len(scoredNodes) < limit {
+					limit = len(scoredNodes)
+				}
+				for i := 0; i < limit; i++ {
+					results = append(results, scoredNodes[i].Node)
+				}
 			}
 		}
 	}

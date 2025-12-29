@@ -200,18 +200,21 @@ var memoryGenerateEmbeddingsCmd = &cobra.Command{
 	Short:   "Generate embeddings for nodes without them",
 	Long: `Backfill embeddings for knowledge nodes that don't have them.
 
-Requires OPENAI_API_KEY to be set. Useful after:
+Requires an API key for the configured provider (OpenAI/Gemini) or a local Ollama setup. Useful after:
   • Importing data without embeddings
   • Running bootstrap without API key
   • Adding nodes with --skip-ai`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ui.RenderPageHeader("TaskWing Embeddings", "Generating missing vectors")
-		apiKey := viper.GetString("llm.apiKey")
-		if apiKey == "" {
-			apiKey = os.Getenv("OPENAI_API_KEY")
+		llmCfg, err := config.LoadLLMConfig()
+		if err != nil {
+			return fmt.Errorf("load llm config: %w", err)
 		}
-		if apiKey == "" {
-			return fmt.Errorf("OPENAI_API_KEY required for embedding generation")
+		if llmCfg.Provider == llm.ProviderAnthropic {
+			return fmt.Errorf("embedding generation is not supported for provider %q; use openai, gemini, or ollama", llmCfg.Provider)
+		}
+		if llmCfg.APIKey == "" && llmCfg.Provider != llm.ProviderOllama {
+			return fmt.Errorf("API key required for embedding generation with provider %q", llmCfg.Provider)
 		}
 
 		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
@@ -245,23 +248,6 @@ Requires OPENAI_API_KEY to be set. Useful after:
 		fmt.Printf("Generating embeddings for %d nodes...\n", len(toProcess))
 
 		ctx := context.Background()
-
-		// Read provider from config - this was missing
-		providerStr := viper.GetString("llm.provider")
-		if providerStr == "" {
-			providerStr = "openai" // Default to OpenAI
-		}
-		provider, err := llm.ValidateProvider(providerStr)
-		if err != nil {
-			return fmt.Errorf("invalid LLM provider in config: %w", err)
-		}
-
-		llmCfg := llm.Config{
-			Provider:       provider,
-			APIKey:         apiKey,
-			EmbeddingModel: viper.GetString("llm.embeddingModel"),
-			BaseURL:        viper.GetString("llm.baseUrl"),
-		}
 		generated := 0
 
 		for _, n := range toProcess {

@@ -58,8 +58,9 @@ taskwing add "Describe what you want to remember"
 
 **Solution:**
 ```bash
-# Set your OpenAI key
+# Set your provider API key
 export OPENAI_API_KEY=your-key
+# or: ANTHROPIC_API_KEY / GEMINI_API_KEY
 
 # Or skip AI classification with --type
 taskwing add "Your text" --type decision

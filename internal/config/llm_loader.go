@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/spf13/viper"
@@ -30,10 +31,7 @@ func LoadLLMConfig() (llm.Config, error) {
 	}
 
 	// 3. API Key
-	apiKey := viper.GetString("llm.apiKey")
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
+	apiKey := ResolveAPIKey(llmProvider)
 	// Note: We don't error on missing API key here, as interactive mode might ask for it later.
 	// Or non-auth providers (Ollama) might not need it.
 
@@ -65,4 +63,56 @@ func LoadLLMConfig() (llm.Config, error) {
 		APIKey:         apiKey,
 		BaseURL:        baseURL,
 	}, nil
+}
+
+// ResolveAPIKey returns the best API key for the given provider using
+// per-provider config keys, provider-specific env vars, then legacy config.
+func ResolveAPIKey(provider llm.Provider) string {
+	keyFromViper := func(path string) string {
+		if viper.IsSet(path) {
+			return strings.TrimSpace(viper.GetString(path))
+		}
+		return ""
+	}
+
+	// 1) Per-provider config key (llm.apiKeys.<provider>)
+	perProviderKey := keyFromViper(fmt.Sprintf("llm.apiKeys.%s", provider))
+	if perProviderKey != "" {
+		return perProviderKey
+	}
+
+	// 2) Provider-specific env vars
+	envKey := providerEnvKey(provider)
+
+	// OpenAI: allow legacy key; others: ignore legacy to avoid wrong-key usage.
+	if provider == llm.ProviderOpenAI {
+		legacyKey := keyFromViper("llm.apiKey")
+		if legacyKey != "" {
+			return legacyKey
+		}
+		if envKey != "" {
+			return envKey
+		}
+	} else if envKey != "" {
+		return envKey
+	}
+
+	return ""
+}
+
+func providerEnvKey(provider llm.Provider) string {
+	switch provider {
+	case llm.ProviderOpenAI:
+		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	case llm.ProviderAnthropic:
+		return strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
+	case llm.ProviderGemini:
+		key := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
+		if key == "" {
+			key = strings.TrimSpace(os.Getenv("GOOGLE_API_KEY"))
+		}
+		return key
+	default:
+		return ""
+	}
 }

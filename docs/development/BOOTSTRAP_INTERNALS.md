@@ -16,7 +16,7 @@ Empty memory = useless AI context. Manual entry = too much friction.
 ## CLI Command
 
 ```bash
-taskwing bootstrap                   # Execute (LLM-powered if OPENAI_API_KEY set)
+taskwing bootstrap                   # Execute (LLM-powered if provider API key set)
 taskwing bootstrap --preview         # Preview without saving
 taskwing bootstrap --preview --json  # Machine-readable output
 taskwing bootstrap --trace           # JSON event stream to file (.taskwing/logs/...)
@@ -26,7 +26,7 @@ taskwing bootstrap --basic           # Execute heuristic scan only (no LLM calls
 taskwing bootstrap --basic --preview # Preview heuristic scan only
 ```
 
-Runs LLM-powered analysis when an API key is available (set `OPENAI_API_KEY` or `TASKWING_LLM_APIKEY`).
+Runs LLM-powered analysis when an API key is available (set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` or configure `llm.apiKeys.<provider>`).
 Writes to `.taskwing/memory/`.
 
 ---
@@ -64,7 +64,7 @@ ollama pull llama2
 
 # Configure TaskWing to use Ollama
 export TASKWING_LLM_PROVIDER=ollama
-export TASKWING_LLM_MODELNAME=llama2
+export TASKWING_LLM_MODEL=llama2
 taskwing bootstrap --preview
 ```
 
@@ -72,9 +72,9 @@ taskwing bootstrap --preview
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `OPENAI_API_KEY` or `TASKWING_LLM_APIKEY` | — | API key for OpenAI |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | — | Provider API key |
 | `TASKWING_LLM_PROVIDER` | `openai` | Provider: `openai` or `ollama` |
-| `TASKWING_LLM_MODELNAME` | `gpt-5-mini-2025-08-07` | Model name |
+| `TASKWING_LLM_MODEL` | `gpt-5-mini-2025-08-07` | Model name |
 | `TASKWING_LLM_BASEURL` | `http://localhost:11434` | Base URL (for Ollama) |
 
 ---

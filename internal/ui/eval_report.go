@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -27,6 +28,27 @@ type EvalReportData struct {
 	Models  map[string]EvalModelSummary
 	Results []EvalTaskResult
 	Tasks   []string // Unique task IDs in order
+}
+
+// BenchmarkRun holds data for a single model in a single run
+type BenchmarkRun struct {
+	RunID        string    `json:"run_id"`
+	RunDate      time.Time `json:"run_date"`
+	Model        string    `json:"model"`
+	Score        float64   `json:"score"` // 0.0-1.0
+	Pass         int       `json:"pass"`
+	Total        int       `json:"total"`
+	InputTokens  int       `json:"input_tokens,omitempty"`
+	OutputTokens int       `json:"output_tokens,omitempty"`
+	CostUSD      float64   `json:"cost_usd,omitempty"`
+	Label        string    `json:"label,omitempty"`
+}
+
+// BenchmarkData holds aggregated data across multiple runs
+type BenchmarkData struct {
+	Runs   []string                           `json:"runs"`
+	Models []string                           `json:"models"`
+	Matrix map[string]map[string]BenchmarkRun `json:"matrix"` // [model][runID]
 }
 
 var (
@@ -229,6 +251,212 @@ func shortenModelName(name string) string {
 	// Truncate long names
 	if len(name) > 12 {
 		return name[:10] + ".."
+	}
+	return name
+}
+
+// RenderBenchmark renders historical benchmark data with trend arrows
+func RenderBenchmark(data BenchmarkData) {
+	if len(data.Runs) == 0 {
+		fmt.Println("No benchmark data.")
+		return
+	}
+
+	// Header
+	fmt.Println()
+	header := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorPrimary).
+		Padding(0, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorSecondary).
+		Render(fmt.Sprintf("BENCHMARK RESULTS · %d runs · %d models", len(data.Runs), len(data.Models)))
+	fmt.Println(header)
+	fmt.Println()
+
+	// Build column headers (run dates with time)
+	fmt.Println(sectionStyle.Render("Score History"))
+	fmt.Println()
+
+	// Header row with run dates and times
+	headerRow := fmt.Sprintf("  %-42s", "Model")
+	for _, runID := range data.Runs {
+		// Format: show date+time (20251228-193648 -> 12-28 19:36)
+		dateStr := runID
+		if len(runID) >= 13 {
+			dateStr = runID[4:6] + "-" + runID[6:8] + " " + runID[9:11] + ":" + runID[11:13]
+		} else if len(runID) >= 8 {
+			dateStr = runID[4:6] + "-" + runID[6:8]
+		}
+		headerRow += fmt.Sprintf(" %-16s", dateStr)
+	}
+	fmt.Println(dimStyle.Render(headerRow))
+
+	// Model rows
+	for _, model := range data.Models {
+		shortModel := formatModelName(model, 40)
+		row := fmt.Sprintf("  %-42s", shortModel)
+
+		var prevScore float64 = -1
+		var hadPrevData bool = false
+		for i, runID := range data.Runs {
+			runData, ok := data.Matrix[model][runID]
+			if !ok {
+				row += fmt.Sprintf(" %-16s", "") // blank instead of -
+				continue
+			}
+
+			scorePercent := runData.Score * 100
+			var scoreStr string
+
+			// Color based on score
+			if runData.Score >= 0.8 {
+				scoreStr = passStyle.Render(fmt.Sprintf("%.0f%%", scorePercent))
+			} else if runData.Score == 0 {
+				scoreStr = failStyle.Render(fmt.Sprintf("%.0f%%", scorePercent))
+			} else {
+				scoreStr = fmt.Sprintf("%.0f%%", scorePercent)
+			}
+			scoreStr += fmt.Sprintf(" (%d/%d)", runData.Pass, runData.Total)
+
+			// Add trend arrow comparing to previous data point
+			if i > 0 && hadPrevData {
+				if runData.Score > prevScore {
+					scoreStr = passStyle.Render("▲") + " " + scoreStr
+				} else if runData.Score < prevScore {
+					scoreStr = failStyle.Render("▼") + " " + scoreStr
+				} else {
+					scoreStr = dimStyle.Render("─") + " " + scoreStr
+				}
+			} else {
+				scoreStr = "  " + scoreStr
+			}
+
+			row += fmt.Sprintf(" %-16s", scoreStr)
+			prevScore = runData.Score
+			hadPrevData = true
+		}
+
+		fmt.Println(row)
+	}
+
+	// Summary: Show best model overall
+	fmt.Println()
+	fmt.Println(sectionStyle.Render("Overall Best"))
+	fmt.Println()
+
+	// Calculate average score per model across all runs
+	type modelAvg struct {
+		model    string
+		avgScore float64
+		runCount int
+	}
+	var averages []modelAvg
+	for _, model := range data.Models {
+		var total float64
+		var count int
+		for _, runID := range data.Runs {
+			if runData, ok := data.Matrix[model][runID]; ok {
+				total += runData.Score
+				count++
+			}
+		}
+		if count > 0 {
+			averages = append(averages, modelAvg{model: model, avgScore: total / float64(count), runCount: count})
+		}
+	}
+	sort.Slice(averages, func(i, j int) bool {
+		return averages[i].avgScore > averages[j].avgScore
+	})
+
+	for i, a := range averages {
+		if i >= 5 { // Top 5 only
+			break
+		}
+		shortModel := formatModelName(a.model, 40)
+		scoreStr := fmt.Sprintf("%.0f%% avg", a.avgScore*100)
+		if a.avgScore >= 0.8 {
+			scoreStr = passStyle.Render(scoreStr)
+		} else if a.avgScore == 0 {
+			scoreStr = failStyle.Render(scoreStr)
+		}
+		runsNote := dimStyle.Render(fmt.Sprintf("(%d runs)", a.runCount))
+		fmt.Printf("  %d. %-42s %s %s\n", i+1, shortModel, scoreStr, runsNote)
+	}
+
+	// Cost Summary section (only show if cost data exists)
+	hasCosts := false
+	for _, model := range data.Models {
+		for _, runID := range data.Runs {
+			if run, ok := data.Matrix[model][runID]; ok && run.CostUSD > 0 {
+				hasCosts = true
+				break
+			}
+		}
+		if hasCosts {
+			break
+		}
+	}
+
+	if hasCosts {
+		fmt.Println()
+		fmt.Println(sectionStyle.Render("Cost Summary"))
+		fmt.Println()
+
+		// Header
+		costHeader := fmt.Sprintf("  %-42s %-12s %-14s %s", "Model", "Total Cost", "Total Tokens", "Avg/Run")
+		fmt.Println(dimStyle.Render(costHeader))
+
+		// Calculate totals per model
+		type modelCosts struct {
+			model       string
+			totalCost   float64
+			totalTokens int
+			runCount    int
+		}
+		var costs []modelCosts
+		for _, model := range data.Models {
+			var mc modelCosts
+			mc.model = model
+			for _, runID := range data.Runs {
+				if run, ok := data.Matrix[model][runID]; ok {
+					mc.totalCost += run.CostUSD
+					mc.totalTokens += run.InputTokens + run.OutputTokens
+					mc.runCount++
+				}
+			}
+			if mc.runCount > 0 {
+				costs = append(costs, mc)
+			}
+		}
+
+		// Sort by cost (lowest first for value comparison)
+		sort.Slice(costs, func(i, j int) bool {
+			return costs[i].totalCost < costs[j].totalCost
+		})
+
+		for _, mc := range costs {
+			shortModel := formatModelName(mc.model, 40)
+			costStr := fmt.Sprintf("$%.2f", mc.totalCost)
+			tokensStr := fmt.Sprintf("%dk", mc.totalTokens/1000)
+			avgCost := mc.totalCost / float64(mc.runCount)
+			avgStr := fmt.Sprintf("$%.3f", avgCost)
+			fmt.Printf("  %-42s %-12s %-14s %s\n", shortModel, costStr, tokensStr, avgStr)
+		}
+	}
+
+	fmt.Println()
+}
+
+// formatModelName formats a model name to a fixed width
+func formatModelName(name string, maxLen int) string {
+	// Remove common prefixes
+	name = strings.TrimPrefix(name, "openai_")
+	name = strings.TrimPrefix(name, "anthropic_")
+	name = strings.TrimPrefix(name, "google_")
+
+	if len(name) > maxLen {
+		return name[:maxLen-2] + ".."
 	}
 	return name
 }

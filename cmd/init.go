@@ -275,9 +275,10 @@ I can analyze your codebase right now without any API key. Just ask me to:
 
 **No API key required** - I'll do the analysis myself.
 
-### Option 2: Use the CLI (requires OPENAI_API_KEY)
+### Option 2: Use the CLI (requires a provider API key)
 ` + "```bash" + `
 export OPENAI_API_KEY="your-key"
+# or: ANTHROPIC_API_KEY / GEMINI_API_KEY
 tw bootstrap
 ` + "```" + `
 
@@ -338,7 +339,7 @@ Describe your feature, and I'll analyze it from multiple perspectives:
 
 Just say: "Create a spec for adding OAuth2 authentication with Google"
 
-### Option 2: Use the CLI (requires OPENAI_API_KEY)
+### Option 2: Use the CLI (requires a provider API key)
 ` + "```bash" + `
 tw spec create "add OAuth2 authentication with Google"
 ` + "```" + `

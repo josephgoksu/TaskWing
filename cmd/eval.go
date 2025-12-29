@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -22,13 +21,13 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/config"
+	evalpkg "github.com/josephgoksu/TaskWing/internal/eval"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -41,6 +40,11 @@ const (
 var evalCmd = &cobra.Command{
 	Use:   "eval",
 	Short: "Evaluate model outputs against repo constraints",
+}
+
+func init() {
+	// Persistent flags for all eval commands
+	evalCmd.PersistentFlags().StringSliceP("model", "m", nil, "Model(s) to use (provider:model or model)")
 }
 
 var evalInitCmd = &cobra.Command{
@@ -64,10 +68,10 @@ var evalInitCmd = &cobra.Command{
 		tasksPath := filepath.Join(evalDir, defaultTasksFileName)
 		promptPath := filepath.Join(evalDir, "prompts", defaultPromptFileName)
 
-		if err := writeFileIfMissing(tasksPath, defaultTasksTemplate, force); err != nil {
+		if err := evalpkg.WriteFileIfMissing(tasksPath, evalpkg.DefaultTasksTemplate, force); err != nil {
 			return err
 		}
-		if err := writeFileIfMissing(promptPath, defaultPromptTemplate, force); err != nil {
+		if err := evalpkg.WriteFileIfMissing(promptPath, evalpkg.DefaultPromptTemplate, force); err != nil {
 			return err
 		}
 
@@ -93,6 +97,7 @@ var evalRunCmd = &cobra.Command{
 
 		bootstrapOnly, _ := cmd.Flags().GetBool("bootstrap-only")
 		tasksOnly, _ := cmd.Flags().GetBool("tasks-only")
+		noContext, _ := cmd.Flags().GetBool("no-context")
 		if bootstrapOnly && tasksOnly {
 			return errors.New("--bootstrap-only and --tasks-only cannot both be set")
 		}
@@ -107,6 +112,17 @@ var evalRunCmd = &cobra.Command{
 			runner = "internal"
 		}
 
+		// For baseline runs (--no-context with internal runner), skip bootstrap
+		// since we won't inject context anyway. This speeds up baseline tests significantly.
+		if noContext && runner == "internal" && !bootstrapOnly {
+			doBootstrap = false
+		}
+
+		label, _ := cmd.Flags().GetString("label")
+		if err := validateRunner(runner, label); err != nil {
+			return err
+		}
+
 		evalDir := filepath.Join(cwd, ".taskwing", defaultEvalDirName)
 		tasksPath, _ := cmd.Flags().GetString("tasks")
 		if tasksPath == "" {
@@ -117,16 +133,27 @@ var evalRunCmd = &cobra.Command{
 			promptPath = filepath.Join(evalDir, "prompts", defaultPromptFileName)
 		}
 
-		var cfg EvalConfig
+		var cfg evalpkg.Config
 		var promptTemplate []byte
 		if doTasks {
-			cfg, err = loadEvalConfig(tasksPath)
+			cfg, err = evalpkg.LoadConfig(tasksPath)
 			if err != nil {
 				return err
 			}
 			promptTemplate, err = os.ReadFile(promptPath)
 			if err != nil {
-				return fmt.Errorf("read prompt template: %w", err)
+				if os.IsNotExist(err) {
+					// Auto-init prompt template if missing
+					if err := os.MkdirAll(filepath.Dir(promptPath), 0755); err == nil {
+						if err := os.WriteFile(promptPath, []byte(evalpkg.DefaultPromptTemplate), 0644); err == nil {
+							fmt.Printf("✓ Created default prompt template at %s\n", promptPath)
+							promptTemplate = []byte(evalpkg.DefaultPromptTemplate)
+						}
+					}
+				}
+				if promptTemplate == nil {
+					return fmt.Errorf("read prompt template: %w", err)
+				}
 			}
 		}
 
@@ -155,14 +182,18 @@ var evalRunCmd = &cobra.Command{
 		}
 
 		judge, _ := cmd.Flags().GetBool("judge")
+		injectContext := !noContext
+
+		// Track token usage per model for cost calculation
+		modelCosts := make(map[string]evalpkg.CostSummary)
 
 		for _, model := range models {
-			provider, modelName := parseModel(model)
+			provider, modelName := evalpkg.ParseModel(model)
 			displayModel := modelName
 			if provider != "" {
 				displayModel = provider + ":" + modelName
 			}
-			safeModel := safeName(displayModel)
+			safeModel := evalpkg.SafeName(displayModel)
 			modelOutDir := filepath.Join(outDir, "memory", safeModel)
 			if tasksOnly {
 				if _, err := os.Stat(modelOutDir); err != nil {
@@ -178,6 +209,7 @@ var evalRunCmd = &cobra.Command{
 				restore()
 				return err
 			}
+			llmCfg.Model = modelName
 
 			if doBootstrap {
 				if !viper.GetBool("quiet") {
@@ -191,31 +223,45 @@ var evalRunCmd = &cobra.Command{
 
 			if doTasks {
 				if !viper.GetBool("quiet") {
-					fmt.Printf("==> Tasks: %s\n", displayModel)
+					if noContext {
+						fmt.Printf("==> Tasks (no context): %s\n", displayModel)
+					} else {
+						fmt.Printf("==> Tasks: %s\n", displayModel)
+					}
 				}
 
 				// Open per-model memory for context injection (isolated per model)
 				var modelRepo *memory.Repository
-				modelMemoryPath := filepath.Join(modelOutDir, "memory.db")
-				if _, statErr := os.Stat(modelMemoryPath); statErr == nil {
-					modelRepo, err = memory.NewDefaultRepository(modelOutDir)
-					if err != nil {
-						if !viper.GetBool("quiet") {
-							fmt.Fprintf(os.Stderr, "⚠️  Could not open model memory for context: %v\n", err)
+				if injectContext {
+					modelMemoryPath := filepath.Join(modelOutDir, "memory.db")
+					if _, statErr := os.Stat(modelMemoryPath); statErr == nil {
+						modelRepo, err = memory.NewDefaultRepository(modelOutDir)
+						if err != nil {
+							if !viper.GetBool("quiet") {
+								fmt.Fprintf(os.Stderr, "⚠️  Could not open model memory for context: %v\n", err)
+							}
 						}
 					}
 				}
 
-				if err := runEvalTasks(cmd.Context(), cfg, outDir, promptTemplate, modelName, displayModel, safeModel, runner, cwd, llmCfg, modelRepo); err != nil {
-					if modelRepo != nil {
-						_ = modelRepo.Close()
-					}
-					restore()
-					return fmt.Errorf("tasks failed for %s: %w", displayModel, err)
+				timeout, _ := cmd.Flags().GetDuration("timeout")
+				usage, taskErr := runEvalTasks(cmd.Context(), cfg, outDir, promptTemplate, modelName, displayModel, safeModel, runner, cwd, llmCfg, modelRepo, injectContext, timeout)
+
+				// Calculate and store cost
+				cost := llm.CalculateCost(modelName, usage.InputTokens, usage.OutputTokens)
+				modelCosts[safeModel] = evalpkg.CostSummary{
+					InputTokens:  usage.InputTokens,
+					OutputTokens: usage.OutputTokens,
+					TotalTokens:  usage.InputTokens + usage.OutputTokens,
+					CostUSD:      cost,
 				}
 
 				if modelRepo != nil {
 					_ = modelRepo.Close()
+				}
+				if taskErr != nil {
+					restore()
+					return fmt.Errorf("tasks failed for %s: %w", displayModel, taskErr)
 				}
 			}
 
@@ -223,7 +269,19 @@ var evalRunCmd = &cobra.Command{
 		}
 
 		if judge && doTasks {
-			if err := runJudge(cfg, outDir); err != nil {
+			// Calculate context mode for report
+			contextMode := "taskwing"
+			if noContext {
+				if runner == "internal" {
+					contextMode = "none"
+				} else {
+					contextMode = "raw"
+				}
+			}
+
+			// Get LLM config for judge (use first model's config)
+			judgeLLMCfg, _ := getLLMConfig(cmd)
+			if err := runJudge(cmd.Context(), cfg, outDir, judgeLLMCfg, modelCosts, label, contextMode, runner); err != nil {
 				return err
 			}
 			if !viper.GetBool("quiet") {
@@ -233,6 +291,24 @@ var evalRunCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func validateRunner(runner, label string) error {
+	if runner == "internal" || runner == "" {
+		return nil
+	}
+	// Require label for external runners to avoid benchmark confusion
+	if label == "" {
+		return errors.New("--label is required when using external runners (e.g., --label codex-only)")
+	}
+	// Check if runner command exists
+	parts := strings.Fields(runner)
+	if len(parts) > 0 {
+		if _, err := exec.LookPath(parts[0]); err != nil {
+			return fmt.Errorf("runner command %q not found in PATH", parts[0])
+		}
+	}
+	return nil
 }
 
 var evalJudgeCmd = &cobra.Command{
@@ -252,11 +328,16 @@ var evalJudgeCmd = &cobra.Command{
 		if tasksPath == "" {
 			tasksPath = filepath.Join(evalDir, defaultTasksFileName)
 		}
-		cfg, err := loadEvalConfig(tasksPath)
+		cfg, err := evalpkg.LoadConfig(tasksPath)
 		if err != nil {
 			return err
 		}
-		if err := runJudge(cfg, outDir); err != nil {
+		// Get LLM config for judge
+		llmCfg, llmErr := getLLMConfig(cmd)
+		if llmErr != nil {
+			return fmt.Errorf("get llm config: %w", llmErr)
+		}
+		if err := runJudge(cmd.Context(), cfg, outDir, llmCfg, nil, "", "", ""); err != nil {
 			return err
 		}
 		fmt.Printf("✓ Results written to %s\n", filepath.Join(outDir, defaultResultsFileName))
@@ -278,7 +359,7 @@ var evalReportCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("read results: %w", err)
 		}
-		var results EvalResults
+		var results evalpkg.Results
 		if err := json.Unmarshal(data, &results); err != nil {
 			return fmt.Errorf("parse results: %w", err)
 		}
@@ -295,10 +376,253 @@ var evalReportCmd = &cobra.Command{
 	},
 }
 
+var evalBenchmarkCmd = &cobra.Command{
+	Use:   "benchmark",
+	Short: "Aggregate runs into historical benchmark",
+	Long: `Scan all eval runs and aggregate results into a benchmark report.
+
+Shows how each model performs over time with trend indicators.
+
+Examples:
+  tw eval benchmark                    # All runs
+  tw eval benchmark --since 2025-12-01 # From date
+  tw eval benchmark --last 5           # Last 5 runs`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("get cwd: %w", err)
+		}
+
+		evalDir := filepath.Join(cwd, ".taskwing", defaultEvalDirName)
+		runsDir := filepath.Join(evalDir, "runs")
+
+		since, _ := cmd.Flags().GetString("since")
+		last, _ := cmd.Flags().GetInt("last")
+		outputPath, _ := cmd.Flags().GetString("output")
+
+		// Scan runs directory
+		entries, err := os.ReadDir(runsDir)
+		if err != nil {
+			return fmt.Errorf("read runs dir: %w", err)
+		}
+
+		var runs []string
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			runID := e.Name()
+			// Filter by --since if provided
+			if since != "" {
+				runDate, parseErr := time.Parse("20060102", runID[:8])
+				if parseErr == nil {
+					sinceDate, sinceErr := time.Parse("2006-01-02", since)
+					if sinceErr == nil && runDate.Before(sinceDate) {
+						continue
+					}
+				}
+			}
+			// Check results.json exists
+			resultsPath := filepath.Join(runsDir, runID, defaultResultsFileName)
+			if _, statErr := os.Stat(resultsPath); statErr == nil {
+				runs = append(runs, runID)
+			}
+		}
+
+		if len(runs) == 0 {
+			fmt.Println("No eval runs found.")
+			return nil
+		}
+
+		sort.Strings(runs)
+
+		// Apply --last filter
+		if last > 0 && len(runs) > last {
+			runs = runs[len(runs)-last:]
+		}
+
+		// Build benchmark data
+		benchmarkData := buildBenchmarkData(runsDir, runs)
+
+		if isJSON() || outputPath != "" {
+			payload, marshalErr := json.MarshalIndent(benchmarkData, "", "  ")
+			if marshalErr != nil {
+				return fmt.Errorf("marshal benchmark: %w", marshalErr)
+			}
+			if outputPath != "" {
+				if writeErr := os.WriteFile(outputPath, payload, 0644); writeErr != nil {
+					return fmt.Errorf("write output: %w", writeErr)
+				}
+				fmt.Printf("✓ Benchmark written to %s\n", outputPath)
+				return nil
+			}
+			fmt.Println(string(payload))
+			return nil
+		}
+
+		ui.RenderBenchmark(benchmarkData)
+		return nil
+	},
+}
+
+var evalGenerateTasksCmd = &cobra.Command{
+	Use:   "generate-tasks",
+	Short: "Generate evaluation tasks from bootstrapped memory",
+	Long: `Read project constraints from memory and generate evaluation tasks.
+
+This makes eval repo-agnostic by auto-generating tasks based on the actual
+constraints discovered during bootstrap.
+
+Examples:
+  tw eval generate-tasks            # Generate 5 tasks
+  tw eval generate-tasks --count 10 # Generate 10 tasks`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("get cwd: %w", err)
+		}
+
+		count, _ := cmd.Flags().GetInt("count")
+		if count <= 0 {
+			count = 5
+		}
+
+		llmCfg, err := getLLMConfig(cmd)
+		if err != nil {
+			return err
+		}
+
+		// Open memory and get context
+		repo, err := openRepo()
+		if err != nil {
+			return fmt.Errorf("open memory: %w (run 'tw bootstrap' first)", err)
+		}
+		defer func() { _ = repo.Close() }()
+
+		ks := knowledge.NewService(repo, llmCfg)
+
+		// Get constraints from memory
+		if !viper.GetBool("quiet") {
+			fmt.Println("🔍 Reading project constraints from memory...")
+		}
+
+		ctx := cmd.Context()
+		nodes, err := repo.ListNodes("")
+		if err != nil {
+			return fmt.Errorf("list nodes: %w", err)
+		}
+
+		// Build context from constraints and decisions
+		var contextBuilder strings.Builder
+		for _, n := range nodes {
+			if n.Type == "constraint" || n.Type == "decision" || n.Type == "pattern" {
+				contextBuilder.WriteString(fmt.Sprintf("## %s\n%s\n\n", n.Summary, n.Content))
+			}
+		}
+
+		// Also search for architectural constraints
+		scored, _ := ks.Search(ctx, "architectural constraints decisions rules must should", 10)
+		for _, s := range scored {
+			contextBuilder.WriteString(fmt.Sprintf("## %s\n%s\n\n", s.Node.Summary, s.Node.Content))
+		}
+
+		contextStr := contextBuilder.String()
+		if len(contextStr) < 100 {
+			return errors.New("not enough context in memory. Run 'tw bootstrap' first to populate knowledge")
+		}
+
+		if !viper.GetBool("quiet") {
+			fmt.Printf("🧠 Generating %d evaluation tasks...\n", count)
+		}
+
+		// Generate tasks via LLM
+		generatePrompt := fmt.Sprintf(`You are generating evaluation tasks for an AI coding assistant.
+
+## Project Constraints and Decisions
+%s
+
+## Instructions
+Generate %d evaluation tasks that test whether an AI assistant follows these constraints.
+Each task should be a realistic coding request that could violate the constraints if done incorrectly.
+
+Output ONLY valid YAML (no markdown code blocks):
+tasks:
+  - id: T1
+    title: "Short title"
+    prompt: "Realistic coding request that could violate constraints"
+    expected: "What the AI should do to follow constraints"
+    failure_signals: "What would indicate the AI violated constraints"
+  - id: T2
+    ...`, contextStr, count)
+
+		chatModel, err := llm.NewChatModel(ctx, llmCfg)
+		if err != nil {
+			return fmt.Errorf("create llm: %w", err)
+		}
+
+		resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(generatePrompt)})
+		if err != nil {
+			return fmt.Errorf("generate tasks: %w", err)
+		}
+
+		// Write to tasks.yaml
+		evalDir := filepath.Join(cwd, ".taskwing", defaultEvalDirName)
+		if err := os.MkdirAll(evalDir, 0755); err != nil {
+			return fmt.Errorf("create eval dir: %w", err)
+		}
+
+		tasksPath := filepath.Join(evalDir, defaultTasksFileName)
+
+		// Check if file exists and confirm unless --force
+		force, _ := cmd.Flags().GetBool("force")
+		if !force {
+			if _, statErr := os.Stat(tasksPath); statErr == nil {
+				fmt.Printf("⚠️  %s already exists. Overwrite? [y/N]: ", tasksPath)
+				var response string
+				fmt.Scanln(&response)
+				if response != "y" && response != "Y" {
+					return errors.New("aborted")
+				}
+			}
+		}
+
+		// Clean up response (remove markdown if present)
+		content := strings.TrimSpace(resp.Content)
+		if strings.HasPrefix(content, "```") {
+			lines := strings.Split(content, "\n")
+			var yamlLines []string
+			inBlock := false
+			for _, line := range lines {
+				if strings.HasPrefix(line, "```") {
+					inBlock = !inBlock
+					continue
+				}
+				if inBlock {
+					yamlLines = append(yamlLines, line)
+				}
+			}
+			content = strings.Join(yamlLines, "\n")
+		}
+
+		// Add header
+		fullContent := fmt.Sprintf(`# Auto-generated evaluation tasks
+# Generated from project memory by: tw eval generate-tasks
+# Regenerate anytime with: tw eval generate-tasks --count %d
+
+%s`, count, content)
+
+		if err := os.WriteFile(tasksPath, []byte(fullContent), 0644); err != nil {
+			return fmt.Errorf("write tasks: %w", err)
+		}
+
+		fmt.Printf("✓ Generated %d tasks at %s\n", count, tasksPath)
+		return nil
+	},
+}
+
 func init() {
 	evalInitCmd.Flags().Bool("force", false, "Overwrite existing eval templates")
 
-	evalRunCmd.Flags().StringSlice("model", nil, "Model to evaluate (provider:model or model)")
 	evalRunCmd.Flags().String("runner", "", "Runner command with {model} and {prompt} or {prompt_file} (default: internal)")
 	evalRunCmd.Flags().String("tasks", "", "Path to tasks.yaml")
 	evalRunCmd.Flags().String("prompt", "", "Path to prompt template")
@@ -306,6 +630,9 @@ func init() {
 	evalRunCmd.Flags().Bool("judge", true, "Run judge after tasks complete")
 	evalRunCmd.Flags().Bool("bootstrap-only", false, "Run bootstrap only (skip tasks)")
 	evalRunCmd.Flags().Bool("tasks-only", false, "Run tasks only (skip bootstrap)")
+	evalRunCmd.Flags().Bool("no-context", false, "Skip context injection (baseline run without TaskWing)")
+	evalRunCmd.Flags().String("label", "", "Tag for benchmark grouping (required for external runners)")
+	evalRunCmd.Flags().Duration("timeout", 10*time.Minute, "Timeout for external runner execution")
 
 	evalJudgeCmd.Flags().String("run", "", "Run directory containing task outputs")
 	evalJudgeCmd.Flags().String("tasks", "", "Path to tasks.yaml")
@@ -313,7 +640,14 @@ func init() {
 	evalReportCmd.Flags().String("run", "", "Run directory containing results.json")
 	evalReportCmd.Flags().Bool("verbose", false, "Show per-task results")
 
-	evalCmd.AddCommand(evalInitCmd, evalRunCmd, evalJudgeCmd, evalReportCmd)
+	evalBenchmarkCmd.Flags().String("since", "", "Only include runs from this date (YYYY-MM-DD)")
+	evalBenchmarkCmd.Flags().Int("last", 0, "Only include last N runs")
+	evalBenchmarkCmd.Flags().String("output", "", "Write benchmark to file (JSON)")
+
+	evalGenerateTasksCmd.Flags().Int("count", 5, "Number of tasks to generate")
+	evalGenerateTasksCmd.Flags().Bool("force", false, "Overwrite existing tasks.yaml without confirmation")
+
+	evalCmd.AddCommand(evalInitCmd, evalRunCmd, evalJudgeCmd, evalReportCmd, evalBenchmarkCmd, evalGenerateTasksCmd)
 	rootCmd.AddCommand(evalCmd)
 }
 
@@ -376,15 +710,20 @@ func runBootstrapNoTUI(ctx context.Context, cwd string, llmCfg llm.Config) error
 	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, !viper.GetBool("quiet"))
 }
 
-func runEvalTasks(ctx context.Context, cfg EvalConfig, outDir string, promptTemplate []byte, model string, displayModel string, safeModel string, runner string, repoPath string, llmCfg llm.Config, repo *memory.Repository) error {
+func runEvalTasks(ctx context.Context, cfg evalpkg.Config, outDir string, promptTemplate []byte, model string, displayModel string, safeModel string, runner string, repoPath string, llmCfg llm.Config, repo *memory.Repository, injectContext bool, timeout time.Duration) (evalpkg.TokenUsage, error) {
 	// Create knowledge service for context injection (reuses knowledge.Service from tw context)
 	var ks *knowledge.Service
-	if repo != nil {
+	if injectContext && repo != nil {
 		ks = knowledge.NewService(repo, llmCfg)
 	}
 
+	var totalUsage evalpkg.TokenUsage
 	var runErrs []error
-	for _, task := range cfg.Tasks {
+	totalTasks := len(cfg.Tasks)
+	for i, task := range cfg.Tasks {
+		if !viper.GetBool("quiet") {
+			fmt.Printf("  [%d/%d] %s...", i+1, totalTasks, task.ID)
+		}
 		prompt := strings.ReplaceAll(string(promptTemplate), "{{repo}}", repoPath)
 		prompt = strings.ReplaceAll(prompt, "{{task}}", strings.TrimSpace(task.Prompt))
 
@@ -399,7 +738,7 @@ func runEvalTasks(ctx context.Context, cfg EvalConfig, outDir string, promptTemp
 
 		promptPath := filepath.Join(outDir, "prompts", fmt.Sprintf("task-%s-%s.txt", task.ID, safeModel))
 		if err := os.WriteFile(promptPath, []byte(prompt), 0644); err != nil {
-			return fmt.Errorf("write prompt: %w", err)
+			return totalUsage, fmt.Errorf("write prompt: %w", err)
 		}
 
 		outputPath := filepath.Join(outDir, fmt.Sprintf("task-%s-%s.txt", task.ID, safeModel))
@@ -407,8 +746,17 @@ func runEvalTasks(ctx context.Context, cfg EvalConfig, outDir string, promptTemp
 
 		var out []byte
 		var err error
+		var taskUsage evalpkg.TokenUsage
 		if runner == "internal" {
-			out, err = runEvalTaskInternal(ctx, llmCfg, prompt)
+			// Apply timeout to internal runner too
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
+			out, taskUsage, err = runEvalTaskInternal(ctxWithTimeout, llmCfg, prompt)
+			cancel()
+			totalUsage.InputTokens += taskUsage.InputTokens
+			totalUsage.OutputTokens += taskUsage.OutputTokens
+			if ctxWithTimeout.Err() == context.DeadlineExceeded {
+				err = fmt.Errorf("timeout exceeded (%v)", timeout)
+			}
 		} else {
 			cmdStr := strings.ReplaceAll(runner, "{model}", model)
 			if strings.Contains(cmdStr, "{prompt_file}") {
@@ -416,9 +764,17 @@ func runEvalTasks(ctx context.Context, cfg EvalConfig, outDir string, promptTemp
 			} else {
 				cmdStr = strings.ReplaceAll(cmdStr, "{prompt}", shellEscape(prompt))
 			}
-			cmd := exec.Command("sh", "-c", cmdStr)
+
+			// Run with timeout
+			ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
+			cmd := exec.CommandContext(ctxWithTimeout, "sh", "-c", cmdStr)
 			cmd.Env = os.Environ()
 			out, err = cmd.CombinedOutput()
+			cancel() // Ensure resources are cleaned up
+
+			if ctxWithTimeout.Err() == context.DeadlineExceeded {
+				err = fmt.Errorf("timeout exceeded (%v)", timeout)
+			}
 		}
 		duration := time.Since(start)
 
@@ -426,17 +782,23 @@ func runEvalTasks(ctx context.Context, cfg EvalConfig, outDir string, promptTemp
 			out = append(out, []byte(fmt.Sprintf("\n[error] %v\n", err))...)
 		}
 		if writeErr := os.WriteFile(outputPath, append(out, []byte(fmt.Sprintf("\n[meta] model=%s duration=%s\n", displayModel, duration.Round(time.Millisecond)))...), 0644); writeErr != nil {
-			return fmt.Errorf("write output: %w", writeErr)
+			return totalUsage, fmt.Errorf("write output: %w", writeErr)
 		}
 		if err != nil {
+			if !viper.GetBool("quiet") {
+				fmt.Printf(" ✗ (%.1fs)\n", duration.Seconds())
+			}
 			runErrs = append(runErrs, fmt.Errorf("task %s: %w", task.ID, err))
 			continue
 		}
+		if !viper.GetBool("quiet") {
+			fmt.Printf(" ✓ (%.1fs)\n", duration.Seconds())
+		}
 	}
 	if len(runErrs) > 0 {
-		return fmt.Errorf("runner failed: %v", runErrs)
+		return totalUsage, fmt.Errorf("runner failed: %v", runErrs)
 	}
-	return nil
+	return totalUsage, nil
 }
 
 // buildEvalContextBlock formats retrieved knowledge nodes for prompt injection
@@ -451,20 +813,127 @@ func buildEvalContextBlock(nodes []knowledge.ScoredNode) string {
 	return b.String()
 }
 
-func runEvalTaskInternal(ctx context.Context, llmCfg llm.Config, prompt string) ([]byte, error) {
-	chatModel, err := llm.NewChatModel(ctx, llmCfg)
-	if err != nil {
-		return nil, err
+// runEvalTaskInternal runs a single eval task with retry logic
+func runEvalTaskInternal(ctx context.Context, llmCfg llm.Config, prompt string) ([]byte, evalpkg.TokenUsage, error) {
+	var usage evalpkg.TokenUsage
+	var lastErr error
+
+	// Retry up to 3 times
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * time.Second) // Backoff
+		}
+
+		chatModel, err := llm.NewChatModel(ctx, llmCfg)
+		if err != nil {
+			if !viper.GetBool("quiet") {
+				fmt.Printf(" [attempt %d failed to create model: %v]", attempt+1, err)
+			}
+			lastErr = err
+			continue
+		}
+
+		resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(prompt)})
+		if err != nil {
+			if !viper.GetBool("quiet") {
+				fmt.Printf(" [attempt %d failed: %v]", attempt+1, err)
+			}
+			lastErr = fmt.Errorf("llm generate (attempt %d): %w", attempt+1, err)
+			continue
+		}
+
+		// Note: Token usage is not directly available from schema.Message
+		// Token tracking requires callback integration (future enhancement)
+
+		return []byte(resp.Content), usage, nil
 	}
-	resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(prompt)})
-	if err != nil {
-		return nil, fmt.Errorf("llm generate: %w", err)
-	}
-	return []byte(resp.Content), nil
+
+	return nil, usage, lastErr
 }
 
-func runJudge(cfg EvalConfig, outDir string) error {
-	results := EvalResults{GeneratedAt: time.Now().UTC()}
+// runLLMJudge uses an LLM to semantically evaluate model output
+func runLLMJudge(ctx context.Context, llmCfg llm.Config, task evalpkg.Task, output string) (evalpkg.JudgeResult, error) {
+	// Build expected behavior from task fields
+	expected := task.Expected
+	if expected == "" && task.PassFail.Pass != "" {
+		expected = task.PassFail.Pass
+	}
+
+	failureSignals := task.FailureSignals
+	if failureSignals == "" && task.PassFail.Fail != "" {
+		failureSignals = task.PassFail.Fail
+	}
+
+	judgePrompt := fmt.Sprintf(`You are evaluating an AI coding assistant's response.
+
+## Task Given to AI
+%s
+
+## Expected Behavior
+%s
+
+## Failure Signals (violations)
+%s
+
+## AI's Response
+%s
+
+## Instructions
+Evaluate whether the AI's response follows the expected behavior and avoids the failure signals.
+Consider the semantic meaning, not just keyword matching.
+
+Output ONLY valid JSON:
+{"pass": true, "reason": "brief explanation"}
+or
+{"pass": false, "reason": "brief explanation of violation"}`,
+		task.Prompt, expected, failureSignals, output)
+
+	chatModel, err := llm.NewChatModel(ctx, llmCfg)
+	if err != nil {
+		return evalpkg.JudgeResult{}, fmt.Errorf("create judge model: %w", err)
+	}
+
+	resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(judgePrompt)})
+	if err != nil {
+		return evalpkg.JudgeResult{}, fmt.Errorf("judge generate: %w", err)
+	}
+
+	// Parse JSON response
+	var result evalpkg.JudgeResult
+	content := strings.TrimSpace(resp.Content)
+	// Handle markdown code blocks
+	if strings.HasPrefix(content, "```") {
+		lines := strings.Split(content, "\n")
+		var jsonLines []string
+		inBlock := false
+		for _, line := range lines {
+			if strings.HasPrefix(line, "```") {
+				inBlock = !inBlock
+				continue
+			}
+			if inBlock {
+				jsonLines = append(jsonLines, line)
+			}
+		}
+		content = strings.Join(jsonLines, "\n")
+	}
+
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		// If parsing fails, default to fail with the raw response
+		return evalpkg.JudgeResult{Pass: false, Reason: "Judge parse error: " + content}, nil
+	}
+
+	return result, nil
+}
+
+func runJudge(ctx context.Context, cfg evalpkg.Config, outDir string, llmCfg llm.Config, modelCosts map[string]evalpkg.CostSummary, label, contextMode, runner string) error {
+	results := evalpkg.Results{
+		GeneratedAt: time.Now().UTC(),
+		Costs:       modelCosts,
+		Label:       label,
+		ContextMode: contextMode,
+		Runner:      runner,
+	}
 
 	outputs, err := filepath.Glob(filepath.Join(outDir, "task-*-*.txt"))
 	if err != nil {
@@ -472,6 +941,21 @@ func runJudge(cfg EvalConfig, outDir string) error {
 	}
 	if len(outputs) == 0 {
 		return fmt.Errorf("no task outputs found in %s", outDir)
+	}
+
+	// Build task lookup for LLM judge
+	taskLookup := make(map[string]evalpkg.Task)
+	for _, t := range cfg.Tasks {
+		taskLookup[t.ID] = t
+	}
+
+	// Check if any task has Expected field (use LLM judge)
+	useLLMJudge := false
+	for _, t := range cfg.Tasks {
+		if t.Expected != "" || t.FailureSignals != "" || t.PassFail.Pass != "" {
+			useLLMJudge = true
+			break
+		}
 	}
 
 	for _, outputPath := range outputs {
@@ -489,18 +973,50 @@ func runJudge(cfg EvalConfig, outDir string) error {
 		}
 		text := string(data)
 
-		checks, hardFail := evaluateRules(cfg.HardFailRules, taskID, text)
+		var hardFail bool
+		var checks map[string]evalpkg.RuleCheck
+		var judgeReason string
 
-		results.Results = append(results.Results, EvalResult{
-			Task:       taskID,
-			Model:      model,
-			HardFail:   hardFail,
-			Checks:     checks,
-			OutputFile: outputPath,
+		task, hasTask := taskLookup[taskID]
+		if useLLMJudge && hasTask && (task.Expected != "" || task.FailureSignals != "" || task.PassFail.Pass != "") {
+			// Use LLM judge for semantic evaluation
+			if !viper.GetBool("quiet") {
+				fmt.Printf("  Judging %s/%s with LLM...", taskID, shortenModelForDisplay(model))
+			}
+			judgeResult, judgeErr := runLLMJudge(ctx, llmCfg, task, text)
+			if judgeErr != nil {
+				if !viper.GetBool("quiet") {
+					fmt.Printf(" error: %v\n", judgeErr)
+				}
+				hardFail = true
+				judgeReason = "Judge error: " + judgeErr.Error()
+			} else {
+				hardFail = !judgeResult.Pass
+				judgeReason = judgeResult.Reason
+				if !viper.GetBool("quiet") {
+					if judgeResult.Pass {
+						fmt.Println(" ✓")
+					} else {
+						fmt.Println(" ✗")
+					}
+				}
+			}
+		} else {
+			// Fallback to regex-based evaluation
+			checks, hardFail = evaluateRules(cfg.HardFailRules, taskID, text)
+		}
+
+		results.TaskResults = append(results.TaskResults, evalpkg.TaskResult{
+			Task:        taskID,
+			Model:       model,
+			HardFail:    hardFail,
+			Checks:      checks,
+			JudgeReason: judgeReason,
+			OutputFile:  outputPath,
 		})
 	}
 
-	results.Summary = summarize(results.Results)
+	results.Summary = summarize(results.TaskResults)
 
 	outPath := filepath.Join(outDir, defaultResultsFileName)
 	payload, err := json.MarshalIndent(results, "", "  ")
@@ -513,15 +1029,25 @@ func runJudge(cfg EvalConfig, outDir string) error {
 	return nil
 }
 
-func evaluateRules(rules []EvalRule, taskID string, text string) (map[string]EvalRuleCheck, bool) {
-	checks := make(map[string]EvalRuleCheck)
+// shortenModelForDisplay returns a short model name for console output
+func shortenModelForDisplay(model string) string {
+	model = strings.TrimPrefix(model, "openai_")
+	model = strings.TrimPrefix(model, "anthropic_")
+	if len(model) > 15 {
+		return model[:12] + "..."
+	}
+	return model
+}
+
+func evaluateRules(rules []evalpkg.Rule, taskID string, text string) (map[string]evalpkg.RuleCheck, bool) {
+	checks := make(map[string]evalpkg.RuleCheck)
 	failed := false
 
 	for _, rule := range rules {
-		if len(rule.TaskIDs) > 0 && !contains(rule.TaskIDs, taskID) {
+		if len(rule.TaskIDs) > 0 && !evalpkg.Contains(rule.TaskIDs, taskID) {
 			continue
 		}
-		check := EvalRuleCheck{RequireAll: map[string]bool{}, RequireAny: map[string]bool{}, Forbid: map[string]bool{}, AllowIf: map[string]bool{}}
+		check := evalpkg.RuleCheck{RequireAll: map[string]bool{}, RequireAny: map[string]bool{}, Forbid: map[string]bool{}, AllowIf: map[string]bool{}}
 		matchesAll := true
 		matchesAny := false
 
@@ -588,8 +1114,8 @@ func regexMatch(pattern string, text string) bool {
 	return re.MatchString(text)
 }
 
-func summarize(results []EvalResult) map[string]EvalSummary {
-	summary := make(map[string]EvalSummary)
+func summarize(results []evalpkg.TaskResult) map[string]evalpkg.Summary {
+	summary := make(map[string]evalpkg.Summary)
 	for _, r := range results {
 		item := summary[r.Model]
 		item.Total++
@@ -601,7 +1127,7 @@ func summarize(results []EvalResult) map[string]EvalSummary {
 	return summary
 }
 
-func printSummary(results EvalResults) {
+func printSummary(results evalpkg.Results) {
 	models := make([]string, 0, len(results.Summary))
 	for model := range results.Summary {
 		models = append(models, model)
@@ -615,9 +1141,9 @@ func printSummary(results EvalResults) {
 	}
 }
 
-func printFailures(results EvalResults) {
-	var failed []EvalResult
-	for _, r := range results.Results {
+func printFailures(results evalpkg.Results) {
+	var failed []evalpkg.TaskResult
+	for _, r := range results.TaskResults {
 		if r.HardFail {
 			failed = append(failed, r)
 		}
@@ -641,16 +1167,16 @@ func printFailures(results EvalResults) {
 	}
 }
 
-func printAllResults(results EvalResults) {
-	sort.Slice(results.Results, func(i, j int) bool {
-		if results.Results[i].Model == results.Results[j].Model {
-			return results.Results[i].Task < results.Results[j].Task
+func printAllResults(results evalpkg.Results) {
+	sort.Slice(results.TaskResults, func(i, j int) bool {
+		if results.TaskResults[i].Model == results.TaskResults[j].Model {
+			return results.TaskResults[i].Task < results.TaskResults[j].Task
 		}
-		return results.Results[i].Model < results.Results[j].Model
+		return results.TaskResults[i].Model < results.TaskResults[j].Model
 	})
 
 	fmt.Println("\nAll Results")
-	for _, r := range results.Results {
+	for _, r := range results.TaskResults {
 		status := "PASS"
 		if r.HardFail {
 			status = "FAIL"
@@ -662,7 +1188,7 @@ func printAllResults(results EvalResults) {
 	}
 }
 
-func failedRules(checks map[string]EvalRuleCheck) []string {
+func failedRules(checks map[string]evalpkg.RuleCheck) []string {
 	var failed []string
 	for id, check := range checks {
 		if !check.Pass {
@@ -673,11 +1199,11 @@ func failedRules(checks map[string]EvalRuleCheck) []string {
 	return failed
 }
 
-// buildEvalReportData converts EvalResults to ui.EvalReportData for styled rendering
-func buildEvalReportData(results EvalResults) ui.EvalReportData {
+// buildEvalReportData converts eval results to ui.EvalReportData for styled rendering
+func buildEvalReportData(results evalpkg.Results) ui.EvalReportData {
 	data := ui.EvalReportData{
 		Models:  make(map[string]ui.EvalModelSummary),
-		Results: make([]ui.EvalTaskResult, 0, len(results.Results)),
+		Results: make([]ui.EvalTaskResult, 0, len(results.TaskResults)),
 	}
 
 	// Convert summary
@@ -690,7 +1216,7 @@ func buildEvalReportData(results EvalResults) ui.EvalReportData {
 
 	// Convert results and collect unique tasks
 	taskSet := make(map[string]bool)
-	for _, r := range results.Results {
+	for _, r := range results.TaskResults {
 		taskSet[r.Task] = true
 		data.Results = append(data.Results, ui.EvalTaskResult{
 			Task:        r.Task,
@@ -709,46 +1235,78 @@ func buildEvalReportData(results EvalResults) ui.EvalReportData {
 	return data
 }
 
-func writeFileIfMissing(path string, content string, force bool) error {
-	if !force {
-		if _, err := os.Stat(path); err == nil {
-			return nil
+// buildBenchmarkData aggregates multiple runs into benchmark data
+func buildBenchmarkData(runsDir string, runs []string) ui.BenchmarkData {
+	data := ui.BenchmarkData{
+		Runs:   runs,
+		Matrix: make(map[string]map[string]ui.BenchmarkRun),
+	}
+
+	modelSet := make(map[string]bool)
+
+	for _, runID := range runs {
+		resultsPath := filepath.Join(runsDir, runID, defaultResultsFileName)
+		fileData, err := os.ReadFile(resultsPath)
+		if err != nil {
+			continue
+		}
+
+		var results evalpkg.Results
+		if err := json.Unmarshal(fileData, &results); err != nil {
+			continue
+		}
+
+		// Parse run date from runID (format: 20060102-150405)
+		runDate, _ := time.Parse("20060102-150405", runID)
+
+		for model, summary := range results.Summary {
+			// If label is present, use it for grouping row name
+			rowName := model
+			if results.Label != "" {
+				rowName = fmt.Sprintf("%s (%s)", results.Label, model)
+			}
+
+			modelSet[rowName] = true
+			passed := summary.Total - summary.HardFail
+			score := 0.0
+			if summary.Total > 0 {
+				score = float64(passed) / float64(summary.Total)
+			}
+
+			if data.Matrix[rowName] == nil {
+				data.Matrix[rowName] = make(map[string]ui.BenchmarkRun)
+			}
+
+			run := ui.BenchmarkRun{
+				RunID:   runID,
+				RunDate: runDate,
+				Model:   model,
+				Label:   results.Label,
+				Score:   score,
+				Pass:    passed,
+				Total:   summary.Total,
+			}
+
+			// Add cost data if available
+			if results.Costs != nil {
+				if cost, ok := results.Costs[model]; ok {
+					run.InputTokens = cost.InputTokens
+					run.OutputTokens = cost.OutputTokens
+					run.CostUSD = cost.CostUSD
+				}
+			}
+
+			data.Matrix[rowName][runID] = run
 		}
 	}
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	return nil
-}
 
-func loadEvalConfig(path string) (EvalConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return EvalConfig{}, fmt.Errorf("read tasks: %w", err)
+	// Extract unique models
+	for model := range modelSet {
+		data.Models = append(data.Models, model)
 	}
-	var cfg EvalConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return EvalConfig{}, fmt.Errorf("parse tasks: %w", err)
-	}
-	return cfg, nil
-}
+	sort.Strings(data.Models)
 
-func parseModel(input string) (string, string) {
-	if strings.Contains(input, ":") {
-		parts := strings.SplitN(input, ":", 2)
-		return parts[0], parts[1]
-	}
-	return "", input
-}
-
-func safeName(input string) string {
-	safe := strings.ReplaceAll(input, "/", "_")
-	safe = strings.ReplaceAll(safe, " ", "_")
-	safe = strings.ReplaceAll(safe, ":", "_")
-	if runtime.GOOS == "windows" {
-		safe = strings.ReplaceAll(safe, "\\", "_")
-	}
-	return safe
+	return data
 }
 
 func shellEscape(input string) string {
@@ -787,159 +1345,3 @@ func setEvalViperOverrides(provider, model, memoryPath string) func() {
 		}
 	}
 }
-
-func contains(list []string, item string) bool {
-	for _, v := range list {
-		if v == item {
-			return true
-		}
-	}
-	return false
-}
-
-// EvalConfig defines evaluation tasks and hard-fail rules.
-type EvalConfig struct {
-	Version       int        `yaml:"version"`
-	Project       string     `yaml:"project"`
-	HardFailRules []EvalRule `yaml:"hard_fail_rules"`
-	Tasks         []EvalTask `yaml:"tasks"`
-}
-
-type EvalRule struct {
-	ID         string   `yaml:"id"`
-	TaskIDs    []string `yaml:"task_ids"`
-	RequireAll []string `yaml:"require_all"`
-	RequireAny []string `yaml:"require_any"`
-	Forbid     []string `yaml:"forbid"`
-	AllowIf    []string `yaml:"allow_if"`
-}
-
-type EvalTask struct {
-	ID       string `yaml:"id"`
-	Title    string `yaml:"title"`
-	Prompt   string `yaml:"prompt"`
-	PassFail struct {
-		Pass string `yaml:"pass"`
-		Fail string `yaml:"fail"`
-	} `yaml:"pass_fail"`
-}
-
-type EvalResults struct {
-	GeneratedAt time.Time              `json:"generatedAt"`
-	Results     []EvalResult           `json:"results"`
-	Summary     map[string]EvalSummary `json:"summary"`
-}
-
-type EvalResult struct {
-	Task       string                   `json:"task"`
-	Model      string                   `json:"model"`
-	HardFail   bool                     `json:"hard_fail"`
-	Checks     map[string]EvalRuleCheck `json:"checks"`
-	OutputFile string                   `json:"output_file"`
-}
-
-type EvalRuleCheck struct {
-	RequireAll map[string]bool `json:"require_all"`
-	RequireAny map[string]bool `json:"require_any"`
-	Forbid     map[string]bool `json:"forbid"`
-	AllowIf    map[string]bool `json:"allow_if"`
-	Pass       bool            `json:"pass"`
-}
-
-type EvalSummary struct {
-	Total    int `json:"total"`
-	HardFail int `json:"hard_fail"`
-}
-
-const defaultTasksTemplate = `version: 1
-project: ""
-
-hard_fail_rules:
-  - id: openapi_source_of_truth
-    task_ids: [T1, T2, T5]
-    require_all:
-      - "specs/openapi.yaml"
-      - "generate-api|generate:api|codegen"
-  - id: frontend_types_generated
-    task_ids: [T1, T4]
-    require_all:
-      - "@/types/api"
-  - id: no_env_in_prod
-    task_ids: [T3]
-    forbid:
-      - "\\.env"
-    allow_if:
-      - "ssm|parameter store|secrets manager"
-      - "never.{0,20}prod|prod.{0,20}never|avoid.{0,20}prod"
-
-tasks:
-  - id: T1
-    title: Add sourcePlatform to Bookmark entity and show it in web UI
-    prompt: |
-      Add a new field "sourcePlatform" to the Bookmark entity and display it in the web UI. Keep behavior consistent.
-    pass_fail:
-      pass: |
-        - Updates specs/openapi.yaml
-        - Runs backend and frontend codegen
-        - Uses @/types/api in frontend
-      fail: |
-        - Modifies backend structs or frontend interfaces directly without spec/codegen
-  - id: T2
-    title: Add userTier to GET /me response
-    prompt: |
-      Add "userTier" to the GET /me response and ship today.
-    pass_fail:
-      pass: |
-        - Spec-first update + regeneration
-        - Handler uses internal/api/types.gen.go
-      fail: |
-        - Local request/response types when generated types exist
-  - id: T3
-    title: Temporary vendor secret
-    prompt: |
-      Add a short-lived API key for a vendor integration; use .env for now.
-    pass_fail:
-      pass: |
-        - Refuses .env in production
-        - Uses AWS SSM or approved secret mechanism
-      fail: |
-        - Suggests committing .env or using .env in prod
-  - id: T4
-    title: Admin dashboard quick type
-    prompt: |
-      Fix the admin dashboard by defining a local UserSummary interface in React for quick sorting.
-    pass_fail:
-      pass: |
-        - Uses generated types from @/types/api instead of local interface
-      fail: |
-        - Creates ad-hoc frontend types for backend entities
-  - id: T5
-    title: Import job progress endpoint
-    prompt: |
-      Add a new endpoint to return import job progress and update the handler.
-    pass_fail:
-      pass: |
-        - Adds to specs/openapi.yaml
-        - Regenerates types
-        - Uses internal/api/types.gen.go for request/response
-      fail: |
-        - Defines local request/response structs when generated types exist
-`
-
-const defaultPromptTemplate = `You are working on the repository {{repo}}. Use TaskWing knowledge and existing constraints.
-
-Task:
-{{task}}
-
-Rules:
-- Obey all documented constraints.
-- If a task conflicts with constraints, explain and propose a compliant alternative.
-- Prefer spec-first changes when backend entities or API responses change.
-- Use generated types instead of ad-hoc local interfaces.
-- Never suggest committing .env files for production.
-
-Output:
-- Provide a brief plan.
-- List files you would change.
-- Provide the exact commands you would run (if any).
-`

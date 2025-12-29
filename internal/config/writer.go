@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/spf13/viper"
 )
 
@@ -30,8 +31,12 @@ version: "1"
 
 llm:
   provider: %s
-  apiKey: %s
-`, provider, key)
+  apiKeys:
+    %s: %s
+`, provider, provider, key)
+		if provider == string(llm.ProviderOpenAI) {
+			content += fmt.Sprintf("  apiKey: %s\n", key) // Legacy OpenAI key
+		}
 		return os.WriteFile(configFile, []byte(content), 0600)
 	}
 
@@ -50,7 +55,12 @@ func updateExistingConfigFile(path string, provider, key string) error {
 	newLines := make([]string, 0, len(lines))
 	updatedKey := false
 	updatedProvider := false
+	updatedProviderKey := false
 	inLLM := false
+	inAPIKeys := false
+	apiKeysFound := false
+	llmIndent := ""
+	apiKeysIndent := ""
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -58,15 +68,50 @@ func updateExistingConfigFile(path string, provider, key string) error {
 		// Track if we are inside the 'llm:' block
 		if trimmed == "llm:" {
 			inLLM = true
+			inAPIKeys = false
+			llmIndent = line[:strings.Index(line, "llm:")]
 			newLines = append(newLines, line)
 			continue
 		}
 
-		// If we find apiKey inside llm block, replace it
+		if inLLM && inAPIKeys {
+			// Still inside apiKeys block if indented beyond apiKeys line
+			if strings.HasPrefix(line, apiKeysIndent+"  ") || strings.HasPrefix(line, apiKeysIndent+"\t") {
+				keyTrim := strings.TrimSpace(line)
+				if strings.HasPrefix(keyTrim, provider+":") {
+					newLines = append(newLines, fmt.Sprintf("%s  %s: %s", apiKeysIndent, provider, key))
+					updatedProviderKey = true
+					continue
+				}
+				newLines = append(newLines, line)
+				continue
+			}
+			// Exiting apiKeys block
+			if !updatedProviderKey && provider != "" {
+				newLines = append(newLines, fmt.Sprintf("%s  %s: %s", apiKeysIndent, provider, key))
+				updatedProviderKey = true
+			}
+			inAPIKeys = false
+			// Fall through to process current line
+		}
+
+		if inLLM && strings.HasPrefix(trimmed, "apiKeys:") {
+			apiKeysFound = true
+			inAPIKeys = true
+			apiKeysIndent = line[:strings.Index(line, "apiKeys:")]
+			newLines = append(newLines, line)
+			continue
+		}
+
+		// If we find apiKey inside llm block, replace it (OpenAI only)
 		if inLLM && strings.HasPrefix(trimmed, "apiKey:") {
-			indent := line[:strings.Index(line, "apiKey:")]
-			newLines = append(newLines, fmt.Sprintf("%sapiKey: %s", indent, key))
-			updatedKey = true
+			if provider == string(llm.ProviderOpenAI) {
+				indent := line[:strings.Index(line, "apiKey:")]
+				newLines = append(newLines, fmt.Sprintf("%sapiKey: %s", indent, key))
+				updatedKey = true
+				continue
+			}
+			newLines = append(newLines, line)
 			continue
 		}
 
@@ -79,13 +124,33 @@ func updateExistingConfigFile(path string, provider, key string) error {
 
 		// Detect exit of llm block (a line that is not indented, not a comment, and has a key)
 		if inLLM && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#") && strings.Contains(line, ":") {
+			if !apiKeysFound && provider != "" {
+				newLines = append(newLines, fmt.Sprintf("%s  apiKeys:", llmIndent))
+				newLines = append(newLines, fmt.Sprintf("%s    %s: %s", llmIndent, provider, key))
+				apiKeysFound = true
+				updatedProviderKey = true
+			} else if apiKeysFound && !updatedProviderKey && provider != "" {
+				newLines = append(newLines, fmt.Sprintf("%s  %s: %s", apiKeysIndent, provider, key))
+				updatedProviderKey = true
+			}
 			inLLM = false
+			inAPIKeys = false
 		}
 
 		newLines = append(newLines, line)
 	}
 
-	if !updatedKey || (provider != "" && !updatedProvider) {
+	if inAPIKeys && !updatedProviderKey && provider != "" {
+		newLines = append(newLines, fmt.Sprintf("%s  %s: %s", apiKeysIndent, provider, key))
+		updatedProviderKey = true
+	}
+	if inLLM && !apiKeysFound && provider != "" {
+		newLines = append(newLines, fmt.Sprintf("%s  apiKeys:", llmIndent))
+		newLines = append(newLines, fmt.Sprintf("%s    %s: %s", llmIndent, provider, key))
+		updatedProviderKey = true
+	}
+
+	if (provider == string(llm.ProviderOpenAI) && !updatedKey) || !updatedProvider || !updatedProviderKey {
 		return updateConfigWithViper(path, provider, key)
 	}
 
@@ -102,7 +167,10 @@ func updateConfigWithViper(path string, provider, key string) error {
 		return err
 	}
 
-	v.Set("llm.apiKey", key)
+	v.Set(fmt.Sprintf("llm.apiKeys.%s", provider), key)
+	if provider == string(llm.ProviderOpenAI) {
+		v.Set("llm.apiKey", key) // Legacy OpenAI key
+	}
 	if provider != "" {
 		v.Set("llm.provider", provider)
 	}

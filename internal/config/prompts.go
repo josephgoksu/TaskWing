@@ -256,7 +256,7 @@ RESPOND IN JSON:
 DEPENDENCIES:
 {{.DepsInfo}}
 
-Respond with JSON only. Every decision MUST have evidence with exact dependency line.`
+Respond with PROPER JSON only. Do not use spaces in decimal numbers (e.g. use 0.9, NOT 0. 9). Every decision MUST have evidence with exact dependency line.`
 
 // PromptTemplateCodeAgent is the template for the code analysis agent.
 // Use with Eino ChatTemplate (Go Template format).

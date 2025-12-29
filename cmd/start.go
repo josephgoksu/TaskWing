@@ -62,7 +62,7 @@ func init() {
 	// LLM configuration (reuse from watch)
 	startCmd.Flags().String("provider", "", "LLM provider (openai, ollama, anthropic, gemini)")
 	startCmd.Flags().String("model", "", "Model to use")
-	startCmd.Flags().String("api-key", "", "OpenAI API key (or set OPENAI_API_KEY)")
+	startCmd.Flags().String("api-key", "", "LLM API key (or set provider-specific env var)")
 	startCmd.Flags().String("ollama-url", "http://localhost:11434", "Ollama server URL")
 }
 

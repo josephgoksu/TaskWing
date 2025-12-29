@@ -7,79 +7,51 @@ import (
 )
 
 // ExtractAndParseJSON extracts JSON from LLM responses and unmarshals it.
-// Handles: markdown code blocks, JSON embedded in text, arrays, and objects.
-// This is the SINGLE implementation - all JSON parsing should use this.
+// Uses stream-based decoding to robustly ignore trailing text.
 func ExtractAndParseJSON[T any](response string) (T, error) {
 	var result T
 
+	// 1. Basic cleanup (markdown fences)
 	cleaned := cleanLLMResponse(response)
 	if cleaned == "" {
 		return result, fmt.Errorf("no JSON found in response")
 	}
 
-	if err := json.Unmarshal([]byte(cleaned), &result); err == nil {
-		return result, nil
-	} else {
-		lastErr := err
-
-		// Some models return JSON as a quoted string (escaped JSON).
+	// 2. Find start of JSON structure
+	idx := strings.IndexAny(cleaned, "{[")
+	if idx == -1 {
+		// Maybe it's a quoted string containing JSON?
 		var asString string
 		if err := json.Unmarshal([]byte(cleaned), &asString); err == nil {
-			asString = strings.TrimSpace(asString)
-			if asString != "" {
-				if err := json.Unmarshal([]byte(asString), &result); err == nil {
-					return result, nil
-				}
-				if extracted := extractJSONFromText(asString); extracted != "" {
-					if err := json.Unmarshal([]byte(extracted), &result); err == nil {
-						return result, nil
-					} else {
-						lastErr = err
-					}
-				}
-			}
+			// Recurse on the unquoted string
+			return ExtractAndParseJSON[T](asString)
 		}
+		return result, fmt.Errorf("no JSON start ({ or [) found")
+	}
 
-		// If there is leading junk/backslashes, try slicing from first JSON token.
-		if idx := strings.IndexAny(cleaned, "{["); idx > 0 {
-			sliced := strings.TrimSpace(cleaned[idx:])
-			if err := json.Unmarshal([]byte(sliced), &result); err == nil {
+	// 3. Use Decoder to parse singular JSON value and ignore the rest
+	// This handles cases like: {"a":1} some trailing text
+	jsonPart := cleaned[idx:]
+	decoder := json.NewDecoder(strings.NewReader(jsonPart))
+	if err := decoder.Decode(&result); err != nil {
+		// If basic decode fails, try one fallback: Unescape common chars if present
+		if strings.Contains(jsonPart, "\\") {
+			unescaped := strings.ReplaceAll(jsonPart, "\\\"", "\"")
+			unescaped = strings.ReplaceAll(unescaped, "\\n", "\n")
+			// Try decoding unescaped version
+			dec2 := json.NewDecoder(strings.NewReader(unescaped))
+			if err2 := dec2.Decode(&result); err2 == nil {
 				return result, nil
-			} else {
-				lastErr = err
-			}
-			if extracted := extractJSONFromText(sliced); extracted != "" {
-				if err := json.Unmarshal([]byte(extracted), &result); err == nil {
-					return result, nil
-				} else {
-					lastErr = err
-				}
 			}
 		}
-
-		// Attempt basic unescape for common sequences.
-		if strings.Contains(cleaned, "\\") {
-			unescaped := strings.ReplaceAll(cleaned, "\\n", "\n")
-			unescaped = strings.ReplaceAll(unescaped, "\\\"", "\"")
-			unescaped = strings.ReplaceAll(unescaped, "\\\\", "\\")
-			unescaped = strings.TrimSpace(unescaped)
-			if extracted := extractJSONFromText(unescaped); extracted != "" {
-				if err := json.Unmarshal([]byte(extracted), &result); err == nil {
-					return result, nil
-				} else {
-					lastErr = err
-				}
-			}
-		}
-
-		return result, fmt.Errorf("parse JSON: %w", lastErr)
+		return result, fmt.Errorf("parse JSON: %w", err)
 	}
 
 	return result, nil
 }
 
 // cleanLLMResponse extracts JSON from LLM response text.
-// Handles markdown code blocks and embedded JSON objects/arrays.
+// Handles markdown code blocks.
 func cleanLLMResponse(response string) string {
 	response = strings.TrimSpace(response)
 
@@ -89,53 +61,8 @@ func cleanLLMResponse(response string) string {
 	} else if strings.HasPrefix(response, "```") {
 		response = strings.TrimPrefix(response, "```")
 	}
+	// Also handle suffix if it exists, regardless of prefix
 	response = strings.TrimSuffix(response, "```")
-	response = strings.TrimSpace(response)
 
-	// Try direct parse first (already clean JSON)
-	if isValidJSON(response) {
-		return response
-	}
-
-	// Extract JSON object or array from surrounding text
-	return extractJSONFromText(response)
-}
-
-// extractJSONFromText finds and extracts JSON from arbitrary text.
-func extractJSONFromText(text string) string {
-	// Try object first
-	objStart := strings.Index(text, "{")
-	objEnd := strings.LastIndex(text, "}")
-
-	// Try array
-	arrStart := strings.Index(text, "[")
-	arrEnd := strings.LastIndex(text, "]")
-
-	// Determine which comes first and is valid
-	if objStart >= 0 && objEnd > objStart {
-		obj := text[objStart : objEnd+1]
-		if isValidJSON(obj) {
-			return obj
-		}
-	}
-
-	if arrStart >= 0 && arrEnd > arrStart {
-		arr := text[arrStart : arrEnd+1]
-		if isValidJSON(arr) {
-			return arr
-		}
-	}
-
-	// Fallback: return object extraction even if invalid (let caller handle error)
-	if objStart >= 0 && objEnd > objStart {
-		return text[objStart : objEnd+1]
-	}
-
-	return ""
-}
-
-// isValidJSON checks if a string is valid JSON.
-func isValidJSON(s string) bool {
-	var js json.RawMessage
-	return json.Unmarshal([]byte(s), &js) == nil
+	return strings.TrimSpace(response)
 }

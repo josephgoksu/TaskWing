@@ -1,77 +1,55 @@
-# TaskWing
+# TaskWing: Engineering Intelligence
 
-> **Knowledge Graph for Engineering Teams** — Give your AI tools project memory.
+[![Go Report Card](https://goreportcard.com/badge/github.com/josephgoksu/TaskWing)](https://goreportcard.com/report/github.com/josephgoksu/TaskWing)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**[Why TaskWing?](docs/WHY_TASKWING.md)** — See how TaskWing compares to using AI tools alone.
+> **Stop Answering the Same Questions.**
+> Give your AI tools the context they need to understand *why* your code works, not just *how*.
+
+## 🚀 The Value Proposition
+
+As your codebase grows, context is lost. Decisions are forgotten. Onboarding takes weeks.
+TaskWing scans your repository, extracts architectural intent, and serves it to your AI agents (Claude, Cursor, Copilot) via the Model Context Protocol (MCP).
+
+**The Result**:
+*   **Developers**: Get answers rooted in *your* architecture, not generic patterns.
+*   **Leads**: Stop repeating "we use JWT here" for the 100th time.
+*   **AI**: Stops hallucinating libraries you don't use.
+
+## ⚡ Quick Start
 
 ```bash
-# Install
+# 1. Install (Mac/Linux)
 curl -fsSL https://taskwing.app/install.sh | bash
 
-# Bootstrap (auto-extract architecture)
+# 2. Bootstrap your repo (Auto-extract knowledge)
+cd /path/to/your/repo
 tw bootstrap
 
-# Query
-tw context "how does auth work" --answer
-
-# Plan development tasks
-tw plan new "Add OAuth2 support"
-
-# Expose to AI tools via MCP
+# 3. Start the MCP Server (Connect to Claude/Cursor)
 tw mcp
 ```
 
-## Core Commands
+👉 **[Full Getting Started Guide](docs/development/GETTING_STARTED.md)**
 
-| Command | Description |
-|---------|-------------|
-| `tw bootstrap` | Auto-generate knowledge from codebase |
-| `tw add "..."` | Add knowledge (AI-classified) |
-| `tw context "query"` | Semantic search |
-| `tw plan new "goal"` | Generate development plan with tasks |
-| `tw plan update <id>` | Update plan goal/status |
-| `tw task list` | List tasks (grouped by plan) |
-| `tw task update <id> --status` | Update task status |
-| `tw node show <id>` | Show a knowledge node |
-| `tw mcp` | Start MCP server for AI tools |
-| `tw eval` | Evaluate model outputs against repo constraints |
+## 📚 Knowledge Architecture
 
-## AI Tool Integration
+We organize documentation to be trusted, actionable, and scalable.
 
-Works with any MCP-compatible tool:
+| Scope | Directory | Purpose |
+|-------|-----------|---------|
+| **The Constitution** | [`docs/architecture/`](docs/architecture/) | **Immutable Principles.** System design, data privacy, and roadmap. |
+| **The Playbook** | [`docs/development/`](docs/development/) | **Developer Guide.** Internals, agent architecture, and testing. |
+| **The Reference** | [`docs/reference/`](docs/reference/) | **Facts.** Telemetry policy, error codes, integrations. |
 
-| Tool | Config |
-|------|--------|
-| Claude Code | `~/.claude/mcp.json` |
-| Cursor | `.cursor/mcp.json` |
-| Gemini | `~/.gemini/settings.json` |
+## 🏢 Enterprise & Teams
 
-See [MCP Integration Guide](docs/MCP_INTEGRATION.md) for setup.
+Using TaskWing in a team? We provide:
+*   **Shared Knowledge Graph**: Sync context across your entire engineering org.
+*   **Governance**: Enforce architectural constraints automatically.
 
-## How It Works
-
-1. **Bootstrap** → LLM analyzes code, extracts features + decisions + trade-offs
-2. **Knowledge Graph** → SQLite + vector embeddings for semantic search
-3. **MCP Server** → Exposes context to AI assistants
-
-## Eval (Model Comparison)
-
-```bash
-tw eval init
-tw eval run --model openai:gpt-5-mini-2025-08-07 --model openai:gpt-4.1-mini
-```
-
-`tw eval` generates a repo-local harness under `.taskwing/eval/` with tasks, prompts, and hard-fail rules.
-
-## Config
-
-```yaml
-# ~/.taskwing.yaml
-llm:
-  provider: openai
-  model: gpt-5-mini
-```
+[Contact Sales](mailto:enterprise@taskwing.app) for early access to TaskWing Cloud.
 
 ## License
 
-MIT
+MIT. Built for engineers, by engineers.

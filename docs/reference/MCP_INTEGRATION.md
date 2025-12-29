@@ -235,10 +235,11 @@ Make sure the MCP server can find your project:
 
 ### "API key not found"
 
-For LLM-powered bootstrap, set your API key:
+For LLM-powered bootstrap, set your provider API key:
 
 ```bash
 export OPENAI_API_KEY=sk-...
+# or: ANTHROPIC_API_KEY / GEMINI_API_KEY
 tw bootstrap
 ```
 

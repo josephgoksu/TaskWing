@@ -8,11 +8,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// PromptAPIKey prompts the user to enter their OpenAI API Key.
+// PromptAPIKey prompts the user to enter their LLM API key.
 // Returns the entered key or an error.
 func PromptAPIKey() (string, error) {
 	ti := textinput.New()
-	ti.Placeholder = "sk-..."
+	ti.Placeholder = "api-key"
 	ti.Focus()
 	ti.EchoMode = textinput.EchoPassword
 	ti.CharLimit = 256
