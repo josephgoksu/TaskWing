@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -256,7 +257,29 @@ func (m PlanModel) searchContext() tea.Msg {
 	})
 
 	for _, node := range allNodes {
-		sb.WriteString(fmt.Sprintf("### [%s] %s\n%s\n\n", node.Node.Type, node.Node.Summary, node.Node.Content))
+		sb.WriteString(fmt.Sprintf("### [%s] %s\n%s\n", node.Node.Type, node.Node.Summary, node.Node.Content))
+		// Append evidence file paths if available
+		if node.Node.Evidence != "" {
+			var evidenceList []struct {
+				FilePath  string `json:"file_path"`
+				StartLine int    `json:"start_line"`
+			}
+			if json.Unmarshal([]byte(node.Node.Evidence), &evidenceList) == nil && len(evidenceList) > 0 {
+				sb.WriteString("Referenced files: ")
+				for i, ev := range evidenceList {
+					if i > 0 {
+						sb.WriteString(", ")
+					}
+					if ev.StartLine > 0 {
+						sb.WriteString(fmt.Sprintf("%s:L%d", ev.FilePath, ev.StartLine))
+					} else {
+						sb.WriteString(ev.FilePath)
+					}
+				}
+				sb.WriteString("\n")
+			}
+		}
+		sb.WriteString("\n")
 	}
 
 	return MsgContextFound{Context: sb.String(), Strategy: strategyLog.String()}
