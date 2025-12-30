@@ -23,6 +23,7 @@ func NewContextGatherer(basePath string) *ContextGatherer {
 }
 
 // GatherMarkdownDocs reads all markdown files in root and docs/ directory.
+// Includes line numbers so LLM can provide accurate evidence with start_line/end_line.
 func (g *ContextGatherer) GatherMarkdownDocs() string {
 	var sb strings.Builder
 	seen := make(map[string]bool)
@@ -51,7 +52,9 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			if prefix != "" {
 				relPath = filepath.Join(prefix, name)
 			}
-			sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, string(content)))
+			// Add line numbers to content for accurate evidence extraction
+			numberedContent := addLineNumbers(string(content))
+			sb.WriteString(fmt.Sprintf("## FILE: %s\n```\n%s\n```\n\n", relPath, numberedContent))
 			seen[strings.ToLower(name)] = true
 		}
 	}
@@ -353,5 +356,17 @@ func (g *ContextGatherer) ListDirectoryTree(maxDepth int) string {
 		sb.WriteString(fmt.Sprintf("%s%s%s\n", indent, d.Name(), indicator))
 		return nil
 	})
+	return sb.String()
+}
+
+// addLineNumbers prefixes each line with its 1-indexed line number.
+// Format: "  1: content", "  2: content", etc.
+// This enables the LLM to provide accurate start_line/end_line in evidence.
+func addLineNumbers(content string) string {
+	lines := strings.Split(content, "\n")
+	var sb strings.Builder
+	for i, line := range lines {
+		sb.WriteString(fmt.Sprintf("%4d: %s\n", i+1, line))
+	}
 	return sb.String()
 }
