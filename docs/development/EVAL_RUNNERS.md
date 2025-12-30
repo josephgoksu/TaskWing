@@ -40,17 +40,33 @@ tw eval --model claude-sonnet run \
 ### OpenAI Codex
 
 ```bash
-# Native
-tw eval --model gpt-5.2-codex run \
-  --runner "codex exec --approval-mode full-auto < {prompt_file}" \
+# Native (Codex's own context, no TaskWing)
+tw eval run \
+  --runner "codex exec --full-auto < {prompt_file}" \
   --no-context \
   --label codex-native
 
-# Combined
-tw eval --model gpt-5.2-codex run \
-  --runner "codex exec --approval-mode full-auto < {prompt_file}" \
-  --label tw+codex
+# Combined (TaskWing context + Codex)
+tw eval run \
+  --runner "codex exec --full-auto < {prompt_file}" \
+  --label codex-taskwing
+
+# With specific model label
+tw eval --model o4-mini run \
+  --runner "codex exec -m o4-mini --full-auto < {prompt_file}" \
+  --label codex-o4
 ```
+
+> **Note**: `--model` is optional for external runners. If omitted, defaults to `<runner>-default` (e.g., `codex-default`).
+
+> **For agentic runners**: Use `--sandbox read-only` to prevent file modifications, or `--reset-repo` to reset git state between tasks:
+> ```bash
+> # Read-only mode (Codex explains but doesn't modify)
+> tw eval run --runner "codex exec -s read-only --full-auto < {prompt_file}" --label codex-readonly
+>
+> # Reset mode (allows modifications but cleans up between tasks)
+> tw eval run --runner "codex exec --full-auto < {prompt_file}" --reset-repo --label codex-reset
+> ```
 
 ### Gemini CLI
 
@@ -79,8 +95,8 @@ tw eval benchmark
 
 Output:
 ```
-  Model                              Run 1        Run 2
-  baseline (gpt-4o)                    40%           ─
-  claude-native (claude-sonnet)         ─          75%
-  tw+claude (claude-sonnet)             ─          85%
+  Model                               | Avg      | T1   T2   T3   T4   T5
+  baseline (gpt-5-mini)               | 5.8      |  8    2    5    5    5
+  codex-native (codex-default)        | 7.0      |  8    9    5    8    5
+  tw+codex (codex-default)            | 7.2      |  8    9    5    8    6
 ```

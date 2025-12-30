@@ -100,7 +100,7 @@ When you have gathered sufficient information, respond with a JSON analysis:
 // Use with Eino ChatTemplate (Go Template format).
 const PromptTemplateDocAgent = `You are a technical analyst. Analyze the following documentation for project "{{.ProjectName}}".
 
-Extract TWO types of information with EVIDENCE:
+Extract THREE types of information with VERIFIABLE EVIDENCE:
 
 ## 1. PRODUCT FEATURES
 Things the product does for users (not technical implementation).
@@ -117,12 +117,22 @@ Mandatory rules developers MUST follow. Look for:
 - Security requirements
 - Performance mandates
 
-For each constraint:
-- Rule: the exact requirement
-- Reason: why it's important
+## 3. DEVELOPMENT & CI/CD WORKFLOWS
+Explicit commands, scripts, or CI/CD pipeline steps. Look for:
+- "To do X, run Y"
+- "When changing A, you must also update B"
+- "Run 'make ...' to generate ..."
+- Multi-step processes (e.g., adding a new API endpoint)
+- CI/CD Configurations (e.g., .github/workflows/*.yml):
+  - Extract the exact Job/Step definitions
+  - Extract specific permissions (e.g. id-token: write)
+
+For each finding:
+- Rule/Workflow: the exact requirement or command sequence
+- Purpose: why it's important
 - Severity: critical, high, or medium
 - Confidence: 0.0-1.0
-- Evidence: exact quote with file and line numbers
+- Evidence: EXACT CODE SNIPPET (e.g. YAML block, Shell command) from the file. This is critical for verification.
 
 RESPOND IN JSON:
 {
@@ -153,6 +163,22 @@ RESPOND IN JSON:
           "start_line": 45,
           "end_line": 50,
           "snippet": "CRITICAL: All high-volume read operations MUST use the read replica..."
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "Database Migration",
+      "steps": "1. Create migration file\n2. Run 'make migrate-up'\n3. Verify schema",
+      "trigger": "When modifying schema",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "file_path": "CONTRIBUTING.md",
+          "start_line": 20,
+          "end_line": 25,
+          "snippet": "## Database Changes\nTo change the schema:\n1. Create a new migration..."
         }
       ]
     }

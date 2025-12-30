@@ -132,6 +132,6 @@ After deterministic checks pass, use an LLM to semantically validate findings:
 
 ## References
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — System design
-- [BOOTSTRAP.md](./BOOTSTRAP.md) — Bootstrap feature details
-- [GETTING_STARTED.md](./GETTING_STARTED.md) — User guide
+- [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md) — System design
+- [BOOTSTRAP_INTERNALS.md](../development/BOOTSTRAP_INTERNALS.md) — Bootstrap feature details
+- [GETTING_STARTED.md](../development/GETTING_STARTED.md) — User guide

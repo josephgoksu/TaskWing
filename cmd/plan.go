@@ -608,6 +608,186 @@ var planUnarchiveCmd = &cobra.Command{
 	},
 }
 
+var planStartCmd = &cobra.Command{
+	Use:   "start [plan-id]",
+	Short: "Set a plan as the active working plan",
+	Long: `Set a plan as the currently active plan. This updates MCP context
+so AI tools know what you're working on.
+
+Special values for plan-id:
+  latest    Use the most recently created plan
+
+Examples:
+  tw plan start plan-123456
+  tw plan start latest`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		planID := args[0]
+		if planID == "latest" {
+			planID, err = resolveLatestPlanID(repo)
+			if err != nil {
+				return err
+			}
+		}
+
+		plan, err := repo.GetPlan(planID)
+		if err != nil {
+			return fmt.Errorf("plan not found: %s", planID)
+		}
+
+		// Save active plan to state file
+		if err := setActivePlan(planID); err != nil {
+			return fmt.Errorf("save active plan: %w", err)
+		}
+
+		if isJSON() {
+			return printJSON(map[string]any{
+				"status":  "active",
+				"plan_id": planID,
+				"goal":    plan.Goal,
+				"tasks":   len(plan.Tasks),
+			})
+		}
+
+		if !isQuiet() {
+			fmt.Printf("\n✓ Active plan: %s\n", planID)
+			fmt.Printf("  Goal: %s\n", plan.Goal)
+			fmt.Printf("  Tasks: %d\n\n", len(plan.Tasks))
+			fmt.Println("Next steps:")
+			fmt.Println("  • tw plan status          — Check progress")
+			fmt.Println("  • tw task done <task-id>  — Mark tasks complete")
+			fmt.Println("  • tw mcp                  — Start MCP server with plan context")
+		}
+		return nil
+	},
+}
+
+var planStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show the current active plan and progress",
+	Long:  `Display the currently active plan, task completion status, and progress.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		planID, err := getActivePlan()
+		if err != nil || planID == "" {
+			if isJSON() {
+				return printJSON(map[string]any{"status": "no_active_plan"})
+			}
+			fmt.Println("No active plan. Set one with: tw plan start <plan-id>")
+			return nil
+		}
+
+		repo, err := openRepo()
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+
+		plan, err := repo.GetPlan(planID)
+		if err != nil {
+			// Plan was deleted but state still references it
+			_ = clearActivePlan()
+			if isJSON() {
+				return printJSON(map[string]any{"status": "plan_not_found", "plan_id": planID})
+			}
+			fmt.Printf("Active plan %s no longer exists. Cleared.\n", planID)
+			return nil
+		}
+
+		tasks, _ := repo.ListTasks(planID)
+		var done, total int
+		total = len(tasks)
+		for _, t := range tasks {
+			if t.Status == task.StatusCompleted {
+				done++
+			}
+		}
+
+		if isJSON() {
+			return printJSON(map[string]any{
+				"plan_id":      planID,
+				"goal":         plan.Goal,
+				"tasks_total":  total,
+				"tasks_done":   done,
+				"progress_pct": float64(done) / float64(total) * 100,
+			})
+		}
+
+		// Header
+		progressPct := 0
+		if total > 0 {
+			progressPct = done * 100 / total
+		}
+
+		passStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+		pendingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+		fmt.Printf("\n📋 Active Plan: %s\n", planID)
+		fmt.Printf("   %s\n\n", plan.Goal)
+
+		// Progress bar
+		barWidth := 30
+		filled := barWidth * done / max(total, 1)
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+		fmt.Printf("   Progress: [%s] %d%% (%d/%d)\n\n", bar, progressPct, done, total)
+
+		// Task list
+		fmt.Println("   Tasks:")
+		for _, t := range tasks {
+			status := "[ ]"
+			title := t.Title
+			if t.Status == task.StatusCompleted {
+				status = passStyle.Render("[✓]")
+				title = dimStyle.Render(title)
+			} else {
+				status = pendingStyle.Render("[ ]")
+			}
+			// Truncate task ID for display
+			tid := t.ID
+			if len(tid) > 12 {
+				tid = tid[:12]
+			}
+			fmt.Printf("   %s %s %s\n", status, dimStyle.Render(tid), title)
+		}
+
+		fmt.Println()
+		return nil
+	},
+}
+
+// setActivePlan saves the active plan ID to state file
+func setActivePlan(planID string) error {
+	statePath := filepath.Join(config.GetMemoryBasePath(), "state.json")
+	data := fmt.Sprintf(`{"active_plan": "%s"}`, planID)
+	return os.WriteFile(statePath, []byte(data), 0644)
+}
+
+// getActivePlan reads the active plan ID from state file
+func getActivePlan() (string, error) {
+	statePath := filepath.Join(config.GetMemoryBasePath(), "state.json")
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return "", err
+	}
+	// Simple parsing - extract plan ID
+	var planID string
+	_, _ = fmt.Sscanf(string(data), `{"active_plan": "%s"}`, &planID)
+	planID = strings.Trim(planID, `"`)
+	return planID, nil
+}
+
+// clearActivePlan removes the active plan state
+func clearActivePlan() error {
+	statePath := filepath.Join(config.GetMemoryBasePath(), "state.json")
+	return os.Remove(statePath)
+}
+
 // formatPlanMarkdown returns the plan as a markdown string
 func formatPlanMarkdown(plan *task.Plan) string {
 	var buf strings.Builder
@@ -732,6 +912,8 @@ func init() {
 	planCmd.AddCommand(planRenameCmd)
 	planCmd.AddCommand(planArchiveCmd)
 	planCmd.AddCommand(planUnarchiveCmd)
+	planCmd.AddCommand(planStartCmd)
+	planCmd.AddCommand(planStatusCmd)
 
 	// Export flags
 	planExportCmd.Flags().StringP("output", "o", "", "Output file path (e.g., plan.md)")

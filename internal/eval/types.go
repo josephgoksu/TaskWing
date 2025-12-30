@@ -52,7 +52,8 @@ type Results struct {
 type TaskResult struct {
 	Task        string               `json:"task"`
 	Model       string               `json:"model"`
-	HardFail    bool                 `json:"hard_fail"`
+	Score       int                  `json:"score"`     // 0-10 score from LLM judge
+	HardFail    bool                 `json:"hard_fail"` // Derived: Score < 7
 	Checks      map[string]RuleCheck `json:"checks,omitempty"`
 	JudgeReason string               `json:"judge_reason,omitempty"`
 	OutputFile  string               `json:"output_file"`
@@ -69,8 +70,10 @@ type RuleCheck struct {
 
 // Summary holds aggregate results for a model.
 type Summary struct {
-	Total    int `json:"total"`
-	HardFail int `json:"hard_fail"`
+	Total      int     `json:"total"`
+	HardFail   int     `json:"hard_fail"`
+	TotalScore int     `json:"total_score,omitempty"` // Sum of all task scores
+	AvgScore   float64 `json:"avg_score,omitempty"`   // Average score (0-10)
 }
 
 // CostSummary holds token usage and cost information.
@@ -89,6 +92,10 @@ type TokenUsage struct {
 
 // JudgeResult holds the result of LLM-based evaluation.
 type JudgeResult struct {
-	Pass   bool   `json:"pass"`
+	Score  int    `json:"score"` // 0-10 score
+	Pass   bool   `json:"pass"`  // Derived: Score >= 7
 	Reason string `json:"reason"`
 }
+
+// ScoreThreshold is the minimum score to be considered a pass.
+const ScoreThreshold = 7

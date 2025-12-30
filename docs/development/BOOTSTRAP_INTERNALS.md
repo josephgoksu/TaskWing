@@ -1,4 +1,4 @@
-# TaskWing v2 — Bootstrap
+# Bootstrap Internals
 
 > **Purpose:** Auto-generate project memory from existing repositories
 

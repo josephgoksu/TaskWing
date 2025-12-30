@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/tools"
@@ -48,39 +49,103 @@ func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 	}
 
 	gatherer := tools.NewContextGatherer(input.BasePath)
-	var docContent string
+
+	// Split work into parallel tracks if not in watch mode
+	// Watch mode usually only has small changes, so we keep it simple
 	if input.Mode == core.ModeWatch && len(input.ChangedFiles) > 0 {
-		docContent = gatherer.GatherSpecificFiles(filterMarkdown(input.ChangedFiles))
-	} else {
-		docContent = gatherer.GatherMarkdownDocs()
-		// Also include CI/CD configs - they often contain architectural decisions
-		ciConfigs := gatherer.GatherCIConfigs()
-		if ciConfigs != "" {
-			docContent += "\n## CI/CD Configuration\n" + ciConfigs
+		docContent := gatherer.GatherSpecificFiles(filterMarkdown(input.ChangedFiles))
+		if docContent == "" {
+			return core.Output{AgentName: a.Name()}, nil
 		}
+		chainInput := map[string]any{
+			"ProjectName": input.ProjectName,
+			"DocContent":  docContent,
+		}
+		parsed, _, duration, err := a.chain.Invoke(ctx, chainInput)
+		if err != nil {
+			return core.Output{AgentName: a.Name(), Error: err, Duration: duration}, nil
+		}
+		findings, relationships := a.parseFindings(parsed)
+		return core.BuildOutputWithRelationships(a.Name(), findings, relationships, "JSON output (watch)", duration), nil
 	}
 
-	if docContent == "" {
-		return core.Output{AgentName: a.Name()}, nil
+	// Full Bootstrap: Split into Parallel Execution
+	// Track 1: General Documentation (Features & High-level Architecture)
+	// Track 2: Rules, Workflows, CI, Configs (Prescriptive Constraints)
+
+	type result struct {
+		parsed   docAnalysisResponse
+		duration time.Duration
+		err      error
 	}
 
-	// Execute Chain
-	chainInput := map[string]any{
-		"ProjectName": input.ProjectName,
-		"DocContent":  docContent,
+	results := make(chan result, 2)
+
+	// 1. General Docs
+	go func() {
+		content := gatherer.GatherMarkdownDocs()
+		if content == "" {
+			results <- result{}
+			return
+		}
+		start := time.Now()
+		// Add instruction hint to focus on features
+		content = "FOCUS: PRODUCT FEATURES & ARCHITECTURE\n\n" + content
+		p, _, _, err := a.chain.Invoke(ctx, map[string]any{"ProjectName": input.ProjectName, "DocContent": content})
+		results <- result{parsed: p, duration: time.Since(start), err: err}
+	}()
+
+	// 2. Rules & Workflows
+	go func() {
+		// KeyFiles (Rules, Makefiles) + CI Configs
+		content := gatherer.GatherKeyFiles()
+		ci := gatherer.GatherCIConfigs()
+		if ci != "" {
+			content += "\n## CI/CD Configuration\n" + ci
+		}
+		if content == "" {
+			results <- result{}
+			return
+		}
+		start := time.Now()
+		// Add instruction hint to focus on workflows
+		content = "FOCUS: WORKFLOWS, RULES & CONSTRAINTS\n\n" + content
+		p, _, _, err := a.chain.Invoke(ctx, map[string]any{"ProjectName": input.ProjectName, "DocContent": content})
+		results <- result{parsed: p, duration: time.Since(start), err: err}
+	}()
+
+	// Wait for both
+	var combinedParsed docAnalysisResponse
+	var maxDuration time.Duration
+	var errs []string
+
+	for i := 0; i < 2; i++ {
+		res := <-results
+		if res.err != nil {
+			errs = append(errs, res.err.Error())
+			continue
+		}
+		if res.duration > maxDuration {
+			maxDuration = res.duration
+		}
+
+		// Merge results
+		combinedParsed.Features = append(combinedParsed.Features, res.parsed.Features...)
+		combinedParsed.Constraints = append(combinedParsed.Constraints, res.parsed.Constraints...)
+		combinedParsed.Workflows = append(combinedParsed.Workflows, res.parsed.Workflows...)
+		combinedParsed.Relationships = append(combinedParsed.Relationships, res.parsed.Relationships...)
 	}
 
-	parsed, _, duration, err := a.chain.Invoke(ctx, chainInput)
-	if err != nil {
+	if len(errs) > 0 {
 		return core.Output{
 			AgentName: a.Name(),
-			Error:     fmt.Errorf("chain execution failed: %w", err),
-			Duration:  duration,
+			Error:     fmt.Errorf("partial failures: %s", strings.Join(errs, "; ")),
+			Duration:  maxDuration,
 		}, nil
 	}
 
-	findings, relationships := a.parseFindings(parsed)
-	return core.BuildOutputWithRelationships(a.Name(), findings, relationships, "JSON output handled by Eino", duration), nil
+	findings, relationships := a.parseFindings(combinedParsed)
+	return core.BuildOutputWithRelationships(a.Name(), findings, relationships, "Joint analysis (Docs+Rules)", maxDuration), nil
 }
 
 type docAnalysisResponse struct {
@@ -99,6 +164,14 @@ type docAnalysisResponse struct {
 		Evidence   []core.EvidenceJSON `json:"evidence"`
 		SourceFile string              `json:"source_file"`
 	} `json:"constraints"`
+	Workflows []struct {
+		Name       string              `json:"name"`
+		Steps      string              `json:"steps"`
+		Trigger    string              `json:"trigger"`
+		Confidence any                 `json:"confidence"`
+		Evidence   []core.EvidenceJSON `json:"evidence"`
+		SourceFile string              `json:"source_file"`
+	} `json:"workflows"`
 	Relationships []struct {
 		From     string `json:"from"`
 		To       string `json:"to"`
@@ -125,6 +198,26 @@ func (a *DocAgent) parseFindings(parsed docAnalysisResponse) ([]core.Finding, []
 			Evidence:           evidence,
 			VerificationStatus: core.VerificationStatusPending,
 			SourceAgent:        a.Name(),
+		})
+	}
+
+	for _, w := range parsed.Workflows {
+		evidence := core.ConvertEvidence(w.Evidence)
+		if len(evidence) == 0 && w.SourceFile != "" {
+			evidence = []core.Evidence{{FilePath: w.SourceFile}}
+		}
+		confidenceScore, confidenceLabel := core.ParseConfidence(w.Confidence)
+		description := fmt.Sprintf("Trigger: %s\nSteps:\n%s", w.Trigger, w.Steps)
+		findings = append(findings, core.Finding{
+			Type:               core.FindingTypePattern, // Use pattern as base type
+			Title:              w.Name,
+			Description:        description,
+			ConfidenceScore:    confidenceScore,
+			Confidence:         confidenceLabel,
+			Evidence:           evidence,
+			VerificationStatus: core.VerificationStatusPending,
+			SourceAgent:        a.Name(),
+			Metadata:           map[string]any{"type": "workflow", "trigger": w.Trigger, "steps": w.Steps},
 		})
 	}
 

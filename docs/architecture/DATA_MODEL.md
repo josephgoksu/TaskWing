@@ -1,7 +1,5 @@
-# TaskWing v2 — Data Model
+# TaskWing Data Model
 
-> **Created:** 2025-12-15
-> **Updated:** 2025-12-17
 > **Status:** Active Development
 
 ---

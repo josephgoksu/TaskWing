@@ -1,6 +1,6 @@
 # Getting Started with TaskWing v2
 
-> **Knowledge Graph for Engineering Teams**
+> **AI-Native Task Management**
 
 ---
 
@@ -174,6 +174,9 @@ Now when you ask AI about your code, it has full project context with semantic s
 | Command | Description |
 |---------|-------------|
 | `tw plan new "goal"` | Create a plan from a goal |
+| `tw plan list` | List all plans |
+| `tw plan start <id>` | Set active plan for current work |
+| `tw plan status` | Show active plan progress |
 | `tw plan show <id>` | Show a plan |
 | `tw plan update <id> --goal/--status` | Update plan fields |
 | `tw plan archive <id>` | Archive a plan |
@@ -181,7 +184,7 @@ Now when you ask AI about your code, it has full project context with semantic s
 | `tw task list` | List tasks grouped by plan |
 | `tw task show <id>` | Show a task |
 | `tw task update <id> --status` | Update task status |
-| `tw task complete <id>` | Mark task as completed |
+| `tw task done <id>` | Mark task as completed |
 | `tw task delete <id>` | Delete a task |
 
 ### Bootstrap & Maintenance

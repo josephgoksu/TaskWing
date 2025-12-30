@@ -1,36 +1,72 @@
-# TaskWing: Engineering Intelligence
+# TaskWing: AI-Native Task Management
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/josephgoksu/TaskWing)](https://goreportcard.com/report/github.com/josephgoksu/TaskWing)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Stop Answering the Same Questions.**
-> Give your AI tools the context they need to understand *why* your code works, not just *how*.
+> **Generate context-aware development tasks that actually match your architecture.**
+> No more generic AI suggestions that ignore your patterns, constraints, and decisions.
 
-## 🚀 The Value Proposition
+## 🚀 The Problem
 
-As your codebase grows, context is lost. Decisions are forgotten. Onboarding takes weeks.
-TaskWing scans your repository, extracts architectural intent, and serves it to your AI agents (Claude, Cursor, Copilot) via the Model Context Protocol (MCP).
+You ask an AI to "add Stripe billing" and it suggests:
+- Libraries you've banned ❌
+- Patterns you don't use ❌
+- Files that don't exist ❌
 
-**The Result**:
-*   **Developers**: Get answers rooted in *your* architecture, not generic patterns.
-*   **Leads**: Stop repeating "we use JWT here" for the 100th time.
-*   **AI**: Stops hallucinating libraries you don't use.
+Traditional task management (Jira, Asana) treats code as external. AI tools hallucinate because they don't understand *your* architecture.
+
+## ✅ The Solution
+
+TaskWing extracts knowledge from your codebase and uses it to generate accurate tasks:
+
+```bash
+$ tw plan new "Add Stripe subscription billing"
+
+✓ Analyzed codebase (46 nodes, 22 decisions, 12 patterns)
+✓ Generated 7 tasks based on your architecture
+
+Plan: stripe-billing
+  [ ] T1: Add Stripe SDK to backend-go (see: go.mod, internal/payments/)
+  [ ] T2: Create subscription webhook handler (pattern: internal/api/handlers/)
+  [ ] T3: Add billing_status to User model (constraint: use types.gen.go)
+  [ ] T4: Update OpenAPI spec with /billing endpoints (workflow: make generate-api)
+  [ ] T5: Implement frontend billing page (see: web/src/pages/)
+  [ ] T6: Add Stripe keys to SSM (policy: no .env in prod)
+  [ ] T7: Update CDK for billing service IAM (see: cdk/lib/)
+```
+
+Every task references **your actual files, patterns, and constraints**.
 
 ## ⚡ Quick Start
 
 ```bash
-# 1. Install (Mac/Linux)
+# 1. Install
 curl -fsSL https://taskwing.app/install.sh | bash
 
-# 2. Bootstrap your repo (Auto-extract knowledge)
+# 2. Bootstrap your repo (extract knowledge)
 cd /path/to/your/repo
 tw bootstrap
 
-# 3. Start the MCP Server (Connect to Claude/Cursor)
+# 3. Generate a plan
+tw plan new "Implement user authentication"
+
+# 4. Start working (provides context to AI tools via MCP)
+tw plan start auth
 tw mcp
 ```
 
-👉 **[Full Getting Started Guide](docs/development/GETTING_STARTED.md)**
+## 📈 Validated Impact
+
+We tested AI task generation with and without TaskWing context:
+
+| Configuration | Avg Score (0-10) | Lift |
+|---------------|------------------|------|
+| **Baseline** (no context) | 5.8 ± 0.9 | - |
+| **TaskWing** (with context) | **6.7 ± 0.7** | **+16%** |
+
+> Tasks generated with context correctly reference project-specific patterns, constraints, and file locations. [Full methodology →](docs/development/EVAL_RUNNERS.md)
+
+👉 **[Full Getting Started Guide](docs/development/GETTING_STARTED.md)** · **[Product Vision](docs/PRODUCT_VISION.md)**
 
 ## 📚 Knowledge Architecture
 

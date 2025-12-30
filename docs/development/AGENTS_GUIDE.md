@@ -1,4 +1,4 @@
-# AGENTS.md - TaskWing Development Guide
+# TaskWing Development Guide
 
 ## Commands
 - `make build` - Build the binary

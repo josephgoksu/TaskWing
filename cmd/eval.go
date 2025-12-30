@@ -91,8 +91,18 @@ var evalRunCmd = &cobra.Command{
 		}
 
 		models, _ := cmd.Flags().GetStringSlice("model")
+		runner, _ := cmd.Flags().GetString("runner")
+
+		// For external runners, --model is optional (used as label for results)
+		// Default to a runner-based name if not provided
 		if len(models) == 0 {
-			return errors.New("at least one --model is required")
+			if runner != "" && runner != "internal" {
+				// External runner: use runner name as default model label
+				runnerName := strings.Fields(runner)[0] // Extract command name (e.g., "codex" from "codex exec ...")
+				models = []string{runnerName + "-default"}
+			} else {
+				return errors.New("at least one --model is required")
+			}
 		}
 
 		bootstrapOnly, _ := cmd.Flags().GetBool("bootstrap-only")
@@ -104,7 +114,7 @@ var evalRunCmd = &cobra.Command{
 		doBootstrap := !tasksOnly
 		doTasks := !bootstrapOnly
 
-		runner, _ := cmd.Flags().GetString("runner")
+		// Fall back to EVAL_RUNNER env var if runner not set
 		if runner == "" {
 			runner = os.Getenv("EVAL_RUNNER")
 		}
@@ -245,7 +255,8 @@ var evalRunCmd = &cobra.Command{
 				}
 
 				timeout, _ := cmd.Flags().GetDuration("timeout")
-				usage, taskErr := runEvalTasks(cmd.Context(), cfg, outDir, promptTemplate, modelName, displayModel, safeModel, runner, cwd, llmCfg, modelRepo, injectContext, timeout)
+				resetRepo, _ := cmd.Flags().GetBool("reset-repo")
+				usage, taskErr := runEvalTasks(cmd.Context(), cfg, outDir, promptTemplate, modelName, displayModel, safeModel, runner, cwd, llmCfg, modelRepo, injectContext, timeout, resetRepo)
 
 				// Calculate and store cost
 				cost := llm.CalculateCost(modelName, usage.InputTokens, usage.OutputTokens)
@@ -520,8 +531,8 @@ Examples:
 			}
 		}
 
-		// Also search for architectural constraints
-		scored, _ := ks.Search(ctx, "architectural constraints decisions rules must should", 10)
+		// Also search for architectural constraints and workflows
+		scored, _ := ks.Search(ctx, "architectural constraints decisions rules workflows processes", 15)
 		for _, s := range scored {
 			contextBuilder.WriteString(fmt.Sprintf("## %s\n%s\n\n", s.Node.Summary, s.Node.Content))
 		}
@@ -538,20 +549,32 @@ Examples:
 		// Generate tasks via LLM
 		generatePrompt := fmt.Sprintf(`You are generating evaluation tasks for an AI coding assistant.
 
-## Project Constraints and Decisions
+## Project Constraints, Workflows, and Decisions
 %s
 
 ## Instructions
-Generate %d evaluation tasks that test whether an AI assistant follows these constraints.
-Each task should be a realistic coding request that could violate the constraints if done incorrectly.
+Generate %d evaluation tasks that test whether an AI assistant follows these constraints and workflows.
+Prioritize tasks that test **Workflows** (e.g. "Add new API endpoint") or **Violatable Constraints** (e.g. "Must use X library").
+Each task should be a realistic coding request that could violate the rules if done incorrectly.
+
+## CRITICAL: Criteria Format
+- **expected**: Write SEMANTIC pass criteria, NOT exact code.
+  - GOOD: "Must explain that OIDC requires id-token write permission"
+  - BAD: "Return a snippet with permissions: { id-token: write }"
+- **failure_signals**: List behavioral violations, NOT syntax comparisons.
+  - GOOD: "Uses static AWS keys instead of OIDC role assumption"
+  - BAD: "Missing exact text 'id-token: write'"
+
+The goal is: if the answer correctly follows the constraint in spirit, it should pass.
+Allow flexibility in HOW the answer is phrased while catching real violations.
 
 Output ONLY valid YAML (no markdown code blocks):
 tasks:
   - id: T1
     title: "Short title"
-    prompt: "Realistic coding request that could violate constraints"
-    expected: "What the AI should do to follow constraints"
-    failure_signals: "What would indicate the AI violated constraints"
+    prompt: "Realistic coding request that triggers a workflow or constraint"
+    expected: "Semantic description of what a correct answer MUST include (principles, not syntax)"
+    failure_signals: "Behavioral signs of failure (constraint violations, not phrasing differences)"
   - id: T2
     ...`, contextStr, count)
 
@@ -633,6 +656,7 @@ func init() {
 	evalRunCmd.Flags().Bool("no-context", false, "Skip context injection (baseline run without TaskWing)")
 	evalRunCmd.Flags().String("label", "", "Tag for benchmark grouping (required for external runners)")
 	evalRunCmd.Flags().Duration("timeout", 10*time.Minute, "Timeout for external runner execution")
+	evalRunCmd.Flags().Bool("reset-repo", false, "Reset git state between tasks (for agentic runners like Codex)")
 
 	evalJudgeCmd.Flags().String("run", "", "Run directory containing task outputs")
 	evalJudgeCmd.Flags().String("tasks", "", "Path to tasks.yaml")
@@ -710,7 +734,7 @@ func runBootstrapNoTUI(ctx context.Context, cwd string, llmCfg llm.Config) error
 	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, !viper.GetBool("quiet"))
 }
 
-func runEvalTasks(ctx context.Context, cfg evalpkg.Config, outDir string, promptTemplate []byte, model string, displayModel string, safeModel string, runner string, repoPath string, llmCfg llm.Config, repo *memory.Repository, injectContext bool, timeout time.Duration) (evalpkg.TokenUsage, error) {
+func runEvalTasks(ctx context.Context, cfg evalpkg.Config, outDir string, promptTemplate []byte, model string, displayModel string, safeModel string, runner string, repoPath string, llmCfg llm.Config, repo *memory.Repository, injectContext bool, timeout time.Duration, resetRepo bool) (evalpkg.TokenUsage, error) {
 	// Create knowledge service for context injection (reuses knowledge.Service from tw context)
 	var ks *knowledge.Service
 	if injectContext && repo != nil {
@@ -721,6 +745,19 @@ func runEvalTasks(ctx context.Context, cfg evalpkg.Config, outDir string, prompt
 	var runErrs []error
 	totalTasks := len(cfg.Tasks)
 	for i, task := range cfg.Tasks {
+		// Reset repo state between tasks if requested (for agentic runners like Codex)
+		if resetRepo && i > 0 {
+			resetCmd := exec.CommandContext(ctx, "sh", "-c", "git checkout . && git clean -fd")
+			resetCmd.Dir = repoPath
+			if out, err := resetCmd.CombinedOutput(); err != nil {
+				if !viper.GetBool("quiet") {
+					fmt.Printf("  ⚠️  git reset failed: %v (%s)\n", err, string(out))
+				}
+			} else if !viper.GetBool("quiet") {
+				fmt.Printf("  🔄 Reset repo state\n")
+			}
+		}
+
 		if !viper.GetBool("quiet") {
 			fmt.Printf("  [%d/%d] %s...", i+1, totalTasks, task.ID)
 		}
@@ -729,10 +766,57 @@ func runEvalTasks(ctx context.Context, cfg evalpkg.Config, outDir string, prompt
 
 		// Context injection: retrieve relevant knowledge for this task
 		if ks != nil {
-			scored, searchErr := ks.Search(ctx, task.Prompt, 5)
-			if searchErr == nil && len(scored) > 0 {
-				contextBlock := buildEvalContextBlock(scored)
+			fmt.Println("  Strategizing context retrieval...")
+			// 1. Generate smart queries based on the task goal
+			queries, err := ks.SuggestContextQueries(ctx, task.Prompt)
+			if err != nil {
+				// Fallback if suggestion fails
+				queries = []string{task.Prompt}
+			}
+
+			var contextNodes []knowledge.ScoredNode
+			seenNodes := make(map[string]bool)
+
+			// 2. Surgical Search: specifically target workflows and constraints using generated queries
+			for _, q := range queries {
+				// Search specifically for workflows (highest priority)
+				if wNodes, err := ks.SearchByType(ctx, q, "workflow", 2); err == nil {
+					for _, n := range wNodes {
+						if !seenNodes[n.Node.ID] {
+							contextNodes = append(contextNodes, n)
+							seenNodes[n.Node.ID] = true
+						}
+					}
+				}
+
+				// Search for constraints
+				if cNodes, err := ks.SearchByType(ctx, q, "constraint", 2); err == nil {
+					for _, n := range cNodes {
+						if !seenNodes[n.Node.ID] {
+							contextNodes = append(contextNodes, n)
+							seenNodes[n.Node.ID] = true
+						}
+					}
+				}
+			}
+
+			// 3. Fallback/Augment with general search if we have few specific results
+			if len(contextNodes) < 3 {
+				if generalNodes, err := ks.Search(ctx, task.Prompt, 5); err == nil {
+					for _, n := range generalNodes {
+						if !seenNodes[n.Node.ID] {
+							contextNodes = append(contextNodes, n)
+							seenNodes[n.Node.ID] = true
+						}
+					}
+				}
+			}
+
+			// Sort by score/relevance (simple re-sort of combined list)
+			if len(contextNodes) > 0 {
+				contextBlock := buildEvalContextBlock(contextNodes)
 				prompt = contextBlock + "\n\n" + prompt
+				fmt.Printf("  Injected %d context nodes (surgical strategy)\n", len(contextNodes))
 			}
 		}
 
@@ -878,14 +962,20 @@ func runLLMJudge(ctx context.Context, llmCfg llm.Config, task evalpkg.Task, outp
 ## AI's Response
 %s
 
+## Scoring Rubric (0-10)
+- 10: Perfect - all MUST and SHOULD requirements met
+- 8-9: Excellent - all MUST met, most SHOULD met
+- 6-7: Good - all MUST met, some SHOULD missing
+- 4-5: Partial - some MUST requirements missing
+- 2-3: Poor - significant gaps or wrong approach
+- 0-1: Fail - fundamentally wrong or dangerous
+
 ## Instructions
-Evaluate whether the AI's response follows the expected behavior and avoids the failure signals.
-Consider the semantic meaning, not just keyword matching.
+Evaluate the response against the expected behavior and failure signals.
+Consider semantic meaning, not just keyword matching.
 
 Output ONLY valid JSON:
-{"pass": true, "reason": "brief explanation"}
-or
-{"pass": false, "reason": "brief explanation of violation"}`,
+{"score": 8, "reason": "brief explanation"}`,
 		task.Prompt, expected, failureSignals, output)
 
 	chatModel, err := llm.NewChatModel(ctx, llmCfg)
@@ -920,8 +1010,11 @@ or
 
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		// If parsing fails, default to fail with the raw response
-		return evalpkg.JudgeResult{Pass: false, Reason: "Judge parse error: " + content}, nil
+		return evalpkg.JudgeResult{Score: 0, Pass: false, Reason: "Judge parse error: " + content}, nil
 	}
+
+	// Derive Pass from Score (for backwards compatibility)
+	result.Pass = result.Score >= evalpkg.ScoreThreshold
 
 	return result, nil
 }
@@ -974,6 +1067,7 @@ func runJudge(ctx context.Context, cfg evalpkg.Config, outDir string, llmCfg llm
 		text := string(data)
 
 		var hardFail bool
+		var score int
 		var checks map[string]evalpkg.RuleCheck
 		var judgeReason string
 
@@ -991,24 +1085,31 @@ func runJudge(ctx context.Context, cfg evalpkg.Config, outDir string, llmCfg llm
 				hardFail = true
 				judgeReason = "Judge error: " + judgeErr.Error()
 			} else {
+				score = judgeResult.Score
 				hardFail = !judgeResult.Pass
 				judgeReason = judgeResult.Reason
 				if !viper.GetBool("quiet") {
 					if judgeResult.Pass {
-						fmt.Println(" ✓")
+						fmt.Printf(" %d/10 ✓\n", score)
 					} else {
-						fmt.Println(" ✗")
+						fmt.Printf(" %d/10 ✗\n", score)
 					}
 				}
 			}
 		} else {
 			// Fallback to regex-based evaluation
 			checks, hardFail = evaluateRules(cfg.HardFailRules, taskID, text)
+			if !hardFail {
+				score = 10 // Treat regex pass as perfect score
+			} else {
+				score = 0 // Treat regex fail as zero score
+			}
 		}
 
 		results.TaskResults = append(results.TaskResults, evalpkg.TaskResult{
 			Task:        taskID,
 			Model:       model,
+			Score:       score,
 			HardFail:    hardFail,
 			Checks:      checks,
 			JudgeReason: judgeReason,
@@ -1119,10 +1220,18 @@ func summarize(results []evalpkg.TaskResult) map[string]evalpkg.Summary {
 	for _, r := range results {
 		item := summary[r.Model]
 		item.Total++
+		item.TotalScore += r.Score
 		if r.HardFail {
 			item.HardFail++
 		}
 		summary[r.Model] = item
+	}
+	// Calculate average scores
+	for model, item := range summary {
+		if item.Total > 0 {
+			item.AvgScore = float64(item.TotalScore) / float64(item.Total)
+		}
+		summary[model] = item
 	}
 	return summary
 }
@@ -1243,6 +1352,7 @@ func buildBenchmarkData(runsDir string, runs []string) ui.BenchmarkData {
 	}
 
 	modelSet := make(map[string]bool)
+	taskIDSet := make(map[string]bool)
 
 	for _, runID := range runs {
 		resultsPath := filepath.Join(runsDir, runID, defaultResultsFileName)
@@ -1268,23 +1378,34 @@ func buildBenchmarkData(runsDir string, runs []string) ui.BenchmarkData {
 
 			modelSet[rowName] = true
 			passed := summary.Total - summary.HardFail
-			score := 0.0
+			passRate := 0.0
 			if summary.Total > 0 {
-				score = float64(passed) / float64(summary.Total)
+				passRate = float64(passed) / float64(summary.Total)
 			}
 
 			if data.Matrix[rowName] == nil {
 				data.Matrix[rowName] = make(map[string]ui.BenchmarkRun)
 			}
 
+			// Collect task scores
+			taskScores := make(map[string]int)
+			for _, tr := range results.TaskResults {
+				if tr.Model == model {
+					taskScores[tr.Task] = tr.Score
+					taskIDSet[tr.Task] = true
+				}
+			}
+
 			run := ui.BenchmarkRun{
-				RunID:   runID,
-				RunDate: runDate,
-				Model:   model,
-				Label:   results.Label,
-				Score:   score,
-				Pass:    passed,
-				Total:   summary.Total,
+				RunID:      runID,
+				RunDate:    runDate,
+				Model:      model,
+				Label:      results.Label,
+				PassRate:   passRate,
+				AvgScore:   summary.AvgScore,
+				TaskScores: taskScores,
+				Pass:       passed,
+				Total:      summary.Total,
 			}
 
 			// Add cost data if available
@@ -1305,6 +1426,12 @@ func buildBenchmarkData(runsDir string, runs []string) ui.BenchmarkData {
 		data.Models = append(data.Models, model)
 	}
 	sort.Strings(data.Models)
+
+	// Extract unique task IDs
+	for t := range taskIDSet {
+		data.TaskIDs = append(data.TaskIDs, t)
+	}
+	sort.Strings(data.TaskIDs)
 
 	return data
 }

@@ -64,20 +64,34 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 // GatherKeyFiles reads critical key files like README.md, go.mod, package.json.
 func (g *ContextGatherer) GatherKeyFiles() string {
 	var sb strings.Builder
+	// 1. Always gather Makefiles and critical config files
 	keyFiles := []string{
-		"README.md", "go.mod", "package.json", "Makefile",
-		// Important dotfiles
-		".env.example", ".editorconfig",
-		".eslintrc", ".eslintrc.js", ".eslintrc.json",
-		".prettierrc", ".prettierrc.js", ".prettierrc.json",
+		"README.md", "go.mod", "package.json", "Makefile", "makefile", "Justfile",
 	}
+
+	// 2. Add Rule Files (GEMINI.md, etc.)
+	for name := range patterns.RuleFiles {
+		keyFiles = append(keyFiles, name)
+	}
+
+	// 3. Add Important Dotfiles
+	for name := range patterns.ImportantDotFiles {
+		keyFiles = append(keyFiles, name)
+	}
+
+	seen := make(map[string]bool)
 	for _, relPath := range keyFiles {
+		if seen[relPath] {
+			continue
+		}
+		seen[relPath] = true
+
 		content, err := os.ReadFile(filepath.Join(g.BasePath, relPath))
 		if err != nil {
 			continue
 		}
-		if len(content) > 2500 {
-			content = append(content[:2500], []byte("\n...[truncated]")...)
+		if len(content) > 3000 {
+			content = append(content[:3000], []byte("\n...[truncated]")...)
 		}
 		sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, string(content)))
 	}

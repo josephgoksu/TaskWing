@@ -22,32 +22,34 @@ var IgnoredDirs = map[string]bool{
 // AllowedDotDirs contains dot-directories that SHOULD be analyzed (exceptions to the dot-skip rule).
 // These often contain important architectural decisions (CI/CD, IDE configs, etc.)
 var AllowedDotDirs = map[string]bool{
-	".github":   true, // GitHub Actions workflows, issue templates, etc.
-	".gitlab":   true, // GitLab CI configs
-	".circleci": true, // CircleCI configs
-	".vscode":   true, // VS Code workspace settings (can reveal project conventions)
+	".github":       true, // GitHub Actions workflows, issue templates, etc.
+	".gitlab":       true, // GitLab CI configs
+	".circleci":     true, // CircleCI configs
+	".vscode":       true, // VS Code workspace settings (can reveal project conventions)
 	".devcontainer": true, // Dev container configs
 }
 
 // ImportantDotFiles contains dotfiles that should be gathered for analysis.
 // These often contain important project configuration decisions.
 var ImportantDotFiles = map[string]bool{
-	".eslintrc":       true,
-	".eslintrc.js":    true,
-	".eslintrc.json":  true,
-	".eslintrc.yaml":  true,
-	".prettierrc":     true,
-	".prettierrc.js":  true,
+	".cursorrules":     true,
+	".cursor":          true, // Directory often containing rules
+	".eslintrc":        true,
+	".eslintrc.js":     true,
+	".eslintrc.json":   true,
+	".eslintrc.yaml":   true,
+	".prettierrc":      true,
+	".prettierrc.js":   true,
 	".prettierrc.json": true,
-	".dockerignore":   true,
-	".gitignore":      true,
-	".env.example":    true,
-	".editorconfig":   true,
-	".nvmrc":          true,
-	".node-version":   true,
-	".python-version": true,
-	".ruby-version":   true,
-	".tool-versions":  true, // asdf version manager
+	".dockerignore":    true,
+	".gitignore":       true,
+	".env.example":     true,
+	".editorconfig":    true,
+	".nvmrc":           true,
+	".node-version":    true,
+	".python-version":  true,
+	".ruby-version":    true,
+	".tool-versions":   true, // asdf version manager
 }
 
 // ShouldIgnoreDir returns true if the directory should be skipped.
@@ -88,7 +90,7 @@ var ConfigExtensions = map[string]bool{
 // ConfigFiles contains specific configuration filenames.
 var ConfigFiles = map[string]bool{
 	"Dockerfile": true, "docker-compose.yaml": true, "docker-compose.yml": true,
-	"Makefile": true, "justfile": true, ".env.example": true,
+	"Makefile": true, "makefile": true, "Justfile": true, "justfile": true, ".env.example": true,
 }
 
 // DependencyFiles contains dependency manifest filenames.
@@ -98,6 +100,17 @@ var DependencyFiles = map[string]bool{
 	"yarn.lock": true, "pnpm-lock.yaml": true,
 	"Cargo.toml": true, "Cargo.lock": true,
 	"requirements.txt": true, "Pipfile": true, "pyproject.toml": true,
+}
+
+// RuleFiles contains documentation and rule filenames.
+var RuleFiles = map[string]bool{
+	"GEMINI.md": true, "CLAUDE.md": true, "CONTRIBUTING.md": true,
+	"README.md": true, "readme.md": true,
+}
+
+// IsRuleFile returns true if the filename is a rule/documentation file.
+func IsRuleFile(name string) bool {
+	return RuleFiles[name]
 }
 
 // IsCodeFile returns true if the extension belongs to a code file.

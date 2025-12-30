@@ -188,4 +188,4 @@ tw list
 tw context "database"
 ```
 
-See [GETTING_STARTED.md](./GETTING_STARTED.md) for detailed setup instructions.
+See [GETTING_STARTED.md](../development/GETTING_STARTED.md) for detailed setup instructions.

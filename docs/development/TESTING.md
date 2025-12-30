@@ -154,8 +154,8 @@ tw context "deployment" --answer > q3.txt
 
 ## References
 
-- [ROADMAP.md](./ROADMAP.md) — Version planning
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — System design
+- [ROADMAP.md](../architecture/ROADMAP.md) — Version planning
+- [SYSTEM_DESIGN.md](../architecture/SYSTEM_DESIGN.md) — System design
 
 ---
 

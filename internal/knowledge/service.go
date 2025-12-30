@@ -82,7 +82,20 @@ type ScoredNode struct {
 // Search performs a hybrid search combining FTS5 keyword matching and vector similarity.
 // This fixes the N+1 query pattern and provides keyword fallback when embeddings fail.
 // Weights and thresholds are defined in config.go for centralized tuning.
+// Search performs a hybrid search combining FTS5 keyword matching and vector similarity.
+// This fixes the N+1 query pattern and provides keyword fallback when embeddings fail.
+// Weights and thresholds are defined in config.go for centralized tuning.
 func (s *Service) Search(ctx context.Context, query string, limit int) ([]ScoredNode, error) {
+	return s.searchInternal(ctx, query, "", limit)
+}
+
+// SearchByType performs a semantic search restricted to a specific node type.
+// This allows for surgical retrieval of "workflows" or "constraints".
+func (s *Service) SearchByType(ctx context.Context, query string, nodeType string, limit int) ([]ScoredNode, error) {
+	return s.searchInternal(ctx, query, nodeType, limit)
+}
+
+func (s *Service) searchInternal(ctx context.Context, query string, typeFilter string, limit int) ([]ScoredNode, error) {
 	if limit <= 0 {
 		limit = 5
 	}
@@ -92,6 +105,7 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]Scored
 	nodeByID := make(map[string]*memory.Node)
 
 	// 1. FTS5 keyword search (fast, no API call, always works)
+	// Note: FTS currently searches all types. We filter later.
 	ftsResults, err := s.repo.SearchFTS(query, limit*2)
 	if err != nil {
 		// FTS5 errors are logged but don't fail the search
@@ -99,6 +113,18 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]Scored
 		_ = err
 	}
 	for _, r := range ftsResults {
+		// Filter by type if requested
+		if typeFilter != "" && r.Node.Type != typeFilter {
+			// Check metadata for type override (e.g. workflow stored as pattern)
+			if r.Node.Type == "pattern" && typeFilter == "workflow" {
+				// Allow patterns tagged as workflow
+				// This requires deserializing metadata which isn't available on FTSResult Node yet
+				// We'll rely on vector search for deep metadata filtering or handle it when hydrating
+			} else {
+				continue
+			}
+		}
+
 		// Convert BM25 rank to score (BM25 is negative, more negative = better)
 		// Normalize to 0-1 range where 1 is best match
 		ftsScore := float32(1.0 / (1.0 - r.Rank)) // Convert negative rank to positive score
@@ -120,6 +146,23 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]Scored
 				n := &nodes[i]
 				if len(n.Embedding) == 0 {
 					continue
+				}
+
+				// TYPE FILTERING
+				if typeFilter != "" {
+					match := false
+					if n.Type == typeFilter {
+						match = true
+					} else if typeFilter == "workflow" && n.Type == "pattern" {
+						// Check metadata for workflow tag
+						// We do a quick string check on the content for the "Steps:" marker
+						if strings.Contains(n.Content, "Steps:") {
+							match = true
+						}
+					}
+					if !match {
+						continue
+					}
 				}
 
 				vectorScore := CosineSimilarity(queryEmbedding, n.Embedding)

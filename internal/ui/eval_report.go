@@ -32,23 +32,26 @@ type EvalReportData struct {
 
 // BenchmarkRun holds data for a single model in a single run
 type BenchmarkRun struct {
-	RunID        string    `json:"run_id"`
-	RunDate      time.Time `json:"run_date"`
-	Model        string    `json:"model"`
-	Score        float64   `json:"score"` // 0.0-1.0
-	Pass         int       `json:"pass"`
-	Total        int       `json:"total"`
-	InputTokens  int       `json:"input_tokens,omitempty"`
-	OutputTokens int       `json:"output_tokens,omitempty"`
-	CostUSD      float64   `json:"cost_usd,omitempty"`
-	Label        string    `json:"label,omitempty"`
+	RunID        string         `json:"run_id"`
+	RunDate      time.Time      `json:"run_date"`
+	Model        string         `json:"model"`
+	PassRate     float64        `json:"pass_rate"` // 0.0-1.0
+	AvgScore     float64        `json:"avg_score"` // 0.0-10.0
+	TaskScores   map[string]int `json:"task_scores,omitempty"`
+	Pass         int            `json:"pass"`
+	Total        int            `json:"total"`
+	InputTokens  int            `json:"input_tokens,omitempty"`
+	OutputTokens int            `json:"output_tokens,omitempty"`
+	CostUSD      float64        `json:"cost_usd,omitempty"`
+	Label        string         `json:"label,omitempty"`
 }
 
 // BenchmarkData holds aggregated data across multiple runs
 type BenchmarkData struct {
-	Runs   []string                           `json:"runs"`
-	Models []string                           `json:"models"`
-	Matrix map[string]map[string]BenchmarkRun `json:"matrix"` // [model][runID]
+	Runs    []string                           `json:"runs"`
+	Models  []string                           `json:"models"`
+	TaskIDs []string                           `json:"task_ids"` // Union of all task IDs found
+	Matrix  map[string]map[string]BenchmarkRun `json:"matrix"`   // [model][runID]
 }
 
 var (
@@ -255,7 +258,7 @@ func shortenModelName(name string) string {
 	return name
 }
 
-// RenderBenchmark renders historical benchmark data with trend arrows
+// RenderBenchmark renders historical benchmark data with detailed task scores
 func RenderBenchmark(data BenchmarkData) {
 	if len(data.Runs) == 0 {
 		fmt.Println("No benchmark data.")
@@ -274,78 +277,132 @@ func RenderBenchmark(data BenchmarkData) {
 	fmt.Println(header)
 	fmt.Println()
 
-	// Build column headers (run dates with time)
+	// Scale Legend
+	legend := "Scale: 0-10 (" +
+		passStyle.Render("≥7 Pass") + ", " +
+		"5-6 Marginal, " +
+		failStyle.Render("<5 Fail") + ")"
+	fmt.Println(legend)
+	fmt.Println()
+
+	// Score History Table Headers
 	fmt.Println(sectionStyle.Render("Score History"))
 	fmt.Println()
 
-	// Header row with run dates and times
-	headerRow := fmt.Sprintf("  %-42s", "Model")
-	for _, runID := range data.Runs {
-		// Format: show date+time (20251228-193648 -> 12-28 19:36)
-		dateStr := runID
-		if len(runID) >= 13 {
-			dateStr = runID[4:6] + "-" + runID[6:8] + " " + runID[9:11] + ":" + runID[11:13]
-		} else if len(runID) >= 8 {
-			dateStr = runID[4:6] + "-" + runID[6:8]
-		}
-		headerRow += fmt.Sprintf(" %-16s", dateStr)
+	// Build headers: "Model | Date | Avg | T1 | T2 | ... "
+	// Since we might have multiple runs per model, we list them all chronologically?
+	// Existing UI grouped by Model then iterated Runs. That spreads wide horizontally.
+	// User request "individual scores" suggests we need columns for tasks.
+	// If we have many runs, columns for tasks AND runs won't fit.
+	// Let's Pivot: Row = Run (Model + Date), Cols = Avg + T1 + T2...
+
+	// Header Row
+	headerRow := fmt.Sprintf("  %-35s | %-12s | %-8s |", "Model", "Date", "Avg")
+	for _, taskID := range data.TaskIDs {
+		headerRow += fmt.Sprintf(" %-4s", taskID)
 	}
 	fmt.Println(dimStyle.Render(headerRow))
+	fmt.Println(dimStyle.Render(strings.Repeat("-", len(headerRow)+10)))
 
-	// Model rows
 	for _, model := range data.Models {
-		shortModel := formatModelName(model, 40)
-		row := fmt.Sprintf("  %-42s", shortModel)
-
-		var prevScore float64 = -1
-		var hadPrevData bool = false
-		for i, runID := range data.Runs {
-			runData, ok := data.Matrix[model][runID]
-			if !ok {
-				row += fmt.Sprintf(" %-16s", "") // blank instead of -
-				continue
+		// Iterate runs for this model
+		var modelRuns []BenchmarkRun
+		for _, runID := range data.Runs {
+			if run, ok := data.Matrix[model][runID]; ok {
+				modelRuns = append(modelRuns, run)
 			}
-
-			scorePercent := runData.Score * 100
-			var scoreStr string
-
-			// Color based on score
-			if runData.Score >= 0.8 {
-				scoreStr = passStyle.Render(fmt.Sprintf("%.0f%%", scorePercent))
-			} else if runData.Score == 0 {
-				scoreStr = failStyle.Render(fmt.Sprintf("%.0f%%", scorePercent))
-			} else {
-				scoreStr = fmt.Sprintf("%.0f%%", scorePercent)
-			}
-			scoreStr += fmt.Sprintf(" (%d/%d)", runData.Pass, runData.Total)
-
-			// Add trend arrow comparing to previous data point
-			if i > 0 && hadPrevData {
-				if runData.Score > prevScore {
-					scoreStr = passStyle.Render("▲") + " " + scoreStr
-				} else if runData.Score < prevScore {
-					scoreStr = failStyle.Render("▼") + " " + scoreStr
-				} else {
-					scoreStr = dimStyle.Render("─") + " " + scoreStr
-				}
-			} else {
-				scoreStr = "  " + scoreStr
-			}
-
-			row += fmt.Sprintf(" %-16s", scoreStr)
-			prevScore = runData.Score
-			hadPrevData = true
 		}
 
-		fmt.Println(row)
+		if len(modelRuns) == 0 {
+			continue
+		}
+
+		// Print Model Name (use the row key directly, which already includes label)
+		// Truncate if too long
+		shortModel := model
+		if len(shortModel) > 35 {
+			shortModel = shortModel[:33] + ".."
+		}
+
+		fmt.Printf("  %-35s", shortModel)
+
+		// If multiple runs, print data on subsequent lines or same line if single?
+		// Let's do:
+		// ModelName                 Date1        5.2   8    2    ...
+		//                           Date2        6.5   8    5    ...
+
+		for i, run := range modelRuns {
+			prefix := ""
+			if i > 0 {
+				prefix = fmt.Sprintf("  %-35s", "") // Indent for subsequent runs
+			}
+
+			// Date
+			runID := run.RunID
+			dateStr := runID
+			if len(runID) >= 13 {
+				dateStr = runID[4:6] + "-" + runID[6:8] + " " + runID[9:11] + ":" + runID[11:13]
+			}
+
+			// Avg Score
+			avgStr := ""
+			if run.AvgScore > 0 {
+				// Pad first so ANSI codes don't confuse Sprintf width later
+				rawAvg := fmt.Sprintf("%-8.1f", run.AvgScore)
+				if run.AvgScore >= 7.0 {
+					avgStr = passStyle.Render(rawAvg)
+				} else if run.AvgScore < 5.0 {
+					avgStr = failStyle.Render(rawAvg)
+				} else {
+					avgStr = rawAvg
+				}
+			} else {
+				// Legacy %
+				// Pad to 8 chars
+				rawPct := fmt.Sprintf("%-8s", fmt.Sprintf("%.0f%%", run.PassRate*100))
+				avgStr = rawPct
+			}
+
+			// Render row part 1 with separators
+			sep := dimStyle.Render("|")
+			// Layout: [Prefix] [Sep] [Date] [Sep] [Avg] [Sep] [Tasks...]
+			// Note: avgStr is already padded to 8 chars visually (and colored). Use %s.
+
+			rowStr := fmt.Sprintf(" %s %-12s %s %s %s", sep, dateStr, sep, avgStr, sep)
+			if i > 0 {
+				rowStr = fmt.Sprintf("%s %s %-12s %s %s %s", prefix, sep, dateStr, sep, avgStr, sep)
+			}
+
+			// Render Task Scores
+			for _, taskID := range data.TaskIDs {
+				score, exists := run.TaskScores[taskID]
+				scoreStr := " -"
+				if exists {
+					scoreStr = fmt.Sprintf("%2d", score) // right align number
+					if score >= 7 {
+						scoreStr = passStyle.Render(scoreStr)
+					} else if score < 5 {
+						scoreStr = failStyle.Render(scoreStr)
+					}
+					// Add padding to match header %-4s (space + 4 chars = 5 total)
+					// We output space + 2 chars + 2 spaces = 5 chars
+					scoreStr = " " + scoreStr + "  "
+				} else if run.AvgScore == 0 && run.PassRate > 0 {
+					scoreStr = " ?   "
+				} else {
+					scoreStr = " -   "
+				}
+				rowStr += scoreStr
+			}
+
+			fmt.Println(rowStr)
+		}
+		// Spacer between models
+		fmt.Println()
 	}
 
-	// Summary: Show best model overall
-	fmt.Println()
-	fmt.Println(sectionStyle.Render("Overall Best"))
-	fmt.Println()
-
-	// Calculate average score per model across all runs
+	// Overall Best Summary (Keep existing logic but simplified)
+	// Calculate weighted average per model
 	type modelAvg struct {
 		model    string
 		avgScore float64
@@ -357,7 +414,11 @@ func RenderBenchmark(data BenchmarkData) {
 		var count int
 		for _, runID := range data.Runs {
 			if runData, ok := data.Matrix[model][runID]; ok {
-				total += runData.Score
+				if runData.AvgScore > 0 {
+					total += runData.AvgScore
+				} else {
+					total += runData.PassRate * 10.0
+				}
 				count++
 			}
 		}
@@ -369,21 +430,21 @@ func RenderBenchmark(data BenchmarkData) {
 		return averages[i].avgScore > averages[j].avgScore
 	})
 
+	fmt.Println(sectionStyle.Render("Overall Best (Avg)"))
+	fmt.Println()
 	for i, a := range averages {
-		if i >= 5 { // Top 5 only
+		if i >= 5 {
 			break
 		}
-		shortModel := formatModelName(a.model, 40)
-		scoreStr := fmt.Sprintf("%.0f%% avg", a.avgScore*100)
-		if a.avgScore >= 0.8 {
+		shortModel := formatModelName(a.model, 30)
+		scoreStr := fmt.Sprintf("%.1f", a.avgScore)
+		if a.avgScore >= 7.0 {
 			scoreStr = passStyle.Render(scoreStr)
-		} else if a.avgScore == 0 {
+		} else if a.avgScore < 5.0 {
 			scoreStr = failStyle.Render(scoreStr)
 		}
-		runsNote := dimStyle.Render(fmt.Sprintf("(%d runs)", a.runCount))
-		fmt.Printf("  %d. %-42s %s %s\n", i+1, shortModel, scoreStr, runsNote)
+		fmt.Printf("  %d. %-32s %s (%d runs)\n", i+1, shortModel, scoreStr, a.runCount)
 	}
-
 	// Cost Summary section (only show if cost data exists)
 	hasCosts := false
 	for _, model := range data.Models {
