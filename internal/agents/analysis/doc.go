@@ -145,6 +145,16 @@ func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 	}
 
 	findings, relationships := a.parseFindings(combinedParsed)
+
+	// Warn if no findings were produced - helps diagnose silent failures
+	if len(findings) == 0 {
+		return core.Output{
+			AgentName: a.Name(),
+			Error:     fmt.Errorf("no findings extracted from documentation - check if markdown files exist and are readable"),
+			Duration:  maxDuration,
+		}, nil
+	}
+
 	return core.BuildOutputWithRelationships(a.Name(), findings, relationships, "Joint analysis (Docs+Rules)", maxDuration), nil
 }
 
