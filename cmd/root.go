@@ -4,240 +4,157 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/models"
-	"github.com/josephgoksu/TaskWing/store"
-	"github.com/manifoldco/promptui"
+	"github.com/josephgoksu/TaskWing/internal/telemetry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
-	// cfgFile is the path to the configuration file.
-	cfgFile string
-	// verbose enables verbose output.
-	verbose bool
-	// ErrNoTasksFound is returned when an interactive selection is attempted but no tasks are available.
-	ErrNoTasksFound = errors.New("no tasks found matching your criteria")
 	// version is the application version.
-	version = "0.9.2"
+	version = "2.0.0"
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "taskwing",
-	Short: "TaskWing CLI helps you manage your tasks efficiently.",
-	Long: ` ████████╗ █████╗ ███████╗██╗  ██╗██╗    ██╗██╗███╗   ██╗ ██████╗
- ╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝██║    ██║██║████╗  ██║██╔════╝
-    ██║   ███████║███████╗█████╔╝ ██║ █╗ ██║██║██╔██╗ ██║██║  ███╗
-    ██║   ██╔══██║╚════██║██╔═██╗ ██║███╗██║██║██║╚██╗██║██║   ██║
-    ██║   ██║  ██║███████║██║  ██╗╚███╔███╔╝██║██║ ╚████║╚██████╔╝
-    ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝
+	Short: "TaskWing - AI-Native Task Management",
+	Long: `TaskWing - AI-Native Task Management
 
-TaskWing CLI is a comprehensive tool to manage your tasks from the command line.
-It allows you to initialize a task repository, add, list, update, and delete tasks.`,
+Generate context-aware development tasks that actually match your architecture.
+No more generic AI suggestions that ignore your patterns, constraints, and decisions.`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Skip telemetry for completion and help commands
+		if cmd.Name() == "completion" || cmd.Name() == "help" || cmd.Name() == "__complete" || cmd.Name() == "mcp" {
+			return nil
+		}
+		// Skip telemetry init for telemetry config commands (to avoid recursion)
+		if cmd.Parent() != nil && cmd.Parent().Name() == "telemetry" {
+			return nil
+		}
+
+		// Check if telemetry is disabled via flag or config
+		disabled := viper.GetBool("telemetry.disabled")
+		if disabled {
+			return telemetry.Init(version, true)
+		}
+
+		// Check if we need consent and prompt if necessary
+		_, err := telemetry.CheckAndPromptConsent(version)
+		if err != nil {
+			// Don't fail the command if telemetry setup fails
+			// Just log if verbose
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "Warning: telemetry setup failed: %v\n", err)
+			}
+		}
+
+		// Initialize telemetry client
+		return telemetry.Init(version, false)
+	},
+	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+		// Flush any pending telemetry events
+		telemetry.Shutdown()
+		return nil
+	},
 	Run: func(cmd *cobra.Command, args []string) {
-		// return help if no args are provided
 		if len(args) == 0 {
 			_ = cmd.Help()
 			os.Exit(0)
 		}
-
-		// otherwise, run the subcommand
 	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	// Enable Cobra's built-in suggestions
+	rootCmd.SuggestionsMinimumDistance = 2
+
 	err := rootCmd.Execute()
 	if err != nil {
+		// Check if it's an unknown command error and provide helpful hints
+		errStr := err.Error()
+		if strings.Contains(errStr, "unknown command") {
+			// Extract the unknown command
+			parts := strings.Split(errStr, "\"")
+			if len(parts) >= 2 {
+				unknownCmd := parts[1]
+				suggestion := getCommandHint(unknownCmd)
+				if suggestion != "" {
+					fmt.Fprintf(os.Stderr, "\n%s\n", suggestion)
+				}
+			}
+		}
 		os.Exit(1)
 	}
 }
 
-// Command categories for organized help display
-var commandCategories = map[string][]string{
-	"Getting Started":    {"quickstart", "flow", "interactive"},
-	"Core Tasks":         {"add", "list", "show", "update", "delete", "improve"},
-	"Task Status":        {"start", "review", "done", "current"},
-	"Planning":           {"plan", "iterate"},
-	"Discovery":          {"search", "next", "clear"},
-	"Project Setup":      {"init", "reset", "config"},
-	"System & Utilities": {"mcp", "completion", "version", "help"},
-	"Archive":            {"archive"},
-	// Context-aware: for the 'archive' parent command, these will match its subcommands
-	"Archive Ops": {"view", "restore", "export", "import", "purge"},
-}
-
-// getGroupedHelpTemplate returns a custom help template with grouped commands
-func getGroupedHelpTemplate() string {
-	return `{{if isRootCmd .}}
-{{.Long | trimTrailingWhitespaces}}
-
-Usage:{{if .Runnable}}
-  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
-  {{.CommandPath}} [command]{{end}}
-
-Common Workflows:
-  {{.CommandPath}} quickstart                    # Interactive getting started guide
-  {{.CommandPath}} add "Fix login bug"           # Create a new task
-  {{.CommandPath}} ls                            # List all tasks
-  {{.CommandPath}} start <task-id>               # Begin working on a task
-  {{.CommandPath}} done <task-id>                # Mark task complete
-  {{.CommandPath}} improve <task-id> --apply     # AI‑enhance a task (title/desc/criteria/priority)
-  {{.CommandPath}} add "Task" && {{.CommandPath}} start $({{.CommandPath}} ls --format=id --status=todo | head -1)  # Add and start
-
-Available Commands:{{range $category, $commands := getCommandsByCategory .}}
-{{$category}}:{{range $commands}}{{if .IsAvailableCommand}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}
-{{end}}
-{{if .HasAvailableLocalFlags}}Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
-
-Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
-
-Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
-  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
-
-Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
-{{else}}
-{{.Short}}
-
-Usage:
-  {{.UseLine}}
-{{if .HasAvailableLocalFlags}}Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
-
-Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
-{{end}}`
-}
-
-// getCommandsByCategory organizes commands into categories for the help template
-func getCommandsByCategory(cmd *cobra.Command) map[string][]*cobra.Command {
-	result := make(map[string][]*cobra.Command)
-
-	// Create a map of command names to commands for quick lookup
-	cmdMap := make(map[string]*cobra.Command)
-	for _, subCmd := range cmd.Commands() {
-		cmdMap[subCmd.Name()] = subCmd
+// getCommandHint returns a helpful hint for common command mistakes
+func getCommandHint(cmd string) string {
+	hints := map[string]string{
+		"export":  "Hint: To export a plan, use: tw plan export <plan-id>",
+		"search":  "Hint: To search knowledge, use: tw context \"<query>\"",
+		"query":   "Hint: To query knowledge, use: tw context \"<query>\"",
+		"find":    "Hint: To find knowledge, use: tw context \"<query>\"",
+		"plans":   "Hint: To list plans, use: tw plan list",
+		"tasks":   "Hint: To list tasks, use: tw task list",
+		"nodes":   "Hint: To list knowledge nodes, use: tw list",
+		"status":  "Hint: To check project status, use: tw memory check",
+		"check":   "Hint: To check memory integrity, use: tw memory check",
+		"doctor":  "Hint: To diagnose issues, use: tw memory check",
+		"create":  "Hint: To create a plan, use: tw plan new \"<goal>\"",
+		"new":     "Hint: To create a plan, use: tw plan new \"<goal>\"",
+		"embed":   "Hint: To generate embeddings, use: tw memory generate-embeddings",
+		"reset":   "Hint: To reset memory, use: tw memory reset",
+		"install": "Hint: To install MCP, use: tw mcp install",
 	}
 
-	// Organize commands by category
-	for category, cmdNames := range commandCategories {
-		for _, cmdName := range cmdNames {
-			if subCmd, exists := cmdMap[cmdName]; exists && subCmd.IsAvailableCommand() {
-				result[category] = append(result[category], subCmd)
-			}
-		}
+	if hint, ok := hints[cmd]; ok {
+		return hint
 	}
-
-	return result
+	return ""
 }
 
 func init() {
-	cobra.OnInitialize(InitConfig)
+	cobra.OnInitialize(initConfig)
 
-	// Register custom template functions
-	cobra.AddTemplateFunc("getCommandsByCategory", getCommandsByCategory)
-	cobra.AddTemplateFunc("isRootCmd", func(c *cobra.Command) bool { return c != nil && c.Parent() == nil })
+	// Global flags
+	rootCmd.PersistentFlags().Bool("verbose", false, "Enable verbose output")
+	rootCmd.PersistentFlags().Bool("no-telemetry", false, "Disable anonymous telemetry")
+	rootCmd.PersistentFlags().Bool("json", false, "Output as JSON")
+	rootCmd.PersistentFlags().Bool("quiet", false, "Minimal output")
+	rootCmd.PersistentFlags().Bool("preview", false, "Dry run (no changes)")
 
-	// Set custom help template with grouped commands
-	rootCmd.SetHelpTemplate(getGroupedHelpTemplate())
-
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.taskwing.yaml or ./.taskwing.yaml)")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
-
-	// Bind persistent flags to Viper
-	_ = viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
 	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	_ = viper.BindPFlag("telemetry.disabled", rootCmd.PersistentFlags().Lookup("no-telemetry"))
+	_ = viper.BindPFlag("json", rootCmd.PersistentFlags().Lookup("json"))
+	_ = viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
+	_ = viper.BindPFlag("preview", rootCmd.PersistentFlags().Lookup("preview"))
 
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	// Example:
-	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Custom Help Template
+	rootCmd.SetHelpTemplate(`{{if .Long}}
+{{.Long}}
+{{else}}
+  {{.Short}}
+{{end}}
+  Usage: {{.UseLine}}
+{{if .HasAvailableSubCommands}}
+  Commands:
+{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}    {{rpad .Name .NamePadding }} {{.Short}}
+{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+  Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+  Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
+`)
 }
 
-// initConfig is defined in config.go
-
-// GetTaskFilePath returns the full path to the tasks file
-func GetTaskFilePath() string {
-	config := GetConfig()
-	return filepath.Join(config.Project.RootDir, config.Project.TasksDir, config.Data.File)
-}
-
-// GetStore initializes and returns the task store using the unified types.AppConfig.
-func GetStore() (store.TaskStore, error) {
-	s := store.NewFileTaskStore()
-	config := GetConfig()
-
-	taskFilePath := GetTaskFilePath()
-
-	err := s.Initialize(map[string]string{
-		"dataFile":       taskFilePath,
-		"dataFileFormat": config.Data.Format,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize store at %s: %w", taskFilePath, err)
-	}
-	return s, nil
-}
-
-// selectTaskInteractive presents a prompt to the user to select a task from a list.
-// It can be filtered using the provided filter function.
-func selectTaskInteractive(taskStore store.TaskStore, filterFn func(models.Task) bool, label string) (models.Task, error) {
-	tasks, err := taskStore.ListTasks(filterFn, nil)
-	if err != nil {
-		return models.Task{}, fmt.Errorf("failed to list tasks for selection: %w", err)
-	}
-
-	if len(tasks) == 0 {
-		return models.Task{}, ErrNoTasksFound
-	}
-
-	templates := &promptui.SelectTemplates{
-		Label:    "{{ . }}?",
-		Active:   `> {{ .Title | cyan }} (ID: {{ .ID }}, Status: {{ .Status }})`,
-		Inactive: `  {{ .Title | faint }} (ID: {{ .ID }}, Status: {{ .Status }})`,
-		Selected: `{{ "✔" | green }} {{ .Title | faint }} (ID: {{ .ID }})`,
-		Details: `
---------- Task Details ----------
-{{ "ID:\t" | faint }} {{ .ID }}
-{{ "Title:\t" | faint }} {{ .Title }}
-{{ "Description:\t" | faint }} {{ .Description }}
-{{ "Status:\t" | faint }} {{ .Status }}
-{{ "Priority:\t" | faint }} {{ .Priority }}`,
-	}
-
-	searcher := func(input string, index int) bool {
-		task := tasks[index]
-		name := strings.ToLower(task.Title)
-		id := task.ID
-		input = strings.ToLower(input)
-		return strings.Contains(name, input) || strings.Contains(id, input)
-	}
-
-	prompt := promptui.Select{
-		Label:     label,
-		Items:     tasks,
-		Templates: templates,
-		Searcher:  searcher,
-	}
-
-	i, _, err := prompt.Run()
-	if err != nil {
-		return models.Task{}, err // Return error as is (includes promptui.ErrInterrupt)
-	}
-
-	return tasks[i], nil
+// GetVersion returns the application version
+func GetVersion() string {
+	return version
 }

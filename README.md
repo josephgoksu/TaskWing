@@ -1,263 +1,96 @@
-# TaskWing
-
-**AI-powered CLI task manager built for developers**
+# TaskWing: AI-Native Task Management
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/josephgoksu/TaskWing)](https://goreportcard.com/report/github.com/josephgoksu/TaskWing)
-[![GitHub release](https://img.shields.io/github/release/josephgoksu/TaskWing.svg)](https://github.com/josephgoksu/TaskWing/releases)
-[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8.svg?logo=go&logoColor=white)](https://golang.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-9C59D1.svg?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[![GitHub issues](https://img.shields.io/github/issues/josephgoksu/TaskWing)](https://github.com/josephgoksu/TaskWing/issues)
-[![GitHub pull requests](https://img.shields.io/github/issues-pr/josephgoksu/TaskWing)](https://github.com/josephgoksu/TaskWing/pulls)
-[![Platform Support](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](https://github.com/josephgoksu/TaskWing/releases)
+> **Generate context-aware development tasks that actually match your architecture.**
+> No more generic AI suggestions that ignore your patterns, constraints, and decisions.
 
-TaskWing integrates directly with Claude Code, Cursor, and other AI tools via the Model Context Protocol. Manage tasks from your terminal or let AI handle it for you.
+## 🚀 The Problem
 
-## Why TaskWing?
+You ask an AI to "add Stripe billing" and it suggests:
+- Libraries you've banned ❌
+- Patterns you don't use ❌
+- Files that don't exist ❌
 
-- **🤖 AI-Native**: Full MCP integration for Claude Code, Cursor, and other AI tools
-- **⚡ Zero Config**: Works immediately, stores data locally in your project
-- **🔗 Smart Dependencies**: Automatic dependency tracking and circular reference prevention
-- **📚 Learning System**: Captures patterns from completed projects for future AI assistance
-- **🚀 Developer-First**: Built for developers who value focus and efficiency
+Traditional task management (Jira, Asana) treats code as external. AI tools hallucinate because they don't understand *your* architecture.
 
-## By [@josephgoksu](https://x.com/josephgoksu)
+## ✅ The Solution
 
-[![Twitter Follow](https://img.shields.io/twitter/follow/josephgoksu)](https://x.com/josephgoksu)
-
-## Quick Start
-
-### Installation
-
-#### One-liner install (recommended)
+TaskWing extracts knowledge from your codebase and uses it to generate accurate tasks:
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/josephgoksu/TaskWing/main/install.sh | sh
+$ tw plan new "Add Stripe subscription billing"
+
+✓ Analyzed codebase (46 nodes, 22 decisions, 12 patterns)
+✓ Generated 7 tasks based on your architecture
+
+Plan: stripe-billing
+  [ ] T1: Add Stripe SDK to backend-go (see: go.mod, internal/payments/)
+  [ ] T2: Create subscription webhook handler (pattern: internal/api/handlers/)
+  [ ] T3: Add billing_status to User model (constraint: use types.gen.go)
+  [ ] T4: Update OpenAPI spec with /billing endpoints (workflow: make generate-api)
+  [ ] T5: Implement frontend billing page (see: web/src/pages/)
+  [ ] T6: Add Stripe keys to SSM (policy: no .env in prod)
+  [ ] T7: Update CDK for billing service IAM (see: cdk/lib/)
 ```
 
-> **Note**: After installation, you may need to add `~/.local/bin` to your PATH:
->
-> ```bash
-> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
-> ```
+Every task references **your actual files, patterns, and constraints**.
 
-#### Alternative: Go install
-
-If you have Go installed:
+## ⚡ Quick Start
 
 ```bash
-go install github.com/josephgoksu/TaskWing@latest
+# 1. Install
+curl -fsSL https://taskwing.app/install.sh | bash
+
+# 2. Bootstrap your repo (extract knowledge)
+cd /path/to/your/repo
+tw bootstrap
+
+# 3. Generate a plan
+tw plan new "Implement user authentication"
+
+# 4. Start working (provides context to AI tools via MCP)
+tw plan start auth
+tw mcp
 ```
 
-#### Verify installation
+## 📈 Validated Impact
 
-```bash
-taskwing version
-```
+We tested AI responses with and without TaskWing context on a real production codebase:
 
-### First Steps
+| Configuration | Avg Score (0-10) | Notes |
+|---------------|------------------|-------|
+| **Baseline** (no context) | 6.6 | Model assumed wrong stack (Node.js vs Go) |
+| **With TaskWing** (context injected) | 7.8 | +18% - Correctly identified Go backend |
+| **Codex + TaskWing** | **8.0** | +21% - Best: consistent across all tasks |
 
-**New to TaskWing?** Start with the interactive guide:
+**Real example:** Without context, the model suggested modifying `backend/src/routes/bookmarks.ts` (Node.js pattern). With TaskWing context, it correctly referenced `backend-go/internal/api/` and the `make generate-api` workflow.
 
-```bash
-taskwing quickstart
-```
+> TaskWing context injection helps AI tools understand your actual architecture. [Full methodology →](docs/development/EVAL_RUNNERS.md)
 
-**Or jump straight in:**
+👉 **[Full Getting Started Guide](docs/development/GETTING_STARTED.md)** · **[Product Vision](docs/PRODUCT_VISION.md)**
 
-```bash
-# Initialize in your project
-taskwing init
+## 📚 Knowledge Architecture
 
-# Interactive menu (great for beginners)
-taskwing interactive
+We organize documentation to be trusted, actionable, and scalable.
 
-# Or use direct commands
-taskwing add "Fix authentication bug" --priority urgent
-taskwing ls                    # List all tasks
-taskwing start <task-id>       # Begin working
-taskwing done <task-id>        # Mark complete
-taskwing improve <task-id>     # AI‑enhance task details; add --plan to create subtasks
-```
+| Scope | Directory | Purpose |
+|-------|-----------|---------|
+| **The Constitution** | [`docs/architecture/`](docs/architecture/) | **Immutable Principles.** System design, data privacy, and roadmap. |
+| **The Playbook** | [`docs/development/`](docs/development/) | **Developer Guide.** Internals, agent architecture, and testing. |
+| **The Reference** | [`docs/reference/`](docs/reference/) | **Facts.** Telemetry policy, error codes, integrations. |
 
-### AI Integration
+<!--
+## 🏢 Enterprise & Teams
 
-**Quick setup for Claude Code:**
+Using TaskWing in a team? We provide:
+*   **Shared Knowledge Graph**: Sync context across your entire engineering org.
+*   **Governance**: Enforce architectural constraints automatically.
 
-1. Start MCP server:
-
-   ```bash
-   taskwing mcp
-   ```
-
-2. Add to Claude Code config:
-
-   ```json
-   {
-     "mcpServers": {
-       "taskwing": {
-         "command": "taskwing",
-         "args": ["mcp"]
-       }
-     }
-   }
-   ```
-
-3. Ask Claude: _"What tasks do I have?"_ or _"Create a task to refactor the auth module"_
-
-**Example AI interactions:**
-
-- _"Break down this feature into tasks"_
-- _"What should I work on next?"_
-- _"Create tasks from this GitHub issue"_
-- _"Show me my current sprint status"_
-
-See [MCP Setup Guide](MCP.md) for detailed configuration and [AI Examples](EXAMPLES.md) for advanced patterns.
-
-## Core Features
-
-### 🎯 Task Management
-
-- **Rich metadata**: Priority, status, dependencies, acceptance criteria
-- **Flexible workflow**: `todo` → `doing` → `review` → `done`
-- **Smart search**: Find tasks by title, description, or partial ID
-- **Board view**: Kanban-style project visualization
-
-### 🤖 AI Integration
-
-- **MCP Protocol**: Direct integration with Claude Code, Cursor, and AI tools
-- **Context-aware**: AI knows your current task and project state
-- **Intelligent suggestions**: Get next task recommendations
-- **Planning assistance**: Break down features into actionable tasks
-
-### 🔗 Smart Dependencies
-
-- **Relationship tracking**: Parent/child tasks and dependencies
-- **Circular prevention**: Automatic detection and prevention
-- **Dependency health**: Analyze and fix broken relationships
-
-### ⚡ Developer Experience
-
-- **Zero config**: Works immediately in any project
-- **Local-first**: All data stored in your project directory
-- **Fast commands**: Optimized for daily use with aliases
-- **Interactive mode**: Menu-driven interface for exploration
-
-**Example workflows:**
-
-```bash
-# Sprint planning
-taskwing add "Implement user auth" --priority high
-taskwing add "Add login form" --parent <auth-task-id>
-taskwing add "Add logout functionality" --parent <auth-task-id>
-taskwing board-snapshot                 # See the plan
-
-# Daily workflow
-taskwing current                        # See active task
-taskwing next                          # Get AI suggestions
-taskwing start <task-id>               # Focus on task
-taskwing done <task-id>                # Mark complete
-taskwing improve <task-id> --apply     # Refine title/desc/criteria/priority
-
-# Project analysis
-taskwing search "auth"                 # Find auth-related tasks
-taskwing analytics                     # View completion metrics
-taskwing workflow-status               # See project phase
-```
-
-For complete command reference, see [User Guide](DOCS.md#commands-reference).
-
-## Real-World Examples
-
-### Daily Development Workflow
-
-```bash
-# Morning standup
-taskwing current                    # What am I working on?
-taskwing board-snapshot            # Sprint overview
-
-# Start new work
-taskwing add "Implement OAuth2 flow" --priority high
-taskwing start <task-id>           # Focus mode
-
-# AI assistance
-# Ask Claude: "Break down this OAuth task into smaller steps"
-# Claude creates subtasks automatically via MCP
-
-# End of day
-taskwing done <task-id>            # Mark complete
-taskwing next                      # What's next?
-```
-
-### Project Planning with AI
-
-```bash
-# Upload PRD to Claude and ask:
-# "Create a task breakdown for this feature spec"
-
-# Claude uses MCP to:
-taskwing batch-create-tasks        # Create multiple tasks
-taskwing board-reconcile          # Organize dependencies
-taskwing workflow-status          # Show project phases
-taskwing improve <task-id>        # Refine any generated task for clarity
-```
-
-## Documentation
-
-| Document                       | Purpose                                         |
-| ------------------------------ | ----------------------------------------------- |
-| **[DOCS.md](DOCS.md)**         | User guide - Installation, commands, workflows  |
-| **[MCP.md](MCP.md)**           | AI integration - Setup and tool reference       |
-| **[EXAMPLES.md](EXAMPLES.md)** | AI interaction examples - Common usage patterns |
-| **[CLAUDE.md](CLAUDE.md)**     | Developer guide - Architecture and contributing |
-
-## For Developers
-
-### Quick Development Setup
-
-```bash
-# Clone and setup
-git clone https://github.com/josephgoksu/TaskWing.git
-cd TaskWing
-make dev-setup                 # Install dev tools
-
-# Development workflow
-make build                     # Build binary
-make test-quick               # Fast tests
-make lint                     # Format and lint
-
-# Testing
-make test-all                 # Comprehensive test suite
-make test-mcp                 # Test MCP integration
-make coverage                 # Generate coverage report
-```
-
-### Architecture
-
-- **Local-first**: All data in project `.taskwing/` directory
-- **Go 1.24+**: Built with Cobra CLI framework
-- **MCP Integration**: Full Model Context Protocol support
-- **File-based storage**: JSON/YAML/TOML with file locking
-- **33+ MCP tools**: Comprehensive AI integration
-
-### Contributing
-
-We welcome contributions! Key areas:
-
-- 🐛 **Bug fixes**: See [issues](https://github.com/josephgoksu/TaskWing/issues)
-- ✨ **New MCP tools**: Extend AI capabilities
-- 📄 **Documentation**: Improve user experience
-- 🧪 **Testing**: Increase coverage and reliability
-
-See [CLAUDE.md](CLAUDE.md) for detailed development guide.
+[Contact Sales](mailto:enterprise@taskwing.app) for early access to TaskWing Cloud.
+-->
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file.
-
----
-
-[![Star History Chart](https://api.star-history.com/svg?repos=josephgoksu/TaskWing&type=Date)](https://www.star-history.com/#josephgoksu/TaskWing&Date)
-
-**Built for the terminal. Powered by AI. Made for developers.** 🚀
+MIT. Built for engineers, by engineers.

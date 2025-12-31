@@ -3,15 +3,17 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
-// MCP server bootstrap and registration (renamed from mcpsdk.go)
-
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"log"
 	"os"
+	"strings"
 
-	taskwingmcp "github.com/josephgoksu/TaskWing/mcp"
+	"github.com/josephgoksu/TaskWing/internal/config"
+	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/memory"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -22,71 +24,68 @@ var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Start MCP server for AI tool integration",
 	Long: `Start a Model Context Protocol (MCP) server to enable AI tools like Claude Code,
-Cursor, and other AI assistants to interact with TaskWing tasks.
+Cursor, and other AI assistants to interact with TaskWing project memory.
 
-The MCP server runs over stdin/stdout and provides tools for:
-- Adding new tasks
-- Listing and filtering tasks
-- Updating existing tasks
-- Deleting tasks
-- Marking tasks as done
-- Getting task details
-- Managing current active task
+The MCP server provides the project-context tool that gives AI tools access to:
+- Knowledge nodes (decisions, features, plans, notes)
+- Semantic search across project memory
+- Relationships between components
 
 Example usage with Claude Code:
   taskwing mcp
 
 The server will run until the client disconnects.`,
+	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// If arguments are provided but no subcommand was matched by Cobra,
+		// it might mean an invalid subcommand or argument.
+		// However, to maintain "taskwing mcp" as the way to start the server,
+		// we only error if it looks like a subcommand attempt.
+		if len(args) > 0 {
+			return fmt.Errorf("unknown command %q for %q\nRun '%s --help' for usage", args[0], cmd.CommandPath(), cmd.Root().Name())
+		}
 		return runMCPServer(cmd.Context())
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(mcpCmd)
-	// MCP server inherits verbose flag from root command
+	// NOTE: SSE transport (--port) intentionally removed. Stdio is the standard.
+}
+
+// ProjectContextParams defines the parameters for the project-context tool
+type ProjectContextParams struct {
+	Query string `json:"query,omitempty"`
+}
+
+// Response DTOs are defined in internal/knowledge/response.go for DRY.
+// TypeSummary is MCP-specific (overview mode only).
+
+// TypeSummary is now defined in internal/knowledge/response.go
+
+// mcpJSONResponse wraps data in an MCP tool result with JSON content
+func mcpJSONResponse(data any) (*mcpsdk.CallToolResultFor[any], error) {
+	jsonBytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal response: %w", err)
+	}
+	return &mcpsdk.CallToolResultFor[any]{
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: string(jsonBytes)}},
+	}, nil
 }
 
 func runMCPServer(ctx context.Context) error {
-	// Print startup message for AI tools
-	fmt.Fprintf(os.Stderr, "\n🎯 TaskWing MCP Server Starting...\n")
-	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	fmt.Fprintf(os.Stderr, "CRITICAL: Professional task management system active\n")
-	fmt.Fprintf(os.Stderr, "Configuration: 15 essential tools (~9.6k tokens, 71%% reduction)\n")
-	fmt.Fprintf(os.Stderr, "AI tools MUST:\n")
-	fmt.Fprintf(os.Stderr, "  1. Call 'task-summary' first to understand project\n")
-	fmt.Fprintf(os.Stderr, "  2. Use TaskWing tools instead of markdown lists\n")
-	fmt.Fprintf(os.Stderr, "  3. Set current task when user starts work\n")
-	fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	// NOTE: MCP uses stdio transport. stdout MUST be pure JSON-RPC.
+	// All status/debug output goes to stderr only.
+	fmt.Fprintln(os.Stderr, "TaskWing MCP Server starting...")
 
-	// Initialize TaskWing store
-	taskStore, err := GetStore()
+	// Get current working directory
+	// Initialize memory repository
+	repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 	if err != nil {
-		return fmt.Errorf("failed to initialize task store: %w", err)
+		return fmt.Errorf("failed to initialize memory repo: %w", err)
 	}
-
-	// Configure shared hooks for MCP helpers
-	taskwingmcp.ConfigureHooks(taskwingmcp.Hooks{
-		GetCurrentTask:       GetCurrentTask,
-		GetConfig:            GetConfig,
-		LogInfo:              logInfo,
-		LogError:             logError,
-		LogToolCall:          logToolCall,
-		GetArchiveStore:      getArchiveStore,
-		SuggestLessons:       aiSuggestLessons,
-		PolishLessons:        aiPolishLessons,
-		ArchiveAndDelete:     archiveAndDeleteSubtree,
-		EncryptFile:          encryptFile,
-		DecryptFile:          decryptFile,
-		ResolveTaskReference: resolveTaskReference,
-		GetVersion:           func() string { return version },
-	})
-
-	defer func() {
-		if err := taskStore.Close(); err != nil {
-			logError(fmt.Errorf("failed to close task store: %w", err))
-		}
-	}()
+	defer func() { _ = repo.Close() }()
 
 	// Create MCP server
 	impl := &mcpsdk.Implementation{
@@ -94,91 +93,42 @@ func runMCPServer(ctx context.Context) error {
 		Version: version,
 	}
 
-	// Create server options with notification handlers
 	serverOpts := &mcpsdk.ServerOptions{
 		InitializedHandler: func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.InitializedParams) {
-			// Client has completed initialization - announce TaskWing availability
-			fmt.Fprintf(os.Stderr, "\n🎯 TASKWING MCP CONNECTION ESTABLISHED\n")
-			fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-			fmt.Fprintf(os.Stderr, "AI Tool: You now have access to TaskWing professional\n")
-			fmt.Fprintf(os.Stderr, "task management with 15 optimized tools (~9.6k tokens).\n")
-			fmt.Fprintf(os.Stderr, "Use these tools instead of markdown lists:\n")
-			fmt.Fprintf(os.Stderr, "  • task-summary - ALWAYS call first\n")
-			fmt.Fprintf(os.Stderr, "  • add-task - Create rich tasks\n")
-			fmt.Fprintf(os.Stderr, "  • query-tasks - Natural language search\n")
-			fmt.Fprintf(os.Stderr, "  • See MCP_TOOLS_REFERENCE.md for all 15 tools\n")
-			fmt.Fprintf(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-
+			fmt.Fprintf(os.Stderr, "✓ MCP connection established\n")
 			if viper.GetBool("verbose") {
-				fmt.Fprintf(os.Stderr, "[DEBUG] MCP client initialization complete\n")
+				fmt.Fprintf(os.Stderr, "[DEBUG] Client initialized\n")
 			}
 		},
 	}
 
 	server := mcpsdk.NewServer(impl, serverOpts)
 
-	// Register ALL essential MCP tools (15 tools optimized for minimal token usage)
-	// All other tool registrations are disabled to reduce context window usage
-	if err := taskwingmcp.RegisterCoreTools(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register MCP tools: %w", err)
+	// Register project-context tool
+	tool := &mcpsdk.Tool{
+		Name:        "project-context",
+		Description: "Get project knowledge for AI context. Use {\"query\":\"search term\"} for semantic search, or omit for an overview.",
 	}
 
-	// DISABLED - Archive tools (9 tools removed to save tokens)
-	// if err := taskwingmcp.RegisterArchiveTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register archive tools: %w", err)
-	// }
+	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		query := strings.TrimSpace(params.Arguments.Query)
 
-	// DISABLED - Advanced bulk tools (board-reconcile, bulk-by-filter removed)
-	// if err := taskwingmcp.RegisterAdvancedMCPTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register advanced MCP tools: %w", err)
-	// }
+		// Node-based system only
+		nodes, err := repo.ListNodes("")
+		if err != nil {
+			return nil, fmt.Errorf("list nodes: %w", err)
+		}
+		if len(nodes) == 0 {
+			return &mcpsdk.CallToolResultFor[any]{
+				Content: []mcpsdk.Content{
+					&mcpsdk.TextContent{Text: "Project memory is empty. Run 'taskwing bootstrap' to analyze this repository and generate context."},
+				},
+			}, nil
+		}
+		return handleNodeContext(ctx, repo, query, nodes)
+	})
 
-	// DISABLED - Redundant resolution tools (find-by-title, resolve-reference removed)
-	// if err := taskwingmcp.RegisterTaskResolutionTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register task resolution tools: %w", err)
-	// }
-
-	// DISABLED - JSON processing tools (filter, extract-ids, analytics removed)
-	// if err := taskwingmcp.RegisterJSONProcessingTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register JSON processing tools: %w", err)
-	// }
-
-	// DISABLED - Workflow tools (workflow-status removed, board-snapshot in core)
-	// if err := taskwingmcp.RegisterWorkflowIntegrationTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register workflow integration tools: %w", err)
-	// }
-
-	// DISABLED - Intelligent tools (suggest, smart-transition removed, query-tasks in core)
-	// if err := taskwingmcp.RegisterIntelligentMCPTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register intelligent MCP tools: %w", err)
-	// }
-
-	// DISABLED - Planning tools (plan-from-document, iterate removed, generate-plan in core)
-	// if err := taskwingmcp.RegisterPlanningTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register planning MCP tools: %w", err)
-	// }
-
-	// DISABLED - Simple planning tools (already have generate-plan in core)
-	// if err := taskwingmcp.RegisterSimplePlanTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register simple planning tools: %w", err)
-	// }
-
-	// DISABLED - Board tools (board-snapshot moved to core, board-reconcile removed)
-	// if err := taskwingmcp.RegisterBoardTools(server, taskStore); err != nil {
-	// 	return fmt.Errorf("failed to register board tools: %w", err)
-	// }
-
-	// Register MCP resources
-	if err := taskwingmcp.RegisterMCPResources(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register MCP resources: %w", err)
-	}
-
-	// Register MCP prompts
-	if err := taskwingmcp.RegisterMCPPrompts(server, taskStore); err != nil {
-		return fmt.Errorf("failed to register MCP prompts: %w", err)
-	}
-
-	// Run the server over stdin/stdout
+	// Run the server (stdio transport only)
 	if err := server.Run(ctx, mcpsdk.NewStdioTransport()); err != nil {
 		return fmt.Errorf("MCP server failed: %w", err)
 	}
@@ -186,20 +136,45 @@ func runMCPServer(ctx context.Context) error {
 	return nil
 }
 
-func logError(err error) {
-	if viper.GetBool("verbose") {
-		log.Printf("[MCP ERROR] %v", err)
+// handleNodeContext returns context using the knowledge.Service (same as CLI).
+// This ensures MCP and CLI use identical search logic with zero drift.
+func handleNodeContext(ctx context.Context, repo *memory.Repository, query string, nodes []memory.Node) (*mcpsdk.CallToolResultFor[any], error) {
+	// Use knowledge.Service.GetProjectSummary() — IDENTICAL to CLI, zero drift
+	llmCfg, err := config.LoadLLMConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] LLM config unavailable: %v\n", err)
+		llmCfg = llm.Config{}
 	}
-}
+	ks := knowledge.NewService(repo, llmCfg)
 
-func logInfo(msg string) {
-	if viper.GetBool("verbose") {
-		log.Printf("[MCP INFO] %s", msg)
+	if query == "" {
+		summary, err := ks.GetProjectSummary(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("get summary: %w", err)
+		}
+		return mcpJSONResponse(summary)
 	}
-}
 
-func logToolCall(toolName string, params interface{}) {
-	if viper.GetBool("verbose") {
-		log.Printf("[MCP TOOL] %s called with params: %+v", toolName, params)
+	scored, err := ks.Search(ctx, query, 5)
+	if err != nil {
+		return nil, fmt.Errorf("search failed: %w", err)
 	}
+
+	// Convert to NodeResponse (shared type, no embeddings)
+	var responses []knowledge.NodeResponse
+	for _, sn := range scored {
+		responses = append(responses, knowledge.ScoredNodeToResponse(sn))
+	}
+
+	result := struct {
+		Query   string                   `json:"query"`
+		Results []knowledge.NodeResponse `json:"results"`
+		Total   int                      `json:"total"`
+	}{
+		Query:   query,
+		Results: responses,
+		Total:   len(responses),
+	}
+
+	return mcpJSONResponse(result)
 }

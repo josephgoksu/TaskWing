@@ -1,79 +1,218 @@
+/*
+Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
+*/
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"os/signal"
+	"runtime"
+	"sync"
+	"syscall"
+	"time"
 
-	"github.com/josephgoksu/TaskWing/models"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
+	"github.com/josephgoksu/TaskWing/internal/agents/watch"
+	"github.com/josephgoksu/TaskWing/internal/config"
+	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/server"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+var (
+	startPort    int
+	noDashboard  bool
+	noWatch      bool
+	dashboardURL string
 )
 
 var startCmd = &cobra.Command{
-	Use:     "start [task_id]",
-	Aliases: []string{"begin", "work"},
-	Short:   "Start working on a task (moves to 'doing' status)",
-	Long:    `Start working on a task by moving it from 'todo' to 'doing' status. If no task ID is provided, you'll be prompted to select from available tasks.`,
-	Example: `  taskwing start abc123  # Start specific task
-  taskwing start         # Interactive selection`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		taskStore, err := GetStore()
-		if err != nil {
-			return fmt.Errorf("failed to get task store: %w", err)
-		}
+	Use:   "start",
+	Short: "Start TaskWing with API server, watch mode, and dashboard",
+	Long: `Start TaskWing with all services running:
+  - HTTP API server for dashboard communication
+  - Watch mode for continuous file analysis
+  - Auto-open dashboard in browser
 
-		var taskID string
+This single command replaces running 'serve' and 'watch' separately.
 
-		if len(args) > 0 {
-			taskID = args[0]
-		} else {
-			// Interactive selection from todo tasks
-			task, err := selectTaskInteractive(taskStore, func(t models.Task) bool {
-				return t.Status == models.StatusTodo
-			}, "Select a task to start")
-			if err != nil {
-				return err
-			}
-			taskID = task.ID
-		}
-
-		// Get the task
-		task, err := taskStore.GetTask(taskID)
-		if err != nil {
-			return fmt.Errorf("failed to get task: %w", err)
-		}
-
-		// Validate transition
-		if !models.ValidateStatusTransition(task.Status, models.StatusDoing) {
-			return fmt.Errorf("cannot start task with status '%s' - only 'todo' tasks can be started", task.Status)
-		}
-
-		// Update status to doing
-		updates := map[string]interface{}{
-			"status": string(models.StatusDoing),
-		}
-
-		updatedTask, err := taskStore.UpdateTask(taskID, updates)
-		if err != nil {
-			return fmt.Errorf("failed to start task: %w", err)
-		}
-
-		// Set as current task
-		if err := SetCurrentTask(taskID); err != nil {
-			fmt.Printf("Warning: failed to set as current task: %v\n", err)
-		}
-
-		fmt.Printf("✅ Started task: %s\n", updatedTask.Title)
-		fmt.Printf("📌 Set as current task\n")
-
-		// Command discovery hints
-		fmt.Printf("\n💡 What's next?\n")
-		fmt.Printf("   • Mark complete:  taskwing done %s\n", updatedTask.ID[:8])
-		fmt.Printf("   • Update task:    taskwing update %s\n", updatedTask.ID[:8])
-		fmt.Printf("   • View current:   taskwing current\n")
-
-		return nil
-	},
+Examples:
+  taskwing start                    # Start everything
+  taskwing start --no-dashboard     # Don't open browser
+  taskwing start --no-watch         # Server only, no file watching
+  taskwing start --port 8080        # Use custom port`,
+	RunE: runStart,
 }
 
 func init() {
 	rootCmd.AddCommand(startCmd)
+
+	// Server flags
+	startCmd.Flags().IntVarP(&startPort, "port", "p", 5001, "API server port")
+	startCmd.Flags().BoolVar(&noDashboard, "no-dashboard", false, "Don't auto-open dashboard in browser")
+	startCmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't run watch mode (server only)")
+	startCmd.Flags().StringVar(&dashboardURL, "dashboard-url", "", "Dashboard URL (default: https://hub.taskwing.app, use http://localhost:5173 for local dev)")
+
+	// LLM configuration (reuse from watch)
+	startCmd.Flags().String("provider", "", "LLM provider (openai, ollama, anthropic, gemini)")
+	startCmd.Flags().String("model", "", "Model to use")
+	startCmd.Flags().String("api-key", "", "LLM API key (or set provider-specific env var)")
+	startCmd.Flags().String("ollama-url", "http://localhost:11434", "Ollama server URL")
+}
+
+func runStart(cmd *cobra.Command, args []string) error {
+	verbose := viper.GetBool("verbose")
+
+	// Get working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get working directory: %w", err)
+	}
+
+	// Print banner
+	fmt.Println()
+	fmt.Println("🚀 TaskWing Starting...")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("📁 Project: %s\n", cwd)
+	fmt.Printf("🌐 API: http://localhost:%d\n", startPort)
+	if !noWatch {
+		fmt.Println("👁️  Watch: enabled")
+	}
+	fmt.Println()
+
+	// WaitGroup to track goroutines
+	var wg sync.WaitGroup
+
+	// Error channel to capture startup errors
+	errChan := make(chan error, 2)
+
+	// Configure LLM
+	llmConfig, err := getLLMConfig(cmd)
+	if err != nil {
+		return fmt.Errorf("configure LLM: %w", err)
+	}
+
+	// Start HTTP API server
+	memoryPath := config.GetMemoryBasePath()
+	srv, err := server.New(startPort, cwd, memoryPath, llmConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create API server: %w", err)
+	}
+	srv.Start(&wg, errChan)
+
+	// Start watch mode if enabled
+	var watchAgent *watch.WatchAgent
+	if !noWatch {
+		watchAgent, err = startWatchMode(cwd, verbose, llmConfig, &wg, errChan)
+		if err != nil {
+			_ = srv.Shutdown(context.Background())
+			return fmt.Errorf("failed to start watch mode: %w", err)
+		}
+	}
+
+	// Open dashboard in browser
+	if !noDashboard {
+		url := dashboardURL
+		if url == "" {
+			url = "https://hub.taskwing.app"
+		}
+		// Give server a moment to start
+		time.Sleep(500 * time.Millisecond)
+		if err := openBrowser(url); err != nil {
+			fmt.Printf("⚠️  Could not open browser: %v\n", err)
+			fmt.Printf("   Open manually: %s\n", url)
+		} else {
+			fmt.Printf("🌐 Dashboard opened: %s\n", url)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("✅ TaskWing is running! Press Ctrl+C to stop")
+	fmt.Println()
+
+	// Handle graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-sigChan:
+		fmt.Printf("\n\n⏹️  Received %v, shutting down...\n", sig)
+	case err := <-errChan:
+		fmt.Printf("\n\n❌ Error: %v\n", err)
+	}
+
+	// Stop watch agent
+	if watchAgent != nil {
+		fmt.Println("   Stopping watch mode...")
+		watchAgent.Stop()
+	}
+
+	// Shutdown HTTP server with timeout
+	fmt.Println("   Stopping API server...")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		fmt.Printf("   ⚠️  Server shutdown error: %v\n", err)
+	}
+
+	wg.Wait()
+	fmt.Println("✅ TaskWing stopped")
+
+	return nil
+}
+
+// startWatchMode starts the watch agent in a goroutine
+func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sync.WaitGroup, errChan chan<- error) (*watch.WatchAgent, error) {
+	// Create watch agent
+	watchAgent, err := watch.NewWatchAgent(watch.WatchConfig{
+		BasePath:  watchPath,
+		LLMConfig: llmConfig,
+		Verbose:   verbose,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create watch agent: %w", err)
+	}
+
+	// Set up findings handler for proper deduplication via knowledge.Service.IngestFindings
+	memoryPath := config.GetMemoryBasePath()
+	repo, err := memory.NewDefaultRepository(memoryPath)
+	if err != nil {
+		return nil, fmt.Errorf("create memory repository: %w", err)
+	}
+
+	ks := knowledge.NewService(repo, llmConfig)
+	watchAgent.SetFindingsHandler(func(ctx context.Context, findings []core.Finding) error {
+		return ks.IngestFindings(ctx, findings, verbose)
+	})
+
+	// Start watching
+	if err := watchAgent.Start(); err != nil {
+		return nil, fmt.Errorf("start watch: %w", err)
+	}
+
+	return watchAgent, nil
+}
+
+// openBrowser opens the URL in the default browser
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+
+	return cmd.Start()
 }

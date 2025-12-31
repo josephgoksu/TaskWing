@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
-  schedule:
-    # Run tests daily at 2 AM UTC
-    - cron: "0 2 * * *"
 
 jobs:
   test-mcp-tools:
@@ -20,7 +17,7 @@ jobs:
 
     strategy:
       matrix:
-        go-version: ["1.23.x"]
+        go-version: ["1.24.x"]
         os: [ubuntu-latest]
 
     steps:
@@ -142,7 +139,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23.x"
+          go-version: "1.24.x"
 
       - name: Install dependencies
         run: |
@@ -178,26 +175,8 @@ jobs:
             test-results/
           retention-days: 90
 
-      - name: Create release on successful comprehensive test
-        if: github.ref == 'refs/heads/main' && success()
-        uses: actions/github-script@v6
-        with:
-          script: |
-            // Create a pre-release tag if comprehensive tests pass
-            const tag = `test-validated-${new Date().toISOString().split('T')[0]}-${context.sha.substring(0, 7)}`;
-
-            try {
-              await github.rest.git.createRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: `refs/tags/${tag}`,
-                sha: context.sha
-              });
-
-              console.log(`Created tag: ${tag}`);
-            } catch (error) {
-              console.log(`Tag creation failed: ${error.message}`);
-            }
+      # Auto-tagging removed to prevent tag spam
+      # Use manual releases via goreleaser instead
 
   notification:
     name: Test Results Notification

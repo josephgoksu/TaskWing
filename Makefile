@@ -51,7 +51,7 @@ test-unit:
 test-integration: build
 	@echo "🔧 Running integration tests..."
 	mkdir -p $(TEST_DIR)
-	$(GO) test -v ./cmd -run "TestMCP|TestTaskWing|TestBasic" | tee $(TEST_DIR)/integration-tests.log
+	$(GO) test -v ./tests/integration/... | tee $(TEST_DIR)/integration-tests.log
 	@echo "✅ Integration tests complete"
 
 # Run MCP tools tests
@@ -111,6 +111,11 @@ test-quick: build
 .PHONY: dev-setup
 dev-setup:
 	@echo "🛠️  Setting up development environment..."
+	@go version | grep -E "go1\.2[4-9]" >/dev/null || echo "⚠️  Warning: Go 1.24+ recommended"
+	@if [ ! -f .env ] && [ -f example.env ]; then \
+		echo "📄 Copying example.env to .env..."; \
+		cp example.env .env; \
+	fi
 	$(GO) mod tidy
 	$(GO) generate ./...
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \

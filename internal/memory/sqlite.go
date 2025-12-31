@@ -1,0 +1,1612 @@
+package memory
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+	"unsafe"
+
+	"github.com/google/uuid"
+	_ "modernc.org/sqlite"
+)
+
+// SQLiteStore implements MemoryStore using SQLite for persistence.
+type SQLiteStore struct {
+	db         *sql.DB
+	basePath   string // Path to .taskwing/memory directory
+	indexCache *FeatureIndex
+}
+
+// NewSQLiteStore creates a new SQLite-backed memory store.
+func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
+	dbPath := filepath.Join(basePath, "memory.db")
+
+	// Ensure directory exists
+	if err := os.MkdirAll(basePath, 0755); err != nil {
+		return nil, fmt.Errorf("create memory directory: %w", err)
+	}
+
+	// Open database
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	// Enable foreign keys
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("enable foreign keys: %w", err)
+	}
+
+	store := &SQLiteStore{
+		db:       db,
+		basePath: basePath,
+	}
+
+	// Initialize schema
+	if err := store.initSchema(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("init schema: %w", err)
+	}
+
+	return store, nil
+}
+
+// initSchema creates the database tables if they don't exist.
+func (s *SQLiteStore) initSchema() error {
+	schema := `
+	-- Legacy tables (kept for dual-write migration)
+	CREATE TABLE IF NOT EXISTS features (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL UNIQUE,
+		one_liner TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'active',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		tags TEXT,
+		file_path TEXT NOT NULL,
+		decision_count INTEGER DEFAULT 0
+	);
+
+	CREATE TABLE IF NOT EXISTS decisions (
+		id TEXT PRIMARY KEY,
+		feature_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		summary TEXT NOT NULL,
+		reasoning TEXT,
+		tradeoffs TEXT,
+		created_at TEXT NOT NULL,
+		FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
+	);
+
+	CREATE TABLE IF NOT EXISTS edges (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		from_feature TEXT NOT NULL,
+		to_feature TEXT NOT NULL,
+		edge_type TEXT NOT NULL,
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (from_feature) REFERENCES features(id) ON DELETE CASCADE,
+		FOREIGN KEY (to_feature) REFERENCES features(id) ON DELETE CASCADE,
+		UNIQUE(from_feature, to_feature, edge_type)
+	);
+
+	-- New knowledge graph tables (v2 pivot)
+	CREATE TABLE IF NOT EXISTS nodes (
+		id TEXT PRIMARY KEY,
+		content TEXT NOT NULL,              -- Original text input
+		type TEXT,                          -- AI-inferred: decision, feature, plan, note
+		summary TEXT,                       -- AI-extracted title/summary
+		source_agent TEXT DEFAULT '',       -- Agent that created this node (doc, code, git, deps)
+		embedding BLOB,                     -- Vector for similarity search
+		created_at TEXT NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS node_edges (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		from_node TEXT NOT NULL,
+		to_node TEXT NOT NULL,
+		relation TEXT NOT NULL,             -- relates_to, depends_on, affects, etc.
+		properties TEXT,                    -- JSON for arbitrary metadata (adopted from simple-graph)
+		confidence REAL DEFAULT 1.0,        -- AI confidence score
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (from_node) REFERENCES nodes(id) ON DELETE CASCADE,
+		FOREIGN KEY (to_node) REFERENCES nodes(id) ON DELETE CASCADE,
+		UNIQUE(from_node, to_node, relation)
+	);
+
+	-- Indexes for legacy tables
+	CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_feature);
+	CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_feature);
+	CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type);
+	CREATE INDEX IF NOT EXISTS idx_decisions_feature ON decisions(feature_id);
+
+	-- Indexes for new tables
+	CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
+	CREATE INDEX IF NOT EXISTS idx_nodes_source_agent ON nodes(source_agent);
+	CREATE INDEX IF NOT EXISTS idx_nodes_summary_agent ON nodes(summary, source_agent);
+	CREATE INDEX IF NOT EXISTS idx_node_edges_from ON node_edges(from_node);
+	CREATE INDEX IF NOT EXISTS idx_node_edges_to ON node_edges(to_node);
+	CREATE INDEX IF NOT EXISTS idx_node_edges_relation ON node_edges(relation);
+
+	-- Patterns table (V2 First-Class)
+	CREATE TABLE IF NOT EXISTS patterns (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL UNIQUE,
+		context TEXT NOT NULL,
+		solution TEXT NOT NULL,
+		consequences TEXT,
+		created_at TEXT NOT NULL
+	);
+
+	-- Plans table (High-level goals)
+	CREATE TABLE IF NOT EXISTS plans (
+		id TEXT PRIMARY KEY,
+		goal TEXT NOT NULL,                -- Original user intent
+		enriched_goal TEXT,                -- Refined after clarification
+		status TEXT DEFAULT 'draft',       -- draft, active, completed, archived
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+
+	-- Tasks table (atomic work units)
+	CREATE TABLE IF NOT EXISTS tasks (
+		id TEXT PRIMARY KEY,
+		plan_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		description TEXT,
+		acceptance_criteria TEXT,          -- JSON array
+		validation_steps TEXT,             -- JSON array
+		status TEXT DEFAULT 'pending',     -- pending, in_progress, verifying, completed, failed
+		priority INTEGER DEFAULT 50,
+		assigned_agent TEXT,
+		parent_task_id TEXT,
+		context_summary TEXT,              -- Summary of linked knowledge nodes
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+		FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE SET NULL
+	);
+
+	-- Task dependencies (DAG structure)
+	CREATE TABLE IF NOT EXISTS task_dependencies (
+		task_id TEXT NOT NULL,
+		depends_on TEXT NOT NULL,
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+		FOREIGN KEY (depends_on) REFERENCES tasks(id) ON DELETE CASCADE,
+		PRIMARY KEY (task_id, depends_on)
+	);
+
+	-- Link tasks to Knowledge Graph nodes
+	CREATE TABLE IF NOT EXISTS task_node_links (
+		task_id TEXT NOT NULL,
+		node_id TEXT NOT NULL,
+		link_type TEXT NOT NULL,           -- context, modifies, references
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+		-- Note: We don't enforce FK on node_id rigidly because nodes might be in FTS or different tables,
+		-- but conceptually it refers to 'nodes.id' or 'features.id'.
+		-- For strictness, we'd reference nodes(id), but legacy features are in a different table.
+		-- So we keep it soft for now, or we'll ensure everything is a node in v2 migration.
+		PRIMARY KEY (task_id, node_id, link_type)
+	);
+
+	-- Clarification history (Audit trail for the agent)
+	CREATE TABLE IF NOT EXISTS plan_clarifications (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		plan_id TEXT NOT NULL,
+		question TEXT NOT NULL,
+		answer TEXT,
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+	);
+
+	-- FTS5 for keyword search (hybrid with vector similarity)
+	CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+		id UNINDEXED,
+		summary,
+		content,
+		content='nodes',
+		content_rowid='rowid'
+	);
+	`
+
+	// Execute main schema
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// Add triggers separately (SQLite doesn't support IF NOT EXISTS for triggers)
+	// We use INSERT OR REPLACE pattern by checking if trigger exists first
+	triggers := []struct {
+		name string
+		sql  string
+	}{
+		{
+			name: "nodes_fts_ai",
+			sql: `CREATE TRIGGER nodes_fts_ai AFTER INSERT ON nodes BEGIN
+				INSERT INTO nodes_fts(rowid, id, summary, content)
+				VALUES (NEW.rowid, NEW.id, COALESCE(NEW.summary, ''), NEW.content);
+			END`,
+		},
+		{
+			name: "nodes_fts_ad",
+			sql: `CREATE TRIGGER nodes_fts_ad AFTER DELETE ON nodes BEGIN
+				INSERT INTO nodes_fts(nodes_fts, rowid, id, summary, content)
+				VALUES('delete', OLD.rowid, OLD.id, COALESCE(OLD.summary, ''), OLD.content);
+			END`,
+		},
+		{
+			name: "nodes_fts_au",
+			sql: `CREATE TRIGGER nodes_fts_au AFTER UPDATE ON nodes BEGIN
+				INSERT INTO nodes_fts(nodes_fts, rowid, id, summary, content)
+				VALUES('delete', OLD.rowid, OLD.id, COALESCE(OLD.summary, ''), OLD.content);
+				INSERT INTO nodes_fts(rowid, id, summary, content)
+				VALUES (NEW.rowid, NEW.id, COALESCE(NEW.summary, ''), NEW.content);
+			END`,
+		},
+	}
+
+	for _, t := range triggers {
+		var count int
+		err := s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name=?", t.name).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("check trigger %s: %w", t.name, err)
+		}
+		if count == 0 {
+			if _, err := s.db.Exec(t.sql); err != nil {
+				return fmt.Errorf("create trigger %s: %w", t.name, err)
+			}
+		}
+	}
+
+	// Migration: Add verification columns to nodes table for Evidence-Based Findings
+	// These columns support the verification pipeline that validates agent findings
+	migrations := []struct {
+		column string
+		ddl    string
+	}{
+		{"verification_status", "ALTER TABLE nodes ADD COLUMN verification_status TEXT DEFAULT 'pending_verification'"},
+		{"evidence", "ALTER TABLE nodes ADD COLUMN evidence TEXT"},                       // JSON blob of []Evidence
+		{"verification_result", "ALTER TABLE nodes ADD COLUMN verification_result TEXT"}, // JSON blob of VerificationResult
+		{"confidence_score", "ALTER TABLE nodes ADD COLUMN confidence_score REAL DEFAULT 0.5"},
+	}
+
+	for _, m := range migrations {
+		// Check if column exists by querying table info
+		var exists bool
+		rows, err := s.db.Query("PRAGMA table_info(nodes)")
+		if err == nil {
+			for rows.Next() {
+				var cid int
+				var name, ctype string
+				var notnull, pk int
+				var dflt any
+				if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
+					if name == m.column {
+						exists = true
+						break
+					}
+				}
+			}
+			rows.Close()
+		}
+
+		if !exists {
+			if _, err := s.db.Exec(m.ddl); err != nil {
+				// Ignore errors - column may already exist from a previous partial migration
+				_ = err
+			}
+		}
+	}
+
+	// Add index for verification status queries (enables efficient filtering)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_nodes_verification_status ON nodes(verification_status)`)
+
+	return nil
+}
+
+// === Feature CRUD ===
+
+func (s *SQLiteStore) CreateFeature(f Feature) error {
+	if f.ID == "" {
+		f.ID = "f-" + uuid.New().String()[:8]
+	}
+	if f.Status == "" {
+		f.Status = FeatureStatusActive
+	}
+	now := time.Now().UTC()
+	if f.CreatedAt.IsZero() {
+		f.CreatedAt = now
+	}
+	f.UpdatedAt = now
+
+	// Generate file path
+	safeName := strings.ToLower(strings.ReplaceAll(f.Name, " ", "-"))
+	f.FilePath = filepath.Join(s.basePath, "features", safeName+".md")
+
+	// Marshal tags to JSON
+	tagsJSON, err := json.Marshal(f.Tags)
+	if err != nil {
+		return fmt.Errorf("marshal tags: %w", err)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Insert into SQLite
+	_, err = tx.Exec(`
+		INSERT INTO features (id, name, one_liner, status, created_at, updated_at, tags, file_path, decision_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, f.ID, f.Name, f.OneLiner, f.Status, f.CreatedAt.Format(time.RFC3339),
+		f.UpdatedAt.Format(time.RFC3339), string(tagsJSON), f.FilePath, 0)
+	if err != nil {
+		return fmt.Errorf("insert feature: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	// Invalidate cache
+	s.indexCache = nil
+
+	return nil
+}
+
+func (s *SQLiteStore) UpdateFeature(f Feature) error {
+	f.UpdatedAt = time.Now().UTC()
+
+	// Fetch existing file_path from database if not provided
+	if f.FilePath == "" {
+		err := s.db.QueryRow("SELECT file_path FROM features WHERE id = ?", f.ID).Scan(&f.FilePath)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("feature not found: %s", f.ID)
+		}
+		if err != nil {
+			return fmt.Errorf("get file_path: %w", err)
+		}
+	}
+
+	tagsJSON, err := json.Marshal(f.Tags)
+	if err != nil {
+		return fmt.Errorf("marshal tags: %w", err)
+	}
+
+	result, err := s.db.Exec(`
+		UPDATE features
+		SET name = ?, one_liner = ?, status = ?, updated_at = ?, tags = ?
+		WHERE id = ?
+	`, f.Name, f.OneLiner, f.Status, f.UpdatedAt.Format(time.RFC3339), string(tagsJSON), f.ID)
+	if err != nil {
+		return fmt.Errorf("update feature: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("feature not found: %s", f.ID)
+	}
+
+	s.indexCache = nil
+	return nil
+}
+
+func (s *SQLiteStore) DeleteFeature(id string) error {
+	// Check for dependents
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM edges WHERE to_feature = ? AND edge_type = 'depends_on'
+	`, id).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check dependents: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("cannot delete feature with %d dependents", count)
+	}
+
+	// Get file path before deletion
+	var filePath string
+	err = s.db.QueryRow("SELECT file_path FROM features WHERE id = ?", id).Scan(&filePath)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("feature not found: %s", id)
+	}
+	if err != nil {
+		return fmt.Errorf("get feature: %w", err)
+	}
+
+	// Delete from SQLite (cascades to decisions and edges)
+	_, err = s.db.Exec("DELETE FROM features WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete feature: %w", err)
+	}
+
+	s.indexCache = nil
+	return nil
+}
+
+func (s *SQLiteStore) GetFeature(id string) (*Feature, error) {
+	var f Feature
+	var tagsJSON string
+	var createdAt, updatedAt string
+
+	err := s.db.QueryRow(`
+		SELECT id, name, one_liner, status, created_at, updated_at, tags, file_path, decision_count
+		FROM features WHERE id = ?
+	`, id).Scan(&f.ID, &f.Name, &f.OneLiner, &f.Status, &createdAt, &updatedAt,
+		&tagsJSON, &f.FilePath, &f.DecisionCount)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("feature not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query feature: %w", err)
+	}
+
+	f.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	f.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	if err := json.Unmarshal([]byte(tagsJSON), &f.Tags); err != nil {
+		return nil, fmt.Errorf("unmarshal tags: %w", err)
+	}
+
+	return &f, nil
+}
+
+func (s *SQLiteStore) ListFeatures() ([]FeatureSummary, error) {
+	rows, err := s.db.Query(`
+		SELECT id, name, one_liner, status, decision_count FROM features ORDER BY name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query features: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var features []FeatureSummary
+	for rows.Next() {
+		var f FeatureSummary
+		if err := rows.Scan(&f.ID, &f.Name, &f.OneLiner, &f.Status, &f.DecisionCount); err != nil {
+			return nil, fmt.Errorf("scan feature: %w", err)
+		}
+		features = append(features, f)
+	}
+
+	return features, nil
+}
+
+// === Decision CRUD ===
+
+func (s *SQLiteStore) AddDecision(featureID string, d Decision) error {
+	if d.ID == "" {
+		d.ID = "d-" + uuid.New().String()[:8]
+	}
+	d.FeatureID = featureID
+	if d.CreatedAt.IsZero() {
+		d.CreatedAt = time.Now().UTC()
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.Exec(`
+		INSERT INTO decisions (id, feature_id, title, summary, reasoning, tradeoffs, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, d.ID, d.FeatureID, d.Title, d.Summary, d.Reasoning, d.Tradeoffs,
+		d.CreatedAt.Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("insert decision: %w", err)
+	}
+
+	// Update decision count
+	_, err = tx.Exec(`
+		UPDATE features SET decision_count = (
+			SELECT COUNT(*) FROM decisions WHERE feature_id = ?
+		) WHERE id = ?
+	`, featureID, featureID)
+	if err != nil {
+		return fmt.Errorf("update decision count: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	s.indexCache = nil
+	return nil
+}
+
+func (s *SQLiteStore) UpdateDecision(d Decision) error {
+	result, err := s.db.Exec(`
+		UPDATE decisions
+		SET title = ?, summary = ?, reasoning = ?, tradeoffs = ?
+		WHERE id = ?
+	`, d.Title, d.Summary, d.Reasoning, d.Tradeoffs, d.ID)
+	if err != nil {
+		return fmt.Errorf("update decision: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("decision not found: %s", d.ID)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) DeleteDecision(id string) error {
+	// Get feature ID for cache invalidation
+	var featureID string
+	err := s.db.QueryRow("SELECT feature_id FROM decisions WHERE id = ?", id).Scan(&featureID)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("decision not found: %s", id)
+	}
+	if err != nil {
+		return fmt.Errorf("get decision: %w", err)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.Exec("DELETE FROM decisions WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete decision: %w", err)
+	}
+
+	// Update decision count
+	_, err = tx.Exec(`
+		UPDATE features SET decision_count = (
+			SELECT COUNT(*) FROM decisions WHERE feature_id = ?
+		) WHERE id = ?
+	`, featureID, featureID)
+	if err != nil {
+		return fmt.Errorf("update decision count: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	s.indexCache = nil
+	return nil
+}
+
+func (s *SQLiteStore) GetDecisions(featureID string) ([]Decision, error) {
+	rows, err := s.db.Query(`
+		SELECT id, feature_id, title, summary, reasoning, tradeoffs, created_at
+		FROM decisions WHERE feature_id = ? ORDER BY created_at
+	`, featureID)
+	if err != nil {
+		return nil, fmt.Errorf("query decisions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var decisions []Decision
+	for rows.Next() {
+		var d Decision
+		var createdAt string
+		var reasoning, tradeoffs sql.NullString
+
+		if err := rows.Scan(&d.ID, &d.FeatureID, &d.Title, &d.Summary,
+			&reasoning, &tradeoffs, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan decision: %w", err)
+		}
+
+		d.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		d.Reasoning = reasoning.String
+		d.Tradeoffs = tradeoffs.String
+		decisions = append(decisions, d)
+	}
+
+	return decisions, nil
+}
+
+func (s *SQLiteStore) GetDecision(id string) (*Decision, error) {
+	var d Decision
+	var createdAt string
+	var reasoning, tradeoffs sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT id, feature_id, title, summary, reasoning, tradeoffs, created_at
+		FROM decisions WHERE id = ?
+	`, id).Scan(&d.ID, &d.FeatureID, &d.Title, &d.Summary, &reasoning, &tradeoffs, &createdAt)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("decision not found: %s", id)
+		}
+		return nil, fmt.Errorf("get decision: %w", err)
+	}
+
+	d.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	d.Reasoning = reasoning.String
+	d.Tradeoffs = tradeoffs.String
+
+	return &d, nil
+}
+
+// === Pattern CRUD ===
+
+type Pattern struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Context      string    `json:"context"`
+	Solution     string    `json:"solution"`
+	Consequences string    `json:"consequences"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (s *SQLiteStore) CreatePattern(p Pattern) error {
+	if p.ID == "" {
+		p.ID = "p-" + uuid.New().String()[:8]
+	}
+	if p.CreatedAt.IsZero() {
+		p.CreatedAt = time.Now().UTC()
+	}
+
+	_, err := s.db.Exec(`
+		INSERT INTO patterns (id, name, context, solution, consequences, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, p.ID, p.Name, p.Context, p.Solution, p.Consequences, p.CreatedAt.Format(time.RFC3339))
+
+	if err != nil {
+		return fmt.Errorf("insert pattern: %w", err)
+	}
+
+	s.indexCache = nil
+	return nil
+}
+
+func (s *SQLiteStore) ListPatterns() ([]Pattern, error) {
+	rows, err := s.db.Query(`
+		SELECT id, name, context, solution, consequences, created_at FROM patterns ORDER BY name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query patterns: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var patterns []Pattern
+	for rows.Next() {
+		var p Pattern
+		var createdAt string
+		if err := rows.Scan(&p.ID, &p.Name, &p.Context, &p.Solution, &p.Consequences, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan pattern: %w", err)
+		}
+		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		patterns = append(patterns, p)
+	}
+	return patterns, nil
+}
+
+// === Relationships ===
+
+func (s *SQLiteStore) Link(from, to, relationType string) error {
+	// Validate relation type
+	validTypes := map[string]bool{
+		EdgeTypeDependsOn: true,
+		EdgeTypeExtends:   true,
+		EdgeTypeReplaces:  true,
+		EdgeTypeRelated:   true,
+	}
+	if !validTypes[relationType] {
+		return fmt.Errorf("invalid relation type: %s", relationType)
+	}
+
+	// Check features exist
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM features WHERE id IN (?, ?)", from, to).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check features: %w", err)
+	}
+	if count != 2 {
+		return fmt.Errorf("one or both features not found")
+	}
+
+	// Check for circular dependency (for depends_on)
+	if relationType == EdgeTypeDependsOn {
+		deps, err := s.GetDependencies(to)
+		if err != nil {
+			return fmt.Errorf("check circular: %w", err)
+		}
+		for _, dep := range deps {
+			if dep == from {
+				return fmt.Errorf("circular dependency detected")
+			}
+		}
+	}
+
+	_, err = s.db.Exec(`
+		INSERT OR IGNORE INTO edges (from_feature, to_feature, edge_type, created_at)
+		VALUES (?, ?, ?, ?)
+	`, from, to, relationType, time.Now().UTC().Format(time.RFC3339))
+
+	return err
+}
+
+func (s *SQLiteStore) Unlink(from, to, relationType string) error {
+	result, err := s.db.Exec(`
+		DELETE FROM edges WHERE from_feature = ? AND to_feature = ? AND edge_type = ?
+	`, from, to, relationType)
+	if err != nil {
+		return fmt.Errorf("delete edge: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("relationship not found")
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) GetDependencies(featureID string) ([]string, error) {
+	// Recursive CTE to get all dependencies
+	rows, err := s.db.Query(`
+		WITH RECURSIVE deps AS (
+			SELECT to_feature, 1 as depth
+			FROM edges
+			WHERE from_feature = ? AND edge_type = 'depends_on'
+			UNION ALL
+			SELECT e.to_feature, d.depth + 1
+			FROM edges e
+			JOIN deps d ON e.from_feature = d.to_feature
+			WHERE e.edge_type = 'depends_on' AND d.depth < 10
+		)
+		SELECT DISTINCT to_feature FROM deps
+	`, featureID)
+	if err != nil {
+		return nil, fmt.Errorf("query dependencies: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var deps []string
+	for rows.Next() {
+		var dep string
+		if err := rows.Scan(&dep); err != nil {
+			return nil, fmt.Errorf("scan dependency: %w", err)
+		}
+		deps = append(deps, dep)
+	}
+
+	return deps, nil
+}
+
+func (s *SQLiteStore) GetDependents(featureID string) ([]string, error) {
+	rows, err := s.db.Query(`
+		WITH RECURSIVE dependents AS (
+			SELECT from_feature, 1 as depth
+			FROM edges
+			WHERE to_feature = ? AND edge_type = 'depends_on'
+			UNION ALL
+			SELECT e.from_feature, d.depth + 1
+			FROM edges e
+			JOIN dependents d ON e.to_feature = d.from_feature
+			WHERE e.edge_type = 'depends_on' AND d.depth < 10
+		)
+		SELECT DISTINCT from_feature FROM dependents
+	`, featureID)
+	if err != nil {
+		return nil, fmt.Errorf("query dependents: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var dependents []string
+	for rows.Next() {
+		var dep string
+		if err := rows.Scan(&dep); err != nil {
+			return nil, fmt.Errorf("scan dependent: %w", err)
+		}
+		dependents = append(dependents, dep)
+	}
+
+	return dependents, nil
+}
+
+func (s *SQLiteStore) GetRelated(featureID string, maxDepth int) ([]string, error) {
+	if maxDepth <= 0 {
+		maxDepth = 3
+	}
+
+	rows, err := s.db.Query(`
+		WITH RECURSIVE related AS (
+			SELECT to_feature as feature, 1 as depth
+			FROM edges WHERE from_feature = ?
+			UNION
+			SELECT from_feature as feature, 1 as depth
+			FROM edges WHERE to_feature = ?
+			UNION ALL
+			SELECT CASE WHEN e.from_feature = r.feature THEN e.to_feature ELSE e.from_feature END,
+				   r.depth + 1
+			FROM edges e
+			JOIN related r ON e.from_feature = r.feature OR e.to_feature = r.feature
+			WHERE r.depth < ?
+		)
+		SELECT DISTINCT feature FROM related WHERE feature != ?
+	`, featureID, featureID, maxDepth, featureID)
+	if err != nil {
+		return nil, fmt.Errorf("query related: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var related []string
+	for rows.Next() {
+		var rel string
+		if err := rows.Scan(&rel); err != nil {
+			return nil, fmt.Errorf("scan related: %w", err)
+		}
+		related = append(related, rel)
+	}
+
+	return related, nil
+}
+
+func (s *SQLiteStore) FindPath(from, to string) ([]string, error) {
+	// BFS to find shortest path
+	rows, err := s.db.Query(`
+		WITH RECURSIVE path AS (
+			SELECT from_feature, to_feature, from_feature || ',' || to_feature as route, 1 as depth
+			FROM edges WHERE from_feature = ?
+			UNION ALL
+			SELECT e.from_feature, e.to_feature, p.route || ',' || e.to_feature, p.depth + 1
+			FROM edges e
+			JOIN path p ON e.from_feature = p.to_feature
+			WHERE p.depth < 10 AND p.route NOT LIKE '%' || e.to_feature || '%'
+		)
+		SELECT route FROM path WHERE to_feature = ? ORDER BY depth LIMIT 1
+	`, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("query path: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	if rows.Next() {
+		var route string
+		if err := rows.Scan(&route); err != nil {
+			return nil, fmt.Errorf("scan path: %w", err)
+		}
+		return strings.Split(route, ","), nil
+	}
+
+	return nil, nil // No path found
+}
+
+// === Cache Management ===
+
+func (s *SQLiteStore) RebuildIndex() error {
+	features, err := s.ListFeatures()
+	if err != nil {
+		return fmt.Errorf("list features: %w", err)
+	}
+
+	index := &FeatureIndex{
+		Features:    features,
+		LastUpdated: time.Now().UTC(),
+	}
+
+	indexPath := filepath.Join(s.basePath, "index.json")
+	data, err := json.MarshalIndent(index, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal index: %w", err)
+	}
+
+	if err := os.WriteFile(indexPath, data, 0644); err != nil {
+		return fmt.Errorf("write index: %w", err)
+	}
+
+	s.indexCache = index
+	return nil
+}
+
+func (s *SQLiteStore) GetIndex() (*FeatureIndex, error) {
+	if s.indexCache != nil {
+		return s.indexCache, nil
+	}
+
+	// Try to load from file
+	indexPath := filepath.Join(s.basePath, "index.json")
+	data, err := os.ReadFile(indexPath)
+	if err == nil {
+		var index FeatureIndex
+		if json.Unmarshal(data, &index) == nil {
+			s.indexCache = &index
+			return &index, nil
+		}
+	}
+
+	// Rebuild if not found or invalid
+	if err := s.RebuildIndex(); err != nil {
+		return nil, err
+	}
+
+	return s.indexCache, nil
+}
+
+// === Integrity ===
+
+func (s *SQLiteStore) Check() ([]Issue, error) {
+	var issues []Issue
+
+	// Check: every feature has a markdown file
+	rows, err := s.db.Query("SELECT id, file_path FROM features")
+	if err != nil {
+		return nil, fmt.Errorf("query features: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var id, filePath string
+		if err := rows.Scan(&id, &filePath); err != nil {
+			return nil, fmt.Errorf("scan feature: %w", err)
+		}
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			issues = append(issues, Issue{
+				Type:      "missing_file",
+				FeatureID: id,
+				Message:   fmt.Sprintf("Markdown file missing: %s", filePath),
+			})
+		}
+	}
+
+	// Check: edges reference existing features
+	edgeRows, err := s.db.Query(`
+		SELECT e.from_feature, e.to_feature
+		FROM edges e
+		LEFT JOIN features f1 ON e.from_feature = f1.id
+		LEFT JOIN features f2 ON e.to_feature = f2.id
+		WHERE f1.id IS NULL OR f2.id IS NULL
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query orphan edges: %w", err)
+	}
+	defer func() { _ = edgeRows.Close() }()
+
+	for edgeRows.Next() {
+		var from, to string
+		if err := edgeRows.Scan(&from, &to); err != nil {
+			return nil, fmt.Errorf("scan edge: %w", err)
+		}
+		issues = append(issues, Issue{
+			Type:    "orphan_edge",
+			Message: fmt.Sprintf("Edge references non-existent feature: %s -> %s", from, to),
+		})
+	}
+
+	return issues, nil
+}
+
+func (s *SQLiteStore) Repair() error {
+	// Get all issues
+	issues, err := s.Check()
+	if err != nil {
+		return fmt.Errorf("check: %w", err)
+	}
+
+	for _, issue := range issues {
+		switch issue.Type {
+		// case "missing_file":
+		// 	// Regenerate markdown file from SQLite data
+		// 	f, err := s.GetFeature(issue.FeatureID)
+		// 	if err != nil {
+		// 		continue
+		// 	}
+		// 	// if err := s.writeMarkdownFile(*f); err != nil {
+		// 	// 	continue
+		// 	// }
+		case "orphan_edge":
+			// Delete orphan edges
+			_, _ = s.db.Exec(`
+				DELETE FROM edges WHERE from_feature NOT IN (SELECT id FROM features)
+				OR to_feature NOT IN (SELECT id FROM features)
+			`)
+		}
+	}
+
+	// Rebuild index
+	return s.RebuildIndex()
+}
+
+// === Lifecycle ===
+
+func (s *SQLiteStore) Close() error {
+	return s.db.Close()
+}
+
+// === Helpers ===
+
+// === Node Helpers ===
+
+// populateNodeFromScan populates a Node struct from scanned nullable fields.
+// This centralizes the repetitive null-handling and type conversion logic.
+func populateNodeFromScan(n *Node, nodeType, summary, sourceAgent sql.NullString, createdAt string, embeddingBytes []byte) {
+	n.Type = nodeType.String
+	n.Summary = summary.String
+	n.SourceAgent = sourceAgent.String
+	n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	if len(embeddingBytes) > 0 {
+		n.Embedding = bytesToFloat32Slice(embeddingBytes)
+	}
+}
+
+// === Node CRUD (v2 Knowledge Graph) ===
+
+// CreateNode stores a new node in the knowledge graph.
+func (s *SQLiteStore) CreateNode(n Node) error {
+	if n.ID == "" {
+		n.ID = "n-" + uuid.New().String()[:8]
+	}
+	if n.CreatedAt.IsZero() {
+		n.CreatedAt = time.Now().UTC()
+	}
+
+	// Serialize embedding to bytes if present
+	var embeddingBytes []byte
+	if len(n.Embedding) > 0 {
+		embeddingBytes = float32SliceToBytes(n.Embedding)
+	}
+
+	_, err := s.db.Exec(`
+		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339))
+
+	if err != nil {
+		return fmt.Errorf("insert node: %w", err)
+	}
+
+	return nil
+}
+
+// GetNode retrieves a node by ID.
+func (s *SQLiteStore) GetNode(id string) (*Node, error) {
+	var n Node
+	var createdAt string
+	var nodeType, summary, sourceAgent sql.NullString
+	var embeddingBytes []byte
+
+	err := s.db.QueryRow(`
+		SELECT id, content, type, summary, source_agent, embedding, created_at
+		FROM nodes WHERE id = ?
+	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("node not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query node: %w", err)
+	}
+
+	populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+	return &n, nil
+}
+
+// ListNodes returns all nodes, optionally filtered by type.
+func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
+	var rows *sql.Rows
+	var err error
+
+	if nodeType != "" {
+		rows, err = s.db.Query(`
+			SELECT id, content, type, summary, source_agent, created_at
+			FROM nodes WHERE type = ? ORDER BY created_at DESC
+		`, nodeType)
+	} else {
+		rows, err = s.db.Query(`
+			SELECT id, content, type, summary, source_agent, created_at
+			FROM nodes ORDER BY created_at DESC
+		`)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("query nodes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var nodes []Node
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeTypeStr, summary, sourceAgent sql.NullString
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan node: %w", err)
+		}
+		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, createdAt, nil)
+		nodes = append(nodes, n)
+	}
+
+	return nodes, nil
+}
+
+// UpdateNode updates mutable node fields.
+func (s *SQLiteStore) UpdateNode(id, content, nodeType, summary string) error {
+	if id == "" {
+		return fmt.Errorf("node id is required")
+	}
+	sets := []string{}
+	args := []any{}
+
+	if content != "" {
+		sets = append(sets, "content = ?")
+		args = append(args, content)
+	}
+	if nodeType != "" {
+		sets = append(sets, "type = ?")
+		args = append(args, nodeType)
+	}
+	if summary != "" {
+		sets = append(sets, "summary = ?")
+		args = append(args, summary)
+	}
+	if len(sets) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+
+	query := "UPDATE nodes SET " + strings.Join(sets, ", ") + " WHERE id = ?"
+	args = append(args, id)
+
+	result, err := s.db.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("update node: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update node rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("node not found: %s", id)
+	}
+	return nil
+}
+
+// DeleteNode removes a node and its edges.
+func (s *SQLiteStore) DeleteNode(id string) error {
+	result, err := s.db.Exec("DELETE FROM nodes WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete node: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("node not found: %s", id)
+	}
+
+	return nil
+}
+
+// DeleteNodesByType removes all nodes of a specific type.
+func (s *SQLiteStore) DeleteNodesByType(nodeType string) (int64, error) {
+	if nodeType == "" {
+		return 0, fmt.Errorf("node type is required")
+	}
+	result, err := s.db.Exec("DELETE FROM nodes WHERE type = ?", nodeType)
+	if err != nil {
+		return 0, fmt.Errorf("delete nodes by type: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete nodes by type rows affected: %w", err)
+	}
+	return rows, nil
+}
+
+// DeleteNodesByAgent removes all nodes created by a specific agent.
+// This is used for agent-level replace strategy during selective re-bootstrapping.
+func (s *SQLiteStore) DeleteNodesByAgent(agentName string) error {
+	_, err := s.db.Exec("DELETE FROM nodes WHERE source_agent = ?", agentName)
+	if err != nil {
+		return fmt.Errorf("delete nodes by agent: %w", err)
+	}
+	return nil
+}
+
+// ClearAllKnowledge removes all nodes, edges, features, decisions, and patterns.
+// Used for clean-slate re-bootstrapping when the user wants to start fresh.
+func (s *SQLiteStore) ClearAllKnowledge() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Clear in order respecting foreign key constraints (if any)
+	tables := []string{"node_edges", "nodes", "decisions", "edges", "patterns", "features"}
+	for _, table := range tables {
+		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
+			return fmt.Errorf("clear %s: %w", table, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	s.indexCache = nil
+	return nil
+}
+
+// UpsertNodeBySummary inserts a new node or updates existing one matched by summary and agent.
+// This is used for incremental watch mode - findings with same title from same agent are updated.
+// If no exact match is found, it checks for semantically similar summaries and updates those instead
+// to prevent duplicate nodes from accumulating.
+func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
+	if n.ID == "" {
+		n.ID = "n-" + uuid.New().String()[:8]
+	}
+	if n.CreatedAt.IsZero() {
+		n.CreatedAt = time.Now().UTC()
+	}
+
+	// Serialize embedding to bytes if present
+	var embeddingBytes []byte
+	if len(n.Embedding) > 0 {
+		embeddingBytes = float32SliceToBytes(n.Embedding)
+	}
+
+	// First check if node with exact summary+agent exists
+	var existingID string
+	err := s.db.QueryRow(`
+		SELECT id FROM nodes WHERE summary = ? AND source_agent = ?
+	`, n.Summary, n.SourceAgent).Scan(&existingID)
+
+	if err == nil && existingID != "" {
+		// Update existing node with exact match
+		_, err = s.db.Exec(`
+			UPDATE nodes SET content = ?, type = ?, embedding = ?
+			WHERE id = ?
+		`, n.Content, n.Type, embeddingBytes, existingID)
+		if err != nil {
+			return fmt.Errorf("update existing node: %w", err)
+		}
+		return nil
+	}
+
+	// No exact match - check for semantically similar summaries from same agent
+	// This prevents duplicate nodes when LLM generates slightly different titles
+	rows, err := s.db.Query(`
+		SELECT id, summary, content FROM nodes WHERE source_agent = ?
+	`, n.SourceAgent)
+	if err != nil {
+		return fmt.Errorf("query similar nodes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var similarID string
+	var similarContent string
+	for rows.Next() {
+		var existingSummary string
+		if err := rows.Scan(&similarID, &existingSummary, &similarContent); err != nil {
+			continue
+		}
+		sim := textSimilarity(n.Summary, existingSummary)
+		if sim >= textSimilarityThreshold {
+			// Found a similar node - update it instead of inserting new
+			if n.Content != similarContent {
+				_, err = s.db.Exec(`
+					UPDATE nodes SET content = ?, type = ?, embedding = ?, summary = ?
+					WHERE id = ?
+				`, n.Content, n.Type, embeddingBytes, n.Summary, similarID)
+			} else {
+				_, err = s.db.Exec(`
+					UPDATE nodes SET type = ?, embedding = ?, summary = ?
+					WHERE id = ?
+				`, n.Type, embeddingBytes, n.Summary, similarID)
+			}
+			if err != nil {
+				return fmt.Errorf("update similar node: %w", err)
+			}
+			return nil
+		}
+	}
+
+	// No similar node found - insert new node
+	_, err = s.db.Exec(`
+		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339))
+
+	if err != nil {
+		return fmt.Errorf("insert node: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateNodeEmbedding updates the embedding for an existing node.
+func (s *SQLiteStore) UpdateNodeEmbedding(id string, embedding []float32) error {
+	embeddingBytes := float32SliceToBytes(embedding)
+
+	result, err := s.db.Exec("UPDATE nodes SET embedding = ? WHERE id = ?", embeddingBytes, id)
+	if err != nil {
+		return fmt.Errorf("update embedding: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("node not found: %s", id)
+	}
+
+	return nil
+}
+
+// LinkNodes creates a relationship between two nodes.
+func (s *SQLiteStore) LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error {
+	if confidence <= 0 {
+		confidence = 1.0
+	}
+
+	var propsJSON []byte
+	if len(properties) > 0 {
+		var err error
+		propsJSON, err = json.Marshal(properties)
+		if err != nil {
+			return fmt.Errorf("marshal properties: %w", err)
+		}
+	}
+
+	_, err := s.db.Exec(`
+		INSERT OR IGNORE INTO node_edges (from_node, to_node, relation, properties, confidence, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, from, to, relation, propsJSON, confidence, time.Now().UTC().Format(time.RFC3339))
+
+	return err
+}
+
+// GetNodeEdges returns all edges for a node.
+func (s *SQLiteStore) GetNodeEdges(nodeID string) ([]NodeEdge, error) {
+	rows, err := s.db.Query(`
+		SELECT id, from_node, to_node, relation, properties, confidence, created_at
+		FROM node_edges WHERE from_node = ? OR to_node = ?
+	`, nodeID, nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("query edges: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var edges []NodeEdge
+	for rows.Next() {
+		var e NodeEdge
+		var createdAt string
+		var propsJSON sql.NullString
+
+		if err := rows.Scan(&e.ID, &e.FromNode, &e.ToNode, &e.Relation, &propsJSON, &e.Confidence, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan edge: %w", err)
+		}
+
+		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		if propsJSON.Valid && propsJSON.String != "" {
+			_ = json.Unmarshal([]byte(propsJSON.String), &e.Properties)
+		}
+		edges = append(edges, e)
+	}
+
+	return edges, nil
+}
+
+// GetAllNodeEdges returns all edges in the knowledge graph.
+func (s *SQLiteStore) GetAllNodeEdges() ([]NodeEdge, error) {
+	rows, err := s.db.Query(`
+		SELECT id, from_node, to_node, relation, properties, confidence, created_at
+		FROM node_edges ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query all edges: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var edges []NodeEdge
+	for rows.Next() {
+		var e NodeEdge
+		var createdAt string
+		var propsJSON sql.NullString
+
+		if err := rows.Scan(&e.ID, &e.FromNode, &e.ToNode, &e.Relation, &propsJSON, &e.Confidence, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan edge: %w", err)
+		}
+
+		e.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		if propsJSON.Valid && propsJSON.String != "" {
+			_ = json.Unmarshal([]byte(propsJSON.String), &e.Properties)
+		}
+		edges = append(edges, e)
+	}
+
+	return edges, nil
+}
+
+// === FTS5 Search Methods ===
+
+// FTSResult represents a full-text search result with relevance rank
+type FTSResult struct {
+	Node Node
+	Rank float64 // BM25 rank (lower is more relevant)
+}
+
+// ListNodesWithEmbeddings returns all nodes with embeddings in a single query.
+// This fixes the N+1 query pattern in search - one query instead of 1+N.
+func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
+	rows, err := s.db.Query(`
+		SELECT id, content, type, summary, source_agent, embedding, created_at
+		FROM nodes WHERE embedding IS NOT NULL
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query nodes with embeddings: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var nodes []Node
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeType, summary, sourceAgent sql.NullString
+		var embeddingBytes []byte
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan node: %w", err)
+		}
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+		nodes = append(nodes, n)
+	}
+
+	return nodes, nil
+}
+
+// SearchFTS performs full-text search using FTS5 with BM25 ranking.
+// Returns nodes matching the query, ordered by relevance.
+func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	rows, err := s.db.Query(`
+		SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.embedding, n.created_at,
+		       bm25(nodes_fts) as rank
+		FROM nodes_fts f
+		JOIN nodes n ON f.id = n.id
+		WHERE nodes_fts MATCH ?
+		ORDER BY rank
+		LIMIT ?
+	`, query, limit)
+	if err != nil {
+		return nil, nil // Graceful degradation if FTS unavailable
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []FTSResult
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeType, summary, sourceAgent sql.NullString
+		var embeddingBytes []byte
+		var rank float64
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt, &rank); err != nil {
+			continue
+		}
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+		results = append(results, FTSResult{Node: n, Rank: rank})
+	}
+
+	return results, nil
+}
+
+// RebuildFTS rebuilds the FTS5 index from existing nodes.
+// Call this after schema migration to populate FTS for existing data.
+func (s *SQLiteStore) RebuildFTS() error {
+	// First, clear the FTS index
+	if _, err := s.db.Exec("DELETE FROM nodes_fts"); err != nil {
+		return fmt.Errorf("clear fts index: %w", err)
+	}
+
+	// Repopulate from nodes table
+	_, err := s.db.Exec(`
+		INSERT INTO nodes_fts(rowid, id, summary, content)
+		SELECT rowid, id, COALESCE(summary, ''), content FROM nodes
+	`)
+	if err != nil {
+		return fmt.Errorf("rebuild fts index: %w", err)
+	}
+
+	return nil
+}
+
+// === Embedding Helpers ===
+
+func float32SliceToBytes(floats []float32) []byte {
+	buf := make([]byte, len(floats)*4)
+	for i, f := range floats {
+		bits := *(*uint32)(unsafe.Pointer(&f))
+		buf[i*4] = byte(bits)
+		buf[i*4+1] = byte(bits >> 8)
+		buf[i*4+2] = byte(bits >> 16)
+		buf[i*4+3] = byte(bits >> 24)
+	}
+	return buf
+}
+
+func bytesToFloat32Slice(buf []byte) []float32 {
+	floats := make([]float32, len(buf)/4)
+	for i := range floats {
+		bits := uint32(buf[i*4]) | uint32(buf[i*4+1])<<8 | uint32(buf[i*4+2])<<16 | uint32(buf[i*4+3])<<24
+		floats[i] = *(*float32)(unsafe.Pointer(&bits))
+	}
+	return floats
+}
+
+const (
+	textSimilarityThreshold = 0.35
+)
+
+var stopWords = map[string]bool{
+	"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
+	"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
+	"with": true, "by": true, "is": true, "are": true, "was": true, "were": true,
+	"be": true, "been": true, "being": true, "have": true, "has": true, "had": true,
+	"do": true, "does": true, "did": true, "will": true, "would": true, "could": true,
+	"should": true, "may": true, "might": true, "must": true, "shall": true,
+	"can": true, "need": true, "dare": true, "ought": true, "used": true,
+	"it": true, "its": true, "this": true, "that": true, "these": true, "those": true,
+	"which": true, "who": true, "whom": true, "where": true, "when": true, "why": true, "how": true,
+	"all": true, "each": true, "every": true, "both": true, "few": true, "more": true,
+	"most": true, "other": true, "some": true, "such": true, "no": true, "not": true,
+	"only": true, "same": true, "so": true, "than": true, "too": true, "very": true,
+	"just": true, "also": true, "now": true, "here": true, "there": true, "then": true,
+}
+
+func wordTokens(s string) map[string]bool {
+	tokens := make(map[string]bool)
+	s = strings.ToLower(s)
+	// Replace hyphens and underscores with spaces before tokenizing
+	s = strings.ReplaceAll(s, "-", " ")
+	s = strings.ReplaceAll(s, "_", " ")
+	words := strings.Fields(s)
+	for _, w := range words {
+		if len(w) > 2 && !stopWords[w] {
+			tokens[w] = true
+		}
+	}
+	return tokens
+}
+
+func jaccardSimilarity(a, b string) float64 {
+	tokensA := wordTokens(a)
+	tokensB := wordTokens(b)
+
+	if len(tokensA) == 0 && len(tokensB) == 0 {
+		return 1.0
+	}
+	if len(tokensA) == 0 || len(tokensB) == 0 {
+		return 0.0
+	}
+
+	intersection := 0
+	for token := range tokensA {
+		if tokensB[token] {
+			intersection++
+		}
+	}
+
+	union := len(tokensA) + len(tokensB) - intersection
+	return float64(intersection) / float64(union)
+}
+
+func textSimilarity(a, b string) float64 {
+	if a == b {
+		return 1.0
+	}
+	if len(a) == 0 || len(b) == 0 {
+		return 0.0
+	}
+
+	return jaccardSimilarity(a, b)
+}
