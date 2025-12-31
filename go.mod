@@ -20,6 +20,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v0.2.0
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.40.1
 )
 
@@ -124,7 +125,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8 // indirect
 	google.golang.org/grpc v1.67.3 // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.66.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

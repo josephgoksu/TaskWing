@@ -81,6 +81,7 @@ We organize documentation to be trusted, actionable, and scalable.
 | **The Playbook** | [`docs/development/`](docs/development/) | **Developer Guide.** Internals, agent architecture, and testing. |
 | **The Reference** | [`docs/reference/`](docs/reference/) | **Facts.** Telemetry policy, error codes, integrations. |
 
+<!--
 ## 🏢 Enterprise & Teams
 
 Using TaskWing in a team? We provide:
@@ -88,6 +89,7 @@ Using TaskWing in a team? We provide:
 *   **Governance**: Enforce architectural constraints automatically.
 
 [Contact Sales](mailto:enterprise@taskwing.app) for early access to TaskWing Cloud.
+-->
 
 ## License
 
