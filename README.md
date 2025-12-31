@@ -57,14 +57,17 @@ tw mcp
 
 ## 📈 Validated Impact
 
-We tested AI task generation with and without TaskWing context:
+We tested AI responses with and without TaskWing context on a real production codebase:
 
-| Configuration | Avg Score (0-10) | Lift |
-|---------------|------------------|------|
-| **Baseline** (no context) | 5.8 ± 0.9 | - |
-| **TaskWing** (with context) | **6.7 ± 0.7** | **+16%** |
+| Configuration | Avg Score (0-10) | Notes |
+|---------------|------------------|-------|
+| **Baseline** (no context) | 6.6 | Model assumed wrong stack (Node.js vs Go) |
+| **With TaskWing** (context injected) | 7.8 | +18% - Correctly identified Go backend |
+| **Codex + TaskWing** | **8.0** | +21% - Best: consistent across all tasks |
 
-> Tasks generated with context correctly reference project-specific patterns, constraints, and file locations. [Full methodology →](docs/development/EVAL_RUNNERS.md)
+**Real example:** Without context, the model suggested modifying `backend/src/routes/bookmarks.ts` (Node.js pattern). With TaskWing context, it correctly referenced `backend-go/internal/api/` and the `make generate-api` workflow.
+
+> TaskWing context injection helps AI tools understand your actual architecture. [Full methodology →](docs/development/EVAL_RUNNERS.md)
 
 👉 **[Full Getting Started Guide](docs/development/GETTING_STARTED.md)** · **[Product Vision](docs/PRODUCT_VISION.md)**
 

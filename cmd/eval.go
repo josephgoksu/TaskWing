@@ -14,17 +14,11 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/schema"
-	"github.com/josephgoksu/TaskWing/internal/agents/core"
-	"github.com/josephgoksu/TaskWing/internal/bootstrap"
-	"github.com/josephgoksu/TaskWing/internal/config"
 	evalpkg "github.com/josephgoksu/TaskWing/internal/eval"
-	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -225,7 +219,7 @@ var evalRunCmd = &cobra.Command{
 				if !viper.GetBool("quiet") {
 					fmt.Printf("\n==> Bootstrap: %s\n", model)
 				}
-				if err := runBootstrapNoTUI(cmd.Context(), cwd, llmCfg); err != nil {
+				if err := runBootstrapViaCLI(cmd.Context(), cwd, viper.GetBool("quiet"), llmCfg); err != nil {
 					restore()
 					return fmt.Errorf("bootstrap failed for %s: %w", model, err)
 				}
@@ -240,23 +234,12 @@ var evalRunCmd = &cobra.Command{
 					}
 				}
 
-				// Open per-model memory for context injection (isolated per model)
-				var modelRepo *memory.Repository
-				if injectContext {
-					modelMemoryPath := filepath.Join(modelOutDir, "memory.db")
-					if _, statErr := os.Stat(modelMemoryPath); statErr == nil {
-						modelRepo, err = memory.NewDefaultRepository(modelOutDir)
-						if err != nil {
-							if !viper.GetBool("quiet") {
-								fmt.Fprintf(os.Stderr, "⚠️  Could not open model memory for context: %v\n", err)
-							}
-						}
-					}
-				}
+				// Context injection now handled via CLI subprocess (tw context)
+				// No need to open memory repository directly
 
 				timeout, _ := cmd.Flags().GetDuration("timeout")
 				resetRepo, _ := cmd.Flags().GetBool("reset-repo")
-				usage, taskErr := runEvalTasks(cmd.Context(), cfg, outDir, promptTemplate, modelName, displayModel, safeModel, runner, cwd, llmCfg, modelRepo, injectContext, timeout, resetRepo)
+				usage, taskErr := runEvalTasks(cmd.Context(), cfg, outDir, promptTemplate, modelName, displayModel, safeModel, runner, cwd, llmCfg, injectContext, timeout, resetRepo)
 
 				// Calculate and store cost
 				cost := llm.CalculateCost(modelName, usage.InputTokens, usage.OutputTokens)
@@ -267,9 +250,6 @@ var evalRunCmd = &cobra.Command{
 					CostUSD:      cost,
 				}
 
-				if modelRepo != nil {
-					_ = modelRepo.Close()
-				}
 				if taskErr != nil {
 					restore()
 					return fmt.Errorf("tasks failed for %s: %w", displayModel, taskErr)
@@ -292,6 +272,11 @@ var evalRunCmd = &cobra.Command{
 
 			// Get LLM config for judge (use first model's config)
 			judgeLLMCfg, _ := getLLMConfig(cmd)
+			// Parse model to strip provider prefix (e.g., "openai:gpt-4o" -> "gpt-4o")
+			if judgeLLMCfg.Model != "" {
+				_, parsedModel := evalpkg.ParseModel(judgeLLMCfg.Model)
+				judgeLLMCfg.Model = parsedModel
+			}
 			if err := runJudge(cmd.Context(), cfg, outDir, judgeLLMCfg, modelCosts, label, contextMode, runner); err != nil {
 				return err
 			}
@@ -347,6 +332,11 @@ var evalJudgeCmd = &cobra.Command{
 		llmCfg, llmErr := getLLMConfig(cmd)
 		if llmErr != nil {
 			return fmt.Errorf("get llm config: %w", llmErr)
+		}
+		// Parse model to strip provider prefix (e.g., "openai:gpt-4o" -> "gpt-4o")
+		if llmCfg.Model != "" {
+			_, parsedModel := evalpkg.ParseModel(llmCfg.Model)
+			llmCfg.Model = parsedModel
 		}
 		if err := runJudge(cmd.Context(), cfg, outDir, llmCfg, nil, "", "", ""); err != nil {
 			return err
@@ -503,41 +493,30 @@ Examples:
 			return err
 		}
 
-		// Open memory and get context
-		repo, err := openRepo()
-		if err != nil {
-			return fmt.Errorf("open memory: %w (run 'tw bootstrap' first)", err)
+		// Get context via CLI subprocess (replaces internal knowledge.Service)
+		cliRunner := evalpkg.NewRunner(cwd).WithTimeout(2 * time.Minute)
+		cliRunner.Quiet = true
+
+		// Pass LLM config to subprocess via environment variables
+		if llmCfg.APIKey != "" {
+			cliRunner = cliRunner.WithEnv("TASKWING_LLM_APIKEY=" + llmCfg.APIKey)
 		}
-		defer func() { _ = repo.Close() }()
+		if llmCfg.Provider != "" {
+			cliRunner = cliRunner.WithEnv("TASKWING_LLM_PROVIDER=" + string(llmCfg.Provider))
+		}
 
-		ks := knowledge.NewService(repo, llmCfg)
-
-		// Get constraints from memory
 		if !viper.GetBool("quiet") {
-			fmt.Println("🔍 Reading project constraints from memory...")
+			fmt.Println("🔍 Reading project constraints from memory via CLI...")
 		}
 
+		// Use tw context to get architectural constraints and workflows
 		ctx := cmd.Context()
-		nodes, err := repo.ListNodes("")
+		result, err := cliRunner.Execute(ctx, "context", "architectural constraints decisions rules workflows processes patterns")
 		if err != nil {
-			return fmt.Errorf("list nodes: %w", err)
+			return fmt.Errorf("context retrieval: %w (run 'tw bootstrap' first)", err)
 		}
 
-		// Build context from constraints and decisions
-		var contextBuilder strings.Builder
-		for _, n := range nodes {
-			if n.Type == "constraint" || n.Type == "decision" || n.Type == "pattern" {
-				contextBuilder.WriteString(fmt.Sprintf("## %s\n%s\n\n", n.Summary, n.Content))
-			}
-		}
-
-		// Also search for architectural constraints and workflows
-		scored, _ := ks.Search(ctx, "architectural constraints decisions rules workflows processes", 15)
-		for _, s := range scored {
-			contextBuilder.WriteString(fmt.Sprintf("## %s\n%s\n\n", s.Node.Summary, s.Node.Content))
-		}
-
-		contextStr := contextBuilder.String()
+		contextStr := result.Stdout
 		if len(contextStr) < 100 {
 			return errors.New("not enough context in memory. Run 'tw bootstrap' first to populate knowledge")
 		}
@@ -675,70 +654,51 @@ func init() {
 	rootCmd.AddCommand(evalCmd)
 }
 
-func runBootstrapNoTUI(ctx context.Context, cwd string, llmCfg llm.Config) error {
-	agentsList := bootstrap.NewDefaultAgents(llmCfg, cwd)
-	input := core.Input{
-		BasePath:    cwd,
-		ProjectName: filepath.Base(cwd),
-		Mode:        core.ModeBootstrap,
-		Verbose:     true,
+// runBootstrapViaCLI invokes `tw bootstrap` as a subprocess.
+// This ensures eval tests the actual CLI behavior, not a reimplementation.
+func runBootstrapViaCLI(ctx context.Context, cwd string, quiet bool, llmCfg llm.Config) error {
+	runner := evalpkg.NewRunner(cwd).WithTimeout(10 * time.Minute)
+	runner.Quiet = quiet
+
+	// Pass LLM config to subprocess via environment variables
+	// This ensures the subprocess uses the same configuration as the parent
+	if llmCfg.APIKey != "" {
+		runner = runner.WithEnv("TASKWING_LLM_APIKEY=" + llmCfg.APIKey)
+	}
+	if llmCfg.Provider != "" {
+		runner = runner.WithEnv("TASKWING_LLM_PROVIDER=" + string(llmCfg.Provider))
+	}
+	if llmCfg.Model != "" {
+		runner = runner.WithEnv("TASKWING_LLM_MODEL=" + llmCfg.Model)
+	}
+	if llmCfg.BaseURL != "" {
+		runner = runner.WithEnv("TASKWING_LLM_BASEURL=" + llmCfg.BaseURL)
 	}
 
-	var results []core.Output
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var errs []error
-
-	for _, agent := range agentsList {
-		wg.Add(1)
-		go func(a core.Agent) {
-			defer wg.Done()
-			start := time.Now()
-			out, err := a.Run(ctx, input)
-			duration := time.Since(start)
-
-			mu.Lock()
-			defer mu.Unlock()
-
-			if err != nil {
-				errs = append(errs, fmt.Errorf("agent %s failed: %w", a.Name(), err))
-				return
-			}
-			if out.Duration == 0 {
-				out.Duration = duration
-			}
-			results = append(results, out)
-		}(agent)
+	args := []string{"bootstrap"}
+	if quiet {
+		args = append(args, "--quiet")
 	}
 
-	wg.Wait()
-
-	if len(results) == 0 && len(errs) > 0 {
-		return fmt.Errorf("all agents failed: %v", errs)
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("bootstrap failed: %v", errs)
-	}
-
-	allFindings := core.AggregateFindings(results)
-	allRelationships := core.AggregateRelationships(results)
-
-	repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+	result, err := runner.Execute(ctx, args...)
 	if err != nil {
-		return fmt.Errorf("open memory repo: %w", err)
+		return fmt.Errorf("bootstrap failed: %w\nOutput: %s", err, result.Combined())
 	}
-	defer func() { _ = repo.Close() }()
 
-	ks := knowledge.NewService(repo, llmCfg)
-	ks.SetBasePath(cwd)
-	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, !viper.GetBool("quiet"))
+	return nil
 }
 
-func runEvalTasks(ctx context.Context, cfg evalpkg.Config, outDir string, promptTemplate []byte, model string, displayModel string, safeModel string, runner string, repoPath string, llmCfg llm.Config, repo *memory.Repository, injectContext bool, timeout time.Duration, resetRepo bool) (evalpkg.TokenUsage, error) {
-	// Create knowledge service for context injection (reuses knowledge.Service from tw context)
-	var ks *knowledge.Service
-	if injectContext && repo != nil {
-		ks = knowledge.NewService(repo, llmCfg)
+func runEvalTasks(ctx context.Context, cfg evalpkg.Config, outDir string, promptTemplate []byte, model string, displayModel string, safeModel string, runner string, repoPath string, llmCfg llm.Config, injectContext bool, timeout time.Duration, resetRepo bool) (evalpkg.TokenUsage, error) {
+	// Create CLI runner for context retrieval (replaces internal knowledge.Service)
+	cliRunner := evalpkg.NewRunner(repoPath).WithTimeout(2 * time.Minute)
+	cliRunner.Quiet = true
+
+	// Pass LLM config to subprocess via environment variables
+	if llmCfg.APIKey != "" {
+		cliRunner = cliRunner.WithEnv("TASKWING_LLM_APIKEY=" + llmCfg.APIKey)
+	}
+	if llmCfg.Provider != "" {
+		cliRunner = cliRunner.WithEnv("TASKWING_LLM_PROVIDER=" + string(llmCfg.Provider))
 	}
 
 	var totalUsage evalpkg.TokenUsage
@@ -764,59 +724,24 @@ func runEvalTasks(ctx context.Context, cfg evalpkg.Config, outDir string, prompt
 		prompt := strings.ReplaceAll(string(promptTemplate), "{{repo}}", repoPath)
 		prompt = strings.ReplaceAll(prompt, "{{task}}", strings.TrimSpace(task.Prompt))
 
-		// Context injection: retrieve relevant knowledge for this task
-		if ks != nil {
-			fmt.Println("  Strategizing context retrieval...")
-			// 1. Generate smart queries based on the task goal
-			queries, err := ks.SuggestContextQueries(ctx, task.Prompt)
+		// Context injection via CLI: invoke `tw context` as subprocess
+		if injectContext && task.Prompt != "" {
+			if !viper.GetBool("quiet") {
+				fmt.Println("  Retrieving context via CLI...")
+			}
+
+			// Use tw context command to get relevant knowledge
+			result, err := cliRunner.Execute(ctx, "context", task.Prompt)
 			if err != nil {
-				// Fallback if suggestion fails
-				queries = []string{task.Prompt}
-			}
-
-			var contextNodes []knowledge.ScoredNode
-			seenNodes := make(map[string]bool)
-
-			// 2. Surgical Search: specifically target workflows and constraints using generated queries
-			for _, q := range queries {
-				// Search specifically for workflows (highest priority)
-				if wNodes, err := ks.SearchByType(ctx, q, "workflow", 2); err == nil {
-					for _, n := range wNodes {
-						if !seenNodes[n.Node.ID] {
-							contextNodes = append(contextNodes, n)
-							seenNodes[n.Node.ID] = true
-						}
-					}
+				if !viper.GetBool("quiet") {
+					fmt.Printf("  ⚠️  Context retrieval warning: %v\n", err)
 				}
-
-				// Search for constraints
-				if cNodes, err := ks.SearchByType(ctx, q, "constraint", 2); err == nil {
-					for _, n := range cNodes {
-						if !seenNodes[n.Node.ID] {
-							contextNodes = append(contextNodes, n)
-							seenNodes[n.Node.ID] = true
-						}
-					}
+			} else if result.Stdout != "" {
+				if !viper.GetBool("quiet") {
+					fmt.Printf("  Injected context (%d bytes)\n", len(result.Stdout))
 				}
-			}
-
-			// 3. Fallback/Augment with general search if we have few specific results
-			if len(contextNodes) < 3 {
-				if generalNodes, err := ks.Search(ctx, task.Prompt, 5); err == nil {
-					for _, n := range generalNodes {
-						if !seenNodes[n.Node.ID] {
-							contextNodes = append(contextNodes, n)
-							seenNodes[n.Node.ID] = true
-						}
-					}
-				}
-			}
-
-			// Sort by score/relevance (simple re-sort of combined list)
-			if len(contextNodes) > 0 {
-				contextBlock := buildEvalContextBlock(contextNodes)
-				prompt = contextBlock + "\n\n" + prompt
-				fmt.Printf("  Injected %d context nodes (surgical strategy)\n", len(contextNodes))
+				// Append context to prompt
+				prompt += "\n\n## Project Context\n" + result.Stdout
 			}
 		}
 
@@ -883,18 +808,6 @@ func runEvalTasks(ctx context.Context, cfg evalpkg.Config, outDir string, prompt
 		return totalUsage, fmt.Errorf("runner failed: %v", runErrs)
 	}
 	return totalUsage, nil
-}
-
-// buildEvalContextBlock formats retrieved knowledge nodes for prompt injection
-func buildEvalContextBlock(nodes []knowledge.ScoredNode) string {
-	var b strings.Builder
-	b.WriteString("## Retrieved Project Context\n\n")
-	b.WriteString("The following constraints and decisions were extracted from the project's knowledge graph:\n\n")
-	for _, n := range nodes {
-		b.WriteString(fmt.Sprintf("### %s (%.0f%% relevant)\n", n.Node.Summary, n.Score*100))
-		b.WriteString(n.Node.Content + "\n\n")
-	}
-	return b.String()
 }
 
 // runEvalTaskInternal runs a single eval task with retry logic

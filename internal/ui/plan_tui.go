@@ -2,9 +2,7 @@ package ui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -199,90 +197,14 @@ func (m PlanModel) Init() tea.Cmd {
 
 // searchContext fetches relevant KG nodes
 func (m PlanModel) searchContext() tea.Msg {
-	// 1. Strategize: Ask LLM what to search for
-	// We can't update UI from here easily without returning a Cmd, but we are inside a Msg function...
-	// Wait, this function IS the Tea Msg generator (running in bg).
-	// We can't emit intermediate status updates from here unless we return a tea.Cmd that emits events.
-	// But `Init` expects `tea.Cmd`, and `m.searchContext` matches `func() tea.Msg`.
-	// If we want intermediate steps, we should chain Cmds.
-	// REFACTOR: `Init` -> `generateSearchQueries` (Cmd) -> MsgQueriesGenerated -> `runSearches` (Cmd) -> MsgContextFound.
-
-	// Let's do the easy way first: Just do it all here, it takes maybe 2-3 seconds total.
-	// "Strategizing & Searching..."
-
-	queries, err := m.KnowledgeService.SuggestContextQueries(m.Ctx, m.InitialGoal)
+	// Use shared logic for consistency with Eval system
+	result, err := planning.RetrieveContext(m.Ctx, m.KnowledgeService, m.InitialGoal)
 	if err != nil {
-		// Fallback
-		queries = []string{m.InitialGoal, "Technology Stack"}
+		// Even if error (unlikely as RetrieveContext handles fallbacks internally), return it
+		return MsgContextFound{Context: "", Strategy: "", Err: err}
 	}
 
-	// 2. Execute Searches
-	uniqueNodes := make(map[string]knowledge.ScoredNode)
-	var searchLog []string
-
-	for _, q := range queries {
-		// Search
-		nodes, _ := m.KnowledgeService.Search(m.Ctx, q, 3) // Lower limit per query
-		for _, sn := range nodes {
-			// Deduplicate by ID
-			if _, exists := uniqueNodes[sn.Node.ID]; !exists {
-				uniqueNodes[sn.Node.ID] = sn
-			} else {
-				// Keep higher score?
-				if sn.Score > uniqueNodes[sn.Node.ID].Score {
-					uniqueNodes[sn.Node.ID] = sn
-				}
-			}
-		}
-		searchLog = append(searchLog, fmt.Sprintf("• Checking memory for: '%s'", q))
-	}
-
-	// 3. Format Context
-	var strategyLog strings.Builder
-	strategyLog.WriteString("Research Strategy:\n")
-	for _, log := range searchLog {
-		strategyLog.WriteString("  " + log + "\n")
-	}
-
-	var sb strings.Builder
-	sb.WriteString("KNOWN ARCHITECTURAL CONTEXT:\n")
-
-	// Sort by Score (manual map sort)
-	var allNodes []knowledge.ScoredNode
-	for _, sn := range uniqueNodes {
-		allNodes = append(allNodes, sn)
-	}
-	sort.Slice(allNodes, func(i, j int) bool {
-		return allNodes[i].Score > allNodes[j].Score
-	})
-
-	for _, node := range allNodes {
-		sb.WriteString(fmt.Sprintf("### [%s] %s\n%s\n", node.Node.Type, node.Node.Summary, node.Node.Content))
-		// Append evidence file paths if available
-		if node.Node.Evidence != "" {
-			var evidenceList []struct {
-				FilePath  string `json:"file_path"`
-				StartLine int    `json:"start_line"`
-			}
-			if json.Unmarshal([]byte(node.Node.Evidence), &evidenceList) == nil && len(evidenceList) > 0 {
-				sb.WriteString("Referenced files: ")
-				for i, ev := range evidenceList {
-					if i > 0 {
-						sb.WriteString(", ")
-					}
-					if ev.StartLine > 0 {
-						sb.WriteString(fmt.Sprintf("%s:L%d", ev.FilePath, ev.StartLine))
-					} else {
-						sb.WriteString(ev.FilePath)
-					}
-				}
-				sb.WriteString("\n")
-			}
-		}
-		sb.WriteString("\n")
-	}
-
-	return MsgContextFound{Context: sb.String(), Strategy: strategyLog.String()}
+	return MsgContextFound{Context: result.Context, Strategy: result.Strategy}
 }
 
 // RunClarification runs the agent in a goroutine

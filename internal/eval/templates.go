@@ -94,3 +94,54 @@ Output:
 - List files you would change.
 - Provide the exact commands you would run (if any).
 `
+
+// DefaultCLITasksTemplate is the template for CLI command-based tasks.
+// These tasks invoke tw commands directly, testing real CLI behavior.
+const DefaultCLITasksTemplate = `version: 2
+project: ""
+
+# CLI-based evaluation tasks
+# Each task runs a tw command and judges the output
+tasks:
+  - id: T1
+    title: Context query for API endpoints
+    command: "tw context 'How do I add a new API endpoint?'"
+    expected: |
+      - Mentions the project's API workflow (e.g., OpenAPI, spec-first)
+      - References relevant documentation or constraints
+    failure_signals: |
+      - Generic advice without project-specific context
+      - Ignores documented workflows
+
+  - id: T2
+    title: Bootstrap captures architecture
+    command: "tw bootstrap --json"
+    expected: |
+      - Valid JSON output
+      - Contains features or decisions array
+      - Captures key project patterns
+    failure_signals: |
+      - Invalid JSON
+      - Empty or minimal output
+      - Missing project-specific discoveries
+
+  - id: T3
+    title: Plan respects constraints
+    command: "tw plan new 'Add user authentication'"
+    expected: |
+      - Plan follows project security patterns
+      - References existing auth infrastructure if present
+    failure_signals: |
+      - Ignores documented security requirements
+      - Proposes patterns that conflict with architecture
+
+  - id: T4
+    title: Memory query returns relevant nodes
+    command: "tw query 'database migration'"
+    expected: |
+      - Returns relevant knowledge nodes
+      - Includes decisions or constraints about database changes
+    failure_signals: |
+      - Empty results when database content exists
+      - Irrelevant results
+`

@@ -95,8 +95,22 @@ tw eval benchmark
 
 Output:
 ```
+╭─────────────────────────────────────────╮
+│  BENCHMARK RESULTS · 3 runs · 3 models  │
+╰─────────────────────────────────────────╯
+
+Score History
+
   Model                               | Avg      | T1   T2   T3   T4   T5
-  baseline (gpt-5-mini)               | 5.8      |  8    2    5    5    5
-  codex-native (codex-default)        | 7.0      |  8    9    5    8    5
-  tw+codex (codex-default)            | 7.2      |  8    9    5    8    6
+----------------------------------------------------------------------------------------------------
+  baseline (gpt-5-nano)               | 6.6      |  6    7    8    5    7
+  with-taskwing (gpt-5-nano)          | 7.8      |  8    8    8    9    6
+  codex-readonly-with-taskwing        | 8.0      |  8    8    8    8    8
+
+Overall Best (Avg)
+  1. codex-readonly-with-taskwing   8.0
+  2. with-taskwing                  7.8
+  3. baseline                       6.6
 ```
+
+> **Key Insight**: TaskWing context improved scores by +18-21%. The baseline model incorrectly assumed a Node.js backend; with TaskWing context, it correctly identified the Go backend and referenced the actual `make generate-api` workflow.

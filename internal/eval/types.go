@@ -28,7 +28,8 @@ type Rule struct {
 type Task struct {
 	ID             string `yaml:"id"`
 	Title          string `yaml:"title"`
-	Prompt         string `yaml:"prompt"`
+	Command        string `yaml:"command"`         // CLI command to run (e.g., "tw context 'query'")
+	Prompt         string `yaml:"prompt"`          // For LLM-based tasks (legacy)
 	Expected       string `yaml:"expected"`        // For LLM judge: expected behavior
 	FailureSignals string `yaml:"failure_signals"` // For LLM judge: signals of failure
 	PassFail       struct {
