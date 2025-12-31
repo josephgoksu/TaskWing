@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**TaskWing** is a CLI tool and Knowledge Graph for engineering teams, designed to give AI tools "project memory." It captures architectural decisions, features, and trade-offs from a codebase and makes them queryable by AI assistants (like Gemini, Claude, Cursor) via the Model Context Protocol (MCP).
+**TaskWing** is an AI-native task management CLI that gives AI tools "project memory." It extracts architectural decisions, patterns, and constraints from your codebase and makes them queryable by AI assistants (like Gemini, Claude, Cursor) via the Model Context Protocol (MCP).
 
 **Core Value Proposition:**
 *   **Auto-extraction:** Uses LLM inference to extract architecture from code.

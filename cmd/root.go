@@ -21,11 +21,11 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "taskwing",
-	Short: "TaskWing - Knowledge Graph for Engineering Teams",
-	Long: `TaskWing - Knowledge Graph for Engineering Teams
+	Short: "TaskWing - AI-Native Task Management",
+	Long: `TaskWing - AI-Native Task Management
 
-Captures the decisions, context, and rationale behind your codebase,
-making it queryable by humans and AI.`,
+Generate context-aware development tasks that actually match your architecture.
+No more generic AI suggestions that ignore your patterns, constraints, and decisions.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip telemetry for completion and help commands
 		if cmd.Name() == "completion" || cmd.Name() == "help" || cmd.Name() == "__complete" || cmd.Name() == "mcp" {

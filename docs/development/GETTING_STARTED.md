@@ -144,7 +144,7 @@ taskwing mcp
 
 🎯 TaskWing MCP Server Starting...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Knowledge Graph for Engineering Teams
+AI-Native Task Management
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✓ MCP connection established
