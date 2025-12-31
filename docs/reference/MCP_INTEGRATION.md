@@ -183,14 +183,11 @@ Edit `~/.config/zed/settings.json`:
 
 ## Generic MCP Client
 
-TaskWing's MCP server uses **stdio** transport by default:
+TaskWing's MCP server uses **stdio** transport:
 
 ```bash
 # Start server (reads JSON-RPC from stdin, writes to stdout)
 taskwing mcp
-
-# Or use SSE transport on a port
-taskwing mcp --port 8080
 ```
 
 ### Available Tools

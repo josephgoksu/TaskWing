@@ -8,14 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
-	"github.com/josephgoksu/TaskWing/internal/ui"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -50,11 +48,9 @@ The server will run until the client disconnects.`,
 	},
 }
 
-var mcpPort int
-
 func init() {
 	rootCmd.AddCommand(mcpCmd)
-	mcpCmd.Flags().IntVar(&mcpPort, "port", 0, "Port for SSE transport (0 = stdio)")
+	// NOTE: SSE transport (--port) intentionally removed. Stdio is the standard.
 }
 
 // ProjectContextParams defines the parameters for the project-context tool
@@ -62,9 +58,26 @@ type ProjectContextParams struct {
 	Query string `json:"query,omitempty"`
 }
 
+// Response DTOs are defined in internal/knowledge/response.go for DRY.
+// TypeSummary is MCP-specific (overview mode only).
+
+// TypeSummary is now defined in internal/knowledge/response.go
+
+// mcpJSONResponse wraps data in an MCP tool result with JSON content
+func mcpJSONResponse(data any) (*mcpsdk.CallToolResultFor[any], error) {
+	jsonBytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal response: %w", err)
+	}
+	return &mcpsdk.CallToolResultFor[any]{
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: string(jsonBytes)}},
+	}, nil
+}
+
 func runMCPServer(ctx context.Context) error {
-	ui.RenderPageHeader("TaskWing MCP Server", "Knowledge Graph for Engineering Teams")
-	fmt.Fprintf(os.Stderr, "\n")
+	// NOTE: MCP uses stdio transport. stdout MUST be pure JSON-RPC.
+	// All status/debug output goes to stderr only.
+	fmt.Fprintln(os.Stderr, "TaskWing MCP Server starting...")
 
 	// Get current working directory
 	// Initialize memory repository
@@ -94,7 +107,7 @@ func runMCPServer(ctx context.Context) error {
 	// Register project-context tool
 	tool := &mcpsdk.Tool{
 		Name:        "project-context",
-		Description: "Get project knowledge for AI context. Use {\"query\":\"search term\"} for semantic search, or omit for summary.",
+		Description: "Get project knowledge for AI context. Use {\"query\":\"search term\"} for semantic search, or omit for an overview.",
 	}
 
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
@@ -115,14 +128,7 @@ func runMCPServer(ctx context.Context) error {
 		return handleNodeContext(ctx, repo, query, nodes)
 	})
 
-	// Spec tools removed as part of cleanup
-
-	// Run the server
-	if mcpPort > 0 {
-		fmt.Fprintf(os.Stderr, "Starting SSE transport on port %d\n", mcpPort)
-		return fmt.Errorf("SSE transport not yet implemented")
-	}
-
+	// Run the server (stdio transport only)
 	if err := server.Run(ctx, mcpsdk.NewStdioTransport()); err != nil {
 		return fmt.Errorf("MCP server failed: %w", err)
 	}
@@ -130,110 +136,45 @@ func runMCPServer(ctx context.Context) error {
 	return nil
 }
 
-// handleNodeContext returns context using the new node-based knowledge graph
+// handleNodeContext returns context using the knowledge.Service (same as CLI).
+// This ensures MCP and CLI use identical search logic with zero drift.
 func handleNodeContext(ctx context.Context, repo *memory.Repository, query string, nodes []memory.Node) (*mcpsdk.CallToolResultFor[any], error) {
+	// Use knowledge.Service.GetProjectSummary() — IDENTICAL to CLI, zero drift
+	llmCfg, err := config.LoadLLMConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] LLM config unavailable: %v\n", err)
+		llmCfg = llm.Config{}
+	}
+	ks := knowledge.NewService(repo, llmCfg)
+
 	if query == "" {
-		// Summary response - group by type
-		byType := make(map[string][]memory.Node)
-		for _, n := range nodes {
-			t := n.Type
-			if t == "" {
-				t = "unknown"
-			}
-			byType[t] = append(byType[t], n)
+		summary, err := ks.GetProjectSummary(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("get summary: %w", err)
 		}
-
-		result := struct {
-			Nodes map[string][]memory.Node `json:"nodes"`
-			Total int                      `json:"total"`
-		}{
-			Nodes: byType,
-			Total: len(nodes),
-		}
-
-		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
-		return &mcpsdk.CallToolResultFor[any]{
-			Content: []mcpsdk.Content{
-				&mcpsdk.TextContent{Text: string(jsonBytes)},
-			},
-		}, nil
+		return mcpJSONResponse(summary)
 	}
 
-	var results []memory.Node
-	// Semantic search
-	if llmCfg, cfgErr := config.LoadLLMConfig(); cfgErr == nil {
-		if llmCfg.Provider != llm.ProviderAnthropic && (llmCfg.APIKey != "" || llmCfg.Provider == llm.ProviderOllama) {
-			queryEmb, err := knowledge.GenerateEmbedding(ctx, query, llmCfg)
-			if err == nil {
-				type scored struct {
-					Node  memory.Node
-					Score float32
-				}
-				var scoredNodes []scored
-
-				// Fix N+1 query: get all nodes with embeddings in a single query
-				nodesWithEmbeddings, err := repo.ListNodesWithEmbeddings()
-				if err == nil {
-					// Build map for O(1) lookup by ID
-					nodeMap := make(map[string]*memory.Node)
-					for i := range nodesWithEmbeddings {
-						nodeMap[nodesWithEmbeddings[i].ID] = &nodesWithEmbeddings[i]
-					}
-
-					// Score each node from the original list
-					for _, n := range nodes {
-						fullNode, ok := nodeMap[n.ID]
-						if !ok || len(fullNode.Embedding) == 0 {
-							continue
-						}
-						score := knowledge.CosineSimilarity(queryEmb, fullNode.Embedding)
-						scoredNodes = append(scoredNodes, scored{Node: *fullNode, Score: score})
-					}
-				}
-
-				sort.Slice(scoredNodes, func(i, j int) bool {
-					return scoredNodes[i].Score > scoredNodes[j].Score
-				})
-
-				limit := 5
-				if len(scoredNodes) < limit {
-					limit = len(scoredNodes)
-				}
-				for i := 0; i < limit; i++ {
-					results = append(results, scoredNodes[i].Node)
-				}
-			}
-		}
+	scored, err := ks.Search(ctx, query, 5)
+	if err != nil {
+		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
-	// Fallback to keyword matching if semantic search didn't work
-	if len(results) == 0 {
-		queryLower := strings.ToLower(query)
-		for _, n := range nodes {
-			if strings.Contains(strings.ToLower(n.Content), queryLower) ||
-				strings.Contains(strings.ToLower(n.Summary), queryLower) {
-				results = append(results, n)
-				if len(results) >= 5 {
-					break
-				}
-			}
-		}
+	// Convert to NodeResponse (shared type, no embeddings)
+	var responses []knowledge.NodeResponse
+	for _, sn := range scored {
+		responses = append(responses, knowledge.ScoredNodeToResponse(sn))
 	}
 
 	result := struct {
-		Query   string        `json:"query"`
-		Results []memory.Node `json:"results"`
-		Total   int           `json:"total"`
+		Query   string                   `json:"query"`
+		Results []knowledge.NodeResponse `json:"results"`
+		Total   int                      `json:"total"`
 	}{
 		Query:   query,
-		Results: results,
-		Total:   len(results),
+		Results: responses,
+		Total:   len(responses),
 	}
 
-	jsonBytes, _ := json.MarshalIndent(result, "", "  ")
-	return &mcpsdk.CallToolResultFor[any]{
-		Content: []mcpsdk.Content{
-			&mcpsdk.TextContent{Text: string(jsonBytes)},
-		},
-	}, nil
+	return mcpJSONResponse(result)
 }

@@ -110,12 +110,17 @@ func runContext(cmd *cobra.Command, args []string) error {
 
 	// 6. Output (JSON or TUI)
 	if isJSON() {
-		type result struct {
-			Query   string                 `json:"query"`
-			Results []knowledge.ScoredNode `json:"results"`
-			Answer  string                 `json:"answer,omitempty"`
+		// Convert to NodeResponse for consistent format with MCP (no embeddings, has evidence)
+		var nodeResponses []knowledge.NodeResponse
+		for _, sn := range scored {
+			nodeResponses = append(nodeResponses, knowledge.ScoredNodeToResponse(sn))
 		}
-		return printJSON(result{Query: query, Results: scored, Answer: answer})
+		type result struct {
+			Query   string                   `json:"query"`
+			Results []knowledge.NodeResponse `json:"results"`
+			Answer  string                   `json:"answer,omitempty"`
+		}
+		return printJSON(result{Query: query, Results: nodeResponses, Answer: answer})
 	}
 
 	// TUI Output

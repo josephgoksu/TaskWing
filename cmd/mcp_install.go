@@ -75,16 +75,15 @@ Examples:
 			installLocalMCP(cwd, ".windsurf", "mcp.json", binPath)
 		case "claude":
 			installClaude(binPath, cwd)
+		case "codex":
+			installCodexGlobal(binPath, cwd)
 		case "gemini":
-			if globalInstall {
-				installGlobalMCP("gemini", binPath, cwd)
-			} else {
-				installLocalMCP(cwd, ".gemini", "settings.json", binPath)
-			}
+			installGeminiGlobal(binPath, cwd)
 		case "all":
 			installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
 			installLocalMCP(cwd, ".windsurf", "mcp.json", binPath)
 			installClaude(binPath, cwd)
+			installCodexGlobal(binPath, cwd)
 			if globalInstall {
 				installGlobalMCP("gemini", binPath, cwd)
 			} else {
@@ -111,6 +110,21 @@ type MCPServerConfig struct {
 
 type MCPConfig struct {
 	MCPServers map[string]MCPServerConfig `json:"mcpServers"`
+}
+
+// -----------------------------------------------------------------------------
+// Naming Helpers — Single implementation for consistent server naming
+// -----------------------------------------------------------------------------
+
+// sanitizeProjectName returns a server-safe project name (no dots)
+func sanitizeProjectName(projectDir string) string {
+	name := filepath.Base(projectDir)
+	return strings.ReplaceAll(name, ".", "_")
+}
+
+// mcpServerName returns the TaskWing MCP server name for a project
+func mcpServerName(projectDir string) string {
+	return fmt.Sprintf("taskwing-%s", sanitizeProjectName(projectDir))
 }
 
 // upsertMCPServer reads an MCP config file, adds/updates the server, and writes it back.
@@ -187,10 +201,16 @@ func installClaude(binPath, projectDir string) {
 }
 
 func installClaudeCodeCLI(binPath, projectDir string) {
-	projectName := filepath.Base(projectDir)
-	// Sanitize: replace dots with underscores (Claude CLI doesn't allow dots in names)
-	projectName = strings.ReplaceAll(projectName, ".", "_")
-	serverName := fmt.Sprintf("taskwing-%s", projectName)
+	// Check if claude CLI is available
+	_, err := exec.LookPath("claude")
+	if err != nil {
+		if viper.GetBool("verbose") {
+			fmt.Println("ℹ️  Claude Code CLI not found (skipping CLI config)")
+		}
+		return
+	}
+
+	serverName := mcpServerName(projectDir)
 
 	fmt.Println("👉 Configuring Claude Code CLI...")
 
@@ -211,7 +231,6 @@ func installClaudeCodeCLI(binPath, projectDir string) {
 
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("⚠️  Failed to run 'claude mcp add': %v\n", err)
-		fmt.Printf("   (This is expected if 'claude' CLI is not installed)\n")
 	} else {
 		fmt.Printf("✅ Installed for Claude Code as '%s'\n", serverName)
 	}
@@ -232,8 +251,7 @@ func installClaudeDesktop(binPath, projectDir string) {
 
 	fmt.Println("👉 Configuring Claude Desktop App...")
 
-	projectName := filepath.Base(projectDir)
-	serverName := fmt.Sprintf("taskwing-%s", projectName)
+	serverName := mcpServerName(projectDir)
 
 	err = upsertMCPServer(configPath, serverName, MCPServerConfig{
 		Command: binPath,
@@ -249,24 +267,72 @@ func installClaudeDesktop(binPath, projectDir string) {
 }
 
 func installGeminiGlobal(binPath, projectDir string) {
-	home, err := os.UserHomeDir()
+	// Check if gemini CLI is available
+	_, err := exec.LookPath("gemini")
 	if err != nil {
-		fmt.Printf("❌ Could not find home directory: %v\n", err)
+		fmt.Println("❌ 'gemini' CLI not found in PATH.")
+		fmt.Println("   Please install the Gemini CLI first to use this integration.")
+		fmt.Println("   See: https://geminicli.com/docs/getting-started")
 		return
 	}
 
-	configPath := filepath.Join(home, ".gemini", "settings.json")
-	projectName := filepath.Base(projectDir)
-	serverName := fmt.Sprintf("taskwing-%s", projectName)
+	serverName := mcpServerName(projectDir)
+	fmt.Println("👉 Configuring Gemini CLI...")
 
-	err = upsertMCPServer(configPath, serverName, MCPServerConfig{
-		Command: binPath,
-		Args:    []string{"mcp"},
-		Cwd:     projectDir,
-	})
-	if err != nil {
-		fmt.Printf("❌ Failed to install for gemini: %v\n", err)
+	if viper.GetBool("preview") {
+		fmt.Printf("[PREVIEW] Would run: gemini mcp add %s %s mcp --cwd %s\n", serverName, binPath, projectDir)
 		return
 	}
-	fmt.Printf("✅ Installed for gemini as '%s' in %s\n", serverName, configPath)
+
+	// Run: gemini mcp add <name> <command> [args...] --cwd <cwd>
+	// Note: 'gemini mcp add' syntax: gemini mcp add <name> <command> [args...]
+	cmd := exec.Command("gemini", "mcp", "add", serverName, binPath, "mcp", "--cwd", projectDir)
+	cmd.Dir = projectDir
+
+	// Capture output to suppress noise, unless verbose
+	if viper.GetBool("verbose") {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("⚠️  Failed to run 'gemini mcp add': %v\n", err)
+	} else {
+		fmt.Printf("✅ Installed for Gemini as '%s'\n", serverName)
+	}
+}
+
+func installCodexGlobal(binPath, projectDir string) {
+	// Check if codex CLI is available
+	_, err := exec.LookPath("codex")
+	if err != nil {
+		fmt.Println("❌ 'codex' CLI not found in PATH.")
+		fmt.Println("   Please install the OpenAI Codex CLI first to use this integration.")
+		fmt.Println("   See: https://developers.openai.com/codex/mcp/")
+		return
+	}
+
+	serverName := mcpServerName(projectDir)
+	fmt.Println("👉 Configuring OpenAI Codex...")
+
+	if viper.GetBool("preview") {
+		fmt.Printf("[PREVIEW] Would run: codex mcp add %s -- %s mcp\n", serverName, binPath)
+		return
+	}
+
+	// Run: codex mcp add <name> -- <binPath> mcp
+	cmd := exec.Command("codex", "mcp", "add", serverName, "--", binPath, "mcp")
+	cmd.Dir = projectDir
+
+	// Capture output to suppress noise, unless verbose
+	if viper.GetBool("verbose") {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
+
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("⚠️  Failed to run 'codex mcp add': %v\n", err)
+	} else {
+		fmt.Printf("✅ Installed for Codex as '%s'\n", serverName)
+	}
 }

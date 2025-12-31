@@ -3,6 +3,10 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 
 Package core provides MCP (Model Context Protocol) integration for
 live updates when agents discover new findings.
+
+TODO(v3): MCPNotifier infrastructure is prepared for the v3 WatchAgent feature
+(real-time filesystem monitoring). Currently unused but kept for roadmap alignment.
+See docs/architecture/ROADMAP.md for planned integration.
 */
 package core
 
@@ -84,72 +88,54 @@ func (n *MCPNotifier) Unsubscribe(sub MCPSubscriber) {
 	}
 }
 
-// NotifyFindingAdded notifies all subscribers of a new finding
-func (n *MCPNotifier) NotifyFindingAdded(ctx context.Context, finding Finding) {
+// -----------------------------------------------------------------------------
+// Notification Methods — Use fanOutToSubscribers to avoid duplication
+// -----------------------------------------------------------------------------
+
+// fanOutToSubscribers is the single implementation for subscriber notification
+func (n *MCPNotifier) fanOutToSubscribers(ctx context.Context, notifyFunc func(s MCPSubscriber, ctx context.Context) error) {
 	n.mu.RLock()
 	subs := append([]MCPSubscriber(nil), n.subscribers...)
 	n.mu.RUnlock()
-
-	n.addToBuffer("finding_added", finding)
-	n.emitStream(EventFinding, "mcp", "finding_added", map[string]any{
-		"title": finding.Title,
-	})
 
 	for _, sub := range subs {
 		go func(s MCPSubscriber) {
 			notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			_ = s.OnFindingAdded(notifyCtx, finding)
+			_ = notifyFunc(s, notifyCtx)
 		}(sub)
 	}
+}
+
+// NotifyFindingAdded notifies all subscribers of a new finding
+func (n *MCPNotifier) NotifyFindingAdded(ctx context.Context, finding Finding) {
+	n.addToBuffer("finding_added", finding)
+	n.emitStream(EventFinding, "mcp", "finding_added", map[string]any{"title": finding.Title})
+	n.fanOutToSubscribers(ctx, func(s MCPSubscriber, ctx context.Context) error {
+		return s.OnFindingAdded(ctx, finding)
+	})
 }
 
 // NotifyFindingUpdated notifies all subscribers of an updated finding
 func (n *MCPNotifier) NotifyFindingUpdated(ctx context.Context, finding Finding) {
-	n.mu.RLock()
-	subs := append([]MCPSubscriber(nil), n.subscribers...)
-	n.mu.RUnlock()
-
 	n.addToBuffer("finding_updated", finding)
-	n.emitStream(EventFinding, "mcp", "finding_updated", map[string]any{
-		"title": finding.Title,
+	n.emitStream(EventFinding, "mcp", "finding_updated", map[string]any{"title": finding.Title})
+	n.fanOutToSubscribers(ctx, func(s MCPSubscriber, ctx context.Context) error {
+		return s.OnFindingUpdated(ctx, finding)
 	})
-
-	for _, sub := range subs {
-		go func(s MCPSubscriber) {
-			notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			_ = s.OnFindingUpdated(notifyCtx, finding)
-		}(sub)
-	}
 }
 
 // NotifyFindingRemoved notifies all subscribers of a removed finding
 func (n *MCPNotifier) NotifyFindingRemoved(ctx context.Context, findingID string) {
-	n.mu.RLock()
-	subs := append([]MCPSubscriber(nil), n.subscribers...)
-	n.mu.RUnlock()
-
 	n.addToBuffer("finding_removed", map[string]string{"id": findingID})
-	n.emitStream(EventFinding, "mcp", "finding_removed", map[string]any{
-		"finding_id": findingID,
+	n.emitStream(EventFinding, "mcp", "finding_removed", map[string]any{"finding_id": findingID})
+	n.fanOutToSubscribers(ctx, func(s MCPSubscriber, ctx context.Context) error {
+		return s.OnFindingRemoved(ctx, findingID)
 	})
-
-	for _, sub := range subs {
-		go func(s MCPSubscriber) {
-			notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			_ = s.OnFindingRemoved(notifyCtx, findingID)
-		}(sub)
-	}
 }
 
 // NotifyBatchComplete notifies all subscribers that a batch is complete
 func (n *MCPNotifier) NotifyBatchComplete(ctx context.Context, summary MCPBatchSummary) {
-	n.mu.RLock()
-	subs := append([]MCPSubscriber(nil), n.subscribers...)
-	n.mu.RUnlock()
-
 	n.addToBuffer("batch_complete", summary)
 	n.emitStream(EventSynthesis, "mcp", "batch_complete", map[string]any{
 		"agent":         summary.AgentName,
@@ -158,14 +144,9 @@ func (n *MCPNotifier) NotifyBatchComplete(ctx context.Context, summary MCPBatchS
 		"updated_count": summary.UpdatedCount,
 		"duration":      summary.Duration,
 	})
-
-	for _, sub := range subs {
-		go func(s MCPSubscriber) {
-			notifyCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			_ = s.OnBatchComplete(notifyCtx, summary)
-		}(sub)
-	}
+	n.fanOutToSubscribers(ctx, func(s MCPSubscriber, ctx context.Context) error {
+		return s.OnBatchComplete(ctx, summary)
+	})
 }
 
 func (n *MCPNotifier) emitStream(eventType StreamEventType, agent, content string, metadata map[string]any) {
