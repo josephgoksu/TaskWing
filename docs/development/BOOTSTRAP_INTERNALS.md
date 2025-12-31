@@ -21,9 +21,7 @@ taskwing bootstrap --preview         # Preview without saving
 taskwing bootstrap --preview --json  # Machine-readable output
 taskwing bootstrap --trace           # JSON event stream to file (.taskwing/logs/...)
 taskwing bootstrap --trace --trace-stdout  # JSON event stream to stderr
-
-taskwing bootstrap --basic           # Execute heuristic scan only (no LLM calls)
-taskwing bootstrap --basic --preview # Preview heuristic scan only
+taskwing bootstrap --skip-init       # Skip first-time AI assistant prompt
 ```
 
 Runs LLM-powered analysis when an API key is available (set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` or configure `llm.apiKeys.<provider>`).

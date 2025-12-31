@@ -24,7 +24,7 @@ make dev-setup                # Install dependencies and golangci-lint
 
 ## Architecture Overview
 
-TaskWing is a CLI tool that creates a knowledge graph from codebases, making architectural decisions and context queryable by AI tools via MCP (Model Context Protocol).
+TaskWing is an AI-native task management CLI that extracts architectural decisions and context from codebases, making them queryable by AI tools via MCP (Model Context Protocol).
 
 ### Core Layers
 
@@ -44,7 +44,7 @@ internal/
 │   ├── sqlite.go             # SQLite implementation (source of truth)
 │   └── models.go             # Feature, Decision, Edge types
 ├── bootstrap/                # Codebase analysis
-│   ├── scanner.go            # Heuristic scanner (--basic mode)
+│   ├── scanner.go            # Heuristic scanner
 │   └── llm_analyzer.go       # LLM-powered analysis with streaming
 ├── llm/
 │   └── client.go             # Multi-provider LLM factory (OpenAI, Ollama via Eino)
@@ -79,7 +79,7 @@ Uses CloudWeGo Eino for multi-provider support:
 - OpenAI: Set `OPENAI_API_KEY` or `TASKWING_LLM_APIKEY`
 - Ollama: Set `TASKWING_LLM_PROVIDER=ollama` and `TASKWING_LLM_MODELNAME=<model>`
 
-Bootstrap runs LLM analysis by default; use `--basic` for heuristic-only mode.
+Bootstrap runs LLM analysis by default.
 
 ### MCP Server
 

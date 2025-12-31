@@ -193,7 +193,6 @@ Now when you ask AI about your code, it has full project context with semantic s
 |---------|-------------|
 | `tw bootstrap` | Auto-generate from repo with LLM |
 | `tw bootstrap --preview` | Preview without saving |
-| `tw bootstrap --basic` | Heuristic scan only (no LLM) |
 | `tw memory check` | Validate integrity |
 | `tw memory repair` | Fix integrity issues |
 
