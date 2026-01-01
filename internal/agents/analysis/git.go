@@ -6,6 +6,7 @@ package analysis
 import (
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -15,9 +16,11 @@ import (
 )
 
 // GitAgent analyzes git history to understand project evolution.
+// Call Close() when done to release resources.
 type GitAgent struct {
 	core.BaseAgent
-	chain *core.DeterministicChain[gitMilestonesResponse]
+	chain       *core.DeterministicChain[gitMilestonesResponse]
+	modelCloser io.Closer
 }
 
 // NewGitAgent creates a new git history analysis agent.
@@ -27,18 +30,27 @@ func NewGitAgent(cfg llm.Config) *GitAgent {
 	}
 }
 
+// Close releases LLM resources. Safe to call multiple times.
+func (a *GitAgent) Close() error {
+	if a.modelCloser != nil {
+		return a.modelCloser.Close()
+	}
+	return nil
+}
+
 // Run executes the agent using Eino DeterministicChain.
 func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
 	// Initialize chain (lazy)
 	if a.chain == nil {
-		chatModel, err := a.CreateChatModel(ctx)
+		chatModel, err := a.CreateCloseableChatModel(ctx)
 		if err != nil {
 			return core.Output{}, err
 		}
+		a.modelCloser = chatModel
 		chain, err := core.NewDeterministicChain[gitMilestonesResponse](
 			ctx,
 			a.Name(),
-			chatModel,
+			chatModel.BaseChatModel,
 			config.PromptTemplateGitAgent,
 		)
 		if err != nil {
@@ -193,7 +205,7 @@ func gatherGitInfo(basePath string) string {
 }
 
 func init() {
-	core.RegisterAgentFactory("git", func(cfg llm.Config, basePath string) core.Agent {
+	core.RegisterAgent("git", func(cfg llm.Config, basePath string) core.Agent {
 		return NewGitAgent(cfg)
-	})
+	}, "Git History", "Extracts decisions and patterns from git commit history")
 }

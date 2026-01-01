@@ -557,10 +557,11 @@ tasks:
   - id: T2
     ...`, contextStr, count)
 
-		chatModel, err := llm.NewChatModel(ctx, llmCfg)
+		chatModel, err := llm.NewCloseableChatModel(ctx, llmCfg)
 		if err != nil {
 			return fmt.Errorf("create llm: %w", err)
 		}
+		defer chatModel.Close()
 
 		resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(generatePrompt)})
 		if err != nil {
@@ -821,7 +822,7 @@ func runEvalTaskInternal(ctx context.Context, llmCfg llm.Config, prompt string) 
 			time.Sleep(time.Duration(attempt) * time.Second) // Backoff
 		}
 
-		chatModel, err := llm.NewChatModel(ctx, llmCfg)
+		chatModel, err := llm.NewCloseableChatModel(ctx, llmCfg)
 		if err != nil {
 			if !viper.GetBool("quiet") {
 				fmt.Printf(" [attempt %d failed to create model: %v]", attempt+1, err)
@@ -831,6 +832,7 @@ func runEvalTaskInternal(ctx context.Context, llmCfg llm.Config, prompt string) 
 		}
 
 		resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(prompt)})
+		chatModel.Close() // Close immediately after use, before potential return
 		if err != nil {
 			if !viper.GetBool("quiet") {
 				fmt.Printf(" [attempt %d failed: %v]", attempt+1, err)
@@ -902,10 +904,11 @@ Output ONLY valid JSON:
 {"score": 8, "reason": "brief explanation"}`,
 		task.Prompt, expected, failureSignals, output)
 
-	chatModel, err := llm.NewChatModel(ctx, llmCfg)
+	chatModel, err := llm.NewCloseableChatModel(ctx, llmCfg)
 	if err != nil {
 		return evalpkg.JudgeResult{}, fmt.Errorf("create judge model: %w", err)
 	}
+	defer chatModel.Close()
 
 	resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(judgePrompt)})
 	if err != nil {

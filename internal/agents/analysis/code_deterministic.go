@@ -6,6 +6,7 @@ package analysis
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/tools"
@@ -15,10 +16,12 @@ import (
 
 // CodeAgent analyzes source code using a single LLM call (deterministic).
 // This is used for bootstrap. For interactive exploration, use ReactAgent.
+// Call Close() when done to release resources.
 type CodeAgent struct {
 	core.BaseAgent
-	basePath string
-	chain    *core.DeterministicChain[codeAnalysisResponse]
+	basePath    string
+	chain       *core.DeterministicChain[codeAnalysisResponse]
+	modelCloser io.Closer // For releasing LLM resources
 }
 
 // NewCodeAgent creates a new deterministic code analysis agent.
@@ -29,18 +32,27 @@ func NewCodeAgent(cfg llm.Config, basePath string) *CodeAgent {
 	}
 }
 
+// Close releases LLM resources. Safe to call multiple times.
+func (a *CodeAgent) Close() error {
+	if a.modelCloser != nil {
+		return a.modelCloser.Close()
+	}
+	return nil
+}
+
 // Run executes the agent using a single LLM call with pre-gathered context.
 func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
 	// Initialize chain (lazy)
 	if a.chain == nil {
-		chatModel, err := a.CreateChatModel(ctx)
+		chatModel, err := a.CreateCloseableChatModel(ctx)
 		if err != nil {
 			return core.Output{}, err
 		}
+		a.modelCloser = chatModel // Store for cleanup
 		chain, err := core.NewDeterministicChain[codeAnalysisResponse](
 			ctx,
 			a.Name(),
-			chatModel,
+			chatModel.BaseChatModel,
 			config.PromptTemplateCodeAgent,
 		)
 		if err != nil {
@@ -193,7 +205,7 @@ func (a *CodeAgent) parseFindings(parsed codeAnalysisResponse) ([]core.Finding, 
 }
 
 func init() {
-	core.RegisterAgentFactory("code", func(cfg llm.Config, basePath string) core.Agent {
+	core.RegisterAgent("code", func(cfg llm.Config, basePath string) core.Agent {
 		return NewCodeAgent(cfg, basePath)
-	})
+	}, "Code Analysis", "Analyzes source code structure, patterns, and architecture")
 }

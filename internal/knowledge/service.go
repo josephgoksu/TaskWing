@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -49,7 +48,7 @@ type Service struct {
 	repo             Repository
 	llmCfg           llm.Config
 	basePath         string // Project base path for verification
-	chatModelFactory func(ctx context.Context, cfg llm.Config) (model.BaseChatModel, error)
+	chatModelFactory func(ctx context.Context, cfg llm.Config) (*llm.CloseableChatModel, error)
 }
 
 type NodeInput struct {
@@ -65,7 +64,7 @@ func NewService(repo Repository, cfg llm.Config) *Service {
 	return &Service{
 		repo:             repo,
 		llmCfg:           cfg,
-		chatModelFactory: llm.NewChatModel,
+		chatModelFactory: llm.NewCloseableChatModel,
 	}
 }
 
@@ -374,6 +373,7 @@ Be concise and direct.
 	if err != nil {
 		return "", fmt.Errorf("create chat model: %w", err)
 	}
+	defer chatModel.Close()
 
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),
@@ -464,6 +464,7 @@ Return JSON ONLY: ["concept 1", "concept 2"]`, goal)
 	if err != nil {
 		return nil, fmt.Errorf("create chat model: %w", err)
 	}
+	defer chatModel.Close()
 
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),

@@ -55,11 +55,13 @@ func (a *ReactAgent) Run(ctx context.Context, input core.Input) (core.Output, er
 	output.AgentName = a.Name()
 	start := time.Now()
 
-	baseChatModel, err := llm.NewChatModel(ctx, a.LLMConfig())
+	closeableChatModel, err := llm.NewCloseableChatModel(ctx, a.LLMConfig())
 	if err != nil {
 		return output, fmt.Errorf("create chat model: %w", err)
 	}
+	defer closeableChatModel.Close()
 
+	baseChatModel := closeableChatModel.BaseChatModel
 	toolCallingModel, ok := baseChatModel.(model.ToolCallingChatModel)
 	if !ok {
 		if a.verbose {
@@ -229,7 +231,7 @@ Respond with JSON only:
 }
 
 func init() {
-	core.RegisterAgentFactory("react", func(cfg llm.Config, basePath string) core.Agent {
+	core.RegisterAgent("react", func(cfg llm.Config, basePath string) core.Agent {
 		return NewReactAgent(cfg, basePath)
-	})
+	}, "ReAct Explorer", "Dynamically explores codebase using tools to identify architectural patterns")
 }

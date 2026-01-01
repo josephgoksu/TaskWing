@@ -9,7 +9,8 @@ import (
 
 // GetGlobalConfigDir returns the path to the global configuration directory (~/.taskwing).
 // This is the source of truth for where global config lives.
-func GetGlobalConfigDir() (string, error) {
+// It's a variable to allow overriding in tests.
+var GetGlobalConfigDir = func() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err

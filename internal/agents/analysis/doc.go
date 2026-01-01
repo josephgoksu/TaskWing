@@ -6,6 +6,7 @@ package analysis
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -16,9 +17,11 @@ import (
 )
 
 // DocAgent analyzes documentation files to extract product features.
+// Call Close() when done to release resources.
 type DocAgent struct {
 	core.BaseAgent
-	chain *core.DeterministicChain[docAnalysisResponse]
+	chain       *core.DeterministicChain[docAnalysisResponse]
+	modelCloser io.Closer
 }
 
 // NewDocAgent creates a new documentation analysis agent.
@@ -28,18 +31,27 @@ func NewDocAgent(cfg llm.Config) *DocAgent {
 	}
 }
 
+// Close releases LLM resources. Safe to call multiple times.
+func (a *DocAgent) Close() error {
+	if a.modelCloser != nil {
+		return a.modelCloser.Close()
+	}
+	return nil
+}
+
 // Run executes the agent using Eino DeterministicChain.
 func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
 	// Initialize chain if not ready (lazy init to support config updates if needed)
 	if a.chain == nil {
-		chatModel, err := a.CreateChatModel(ctx)
+		chatModel, err := a.CreateCloseableChatModel(ctx)
 		if err != nil {
 			return core.Output{}, err
 		}
+		a.modelCloser = chatModel
 		chain, err := core.NewDeterministicChain[docAnalysisResponse](
 			ctx,
 			a.Name(),
-			chatModel,
+			chatModel.BaseChatModel,
 			config.PromptTemplateDocAgent,
 		)
 		if err != nil {
@@ -287,7 +299,7 @@ func filterMarkdown(files []string) []string {
 }
 
 func init() {
-	core.RegisterAgentFactory("doc", func(cfg llm.Config, basePath string) core.Agent {
+	core.RegisterAgent("doc", func(cfg llm.Config, basePath string) core.Agent {
 		return NewDocAgent(cfg)
-	})
+	}, "Documentation", "Extracts knowledge from README and documentation files")
 }

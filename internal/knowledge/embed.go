@@ -12,7 +12,7 @@ import (
 )
 
 // embeddingModelFactory allows injection for testing
-var embeddingModelFactory = llm.NewEmbeddingModel
+var embeddingModelFactory = llm.NewCloseableEmbedder
 
 // GenerateEmbedding creates a vector embedding for the given text.
 // Uses the configuration to determine provider (OpenAI or Ollama).
@@ -21,6 +21,7 @@ func GenerateEmbedding(ctx context.Context, text string, cfg llm.Config) ([]floa
 	if err != nil {
 		return nil, fmt.Errorf("create embedding model: %w", err)
 	}
+	defer embedder.Close()
 
 	// Eino returns [][]float64
 	embeddings64, err := embedder.EmbedStrings(ctx, []string{text})

@@ -15,6 +15,23 @@ type Agent interface {
 	Run(ctx context.Context, input Input) (Output, error)
 }
 
+// CloseableAgent is an agent that holds resources requiring cleanup.
+// Agents with LLM connections should implement this interface.
+type CloseableAgent interface {
+	Agent
+	Close() error
+}
+
+// CloseAgents closes all agents that implement CloseableAgent.
+// Safe to call on agents that don't implement CloseableAgent.
+func CloseAgents(agents []Agent) {
+	for _, a := range agents {
+		if c, ok := a.(CloseableAgent); ok {
+			_ = c.Close()
+		}
+	}
+}
+
 // AgentMode determines how an agent should behave.
 type AgentMode string
 

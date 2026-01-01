@@ -466,6 +466,11 @@ func (d *AgentDispatcher) Dispatch(ctx context.Context, category FileCategory, c
 	// Run agent in background
 	actLog := d.activityLog
 	go func() {
+		// Close agent when goroutine exits to release LLM resources
+		if closeable, ok := agent.(core.CloseableAgent); ok {
+			defer closeable.Close()
+		}
+
 		fmt.Printf("  🤖 Running %s agent for %d changed files...\n", agent.Name(), len(changes))
 		output, err := agent.Run(ctx, input)
 		if err != nil {

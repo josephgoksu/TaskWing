@@ -40,8 +40,19 @@ func (b *BaseAgent) Description() string { return b.description }
 func (b *BaseAgent) LLMConfig() llm.Config { return b.llmConfig }
 
 // CreateChatModel creates an LLM chat model using the agent's config.
+// Deprecated: Use CreateCloseableChatModel and call Close() when done.
 func (b *BaseAgent) CreateChatModel(ctx context.Context) (model.BaseChatModel, error) {
-	chatModel, err := llm.NewChatModel(ctx, b.llmConfig)
+	chatModel, err := llm.NewCloseableChatModel(ctx, b.llmConfig)
+	if err != nil {
+		return nil, fmt.Errorf("create model: %w", err)
+	}
+	return chatModel.BaseChatModel, nil
+}
+
+// CreateCloseableChatModel creates an LLM chat model with proper resource management.
+// Callers MUST call Close() when done to release resources.
+func (b *BaseAgent) CreateCloseableChatModel(ctx context.Context) (*llm.CloseableChatModel, error) {
+	chatModel, err := llm.NewCloseableChatModel(ctx, b.llmConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create model: %w", err)
 	}
@@ -50,10 +61,12 @@ func (b *BaseAgent) CreateChatModel(ctx context.Context) (model.BaseChatModel, e
 
 // Generate sends messages to the LLM and returns the response content.
 func (b *BaseAgent) Generate(ctx context.Context, messages []*schema.Message) (string, error) {
-	chatModel, err := b.CreateChatModel(ctx)
+	chatModel, err := b.CreateCloseableChatModel(ctx)
 	if err != nil {
 		return "", err
 	}
+	defer chatModel.Close()
+
 	resp, err := chatModel.Generate(ctx, messages)
 	if err != nil {
 		return "", fmt.Errorf("llm generate: %w", err)

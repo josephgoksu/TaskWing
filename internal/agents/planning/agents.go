@@ -6,6 +6,7 @@ package planning
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/cloudwego/eino/schema"
@@ -15,9 +16,11 @@ import (
 )
 
 // ClarifyingAgent helps users refine their goals by asking questions.
+// Call Close() when done to release resources.
 type ClarifyingAgent struct {
 	core.BaseAgent
-	chain *core.DeterministicChain[ClarifyingOutput]
+	chain       *core.DeterministicChain[ClarifyingOutput]
+	modelCloser io.Closer
 }
 
 // ClarifyingOutput defines the structured response from the LLM.
@@ -34,17 +37,26 @@ func NewClarifyingAgent(cfg llm.Config) *ClarifyingAgent {
 	}
 }
 
+// Close releases LLM resources. Safe to call multiple times.
+func (a *ClarifyingAgent) Close() error {
+	if a.modelCloser != nil {
+		return a.modelCloser.Close()
+	}
+	return nil
+}
+
 // Run executes the clarification loop using Eino Chain.
 func (a *ClarifyingAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
 	if a.chain == nil {
-		chatModel, err := a.CreateChatModel(ctx)
+		chatModel, err := a.CreateCloseableChatModel(ctx)
 		if err != nil {
 			return core.Output{}, err
 		}
+		a.modelCloser = chatModel
 		chain, err := core.NewDeterministicChain[ClarifyingOutput](
 			ctx,
 			a.Name(),
-			chatModel,
+			chatModel.BaseChatModel,
 			config.SystemPromptClarifyingAgent,
 		)
 		if err != nil {
@@ -139,10 +151,11 @@ Act as if the user said "Yes, proceed with the best practice for these questions
 Respond ONLY with the FULL, UPDATED technical specification. Use professional language.`, kgContext, qs, currentSpec)
 	}
 
-	chatModel, err := a.CreateChatModel(ctx)
+	chatModel, err := a.CreateCloseableChatModel(ctx)
 	if err != nil {
 		return "", fmt.Errorf("create model: %w", err)
 	}
+	defer chatModel.Close()
 
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),
@@ -157,9 +170,11 @@ Respond ONLY with the FULL, UPDATED technical specification. Use professional la
 }
 
 // PlanningAgent decomposes goals into actionable tasks.
+// Call Close() when done to release resources.
 type PlanningAgent struct {
 	core.BaseAgent
-	chain *core.DeterministicChain[PlanningOutput]
+	chain       *core.DeterministicChain[PlanningOutput]
+	modelCloser io.Closer
 }
 
 // PlanningTask represents a single task in the plan.
@@ -185,17 +200,26 @@ func NewPlanningAgent(cfg llm.Config) *PlanningAgent {
 	}
 }
 
+// Close releases LLM resources. Safe to call multiple times.
+func (a *PlanningAgent) Close() error {
+	if a.modelCloser != nil {
+		return a.modelCloser.Close()
+	}
+	return nil
+}
+
 // Run executes the planning logic using Eino Chain.
 func (a *PlanningAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
 	if a.chain == nil {
-		chatModel, err := a.CreateChatModel(ctx)
+		chatModel, err := a.CreateCloseableChatModel(ctx)
 		if err != nil {
 			return core.Output{}, err
 		}
+		a.modelCloser = chatModel
 		chain, err := core.NewDeterministicChain[PlanningOutput](
 			ctx,
 			a.Name(),
-			chatModel,
+			chatModel.BaseChatModel,
 			config.SystemPromptPlanningAgent,
 		)
 		if err != nil {
@@ -246,10 +270,10 @@ func (a *PlanningAgent) Run(ctx context.Context, input core.Input) (core.Output,
 }
 
 func init() {
-	core.RegisterAgentFactory("clarifying", func(cfg llm.Config, basePath string) core.Agent {
+	core.RegisterAgent("clarifying", func(cfg llm.Config, basePath string) core.Agent {
 		return NewClarifyingAgent(cfg)
-	})
-	core.RegisterAgentFactory("planning", func(cfg llm.Config, basePath string) core.Agent {
+	}, "Goal Clarification", "Refines user goals by asking clarifying questions")
+	core.RegisterAgent("planning", func(cfg llm.Config, basePath string) core.Agent {
 		return NewPlanningAgent(cfg)
-	})
+	}, "Task Planning", "Decomposes goals into actionable tasks with dependencies")
 }

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -162,6 +161,7 @@ func createTaskwingStructure(basePath string, verbose bool) error {
 	dirs := []string{
 		".taskwing",
 		".taskwing/memory",
+		".taskwing/plans",
 	}
 
 	for _, dir := range dirs {
@@ -174,28 +174,9 @@ func createTaskwingStructure(basePath string, verbose bool) error {
 		}
 	}
 
-	// Create config.yaml
-	configPath := filepath.Join(basePath, ".taskwing", "config.yaml")
-	configContent := fmt.Sprintf(`# TaskWing Configuration
-# https://taskwing.app/docs/config
-
-version: "1"
-
-# LLM settings for bootstrap
-llm:
-  provider: openai
-  model: %s
-
-# Memory settings
-memory:
-  path: .taskwing/memory
-`, llm.DefaultOpenAIModel)
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
-		return fmt.Errorf("failed to create config.yaml: %w", err)
-	}
-	if verbose {
-		fmt.Println("  ✓ Created .taskwing/config.yaml")
-	}
+	// NOTE: config.yaml is NOT created here anymore.
+	// It will be created by config.SaveGlobalLLMConfig() after LLM provider selection.
+	// This prevents the "wrong model" bug where OpenAI model was shown for Gemini provider.
 
 	return nil
 }

@@ -19,65 +19,83 @@ type AgentInfo struct {
 	Description string `json:"description"`
 }
 
+// agentRegistration holds both factory and static metadata.
+type agentRegistration struct {
+	factory     AgentFactory
+	name        string
+	description string
+}
+
 var (
-	factories   = make(map[string]AgentFactory)
-	factoriesMu sync.RWMutex
+	registrations   = make(map[string]agentRegistration)
+	registrationsMu sync.RWMutex
 )
 
 // RegisterAgentFactory registers a factory function for creating an agent.
+// Deprecated: Use RegisterAgent instead which includes static metadata.
 func RegisterAgentFactory(id string, factory AgentFactory) {
-	factoriesMu.Lock()
-	defer factoriesMu.Unlock()
-	factories[id] = factory
+	RegisterAgent(id, factory, id, "") // Use ID as name, empty description
+}
+
+// RegisterAgent registers an agent with static metadata.
+// This avoids creating agents with empty config just to get Name/Description.
+func RegisterAgent(id string, factory AgentFactory, name, description string) {
+	registrationsMu.Lock()
+	defer registrationsMu.Unlock()
+	registrations[id] = agentRegistration{
+		factory:     factory,
+		name:        name,
+		description: description,
+	}
 }
 
 // CreateAgent creates an agent by ID using the registered factory.
 func CreateAgent(id string, cfg llm.Config, basePath string) Agent {
-	factoriesMu.RLock()
-	defer factoriesMu.RUnlock()
-	if factory, ok := factories[id]; ok {
-		return factory(cfg, basePath)
+	registrationsMu.RLock()
+	defer registrationsMu.RUnlock()
+	if reg, ok := registrations[id]; ok {
+		return reg.factory(cfg, basePath)
 	}
 	return nil
 }
 
 // CreateAllAgents creates all registered agents.
 func CreateAllAgents(cfg llm.Config, basePath string) []Agent {
-	factoriesMu.RLock()
-	defer factoriesMu.RUnlock()
-	agents := make([]Agent, 0, len(factories))
-	for _, factory := range factories {
-		agents = append(agents, factory(cfg, basePath))
+	registrationsMu.RLock()
+	defer registrationsMu.RUnlock()
+	agents := make([]Agent, 0, len(registrations))
+	for _, reg := range registrations {
+		agents = append(agents, reg.factory(cfg, basePath))
 	}
 	return agents
 }
 
 // Registry returns metadata for all registered agents.
+// Uses static metadata instead of instantiating agents.
 func Registry() []AgentInfo {
-	factoriesMu.RLock()
-	defer factoriesMu.RUnlock()
-	infos := make([]AgentInfo, 0, len(factories))
-	for id, factory := range factories {
-		agent := factory(llm.Config{}, "")
+	registrationsMu.RLock()
+	defer registrationsMu.RUnlock()
+	infos := make([]AgentInfo, 0, len(registrations))
+	for id, reg := range registrations {
 		infos = append(infos, AgentInfo{
 			ID:          id,
-			Name:        agent.Name(),
-			Description: agent.Description(),
+			Name:        reg.name,
+			Description: reg.description,
 		})
 	}
 	return infos
 }
 
 // GetAgentByID returns agent info by ID.
+// Uses static metadata instead of instantiating agents.
 func GetAgentByID(id string) *AgentInfo {
-	factoriesMu.RLock()
-	defer factoriesMu.RUnlock()
-	if factory, ok := factories[id]; ok {
-		agent := factory(llm.Config{}, "")
+	registrationsMu.RLock()
+	defer registrationsMu.RUnlock()
+	if reg, ok := registrations[id]; ok {
 		return &AgentInfo{
 			ID:          id,
-			Name:        agent.Name(),
-			Description: agent.Description(),
+			Name:        reg.name,
+			Description: reg.description,
 		}
 	}
 	return nil

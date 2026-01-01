@@ -25,10 +25,11 @@ type ClassifyResult struct {
 
 // Classify uses LLM to classify content and extract metadata.
 func Classify(ctx context.Context, content string, cfg llm.Config) (*ClassifyResult, error) {
-	chatModel, err := llm.NewChatModel(ctx, cfg)
+	chatModel, err := llm.NewCloseableChatModel(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create chat model: %w", err)
 	}
+	defer chatModel.Close()
 
 	prompt := buildClassifyPrompt(content)
 

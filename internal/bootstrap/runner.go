@@ -23,6 +23,12 @@ func NewRunner(cfg llm.Config, projectPath string) *Runner {
 	}
 }
 
+// Close releases resources held by all agents.
+// Should be called when the runner is no longer needed.
+func (r *Runner) Close() {
+	core.CloseAgents(r.agents)
+}
+
 // Run executes all agents in parallel and returns aggregated findings
 func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Finding, error) {
 	input := core.Input{

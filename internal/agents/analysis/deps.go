@@ -6,6 +6,7 @@ package analysis
 import (
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -15,9 +16,11 @@ import (
 )
 
 // DepsAgent analyzes dependencies to understand technology choices.
+// Call Close() when done to release resources.
 type DepsAgent struct {
 	core.BaseAgent
-	chain *core.DeterministicChain[depsTechDecisionsResponse]
+	chain       *core.DeterministicChain[depsTechDecisionsResponse]
+	modelCloser io.Closer
 }
 
 // NewDepsAgent creates a new dependency analysis agent.
@@ -27,18 +30,27 @@ func NewDepsAgent(cfg llm.Config) *DepsAgent {
 	}
 }
 
+// Close releases LLM resources. Safe to call multiple times.
+func (a *DepsAgent) Close() error {
+	if a.modelCloser != nil {
+		return a.modelCloser.Close()
+	}
+	return nil
+}
+
 // Run executes the agent using Eino DeterministicChain.
 func (a *DepsAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
 	// Initialize chain (lazy)
 	if a.chain == nil {
-		chatModel, err := a.CreateChatModel(ctx)
+		chatModel, err := a.CreateCloseableChatModel(ctx)
 		if err != nil {
 			return core.Output{}, err
 		}
+		a.modelCloser = chatModel
 		chain, err := core.NewDeterministicChain[depsTechDecisionsResponse](
 			ctx,
 			a.Name(),
-			chatModel,
+			chatModel.BaseChatModel,
 			config.PromptTemplateDepsAgent,
 		)
 		if err != nil {
@@ -155,7 +167,7 @@ func gatherDeps(basePath string) string {
 }
 
 func init() {
-	core.RegisterAgentFactory("deps", func(cfg llm.Config, basePath string) core.Agent {
+	core.RegisterAgent("deps", func(cfg llm.Config, basePath string) core.Agent {
 		return NewDepsAgent(cfg)
-	})
+	}, "Dependencies", "Analyzes project dependencies and their purposes")
 }

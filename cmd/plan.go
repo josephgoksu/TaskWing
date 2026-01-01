@@ -64,7 +64,9 @@ var planNewCmd = &cobra.Command{
 
 		// Initialize Agents
 		clarifyingAgent := planning.NewClarifyingAgent(cfg)
+		defer clarifyingAgent.Close()
 		planningAgent := planning.NewPlanningAgent(cfg)
+		defer planningAgent.Close()
 		ks := knowledge.NewService(repo, cfg)
 
 		// Create Streaming Output for "The Pulse"

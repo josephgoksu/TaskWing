@@ -219,6 +219,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 
 	// Create Bootstrap Runner
 	runner := bootstrap.NewRunner(llmCfg, req.ProjectPath)
+	defer runner.Close()
 
 	// Run Agents
 	findings, err := runner.Run(r.Context(), req.ProjectPath)

@@ -95,6 +95,7 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 
 	// Create agents (all deterministic - no ReAct loops)
 	agentsList := bootstrap.NewDefaultAgents(llmCfg, cwd)
+	defer core.CloseAgents(agentsList)
 
 	// Prepare input
 	input := core.Input{
@@ -320,23 +321,10 @@ func runAutoInit(basePath string, cmd *cobra.Command) error {
 		}
 	}
 
-	// Create config.yaml
-	configPath := filepath.Join(basePath, ".taskwing", "config.yaml")
-	configContent := fmt.Sprintf(`# TaskWing Configuration
-version: "1"
-llm:
-  provider: openai
-  model: %s
-memory:
-  path: .taskwing/memory
-`, llm.DefaultOpenAIModel)
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
-		return fmt.Errorf("create config.yaml: %w", err)
-	}
-
-	// Prompt for AI selection
+	// Prompt for AI IDE integrations (slash commands)
 	fmt.Println()
 	fmt.Println("🤖 Which AI assistant(s) do you use?")
+	fmt.Println()
 	selectedAIs := promptAISelection()
 	if len(selectedAIs) == 0 {
 		fmt.Println("  Skipping AI setup (rerun 'tw bootstrap' to add assistants)")
@@ -351,6 +339,10 @@ memory:
 	}
 
 	fmt.Println("\n✓ TaskWing initialized!")
+
+	// NOTE: config.yaml is NOT created here anymore.
+	// It will be created by config.SaveGlobalLLMConfig() after LLM provider selection
+	// in getLLMConfig() which runs after this function.
 	return nil
 }
 
