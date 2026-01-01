@@ -16,6 +16,8 @@ import (
 
 // getLLMConfig unifies LLM configuration loading across all CLI commands.
 // It respects precedence: Flag > Config File > Environment Variable.
+// IMPORTANT: If a model is specified, the provider is inferred from the model name
+// to enable seamless cross-provider usage (e.g., switching from gemini to gpt models).
 func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	// Flags support (if the command defined them)
 	provider, _ := cmd.Flags().GetString("provider")
@@ -29,9 +31,32 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	apiKey, _ := cmd.Flags().GetString("api-key")
 	ollamaURL, _ := cmd.Flags().GetString("ollama-url")
 
-	// 1. Provider
+	// Track if we need to prompt for interactive setup
+	providerFromPrompt := false
+	modelFromPrompt := false
+
+	// 1. Get model first (before provider) - this enables model-based provider inference
+	if model == "" {
+		if viper.IsSet("llm.model") {
+			model = viper.GetString("llm.model")
+		}
+	}
+
+	// 2. Provider - with model-based inference
+	providerInferredFromModel := false
 	if provider == "" {
-		// Only use viper value if explicitly set in config/env, ignoring defaults for now
+		// If model is specified, try to infer provider from model name
+		// This is KEY for cross-provider usage (e.g., -m gpt-5-mini when config says gemini)
+		if model != "" {
+			if inferredProvider, ok := llm.InferProviderFromModel(model); ok {
+				provider = inferredProvider
+				providerInferredFromModel = true
+			}
+		}
+	}
+
+	// Fall back to config if not inferred
+	if provider == "" {
 		if viper.IsSet("llm.provider") {
 			provider = viper.GetString("llm.provider")
 		}
@@ -43,7 +68,7 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		selectedProvider, err := ui.PromptLLMProvider()
 		if err == nil && selectedProvider != "" {
 			provider = selectedProvider
-			// We will save this preference implicitly when saving the key/config later
+			providerFromPrompt = true
 		}
 	}
 
@@ -56,15 +81,21 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		return llm.Config{}, fmt.Errorf("invalid provider: %w", err)
 	}
 
-	// 2. Chat Model
-	if model == "" {
-		model = viper.GetString("llm.model")
+	// Interactive Model Selection (if provider was just selected or model not configured)
+	if model == "" && ui.IsInteractive() {
+		selectedModel, err := ui.PromptModelSelection(provider)
+		if err == nil && selectedModel != "" {
+			model = selectedModel
+			modelFromPrompt = true
+		}
 	}
+
+	// Final fallback to provider default
 	if model == "" {
 		model = llm.DefaultModelForProvider(string(llmProvider))
 	}
 
-	// 3. API Key
+	// 3. API Key - resolve for the ACTUAL provider being used
 	if apiKey == "" {
 		apiKey = config.ResolveAPIKey(llmProvider)
 	}
@@ -80,36 +111,38 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 			fmt.Printf("No API key found for %s.\n", provider)
 			inputKey, err := ui.PromptAPIKey()
 			if err != nil {
-				// Don't fail hard here, let validation catch it
+				fmt.Fprintf(os.Stderr, "Warning: API key prompt failed: %v\n", err)
 			} else if inputKey != "" {
 				apiKey = inputKey
-				// Save Config Globally (Provider + Key)
-				if err := config.SaveGlobalLLMConfig(string(llmProvider), apiKey); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to save config: %v\n", err)
+				// Save Config Globally (Provider + Model + Key)
+				// Only save if NOT inferred from model (to avoid overwriting user's default config)
+				if !providerInferredFromModel {
+					if err := config.SaveGlobalLLMConfigWithModel(string(llmProvider), model, apiKey); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to save config: %v\n", err)
+					} else {
+						fmt.Println("✓ Configuration saved to ~/.taskwing/config.yaml")
+					}
 				} else {
-					fmt.Println("✓ Configuration saved to ~/.taskwing/config.yaml")
+					// Just save the API key for this provider, don't change default provider
+					if err := config.SaveAPIKeyForProvider(string(llmProvider), apiKey); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to save API key: %v\n", err)
+					} else {
+						fmt.Printf("✓ API key for %s saved to ~/.taskwing/config.yaml\n", provider)
+					}
 				}
+				// Also update Viper's in-memory config so subsequent calls in this process find the key
+				viper.Set(fmt.Sprintf("llm.apiKeys.%s", llmProvider), apiKey)
 			}
 		}
-	} else if provider != "" && apiKey != "" {
-		// If we have both (e.g. from prompt above or env), nice.
-		// If user selected Ollama, we might want to save that preference too if it wasn't saved!
-		// But let's only save if we prompted for something?
-		// Actually, if they selected a provider interactively but didn't need a key (Ollama), we should save that choice!
-
-		// Wait, if provider was selected via prompt, we should save it.
-		// I need to track if we prompted.
-		// Or simpler: Just always verify config consistency?
-		// If Viper doesn't have it, save it?
-		if !viper.IsSet("llm.provider") && ui.IsInteractive() {
-			// This means it wasn't in config/flags, so it came from our prompt (or default fallback).
-			// Re-save is cheap, ignore error.
-			_ = config.SaveGlobalLLMConfig(provider, apiKey)
+	} else if (providerFromPrompt || modelFromPrompt) && ui.IsInteractive() {
+		// Save if we interactively selected provider or model
+		if err := config.SaveGlobalLLMConfigWithModel(provider, model, apiKey); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save config: %v\n", err)
 		}
 	}
 
 	if requiresKey && apiKey == "" {
-		return llm.Config{}, fmt.Errorf("API key required for %s: use --api-key, set config 'llm.apiKeys.%s' (or legacy 'llm.apiKey'), or set provider env var (OPENAI_API_KEY/ANTHROPIC_API_KEY/GEMINI_API_KEY)", provider, provider)
+		return llm.Config{}, fmt.Errorf("API key required for %s: use --api-key, set config 'llm.apiKeys.%s', or set env var (%s)", provider, provider, getEnvVarName(llmProvider))
 	}
 
 	// 4. Base URL (Ollama)
@@ -130,4 +163,18 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		APIKey:         apiKey,
 		BaseURL:        ollamaURL,
 	}, nil
+}
+
+// getEnvVarName returns the environment variable name for a provider's API key
+func getEnvVarName(provider llm.Provider) string {
+	switch provider {
+	case llm.ProviderOpenAI:
+		return "OPENAI_API_KEY"
+	case llm.ProviderAnthropic:
+		return "ANTHROPIC_API_KEY"
+	case llm.ProviderGemini:
+		return "GEMINI_API_KEY"
+	default:
+		return ""
+	}
 }

@@ -147,7 +147,7 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 			return nil, fmt.Errorf("failed to create Gemini chat model: %w", err)
 		}
 		if chatModel == nil {
-			return nil, fmt.Errorf("Gemini chat model initialization returned nil")
+			return nil, fmt.Errorf("gemini chat model initialization returned nil")
 		}
 		return &CloseableChatModel{
 			BaseChatModel: chatModel,

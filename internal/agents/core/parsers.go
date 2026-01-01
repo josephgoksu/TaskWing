@@ -33,13 +33,7 @@ func ConvertEvidence(jsonEvidence []EvidenceJSON) []Evidence {
 	}
 	evidence := make([]Evidence, len(jsonEvidence))
 	for i, e := range jsonEvidence {
-		evidence[i] = Evidence{
-			FilePath:    e.FilePath,
-			StartLine:   e.StartLine,
-			EndLine:     e.EndLine,
-			Snippet:     e.Snippet,
-			GrepPattern: e.GrepPattern,
-		}
+		evidence[i] = Evidence(e)
 	}
 	return evidence
 }

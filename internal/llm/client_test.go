@@ -79,22 +79,22 @@ func TestDefaultModelForProvider(t *testing.T) {
 		{
 			name:     "openai default model",
 			provider: "openai",
-			want:     DefaultOpenAIModel,
+			want:     "gpt-5-mini-2025-08-07", // From ModelRegistry, uses alias for API compat
 		},
 		{
 			name:     "ollama default model",
 			provider: "ollama",
-			want:     DefaultOllamaModel,
+			want:     "llama3.2",
 		},
 		{
 			name:     "anthropic default model",
 			provider: "anthropic",
-			want:     DefaultAnthropicModel,
+			want:     "claude-3-5-sonnet-latest",
 		},
 		{
 			name:     "gemini default model",
 			provider: "gemini",
-			want:     DefaultGeminiModel,
+			want:     "gemini-2.0-flash",
 		},
 		{
 			name:     "unknown provider returns empty",

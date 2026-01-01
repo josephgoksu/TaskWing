@@ -87,9 +87,7 @@ func (r *BootstrapReport) Finalize(findings []Finding, duration time.Duration) {
 				r.Coverage.CharactersRead += fr.Characters
 			}
 		}
-		for _, sf := range ar.Coverage.FilesSkippedLog {
-			r.Coverage.FilesSkippedLog = append(r.Coverage.FilesSkippedLog, sf)
-		}
+		r.Coverage.FilesSkippedLog = append(r.Coverage.FilesSkippedLog, ar.Coverage.FilesSkippedLog...)
 	}
 	r.Coverage.FilesAnalyzed = len(r.Coverage.FilesRead)
 	r.Coverage.FilesSkipped = len(r.Coverage.FilesSkippedLog)

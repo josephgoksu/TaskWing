@@ -29,23 +29,8 @@ func printJSON(v any) error {
 	return nil
 }
 
-func printIfNotQuiet(msg string) {
-	if !isQuiet() {
-		fmt.Println(msg)
-	}
-}
-
 func openRepo() (*memory.Repository, error) {
 	return memory.NewDefaultRepository(config.GetMemoryBasePath())
-}
-
-func withRepo(fn func(*memory.Repository) error) error {
-	repo, err := openRepo()
-	if err != nil {
-		return err
-	}
-	defer repo.Close()
-	return fn(repo)
 }
 
 func confirmOrAbort(prompt string) bool {

@@ -29,13 +29,27 @@ func quoteYAMLValue(value string) string {
 }
 
 // SaveGlobalLLMConfig saves the LLM provider, API key, and default model to global config.
+// Deprecated: Use SaveGlobalLLMConfigWithModel to also specify the model.
 func SaveGlobalLLMConfig(provider, key string) error {
-	// Input validation
 	if provider == "" {
 		return fmt.Errorf("provider cannot be empty")
 	}
 	if key == "" {
 		return fmt.Errorf("API key cannot be empty")
+	}
+	model := llm.DefaultModelForProvider(provider)
+	return SaveGlobalLLMConfigWithModel(provider, model, key)
+}
+
+// SaveGlobalLLMConfigWithModel saves the LLM provider, model, and API key to global config.
+func SaveGlobalLLMConfigWithModel(provider, model, key string) error {
+	// Input validation
+	if provider == "" {
+		return fmt.Errorf("provider cannot be empty")
+	}
+	// Key can be empty for providers like Ollama
+	if model == "" {
+		model = llm.DefaultModelForProvider(provider)
 	}
 
 	configDir, err := GetGlobalConfigDir()
@@ -49,9 +63,6 @@ func SaveGlobalLLMConfig(provider, key string) error {
 
 	configFile := filepath.Join(configDir, "config.yaml")
 
-	// Get the default model for this provider
-	defaultModel := llm.DefaultModelForProvider(provider)
-
 	// Check if file exists
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		// Create new file with provider, model, and API key
@@ -63,20 +74,21 @@ version: "1"
 llm:
   provider: %s
   model: %s
-  apiKeys:
+`, provider, model)
+		if key != "" {
+			content += fmt.Sprintf(`  apiKeys:
     %s: %s
-`, provider, defaultModel, provider, quotedKey)
-		if provider == string(llm.ProviderOpenAI) {
-			content += fmt.Sprintf("  apiKey: %s\n", quotedKey) // Legacy OpenAI key
+`, provider, quotedKey)
+			// Note: No longer writing legacy llm.apiKey - read path handles migration
 		}
 		return os.WriteFile(configFile, []byte(content), 0600)
 	}
 
 	// Update existing
-	return updateExistingConfigFile(configFile, provider, key)
+	return updateExistingConfigFileWithModel(configFile, provider, model, key)
 }
 
-func updateExistingConfigFile(path string, provider, key string) error {
+func updateExistingConfigFileWithModel(path string, provider, model, key string) error {
 	bytes, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -95,8 +107,6 @@ func updateExistingConfigFile(path string, provider, key string) error {
 	llmIndent := ""
 	apiKeysIndent := ""
 
-	// Get default model for the new provider
-	defaultModel := llm.DefaultModelForProvider(provider)
 	// Quote API key for safe YAML serialization
 	quotedKey := quoteYAMLValue(key)
 
@@ -117,7 +127,9 @@ func updateExistingConfigFile(path string, provider, key string) error {
 			if strings.HasPrefix(line, apiKeysIndent+"  ") || strings.HasPrefix(line, apiKeysIndent+"\t") {
 				keyTrim := strings.TrimSpace(line)
 				if strings.HasPrefix(keyTrim, provider+":") {
-					newLines = append(newLines, fmt.Sprintf("%s  %s: %s", apiKeysIndent, provider, quotedKey))
+					if key != "" {
+						newLines = append(newLines, fmt.Sprintf("%s  %s: %s", apiKeysIndent, provider, quotedKey))
+					}
 					updatedProviderKey = true
 					continue
 				}
@@ -125,7 +137,7 @@ func updateExistingConfigFile(path string, provider, key string) error {
 				continue
 			}
 			// Exiting apiKeys block
-			if !updatedProviderKey && provider != "" {
+			if !updatedProviderKey && provider != "" && key != "" {
 				newLines = append(newLines, fmt.Sprintf("%s  %s: %s", apiKeysIndent, provider, quotedKey))
 				updatedProviderKey = true
 			}
@@ -143,7 +155,7 @@ func updateExistingConfigFile(path string, provider, key string) error {
 
 		// If we find apiKey inside llm block, replace it (OpenAI only)
 		if inLLM && strings.HasPrefix(trimmed, "apiKey:") {
-			if provider == string(llm.ProviderOpenAI) {
+			if provider == string(llm.ProviderOpenAI) && key != "" {
 				indent := line[:strings.Index(line, "apiKey:")]
 				newLines = append(newLines, fmt.Sprintf("%sapiKey: %s", indent, quotedKey))
 				updatedKey = true
@@ -160,22 +172,22 @@ func updateExistingConfigFile(path string, provider, key string) error {
 			continue
 		}
 
-		// Update model when provider changes
+		// Update model to user-specified model
 		if inLLM && strings.HasPrefix(trimmed, "model:") {
 			indent := line[:strings.Index(line, "model:")]
-			newLines = append(newLines, fmt.Sprintf("%smodel: %s", indent, defaultModel))
+			newLines = append(newLines, fmt.Sprintf("%smodel: %s", indent, model))
 			updatedModel = true
 			continue
 		}
 
 		// Detect exit of llm block (a line that is not indented, not a comment, and has a key)
-		if inLLM && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#") && strings.Contains(line, ":") {
-			if !apiKeysFound && provider != "" {
+		if inLLM && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && !strings.HasPrefix(line, "#") && strings.Contains(line, ":") {
+			if !apiKeysFound && provider != "" && key != "" {
 				newLines = append(newLines, fmt.Sprintf("%s  apiKeys:", llmIndent))
 				newLines = append(newLines, fmt.Sprintf("%s    %s: %s", llmIndent, provider, quotedKey))
 				apiKeysFound = true
 				updatedProviderKey = true
-			} else if apiKeysFound && !updatedProviderKey && provider != "" {
+			} else if apiKeysFound && !updatedProviderKey && provider != "" && key != "" {
 				newLines = append(newLines, fmt.Sprintf("%s  %s: %s", apiKeysIndent, provider, quotedKey))
 				updatedProviderKey = true
 			}
@@ -186,24 +198,26 @@ func updateExistingConfigFile(path string, provider, key string) error {
 		newLines = append(newLines, line)
 	}
 
-	if inAPIKeys && !updatedProviderKey && provider != "" {
+	if inAPIKeys && !updatedProviderKey && provider != "" && key != "" {
 		newLines = append(newLines, fmt.Sprintf("%s  %s: %s", apiKeysIndent, provider, quotedKey))
 		updatedProviderKey = true
 	}
-	if inLLM && !apiKeysFound && provider != "" {
+	if inLLM && !apiKeysFound && provider != "" && key != "" {
 		newLines = append(newLines, fmt.Sprintf("%s  apiKeys:", llmIndent))
 		newLines = append(newLines, fmt.Sprintf("%s    %s: %s", llmIndent, provider, quotedKey))
 		updatedProviderKey = true
 	}
 
-	if (provider == string(llm.ProviderOpenAI) && !updatedKey) || !updatedProvider || !updatedProviderKey || !updatedModel {
-		return updateConfigWithViper(path, provider, key)
+	// Skip key validation for Ollama (no key needed)
+	needsKey := key != "" || provider == string(llm.ProviderOllama)
+	if (provider == string(llm.ProviderOpenAI) && key != "" && !updatedKey) || !updatedProvider || (needsKey && key != "" && !updatedProviderKey) || !updatedModel {
+		return updateConfigWithViperAndModel(path, provider, model, key)
 	}
 
 	return os.WriteFile(path, []byte(strings.Join(newLines, "\n")), 0600)
 }
 
-func updateConfigWithViper(path string, provider, key string) error {
+func updateConfigWithViperAndModel(path string, provider, model, key string) error {
 	v := viper.New()
 	v.SetConfigFile(path)
 	v.SetConfigType("yaml")
@@ -213,14 +227,47 @@ func updateConfigWithViper(path string, provider, key string) error {
 		return err
 	}
 
-	v.Set(fmt.Sprintf("llm.apiKeys.%s", provider), key)
-	if provider == string(llm.ProviderOpenAI) {
-		v.Set("llm.apiKey", key) // Legacy OpenAI key
+	if key != "" {
+		v.Set(fmt.Sprintf("llm.apiKeys.%s", provider), key)
+		// Note: No longer writing to legacy llm.apiKey - read path handles migration
 	}
 	if provider != "" {
 		v.Set("llm.provider", provider)
-		// Also update model to match provider's default
-		v.Set("llm.model", llm.DefaultModelForProvider(provider))
+		v.Set("llm.model", model)
 	}
+	return v.WriteConfig()
+}
+
+// SaveAPIKeyForProvider saves only the API key for a specific provider without
+// changing the default provider or model. This is used when auto-detecting provider
+// from model name - we want to save the key but not change the user's preferred defaults.
+func SaveAPIKeyForProvider(provider, key string) error {
+	if provider == "" {
+		return fmt.Errorf("provider cannot be empty")
+	}
+	if key == "" {
+		return fmt.Errorf("API key cannot be empty")
+	}
+
+	configDir, err := GetGlobalConfigDir()
+	if err != nil {
+		return err
+	}
+
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	v := viper.New()
+	v.SetConfigFile(configFile)
+	v.SetConfigType("yaml")
+
+	// Read existing config
+	if err := v.ReadInConfig(); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	// Only set the API key, don't touch provider or model
+	v.Set(fmt.Sprintf("llm.apiKeys.%s", provider), key)
+	// Note: No longer writing to legacy llm.apiKey - read path handles migration
+
 	return v.WriteConfig()
 }

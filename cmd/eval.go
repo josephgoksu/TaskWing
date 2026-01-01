@@ -850,7 +850,8 @@ func runEvalTaskInternal(ctx context.Context, llmCfg llm.Config, prompt string) 
 	return nil, usage, lastErr
 }
 
-// runLLMJudge uses an LLM to semantically evaluate model output
+// runLLMJudge uses an LLM to semantically evaluate model output.
+// Runs the judge 3 times and takes the median score for consistency.
 func runLLMJudge(ctx context.Context, llmCfg llm.Config, task evalpkg.Task, output string) (evalpkg.JudgeResult, error) {
 	// Build expected behavior from task fields
 	expected := task.Expected
@@ -904,13 +905,55 @@ Output ONLY valid JSON:
 {"score": 8, "reason": "brief explanation"}`,
 		task.Prompt, expected, failureSignals, output)
 
+	// Run judge 3 times for consistency (median score reduces variance)
+	const judgeRuns = 3
+	type judgeRun struct {
+		score  int
+		reason string
+	}
+	var runs []judgeRun
+	var lastErr error
+
+	for i := 0; i < judgeRuns; i++ {
+		result, err := runSingleJudge(ctx, llmCfg, judgePrompt)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		runs = append(runs, judgeRun{score: result.Score, reason: result.Reason})
+	}
+
+	if len(runs) == 0 {
+		return evalpkg.JudgeResult{}, fmt.Errorf("all judge runs failed: %w", lastErr)
+	}
+
+	// Sort by score to find median
+	sort.Slice(runs, func(i, j int) bool {
+		return runs[i].score < runs[j].score
+	})
+
+	// Take median (middle element after sorting)
+	medianIdx := len(runs) / 2
+	medianRun := runs[medianIdx]
+
+	result := evalpkg.JudgeResult{
+		Score:  medianRun.score,
+		Reason: medianRun.reason,
+		Pass:   medianRun.score >= evalpkg.ScoreThreshold,
+	}
+
+	return result, nil
+}
+
+// runSingleJudge executes a single judge evaluation
+func runSingleJudge(ctx context.Context, llmCfg llm.Config, prompt string) (evalpkg.JudgeResult, error) {
 	chatModel, err := llm.NewCloseableChatModel(ctx, llmCfg)
 	if err != nil {
 		return evalpkg.JudgeResult{}, fmt.Errorf("create judge model: %w", err)
 	}
 	defer chatModel.Close()
 
-	resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(judgePrompt)})
+	resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(prompt)})
 	if err != nil {
 		return evalpkg.JudgeResult{}, fmt.Errorf("judge generate: %w", err)
 	}
@@ -936,12 +979,8 @@ Output ONLY valid JSON:
 	}
 
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		// If parsing fails, default to fail with the raw response
 		return evalpkg.JudgeResult{Score: 0, Pass: false, Reason: "Judge parse error: " + content}, nil
 	}
-
-	// Derive Pass from Score (for backwards compatibility)
-	result.Pass = result.Score >= evalpkg.ScoreThreshold
 
 	return result, nil
 }
@@ -1161,67 +1200,6 @@ func summarize(results []evalpkg.TaskResult) map[string]evalpkg.Summary {
 		summary[model] = item
 	}
 	return summary
-}
-
-func printSummary(results evalpkg.Results) {
-	models := make([]string, 0, len(results.Summary))
-	for model := range results.Summary {
-		models = append(models, model)
-	}
-	sort.Strings(models)
-
-	fmt.Println("Model Summary")
-	for _, model := range models {
-		item := results.Summary[model]
-		fmt.Printf("- %s: %d tasks, %d hard fail(s)\n", model, item.Total, item.HardFail)
-	}
-}
-
-func printFailures(results evalpkg.Results) {
-	var failed []evalpkg.TaskResult
-	for _, r := range results.TaskResults {
-		if r.HardFail {
-			failed = append(failed, r)
-		}
-	}
-	if len(failed) == 0 {
-		fmt.Println("\nAll tasks passed hard-fail rules.")
-		return
-	}
-
-	sort.Slice(failed, func(i, j int) bool {
-		if failed[i].Model == failed[j].Model {
-			return failed[i].Task < failed[j].Task
-		}
-		return failed[i].Model < failed[j].Model
-	})
-
-	fmt.Println("\nFailures")
-	for _, r := range failed {
-		fmt.Printf("- %s %s: FAIL (%s)\n", r.Model, r.Task, strings.Join(failedRules(r.Checks), ", "))
-		fmt.Printf("  output: %s\n", r.OutputFile)
-	}
-}
-
-func printAllResults(results evalpkg.Results) {
-	sort.Slice(results.TaskResults, func(i, j int) bool {
-		if results.TaskResults[i].Model == results.TaskResults[j].Model {
-			return results.TaskResults[i].Task < results.TaskResults[j].Task
-		}
-		return results.TaskResults[i].Model < results.TaskResults[j].Model
-	})
-
-	fmt.Println("\nAll Results")
-	for _, r := range results.TaskResults {
-		status := "PASS"
-		if r.HardFail {
-			status = "FAIL"
-		}
-		fmt.Printf("- %s %s: %s\n", r.Model, r.Task, status)
-		if r.HardFail {
-			fmt.Printf("  failed: %s\n", strings.Join(failedRules(r.Checks), ", "))
-		}
-	}
 }
 
 func failedRules(checks map[string]evalpkg.RuleCheck) []string {

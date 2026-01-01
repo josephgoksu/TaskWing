@@ -137,12 +137,6 @@ func (s *Service) purgeStaleData(findings []core.Finding, verbose bool) error {
 	return nil
 }
 
-// ingestNodes creates document nodes from findings (legacy, no title index)
-func (s *Service) ingestNodes(ctx context.Context, findings []core.Finding, verbose bool) (int, int, error) {
-	created, skipped, _, err := s.ingestNodesWithIndex(ctx, findings, verbose)
-	return created, skipped, err
-}
-
 // ingestNodesWithIndex creates document nodes and returns a title->nodeID index for LLM relationship linking
 func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Finding, verbose bool) (int, int, map[string]string, error) {
 	if verbose {

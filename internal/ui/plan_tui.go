@@ -437,10 +437,10 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.State != StateClarifyingInput && m.State != StateAnsweringQuestion {
 			switch msg.String() {
 			case "j":
-				m.Viewport.LineDown(1)
+				m.Viewport.ScrollDown(1)
 				return m, nil
 			case "k":
-				m.Viewport.LineUp(1)
+				m.Viewport.ScrollUp(1)
 				return m, nil
 			case "g":
 				m.Viewport.GotoTop()
@@ -981,13 +981,13 @@ func formatUserFriendlyError(operation string, err error) string {
 	case strings.Contains(errStr, "context canceled"):
 		return fmt.Sprintf("%s was cancelled.", operation)
 	case strings.Contains(errStr, "connection refused"):
-		return fmt.Sprintf("⚠ Cannot connect to LLM service. Is the API available?")
+		return "⚠ Cannot connect to LLM service. Is the API available?"
 	case strings.Contains(errStr, "rate limit"):
-		return fmt.Sprintf("⚠ Rate limited by API. Wait a moment and try again.")
+		return "⚠ Rate limited by API. Wait a moment and try again."
 	case strings.Contains(errStr, "401"), strings.Contains(errStr, "unauthorized"):
-		return fmt.Sprintf("⚠ API authentication failed. Check your API key.")
+		return "⚠ API authentication failed. Check your API key."
 	case strings.Contains(errStr, "500"), strings.Contains(errStr, "internal server"):
-		return fmt.Sprintf("⚠ LLM service error. Try again in a moment.")
+		return "⚠ LLM service error. Try again in a moment."
 	default:
 		// Truncate long errors
 		if len(errStr) > 100 {

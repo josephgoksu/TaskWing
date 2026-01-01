@@ -170,7 +170,7 @@ func (t *GrepTool) InvokableRun(ctx context.Context, argsJSON string, opts ...to
 	lines := strings.Split(output, "\n")
 	if len(lines) > 50 {
 		lines = lines[:50]
-		lines = append(lines, fmt.Sprintf("\n... [truncated: 50+ matches]"))
+		lines = append(lines, "\n... [truncated: 50+ matches]")
 	}
 
 	var result []string

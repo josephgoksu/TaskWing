@@ -1,9 +1,9 @@
 package llm
 
-// LLM provider constants
+// Provider constants
 const (
 	// DefaultProvider is the default LLM provider
-	DefaultProvider = "openai"
+	DefaultProvider = ProviderOpenAI
 
 	// ProviderOpenAI represents the OpenAI provider
 	ProviderOpenAI = "openai"
@@ -16,22 +16,13 @@ const (
 
 	// ProviderGemini represents the Google Gemini provider
 	ProviderGemini = "gemini"
+
+	// ProviderMistral represents the Mistral provider (not fully supported)
+	ProviderMistral = "mistral"
 )
 
-// Default model constants for each provider
+// Embedding model constants
 const (
-	// DefaultOpenAIModel is the default model for OpenAI provider
-	DefaultOpenAIModel = "gpt-5-mini-2025-08-07"
-
-	// DefaultOllamaModel is the default model for Ollama provider
-	DefaultOllamaModel = "llama3.2"
-
-	// DefaultAnthropicModel is the default model for Anthropic provider
-	DefaultAnthropicModel = "claude-3-5-sonnet-latest"
-
-	// DefaultGeminiModel is the default model for Gemini provider
-	DefaultGeminiModel = "gemini-2.0-flash"
-
 	// DefaultOpenAIEmbeddingModel is the default embedding model for OpenAI
 	DefaultOpenAIEmbeddingModel = "text-embedding-3-small"
 
@@ -42,18 +33,18 @@ const (
 // DefaultOllamaURL is the default URL for Ollama server
 const DefaultOllamaURL = "http://localhost:11434"
 
-// DefaultModelForProvider returns the default model for a given provider string.
+// DefaultModelForProvider returns the default model ID for a given provider.
+// This is a convenience wrapper around GetDefaultModelID in models.go.
 func DefaultModelForProvider(provider string) string {
-	switch provider {
-	case ProviderOpenAI:
-		return DefaultOpenAIModel
-	case ProviderOllama:
-		return DefaultOllamaModel
-	case ProviderAnthropic:
-		return DefaultAnthropicModel
-	case ProviderGemini:
-		return DefaultGeminiModel
-	default:
-		return ""
-	}
+	return GetDefaultModelID(provider)
+}
+
+// InferProviderFromModel attempts to determine the provider from a model name.
+// This is a convenience wrapper around InferProvider in models.go.
+func InferProviderFromModel(model string) (string, bool) {
+	return InferProvider(model)
+}
+
+func hasPrefix(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

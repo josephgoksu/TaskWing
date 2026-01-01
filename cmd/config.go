@@ -59,8 +59,8 @@ func initConfig() {
 	viper.SetDefault("memory.path", ".taskwing/memory")
 
 	// LLM defaults (for bootstrap scanner)
-	// Do NOT set defaults for llm.provider or llm.apiKey - we want interactive selection if not set
-	viper.SetDefault("llm.model", llm.DefaultOpenAIModel)
+	// Do NOT set defaults for llm.provider, llm.apiKey, or llm.model
+	// We want interactive selection and provider-specific model defaults
 	viper.SetDefault("llm.baseURL", llm.DefaultOllamaURL)
 	viper.SetDefault("llm.maxOutputTokens", 0)
 	viper.SetDefault("llm.temperature", 0.7)

@@ -173,14 +173,14 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 
 	// Important markdown filenames to capture (case-insensitive)
 	importantMdFiles := map[string]bool{
-		"readme.md":  true,
-		"agents.md":  true,
-		"claude.md":  true,
-		"gemini.md":  true,
-		"design.md":  true,
-		"arch.md":    true,
-		"api.md":     true,
-		"schema.md":  true,
+		"readme.md":   true,
+		"agents.md":   true,
+		"claude.md":   true,
+		"gemini.md":   true,
+		"design.md":   true,
+		"arch.md":     true,
+		"api.md":      true,
+		"schema.md":   true,
 		"security.md": true,
 	}
 
@@ -335,9 +335,9 @@ func (g *ContextGatherer) GatherSpecificFiles(files []string) string {
 func (g *ContextGatherer) GatherSourceCode() string {
 	var sb strings.Builder
 	gathered := 0
-	maxFiles := 50              // Need to see more of the codebase
-	maxPerFile := 4000          // Chars per file
-	maxTotalChars := 150000     // Budget cap to prevent token overflow
+	maxFiles := 50          // Need to see more of the codebase
+	maxPerFile := 4000      // Chars per file
+	maxTotalChars := 150000 // Budget cap to prevent token overflow
 	totalChars := 0
 	seen := make(map[string]bool)
 

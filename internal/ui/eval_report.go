@@ -57,15 +57,6 @@ type BenchmarkData struct {
 }
 
 var (
-	// Table styles
-	tableHeaderStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(ColorPrimary).
-				Padding(0, 1)
-
-	tableCellStyle = lipgloss.NewStyle().
-			Padding(0, 1)
-
 	passStyle = lipgloss.NewStyle().
 			Foreground(ColorSuccess).
 			Bold(true)

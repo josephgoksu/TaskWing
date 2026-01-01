@@ -319,22 +319,22 @@ func CreateStreamingCallbackHandler(agentName string, stream *StreamingOutput) *
 			stream.Emit(EventAgentError, agentName, err.Error(), map[string]any{
 				"agent": agentName,
 			})
-	}).
-	OnToolCall(func(name, tool, args string) {
-		safeArgs := strings.ReplaceAll(args, "\r", " ")
-		safeArgs = strings.ReplaceAll(safeArgs, "\n", " ")
-		stream.Emit(EventToolCall, agentName, fmt.Sprintf("%s(%s)", tool, utils.Truncate(safeArgs, 50)), map[string]any{
-			"tool": tool,
-			"args": args,
+		}).
+		OnToolCall(func(name, tool, args string) {
+			safeArgs := strings.ReplaceAll(args, "\r", " ")
+			safeArgs = strings.ReplaceAll(safeArgs, "\n", " ")
+			stream.Emit(EventToolCall, agentName, fmt.Sprintf("%s(%s)", tool, utils.Truncate(safeArgs, 50)), map[string]any{
+				"tool": tool,
+				"args": args,
+			})
+		}).
+		OnToolResult(func(name, tool, result string) {
+			safeResult := strings.ReplaceAll(result, "\r", " ")
+			safeResult = strings.ReplaceAll(safeResult, "\n", " ")
+			stream.Emit(EventToolResult, agentName, utils.Truncate(safeResult, 120), map[string]any{
+				"tool": tool,
+			})
 		})
-	}).
-	OnToolResult(func(name, tool, result string) {
-		safeResult := strings.ReplaceAll(result, "\r", " ")
-		safeResult = strings.ReplaceAll(safeResult, "\n", " ")
-		stream.Emit(EventToolResult, agentName, utils.Truncate(safeResult, 120), map[string]any{
-			"tool": tool,
-		})
-	})
 
 	// Add node-level visibility for "The Pulse"
 	handler.OnNodeStartMeta(func(name, nodeType string, meta map[string]any) {
