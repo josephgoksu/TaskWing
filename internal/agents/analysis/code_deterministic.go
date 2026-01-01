@@ -84,7 +84,49 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 	}
 
 	findings, relationships := a.parseFindings(parsed)
-	return core.BuildOutputWithRelationships(a.Name(), findings, relationships, "JSON output handled by Eino", duration), nil
+	output := core.BuildOutputWithRelationships(a.Name(), findings, relationships, "JSON output handled by Eino", duration)
+
+	// Add coverage stats from context gathering
+	toolsCoverage := gatherer.GetCoverage()
+	output.Coverage = convertToolsCoverage(toolsCoverage)
+
+	return output, nil
+}
+
+// convertToolsCoverage converts tools.CoverageStats to core.CoverageStats
+func convertToolsCoverage(tc tools.CoverageStats) core.CoverageStats {
+	var filesRead []core.FileRead
+	for _, fr := range tc.FilesRead {
+		filesRead = append(filesRead, core.FileRead{
+			Path:       fr.Path,
+			Characters: fr.Characters,
+			Lines:      fr.Lines,
+			Truncated:  fr.Truncated,
+		})
+	}
+
+	var filesSkipped []core.SkippedFile
+	for _, fs := range tc.FilesSkipped {
+		filesSkipped = append(filesSkipped, core.SkippedFile{
+			Path:   fs.Path,
+			Reason: fs.Reason,
+		})
+	}
+
+	total := len(filesRead) + len(filesSkipped)
+	var coverage float64
+	if total > 0 {
+		coverage = float64(len(filesRead)) / float64(total) * 100
+	}
+
+	return core.CoverageStats{
+		FilesAnalyzed:   len(filesRead),
+		FilesSkipped:    len(filesSkipped),
+		TotalFiles:      total,
+		CoveragePercent: coverage,
+		FilesRead:       filesRead,
+		FilesSkippedLog: filesSkipped,
+	}
 }
 
 type codeAnalysisResponse struct {

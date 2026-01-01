@@ -27,7 +27,8 @@ const (
 
 	// SemanticSimilarityThreshold is used during ingest to create "semantically_similar" edges.
 	// Only node pairs with cosine similarity >= this value are linked.
-	SemanticSimilarityThreshold = 0.75
+	// 0.55 provides a good balance between precision and recall for knowledge graph connections.
+	SemanticSimilarityThreshold = 0.55
 
 	// DeduplicationThreshold is used to detect near-duplicate nodes during ingest.
 	// Nodes with content similarity >= this value are considered duplicates and merged.
@@ -36,4 +37,25 @@ const (
 	// Edge Weights for Knowledge Graph (reserved for Phase 2: evidence-based linking)
 	EdgeWeightDependsOn = 0.9 // Nodes sharing code evidence
 	EdgeWeightRelatesTo = 0.7 // General relationship
+
+	// Graph Expansion Settings (for graph-enhanced search)
+	// When enabled, search results are expanded by traversing knowledge graph edges.
+	GraphExpansionEnabled = true
+
+	// GraphExpansionDiscount is the multiplier applied to connected nodes' scores.
+	// Connected nodes get parent_score * edge_confidence * this discount.
+	// Range: 0.0 to 1.0. Higher = more weight to connected nodes.
+	GraphExpansionDiscount = 0.8
+
+	// GraphExpansionMaxDepth controls how many hops to traverse.
+	// 1 = only direct connections, 2 = friends-of-friends, etc.
+	GraphExpansionMaxDepth = 1
+
+	// GraphExpansionMinEdgeConfidence filters out weak edges during expansion.
+	// Only edges with confidence >= this value are traversed.
+	GraphExpansionMinEdgeConfidence = 0.5
+
+	// GraphExpansionReservedSlots is the minimum number of slots to reserve for
+	// graph-expanded nodes in the final output. This ensures visibility of graph connections.
+	GraphExpansionReservedSlots = 2
 )

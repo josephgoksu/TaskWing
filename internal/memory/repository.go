@@ -228,6 +228,11 @@ func (r *Repository) GetAllNodeEdges() ([]NodeEdge, error) {
 	return r.db.GetAllNodeEdges()
 }
 
+// GetNodeEdges returns all edges connected to a specific node.
+func (r *Repository) GetNodeEdges(nodeID string) ([]NodeEdge, error) {
+	return r.db.GetNodeEdges(nodeID)
+}
+
 // === Index ===
 
 func (r *Repository) GetIndex() (*FeatureIndex, error) {

@@ -286,19 +286,48 @@ Respond with PROPER JSON only. Do not use spaces in decimal numbers (e.g. use 0.
 
 // PromptTemplateCodeAgent is the template for the code analysis agent.
 // Use with Eino ChatTemplate (Go Template format).
-const PromptTemplateCodeAgent = `You are a software architect analyzing source code to identify architectural patterns and key decisions.
+const PromptTemplateCodeAgent = `You are a software architect analyzing source code to identify architectural patterns, key decisions, and implementation details.
 
 Examine the code structure, patterns, and implementation choices. Focus on:
+
+## ARCHITECTURAL ANALYSIS
 1. **Architectural patterns**: How is the code organized? (MVC, Clean Architecture, Hexagonal, etc.)
 2. **Design patterns**: Repository, Factory, Dependency Injection, etc.
 3. **Key abstractions**: Important interfaces, base classes, or core types
 4. **Integration patterns**: How components communicate (events, queues, APIs)
+
+## IMPLEMENTATION DETAILS (CRITICAL - Often missed but essential for developers)
+
+5. **Error Handling Patterns**:
+   - How are errors created, wrapped, and propagated?
+   - What logging library is used? (slog, zap, logrus, etc.)
+   - What HTTP error response format is used? (status codes, body structure)
+   - Are there custom error types or error codes?
+
+6. **Security & Middleware Configuration**:
+   - CORS settings: What origins are allowed? What methods/headers?
+   - Rate limiting: What are the limits? Per-user? Per-endpoint?
+   - Authentication middleware: JWT validation, session handling, cookie settings
+   - Request validation and sanitization patterns
+
+7. **Performance & Resilience Configuration**:
+   - Connection pool sizes (database, HTTP clients)
+   - Cache settings: TTLs, size limits, cache keys
+   - Timeout values: request timeouts, database timeouts, external call timeouts
+   - Circuit breaker thresholds, retry policies, backoff strategies
+
+8. **Data Model Schemas**:
+   - Database collection/table structures
+   - API request/response types
+   - Configuration structs with default values
+   - Key interfaces and their concrete implementations
 
 For each finding:
 - Explain WHAT pattern/decision you found and WHY it matters
 - Include EVIDENCE: file path, line numbers, and code snippet
 - Provide confidence score (0.0-1.0)
 - Identify which component/layer this belongs to
+- For configuration values, include ACTUAL VALUES (e.g., "timeout is 30s" not just "uses timeouts")
 
 RESPOND IN JSON:
 {

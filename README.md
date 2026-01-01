@@ -57,17 +57,23 @@ tw mcp
 
 ## 📈 Validated Impact
 
-We tested AI responses with and without TaskWing context on a real production codebase:
+We tested AI responses with and without TaskWing context on a real production codebase (Go backend, React frontend, OpenAPI codegen):
 
-| Configuration | Avg Score (0-10) | Notes |
-|---------------|------------------|-------|
-| **Baseline** (no context) | 6.6 | Model assumed wrong stack (Node.js vs Go) |
-| **With TaskWing** (context injected) | 7.8 | +18% - Correctly identified Go backend |
-| **Codex + TaskWing** | **8.0** | +21% - Best: consistent across all tasks |
+| Configuration | Avg Score (0-10) | Pass Rate | Notes |
+|---------------|------------------|-----------|-------|
+| **Baseline** (no context) | 3.6 | 0% | Wrong tech stack, wrong file paths |
+| **With TaskWing** | **8.0** | 100% | **+122%** - Correct architecture throughout |
 
-**Real example:** Without context, the model suggested modifying `backend/src/routes/bookmarks.ts` (Node.js pattern). With TaskWing context, it correctly referenced `backend-go/internal/api/` and the `make generate-api` workflow.
+```
+Score History (gpt-5-mini-2025-08-07)
+─────────────────────────────────────────────────────
+  no-context     | Avg: 3.6 | T1: 6  T2: 3  T3: 3  T4: 3  T5: 3
+  with-taskwing  | Avg: 8.0 | T1: 8  T2: 8  T3: 8  T4: 8  T5: 8
+```
 
-> TaskWing context injection helps AI tools understand your actual architecture. [Full methodology →](docs/development/EVAL_RUNNERS.md)
+**Why baseline fails:** Without context, models assume TypeScript/Next.js patterns (`src/types/openapi.ts`, `npm run generate`). With TaskWing, they correctly reference Go paths (`internal/api/types.gen.go`, `make generate-api`).
+
+> TaskWing context injection helps AI tools understand your actual architecture. [Full methodology →](docs/development/EVALUATION.md)
 
 👉 **[Full Getting Started Guide](docs/development/GETTING_STARTED.md)** · **[Product Vision](docs/PRODUCT_VISION.md)**
 

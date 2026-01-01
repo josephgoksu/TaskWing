@@ -298,8 +298,12 @@ func (s *SQLiteStore) initSchema() error {
 
 		if !exists {
 			if _, err := s.db.Exec(m.ddl); err != nil {
-				// Ignore errors - column may already exist from a previous partial migration
-				_ = err
+				// Only ignore "duplicate column" errors (happens in rare race conditions)
+				// Other errors (disk full, corrupted DB) should propagate
+				errMsg := err.Error()
+				if !strings.Contains(errMsg, "duplicate column") {
+					return fmt.Errorf("migration %s failed: %w", m.column, err)
+				}
 			}
 		}
 	}
@@ -1055,9 +1059,11 @@ func (s *SQLiteStore) CreateNode(n Node) error {
 	}
 
 	_, err := s.db.Exec(`
-		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339))
+		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at,
+		                   evidence, verification_status, verification_result, confidence_score)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
+		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore)
 
 	if err != nil {
 		return fmt.Errorf("insert node: %w", err)
@@ -1066,17 +1072,21 @@ func (s *SQLiteStore) CreateNode(n Node) error {
 	return nil
 }
 
-// GetNode retrieves a node by ID.
+// GetNode retrieves a node by ID including evidence and verification fields.
 func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 	var n Node
 	var createdAt string
 	var nodeType, summary, sourceAgent sql.NullString
+	var evidence, verificationStatus, verificationResult sql.NullString
+	var confidenceScore sql.NullFloat64
 	var embeddingBytes []byte
 
 	err := s.db.QueryRow(`
-		SELECT id, content, type, summary, source_agent, embedding, created_at
+		SELECT id, content, type, summary, source_agent, embedding, created_at,
+		       evidence, verification_status, verification_result, confidence_score
 		FROM nodes WHERE id = ?
-	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt)
+	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt,
+		&evidence, &verificationStatus, &verificationResult, &confidenceScore)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("node not found: %s", id)
@@ -1086,6 +1096,21 @@ func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 	}
 
 	populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+
+	// Populate evidence and verification fields
+	if evidence.Valid {
+		n.Evidence = evidence.String
+	}
+	if verificationStatus.Valid {
+		n.VerificationStatus = verificationStatus.String
+	}
+	if verificationResult.Valid {
+		n.VerificationResult = verificationResult.String
+	}
+	if confidenceScore.Valid {
+		n.ConfidenceScore = confidenceScore.Float64
+	}
+
 	return &n, nil
 }
 
@@ -1096,12 +1121,14 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 
 	if nodeType != "" {
 		rows, err = s.db.Query(`
-			SELECT id, content, type, summary, source_agent, created_at
+			SELECT id, content, type, summary, source_agent, created_at,
+			       evidence, verification_status, verification_result, confidence_score
 			FROM nodes WHERE type = ? ORDER BY created_at DESC
 		`, nodeType)
 	} else {
 		rows, err = s.db.Query(`
-			SELECT id, content, type, summary, source_agent, created_at
+			SELECT id, content, type, summary, source_agent, created_at,
+			       evidence, verification_status, verification_result, confidence_score
 			FROM nodes ORDER BY created_at DESC
 		`)
 	}
@@ -1116,11 +1143,29 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 		var n Node
 		var createdAt string
 		var nodeTypeStr, summary, sourceAgent sql.NullString
+		var evidence, verificationStatus, verificationResult sql.NullString
+		var confidenceScore sql.NullFloat64
 
-		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &createdAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &createdAt,
+			&evidence, &verificationStatus, &verificationResult, &confidenceScore); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, createdAt, nil)
+
+		// Populate evidence fields
+		if evidence.Valid {
+			n.Evidence = evidence.String
+		}
+		if verificationStatus.Valid {
+			n.VerificationStatus = verificationStatus.String
+		}
+		if verificationResult.Valid {
+			n.VerificationResult = verificationResult.String
+		}
+		if confidenceScore.Valid {
+			n.ConfidenceScore = confidenceScore.Float64
+		}
+
 		nodes = append(nodes, n)
 	}
 
@@ -1238,6 +1283,7 @@ func (s *SQLiteStore) ClearAllKnowledge() error {
 // This is used for incremental watch mode - findings with same title from same agent are updated.
 // If no exact match is found, it checks for semantically similar summaries and updates those instead
 // to prevent duplicate nodes from accumulating.
+// Uses a transaction to prevent race conditions in concurrent watch mode.
 func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 	if n.ID == "" {
 		n.ID = "n-" + uuid.New().String()[:8]
@@ -1252,33 +1298,41 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 		embeddingBytes = float32SliceToBytes(n.Embedding)
 	}
 
+	// Use IMMEDIATE transaction to prevent race conditions in concurrent watch mode
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	// First check if node with exact summary+agent exists
 	var existingID string
-	err := s.db.QueryRow(`
+	err = tx.QueryRow(`
 		SELECT id FROM nodes WHERE summary = ? AND source_agent = ?
 	`, n.Summary, n.SourceAgent).Scan(&existingID)
 
 	if err == nil && existingID != "" {
-		// Update existing node with exact match
-		_, err = s.db.Exec(`
-			UPDATE nodes SET content = ?, type = ?, embedding = ?
+		// Update existing node with exact match (including evidence columns)
+		_, err = tx.Exec(`
+			UPDATE nodes SET content = ?, type = ?, embedding = ?,
+			       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?
 			WHERE id = ?
-		`, n.Content, n.Type, embeddingBytes, existingID)
+		`, n.Content, n.Type, embeddingBytes,
+			n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore, existingID)
 		if err != nil {
 			return fmt.Errorf("update existing node: %w", err)
 		}
-		return nil
+		return tx.Commit()
 	}
 
 	// No exact match - check for semantically similar summaries from same agent
 	// This prevents duplicate nodes when LLM generates slightly different titles
-	rows, err := s.db.Query(`
+	rows, err := tx.Query(`
 		SELECT id, summary, content FROM nodes WHERE source_agent = ?
 	`, n.SourceAgent)
 	if err != nil {
 		return fmt.Errorf("query similar nodes: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
 	var similarID string
 	var similarContent string
@@ -1289,36 +1343,44 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 		}
 		sim := textSimilarity(n.Summary, existingSummary)
 		if sim >= textSimilarityThreshold {
-			// Found a similar node - update it instead of inserting new
+			rows.Close() // Close before executing update
+			// Found a similar node - update it instead of inserting new (including evidence columns)
 			if n.Content != similarContent {
-				_, err = s.db.Exec(`
-					UPDATE nodes SET content = ?, type = ?, embedding = ?, summary = ?
+				_, err = tx.Exec(`
+					UPDATE nodes SET content = ?, type = ?, embedding = ?, summary = ?,
+					       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?
 					WHERE id = ?
-				`, n.Content, n.Type, embeddingBytes, n.Summary, similarID)
+				`, n.Content, n.Type, embeddingBytes, n.Summary,
+					n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore, similarID)
 			} else {
-				_, err = s.db.Exec(`
-					UPDATE nodes SET type = ?, embedding = ?, summary = ?
+				_, err = tx.Exec(`
+					UPDATE nodes SET type = ?, embedding = ?, summary = ?,
+					       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?
 					WHERE id = ?
-				`, n.Type, embeddingBytes, n.Summary, similarID)
+				`, n.Type, embeddingBytes, n.Summary,
+					n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore, similarID)
 			}
 			if err != nil {
 				return fmt.Errorf("update similar node: %w", err)
 			}
-			return nil
+			return tx.Commit()
 		}
 	}
+	rows.Close()
 
-	// No similar node found - insert new node
-	_, err = s.db.Exec(`
-		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339))
+	// No similar node found - insert new node (including evidence columns)
+	_, err = tx.Exec(`
+		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at,
+		                   evidence, verification_status, verification_result, confidence_score)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
+		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore)
 
 	if err != nil {
 		return fmt.Errorf("insert node: %w", err)
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 // UpdateNodeEmbedding updates the embedding for an existing node.
@@ -1435,7 +1497,8 @@ type FTSResult struct {
 // This fixes the N+1 query pattern in search - one query instead of 1+N.
 func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 	rows, err := s.db.Query(`
-		SELECT id, content, type, summary, source_agent, embedding, created_at
+		SELECT id, content, type, summary, source_agent, embedding, created_at,
+		       evidence, verification_status, verification_result, confidence_score
 		FROM nodes WHERE embedding IS NOT NULL
 		ORDER BY created_at DESC
 	`)
@@ -1450,11 +1513,29 @@ func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 		var createdAt string
 		var nodeType, summary, sourceAgent sql.NullString
 		var embeddingBytes []byte
+		var evidence, verificationStatus, verificationResult sql.NullString
+		var confidenceScore sql.NullFloat64
 
-		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt,
+			&evidence, &verificationStatus, &verificationResult, &confidenceScore); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+
+		// Populate evidence fields
+		if evidence.Valid {
+			n.Evidence = evidence.String
+		}
+		if verificationStatus.Valid {
+			n.VerificationStatus = verificationStatus.String
+		}
+		if verificationResult.Valid {
+			n.VerificationResult = verificationResult.String
+		}
+		if confidenceScore.Valid {
+			n.ConfidenceScore = confidenceScore.Float64
+		}
+
 		nodes = append(nodes, n)
 	}
 
@@ -1478,7 +1559,9 @@ func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 		LIMIT ?
 	`, query, limit)
 	if err != nil {
-		return nil, nil // Graceful degradation if FTS unavailable
+		// Return empty results with error so caller can decide how to handle
+		// Common case: FTS table doesn't exist yet (returns "no such table")
+		return nil, fmt.Errorf("FTS search failed: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 

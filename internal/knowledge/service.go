@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -36,6 +37,7 @@ type Repository interface {
 
 	// Graph edge operations
 	LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error
+	GetNodeEdges(nodeID string) ([]memory.NodeEdge, error)
 
 	// FTS5 Hybrid Search (new)
 	ListNodesWithEmbeddings() ([]memory.Node, error)
@@ -75,8 +77,9 @@ func (s *Service) SetBasePath(basePath string) {
 
 // ScoredNode represents a search result with visual relevance score
 type ScoredNode struct {
-	Node  *memory.Node `json:"node"`
-	Score float32      `json:"score"`
+	Node         *memory.Node `json:"node"`
+	Score        float32      `json:"score"`
+	ExpandedFrom string       `json:"expanded_from,omitempty"` // Parent node ID if this came from graph expansion
 }
 
 // Search performs a hybrid search combining FTS5 keyword matching and vector similarity.
@@ -93,6 +96,12 @@ func (s *Service) Search(ctx context.Context, query string, limit int) ([]Scored
 // This allows for surgical retrieval of "workflows" or "constraints".
 func (s *Service) SearchByType(ctx context.Context, query string, nodeType string, limit int) ([]ScoredNode, error) {
 	return s.searchInternal(ctx, query, nodeType, limit)
+}
+
+// ListNodesByType retrieves all nodes of a specific type.
+// This allows for retrieving ALL mandatory constraints without semantic filtering.
+func (s *Service) ListNodesByType(ctx context.Context, nodeType string) ([]memory.Node, error) {
+	return s.repo.ListNodes(nodeType)
 }
 
 func (s *Service) searchInternal(ctx context.Context, query string, typeFilter string, limit int) ([]ScoredNode, error) {
@@ -195,12 +204,145 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 		return scored[i].Score > scored[j].Score
 	})
 
-	// 4. Limit results
-	if len(scored) > limit {
-		scored = scored[:limit]
+	// 4. Graph Expansion: Add connected nodes via knowledge graph edges
+	if GraphExpansionEnabled && len(scored) > 0 {
+		scored = s.expandViaGraph(scored, scoreByID, limit)
+	}
+
+	// 5. Limit results with reserved slots for graph-expanded nodes
+	if GraphExpansionEnabled && GraphExpansionReservedSlots > 0 {
+		// Separate expanded and non-expanded nodes
+		var nonExpanded, expanded []ScoredNode
+		for _, sn := range scored {
+			if sn.ExpandedFrom != "" {
+				expanded = append(expanded, sn)
+			} else {
+				nonExpanded = append(nonExpanded, sn)
+			}
+		}
+
+		// Calculate slots: reserve up to GraphExpansionReservedSlots for expanded
+		reservedSlots := GraphExpansionReservedSlots
+		if len(expanded) < reservedSlots {
+			reservedSlots = len(expanded)
+		}
+		primarySlots := limit - reservedSlots
+		if primarySlots < 0 {
+			primarySlots = 0
+		}
+
+		// Take top primarySlots from non-expanded
+		if len(nonExpanded) > primarySlots {
+			nonExpanded = nonExpanded[:primarySlots]
+		}
+		// Take top reservedSlots from expanded
+		if len(expanded) > reservedSlots {
+			expanded = expanded[:reservedSlots]
+		}
+
+		// Combine and re-sort
+		scored = append(nonExpanded, expanded...)
+		sort.Slice(scored, func(i, j int) bool {
+			return scored[i].Score > scored[j].Score
+		})
+	} else {
+		// Simple limit without reserved slots
+		if len(scored) > limit {
+			scored = scored[:limit]
+		}
 	}
 
 	return scored, nil
+}
+
+// expandViaGraph traverses knowledge graph edges to include related nodes.
+// Connected nodes receive a discounted score based on parent score and edge confidence.
+func (s *Service) expandViaGraph(initial []ScoredNode, existingScores map[string]float32, limit int) []ScoredNode {
+	// Track which nodes we've already included
+	includedIDs := make(map[string]bool)
+	for _, sn := range initial {
+		includedIDs[sn.Node.ID] = true
+	}
+
+	// Collect new nodes to add
+	var expanded []ScoredNode
+	expanded = append(expanded, initial...)
+
+	// Only expand from top results to avoid noise
+	topN := len(initial)
+	if topN > 5 {
+		topN = 5 // Limit expansion to top 5 matches
+	}
+
+	addedCount := 0
+	for i := 0; i < topN; i++ {
+		parentNode := initial[i]
+		parentScore := parentNode.Score
+
+		// Fetch edges for this node
+		edges, err := s.repo.GetNodeEdges(parentNode.Node.ID)
+		if err != nil {
+			slog.Debug("graph expansion: GetNodeEdges error", "nodeID", parentNode.Node.ID, "error", err)
+			continue
+		}
+		if len(edges) == 0 {
+			slog.Debug("graph expansion: no edges for node", "nodeID", parentNode.Node.ID)
+			continue
+		}
+		slog.Debug("graph expansion: found edges", "nodeID", parentNode.Node.ID, "edgeCount", len(edges))
+
+		for _, edge := range edges {
+			// Filter weak edges
+			if edge.Confidence < GraphExpansionMinEdgeConfidence {
+				slog.Debug("graph expansion: edge below confidence threshold", "confidence", edge.Confidence, "threshold", GraphExpansionMinEdgeConfidence)
+				continue
+			}
+
+			// Determine connected node ID (could be from_node or to_node)
+			connectedID := edge.ToNode
+			if edge.ToNode == parentNode.Node.ID {
+				connectedID = edge.FromNode
+			}
+
+			// Skip if already included
+			if includedIDs[connectedID] {
+				continue
+			}
+
+			// Fetch the connected node
+			connectedNode, err := s.repo.GetNode(connectedID)
+			if err != nil {
+				slog.Debug("graph expansion: GetNode error", "connectedID", connectedID, "error", err)
+				continue
+			}
+
+			// Calculate discounted score: parent_score * edge_confidence * discount
+			connectedScore := parentScore * float32(edge.Confidence) * GraphExpansionDiscount
+
+			// Only include if score is above minimum threshold
+			if connectedScore < MinResultScoreThreshold {
+				slog.Debug("graph expansion: score below threshold", "score", connectedScore, "threshold", MinResultScoreThreshold)
+				continue
+			}
+
+			includedIDs[connectedID] = true
+			expanded = append(expanded, ScoredNode{
+				Node:         connectedNode,
+				Score:        connectedScore,
+				ExpandedFrom: parentNode.Node.ID, // Track that this came from graph expansion
+			})
+			addedCount++
+		}
+	}
+
+	slog.Debug("graph expansion complete", "initialCount", len(initial), "addedCount", addedCount, "totalCount", len(expanded))
+
+	// Re-sort by score
+	sort.Slice(expanded, func(i, j int) bool {
+		return expanded[i].Score > expanded[j].Score
+	})
+
+	return expanded
 }
 
 // Ask generates an answer based on the search results

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/memory"
 )
 
 // SearchStrategyResult contains the context and the strategy description
@@ -19,6 +20,14 @@ type SearchStrategyResult struct {
 // RetrieveContext performs the standard context retrieval for planning and evaluation.
 // It ensures that both the interactive CLI and the evaluation system use the exact same logic.
 func RetrieveContext(ctx context.Context, ks *knowledge.Service, goal string) (SearchStrategyResult, error) {
+	var searchLog []string
+
+	// === 0. Fetch Constraints Explicitly ===
+	// Always retrieve 'constraint' type nodes, regardless of goal.
+	// These represent mandatory rules and must be highlighted.
+	// QA FIX: Use ListNodesByType to avoid semantic filtering.
+	constraintNodes, _ := ks.ListNodesByType(ctx, memory.NodeTypeConstraint)
+
 	// 1. Strategize: Generate search queries
 	queries, err := ks.SuggestContextQueries(ctx, goal)
 	if err != nil {
@@ -27,7 +36,6 @@ func RetrieveContext(ctx context.Context, ks *knowledge.Service, goal string) (S
 
 	// 2. Execute Searches
 	uniqueNodes := make(map[string]knowledge.ScoredNode)
-	var searchLog []string
 
 	for _, q := range queries {
 		// Search (this uses the hybrid FTS + Vector approach defined in knowledge.Service)
@@ -48,14 +56,21 @@ func RetrieveContext(ctx context.Context, ks *knowledge.Service, goal string) (S
 	}
 
 	// 3. Format Context
-	var strategyLog strings.Builder
-	strategyLog.WriteString("Research Strategy:\n")
-	for _, log := range searchLog {
-		strategyLog.WriteString("  " + log + "\n")
+	var sb strings.Builder
+
+	// === Format Constraints First ===
+	if len(constraintNodes) > 0 {
+		sb.WriteString("## MANDATORY ARCHITECTURAL CONSTRAINTS\n")
+		sb.WriteString("These rules MUST be obeyed by all generated tasks.\n\n")
+		for _, n := range constraintNodes {
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", n.Summary, n.Content))
+		}
+		sb.WriteString("\n")
+		// Prepend to search log so it appears first
+		searchLog = append([]string{"✓ Loaded mandatory constraints."}, searchLog...)
 	}
 
-	var sb strings.Builder
-	sb.WriteString("KNOWN ARCHITECTURAL CONTEXT:\n")
+	sb.WriteString("## RELEVANT ARCHITECTURAL CONTEXT\n")
 
 	// Sort by Score
 	var allNodes []knowledge.ScoredNode
@@ -91,6 +106,13 @@ func RetrieveContext(ctx context.Context, ks *knowledge.Service, goal string) (S
 			}
 		}
 		sb.WriteString("\n")
+	}
+
+	// Format strategy log
+	var strategyLog strings.Builder
+	strategyLog.WriteString("Research Strategy:\n")
+	for _, log := range searchLog {
+		strategyLog.WriteString("  " + log + "\n")
 	}
 
 	return SearchStrategyResult{

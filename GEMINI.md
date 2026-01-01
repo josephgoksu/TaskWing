@@ -69,6 +69,17 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 | `make lint` | Run formatters and `golangci-lint` |
 | `make dev-setup` | Install dev dependencies |
 
+### CLI Commands
+
+| Command | Description |
+| :--- | :--- |
+| `tw bootstrap` | Initialize project memory |
+| `tw plan` | Manage development plans |
+| `tw task` | Manage atomic tasks |
+| `tw start` | Start working on a task |
+| `tw eval` | Run evaluation benchmarks |
+| `tw context` | Query project knowledge |
+
 ### Frontend (`dashboard/`)
 
 | Command | Description |

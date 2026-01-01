@@ -184,6 +184,18 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 	allFindings := core.AggregateFindings(bootstrapModel.Results)
 	allRelationships := core.AggregateRelationships(bootstrapModel.Results)
 
+	// Generate bootstrap report
+	report := generateBootstrapReport(cwd, bootstrapModel.Results, allFindings)
+
+	// Save report to disk (always, even in preview mode)
+	reportPath := filepath.Join(cwd, ".taskwing", "last-bootstrap-report.json")
+	if err := saveBootstrapReport(reportPath, report); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Failed to save bootstrap report: %v\n", err)
+	}
+
+	// Print coverage summary
+	printCoverageSummary(report)
+
 	if preview || viper.GetBool("preview") {
 		fmt.Println("\n💡 This was a preview. Run 'taskwing bootstrap' to save to memory.")
 		return nil
@@ -203,6 +215,88 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 
 	// Ingest (with verification and LLM-extracted relationships)
 	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, !viper.GetBool("quiet"))
+}
+
+// generateBootstrapReport creates a report from agent results
+func generateBootstrapReport(projectPath string, results []core.Output, findings []core.Finding) *core.BootstrapReport {
+	report := core.NewBootstrapReport(projectPath)
+
+	// Add per-agent reports
+	for _, result := range results {
+		agentReport := core.AgentReport{
+			Name:         result.AgentName,
+			Duration:     result.Duration,
+			TokensUsed:   result.TokensUsed,
+			FindingCount: len(result.Findings),
+			Coverage:     result.Coverage,
+		}
+		if result.Error != nil {
+			agentReport.Error = result.Error.Error()
+		}
+		report.AddAgentReport(result.AgentName, agentReport)
+	}
+
+	// Calculate totals
+	var totalDuration time.Duration
+	for _, r := range results {
+		totalDuration += r.Duration
+	}
+	report.Finalize(findings, totalDuration)
+
+	return report
+}
+
+// saveBootstrapReport writes the report to a JSON file
+func saveBootstrapReport(path string, report *core.BootstrapReport) error {
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create report directory: %w", err)
+	}
+
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal report: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write report: %w", err)
+	}
+
+	return nil
+}
+
+// printCoverageSummary outputs a human-readable coverage summary
+func printCoverageSummary(report *core.BootstrapReport) {
+	fmt.Println()
+	fmt.Println("📊 Bootstrap Coverage Report")
+	fmt.Println("────────────────────────────")
+	fmt.Printf("   Files analyzed: %d\n", report.Coverage.FilesAnalyzed)
+	fmt.Printf("   Files skipped:  %d\n", report.Coverage.FilesSkipped)
+	fmt.Printf("   Coverage:       %.1f%%\n", report.Coverage.CoveragePercent)
+	fmt.Printf("   Total findings: %d\n", report.TotalFindings)
+
+	// Breakdown by type
+	if len(report.FindingCounts) > 0 {
+		fmt.Println()
+		fmt.Println("   Findings by type:")
+		for fType, count := range report.FindingCounts {
+			fmt.Printf("     • %s: %d\n", fType, count)
+		}
+	}
+
+	// Per-agent summary
+	fmt.Println()
+	fmt.Println("   Per-agent coverage:")
+	for name, ar := range report.AgentReports {
+		status := "✓"
+		if ar.Error != "" {
+			status = "✗"
+		}
+		fmt.Printf("     %s %s: %d files, %d findings\n", status, name, ar.Coverage.FilesAnalyzed, ar.FindingCount)
+	}
+
+	fmt.Println()
+	fmt.Printf("📄 Full report: .taskwing/last-bootstrap-report.json\n")
 }
 
 // runAutoInit initializes .taskwing/ structure when first running bootstrap

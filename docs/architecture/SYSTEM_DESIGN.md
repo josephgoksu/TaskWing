@@ -552,7 +552,7 @@ taskWing-cli/
 │   ├── ARCHITECTURE.md           # This file
 │   ├── DATA_MODEL.md             # Schema details
 │   ├── ROADMAP.md                # Version planning
-│   └── BOOTSTRAP.md              # Bootstrap internals
+│   └── BOOTSTRAP_INTERNALS.md    # Bootstrap internals
 │
 └── .taskwing/                    # Project data (created by tw)
     └── memory/
@@ -606,7 +606,7 @@ User runs: tw context "authentication"
 ```
 AI tool queries: project-context tool
 
-1. internal/server/mcp.go handles request
+1. internal/agents/core/mcp.go handles request
 2. Query embedded + searched
 3. Top results formatted as context
 4. Returned to AI tool (Claude, Cursor, etc.)
@@ -698,6 +698,6 @@ case agents.FindingTypeMyType:
 |----------|---------|
 | [DATA_MODEL.md](./DATA_MODEL.md) | Database schema, node types, verification |
 | [ROADMAP.md](./ROADMAP.md) | Version planning, upcoming features |
-| [BOOTSTRAP.md](./BOOTSTRAP.md) | Bootstrap scanner details |
+| [BOOTSTRAP_INTERNALS.md](./BOOTSTRAP_INTERNALS.md) | Bootstrap scanner details |
 | [GETTING_STARTED.md](./GETTING_STARTED.md) | User guide |
 | [MCP_INTEGRATION.md](./MCP_INTEGRATION.md) | MCP server setup |

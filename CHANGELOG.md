@@ -7,19 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Stricter LLM Judge**: Responses with wrong tech stack (e.g., TypeScript when repo uses Go) now score ≤3 regardless of structure
+- **Failure Details in Reports**: `tw eval report` now shows LLM judge reasoning for failed tasks
+- **Eval Comparison Script**: `run-eval-comparison.sh` runs parallel with/without context benchmarks
+- **Auto-bootstrap in Eval**: Script automatically bootstraps project memory if missing
+
+### Changed
+
+- Eval judge prompt now explicitly penalizes wrong programming language, file paths, and frameworks
+- Improved scoring rubric documentation with tech stack correctness requirements
+
+### Fixed
+
+- Empty failure details in eval report output
+- Baseline scores were too lenient (7.4 → 3.6 with stricter judge)
+
 ## [0.9.2] - 2025-08-30
 
 ### Changed
 
-- Unified and simplified documentation structure
-- Consolidated redundant documentation files into 4 focused guides:
-  - README.md: Enhanced with better badges, examples, and developer experience
-  - DOCS.md: Completely rewritten with current commands and workflows
-  - MCP.md: Streamlined AI integration guide with practical examples
-  - EXAMPLES.md: Comprehensive AI interaction examples and use cases
-- Enhanced CLI user experience with organized help categories and command aliases
-- Improved installation instructions with PATH setup guidance
-- Added professional badges to README for better project credibility
+- Expanded documentation into `docs/` directory structure
+- Added `GETTING_STARTED.md` and `MCP_INTEGRATION.md`
+- Enhanced CLI user experience with organized help categories
+- Improved installation instructions
+- Added professional badges to README
 
 ### Removed
 

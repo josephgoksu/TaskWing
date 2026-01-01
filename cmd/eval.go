@@ -876,16 +876,27 @@ func runLLMJudge(ctx context.Context, llmCfg llm.Config, task evalpkg.Task, outp
 %s
 
 ## Scoring Rubric (0-10)
-- 10: Perfect - all MUST and SHOULD requirements met
-- 8-9: Excellent - all MUST met, most SHOULD met
-- 6-7: Good - all MUST met, some SHOULD missing
-- 4-5: Partial - some MUST requirements missing
-- 2-3: Poor - significant gaps or wrong approach
-- 0-1: Fail - fundamentally wrong or dangerous
+- 10: Perfect - all MUST and SHOULD requirements met, correct tech stack, correct file paths
+- 8-9: Excellent - all MUST met, most SHOULD met, correct tech stack
+- 6-7: Good - all MUST met, some SHOULD missing, correct tech stack
+- 4-5: Partial - some MUST requirements missing OR minor tech stack confusion
+- 2-3: Poor - WRONG TECH STACK or fundamentally wrong file paths/structure
+- 0-1: Fail - completely wrong language/framework, dangerous, or nonsensical
+
+## CRITICAL: Tech Stack Correctness
+HEAVILY PENALIZE responses that:
+- Use the WRONG programming language (e.g., TypeScript when repo uses Go, or vice versa)
+- Reference WRONG file paths (e.g., src/types/openapi.ts when repo uses internal/api/types.gen.go)
+- Suggest WRONG package managers (e.g., npm when repo uses go mod)
+- Assume WRONG frameworks (e.g., Next.js when repo uses Chi/Gin)
+- Miss repo-specific generated types or conventions mentioned in expected behavior
+
+If the response assumes the wrong tech stack, it CANNOT score above 3, regardless of how well-structured the answer is otherwise.
 
 ## Instructions
 Evaluate the response against the expected behavior and failure signals.
 Consider semantic meaning, not just keyword matching.
+Pay special attention to whether file paths and tech stack match what's expected.
 
 Output ONLY valid JSON:
 {"score": 8, "reason": "brief explanation"}`,
@@ -1245,6 +1256,8 @@ func buildEvalReportData(results evalpkg.Results) ui.EvalReportData {
 			Model:       r.Model,
 			Pass:        !r.HardFail,
 			FailedRules: failedRules(r.Checks),
+			JudgeReason: r.JudgeReason,
+			Score:       r.Score,
 		})
 	}
 

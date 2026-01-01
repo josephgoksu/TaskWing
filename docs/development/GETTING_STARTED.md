@@ -14,6 +14,9 @@ curl -fsSL https://taskwing.app/install.sh | bash
 go install github.com/josephgoksu/TaskWing@latest
 ```
 
+> **Note:** The binary is installed as `taskwing`. We recommend aliasing it to `tw` for brevity:
+> `alias tw=taskwing`
+
 ---
 
 ## Quick Start

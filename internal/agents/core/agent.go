@@ -43,6 +43,7 @@ type Output struct {
 	TokensUsed    int
 	Duration      time.Duration
 	Error         error
+	Coverage      CoverageStats // Files analyzed/skipped by this agent
 }
 
 // Relationship represents an LLM-identified relationship between two findings.

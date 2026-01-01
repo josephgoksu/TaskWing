@@ -117,11 +117,12 @@ type NodeEdge struct {
 
 // NodeType constants for classification.
 const (
-	NodeTypeDecision = "decision"
-	NodeTypeFeature  = "feature"
-	NodeTypePlan     = "plan"
-	NodeTypeNote     = "note"
-	NodeTypeUnknown  = "unknown"
+	NodeTypeDecision   = "decision"
+	NodeTypeFeature    = "feature"
+	NodeTypePlan       = "plan"
+	NodeTypeNote       = "note"
+	NodeTypeUnknown    = "unknown"
+	NodeTypeConstraint = "constraint" // For mandatory architectural rules
 )
 
 // NodeRelation constants for edge types.

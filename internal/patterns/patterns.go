@@ -17,6 +17,10 @@ var IgnoredDirs = map[string]bool{
 	".next":        true,
 	".nuxt":        true,
 	"coverage":     true,
+	"cdk.out":      true, // CDK synthesized output (generated)
+	".terraform":   true, // Terraform state/cache
+	"target":       true, // Rust/Java build output
+	".cache":       true, // Various build caches
 }
 
 // AllowedDotDirs contains dot-directories that SHOULD be analyzed (exceptions to the dot-skip rule).
@@ -77,6 +81,7 @@ func ShouldSkipDotEntry(name string, isDir bool) bool {
 // CodeExtensions contains extensions for source code files.
 var CodeExtensions = map[string]bool{
 	".go": true, ".ts": true, ".tsx": true, ".js": true, ".jsx": true,
+	".mjs": true, ".cjs": true, // ES modules and CommonJS
 	".py": true, ".rs": true, ".java": true, ".kt": true, ".swift": true,
 	".c": true, ".cpp": true, ".h": true, ".hpp": true, ".cs": true,
 	".rb": true, ".php": true, ".vue": true, ".svelte": true,

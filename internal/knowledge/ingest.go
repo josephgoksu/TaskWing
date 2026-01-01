@@ -371,6 +371,7 @@ func (s *Service) linkKnowledgeGraph(verbose bool) (int, int, error) {
 
 // linkByEvidence creates edges between nodes that reference the same files.
 // This creates meaningful relationships based on actual code context.
+// Note: allNodes must include Evidence fields (use ListNodes which now includes them).
 func (s *Service) linkByEvidence(allNodes []memory.Node) int {
 	count := 0
 
@@ -378,9 +379,9 @@ func (s *Service) linkByEvidence(allNodes []memory.Node) int {
 	fileToNodes := make(map[string][]string)
 	nodeEvidence := make(map[string][]string) // nodeID -> file paths
 
+	// Nodes already have Evidence populated from ListNodes() - no N+1 refetch needed
 	for _, n := range allNodes {
-		full, err := s.repo.GetNode(n.ID)
-		if err != nil || full.Evidence == "" {
+		if n.Evidence == "" {
 			continue
 		}
 
@@ -388,7 +389,7 @@ func (s *Service) linkByEvidence(allNodes []memory.Node) int {
 		var evidenceList []struct {
 			FilePath string `json:"file_path"`
 		}
-		if err := json.Unmarshal([]byte(full.Evidence), &evidenceList); err != nil {
+		if err := json.Unmarshal([]byte(n.Evidence), &evidenceList); err != nil {
 			continue
 		}
 
@@ -467,12 +468,10 @@ func (s *Service) linkSemantic(allNodes []memory.Node) int {
 	count := 0
 	threshold := SemanticSimilarityThreshold
 
-	// Hydrate with embeddings
-	nodesWithEmbeddings := make([]memory.Node, 0, len(allNodes))
-	for _, n := range allNodes {
-		if full, err := s.repo.GetNode(n.ID); err == nil && len(full.Embedding) > 0 {
-			nodesWithEmbeddings = append(nodesWithEmbeddings, *full)
-		}
+	// Fetch all nodes with embeddings in a single query (no N+1)
+	nodesWithEmbeddings, err := s.repo.ListNodesWithEmbeddings()
+	if err != nil {
+		return 0
 	}
 
 	// Compare pairs
@@ -548,13 +547,79 @@ func (s *Service) linkByLLMRelationships(relationships []core.Relationship, node
 	return count
 }
 
-// findNodeByPartialTitle finds a node ID where the title contains the search string.
+// findNodeByPartialTitle finds a node ID using multiple matching strategies:
+// 1. Exact substring match
+// 2. Word-based similarity (Jaccard on word tokens)
 func findNodeByPartialTitle(nodesByTitle map[string]string, search string) string {
 	searchLower := strings.ToLower(search)
+
+	// Strategy 1: Substring matching (original behavior)
 	for title, id := range nodesByTitle {
 		if strings.Contains(title, searchLower) || strings.Contains(searchLower, title) {
 			return id
 		}
 	}
-	return ""
+
+	// Strategy 2: Word-based similarity matching
+	// This catches cases where LLM uses different phrasing (e.g., "JWT Auth" vs "JWT Authentication")
+	searchWords := wordTokens(searchLower)
+	if len(searchWords) == 0 {
+		return ""
+	}
+
+	bestMatch := ""
+	bestScore := 0.0
+	threshold := 0.4 // Require at least 40% word overlap
+
+	for title, id := range nodesByTitle {
+		titleWords := wordTokens(title)
+		if len(titleWords) == 0 {
+			continue
+		}
+
+		// Calculate Jaccard similarity on word tokens
+		intersection := 0
+		for w := range searchWords {
+			if titleWords[w] {
+				intersection++
+			}
+		}
+		union := len(searchWords) + len(titleWords) - intersection
+		if union == 0 {
+			continue
+		}
+		similarity := float64(intersection) / float64(union)
+
+		if similarity >= threshold && similarity > bestScore {
+			bestScore = similarity
+			bestMatch = id
+		}
+	}
+
+	return bestMatch
+}
+
+// wordTokens extracts significant words from a string for matching
+func wordTokens(s string) map[string]bool {
+	tokens := make(map[string]bool)
+	// Replace common separators with spaces
+	s = strings.ReplaceAll(s, "-", " ")
+	s = strings.ReplaceAll(s, "_", " ")
+	s = strings.ReplaceAll(s, "/", " ")
+
+	words := strings.Fields(s)
+	stopWords := map[string]bool{
+		"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
+		"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
+		"with": true, "by": true, "is": true, "are": true, "was": true, "were": true,
+		"use": true, "using": true, "based": true, "via": true,
+	}
+
+	for _, w := range words {
+		w = strings.ToLower(w)
+		if len(w) > 2 && !stopWords[w] {
+			tokens[w] = true
+		}
+	}
+	return tokens
 }

@@ -21,6 +21,8 @@ type EvalTaskResult struct {
 	Model       string
 	Pass        bool
 	FailedRules []string
+	JudgeReason string // LLM judge's reasoning for the score
+	Score       int    // LLM judge score (0-10)
 }
 
 // EvalReportData holds all data needed for rendering the report
@@ -237,11 +239,26 @@ func renderTaskBreakdown(data EvalReportData) {
 
 		for _, f := range failures {
 			shortModel := shortenModelName(f.Model)
-			rules := strings.Join(f.FailedRules, ", ")
+
+			// Determine what to display: failed rules or judge reason
+			var detail string
+			if len(f.FailedRules) > 0 {
+				detail = strings.Join(f.FailedRules, ", ")
+			} else if f.JudgeReason != "" {
+				// Truncate long reasons for display
+				reason := f.JudgeReason
+				if len(reason) > 120 {
+					reason = reason[:117] + "..."
+				}
+				detail = fmt.Sprintf("score=%d: %s", f.Score, reason)
+			} else {
+				detail = fmt.Sprintf("score=%d (no details)", f.Score)
+			}
+
 			fmt.Printf("  %s %s: %s\n",
 				failStyle.Render(f.Task),
 				dimStyle.Render(shortModel),
-				dimStyle.Render(rules))
+				dimStyle.Render(detail))
 		}
 	}
 }

@@ -72,6 +72,12 @@ func RenderContextResults(query string, scored []knowledge.ScoredNode, answer st
 			icon = "🧩"
 		}
 
-		fmt.Printf(" %d. %s %s %s\n", i+1, icon, sourceTitle.Render(summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)))
+		// Add graph expansion indicator
+		expandedIndicator := ""
+		if s.ExpandedFrom != "" {
+			expandedIndicator = " 🔗" // Indicates this came from graph expansion
+		}
+
+		fmt.Printf(" %d. %s %s %s%s\n", i+1, icon, sourceTitle.Render(summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)), expandedIndicator)
 	}
 }

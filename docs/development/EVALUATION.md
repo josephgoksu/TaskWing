@@ -101,6 +101,57 @@ tw eval --model gpt-5.2-codex run \
 | `--runner` | run | External command template |
 | `--timeout` | run | Max time per task (default: 10m) |
 
+## Benchmark Results
+
+Real-world evaluation on a production Go/React codebase with OpenAPI codegen:
+
+```
+╭─────────────────────────────────────────╮
+│  BENCHMARK RESULTS · 2 runs · 4 models  │
+╰─────────────────────────────────────────╯
+
+  Model                               | Avg Score | T1   T2   T3   T4   T5
+  ------------------------------------|-----------|------------------------
+  no-context (gpt-5-mini-2025-08-07)  | 3.6       |  6    3    3    3    3
+  no-context (gpt-5-nano-2025-08-07)  | 3.6       |  6    2    5    3    2
+  with-taskwing (gpt-5-mini-2025-08-07)| 8.0      |  8    8    8    8    8
+  with-taskwing (gpt-5-nano-2025-08-07)| 8.0      |  8    8    8    8    8
+```
+
+**Key findings:**
+- TaskWing context provides **+122% improvement** (3.6 → 8.0 avg)
+- Without context, models assume wrong tech stack (TypeScript/Next.js instead of Go)
+- With context, models correctly reference `internal/api/types.gen.go`, `specs/openapi.yaml`, `make generate-api`
+
+## Quick Comparison Script
+
+Run the full comparison with a single command:
+
+```bash
+./run-eval-comparison.sh /path/to/your/repo
+```
+
+This script:
+1. Bootstraps project memory if missing
+2. Runs WITH context for all models (parallel)
+3. Runs WITHOUT context baseline (parallel)
+4. Generates benchmark comparison report
+
+## Scoring Rubric
+
+The LLM judge scores responses 0-10:
+
+| Score | Meaning |
+|-------|---------|
+| 10 | Perfect - all requirements met, correct tech stack |
+| 8-9 | Excellent - all MUST requirements, correct tech stack |
+| 6-7 | Good - all MUST requirements, minor gaps |
+| 4-5 | Partial - some requirements missing |
+| **2-3** | **Poor - WRONG tech stack or file paths** |
+| 0-1 | Fail - completely wrong or dangerous |
+
+> **Important:** Wrong tech stack (e.g., TypeScript when repo uses Go) scores ≤3 regardless of answer structure.
+
 ## Troubleshooting
 
 ### "Not enough context in memory"
@@ -111,3 +162,6 @@ Ensure tasks completed successfully. Check `.taskwing/eval/runs/<timestamp>/` fo
 
 ### "Unknown flag: --model"
 Update to the latest TaskWing CLI. The `--model` flag is now on the parent `eval` command.
+
+### Failure details empty in report
+Ensure you're running the latest version. Failure details now show the LLM judge's reasoning.

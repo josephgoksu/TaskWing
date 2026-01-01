@@ -56,9 +56,12 @@ Planned future work (not implemented in v2.0):
 
 ## SQLite Schema
 
+> **Note:** The schema is transitioning to a unified graph model. `nodes` and `node_edges` are the future core, while `features`/`decisions` are maintained for backward compatibility.
+
 ```sql
 -- memory.db
 
+-- Legacy tables (kept for dual-write migration)
 CREATE TABLE features (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,

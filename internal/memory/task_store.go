@@ -314,16 +314,26 @@ func (s *SQLiteStore) ListTasks(planID string) ([]task.Task, error) {
 	defer func() { _ = rows.Close() }()
 
 	var tasks []task.Task
+	var taskIDs []string
 	for rows.Next() {
 		t, err := scanTaskRow(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan task: %w", err)
 		}
-		// Dependencies needed for graph view
-		deps, _ := s.GetTaskDependencies(t.ID)
-		t.Dependencies = deps
 		tasks = append(tasks, t)
+		taskIDs = append(taskIDs, t.ID)
 	}
+
+	// Batch fetch all dependencies in a single query (fixes N+1)
+	if len(taskIDs) > 0 {
+		depsMap, err := s.batchGetTaskDependencies(taskIDs)
+		if err == nil {
+			for i := range tasks {
+				tasks[i].Dependencies = depsMap[tasks[i].ID]
+			}
+		}
+	}
+
 	return tasks, nil
 }
 
@@ -384,6 +394,39 @@ func (s *SQLiteStore) GetTaskDependencies(taskID string) ([]string, error) {
 		deps = append(deps, d)
 	}
 	return deps, nil
+}
+
+// batchGetTaskDependencies fetches dependencies for multiple tasks in a single query.
+// Returns a map of task_id -> []depends_on. Fixes the N+1 query pattern in ListTasks.
+func (s *SQLiteStore) batchGetTaskDependencies(taskIDs []string) (map[string][]string, error) {
+	if len(taskIDs) == 0 {
+		return make(map[string][]string), nil
+	}
+
+	// Build query with placeholders
+	placeholders := make([]string, len(taskIDs))
+	args := make([]any, len(taskIDs))
+	for i, id := range taskIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := `SELECT task_id, depends_on FROM task_dependencies WHERE task_id IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("batch query deps: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make(map[string][]string)
+	for rows.Next() {
+		var taskID, dependsOn string
+		if err := rows.Scan(&taskID, &dependsOn); err != nil {
+			return nil, err
+		}
+		result[taskID] = append(result[taskID], dependsOn)
+	}
+	return result, nil
 }
 
 func (s *SQLiteStore) GetTaskContextNodes(taskID string) ([]string, error) {

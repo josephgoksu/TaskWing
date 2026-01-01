@@ -36,7 +36,10 @@ cmd/                          # Cobra CLI commands
 ├── context.go                # Semantic search with --answer for AI responses
 ├── list.go                   # View knowledge by type
 ├── memory.go                 # Maintenance: check/repair/rebuild-index
-└── mcp_server.go             # MCP server for AI tool integration
+├── mcp_server.go             # MCP server for AI tool integration
+├── plan.go                   # Plan management (new/list/start)
+├── task.go                   # Atomic task management
+└── eval.go                   # Evaluation benchmarks
 
 internal/
 ├── memory/                   # Data layer
