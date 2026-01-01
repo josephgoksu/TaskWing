@@ -40,17 +40,20 @@ Every task references **your actual files, patterns, and constraints**.
 ## ⚡ Quick Start
 
 ```bash
-# 1. Install
-curl -fsSL https://taskwing.app/install.sh | bash
+# Install via Homebrew (recommended for macOS/Linux)
+brew tap josephgoksu/tap && brew install taskwing
 
-# 2. Bootstrap your repo (extract knowledge)
+# Or via curl
+curl -fsSL https://taskwing.app/install.sh | sh
+
+# Bootstrap your repo (extract knowledge)
 cd /path/to/your/repo
 tw bootstrap
 
-# 3. Generate a plan
+# Generate a plan
 tw plan new "Implement user authentication"
 
-# 4. Start working (provides context to AI tools via MCP)
+# Start working (provides context to AI tools via MCP)
 tw plan start auth
 tw mcp
 ```
