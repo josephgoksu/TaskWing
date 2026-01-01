@@ -483,9 +483,9 @@ func TestCLIVersionFlag(t *testing.T) {
 
 	env := newTestEnv(t)
 
-	stdout, _, err := env.runCLI("--version")
+	stdout, _, err := env.runCLI("version")
 	if err != nil {
-		t.Fatalf("--version failed: %v", err)
+		t.Fatalf("version command failed: %v", err)
 	}
 
 	// Should contain version information
