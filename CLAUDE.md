@@ -32,7 +32,7 @@ air                           # Start hot-reload dev server (creates ./tmp/tw)
 
 ## Architecture Overview
 
-TaskWing is an AI-native task management CLI that extracts architectural decisions and context from codebases, making them queryable by AI tools via MCP (Model Context Protocol).
+TaskWing gives AI coding assistants permanent memory. It extracts architectural decisions, patterns, and constraints from your codebase, then exposes them via MCP (Model Context Protocol) so Claude, Cursor, and Copilot understand your architecture.
 
 ### Core Layers
 
