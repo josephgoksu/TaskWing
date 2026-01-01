@@ -42,7 +42,6 @@ archives:
     format_overrides: []
     files:
       - README.md
-      - MCP.md
       - LICENSE
       - .taskwing.example.yaml
 
@@ -109,7 +108,7 @@ release:
     ./taskwing mcp
     ```
 
-    See the included MCP.md for detailed AI integration instructions.
+    See the README for detailed instructions.
 
   footer: |
     ---
@@ -118,7 +117,8 @@ release:
 
     **Homebrew (macOS/Linux):**
     ```bash
-    # Coming soon
+    brew tap josephgoksu/tap
+    brew install taskwing
     ```
 
     **Manual Installation:**
@@ -156,7 +156,7 @@ brews:
     install: |
       bin.install "taskwing"
     test: |
-      system "#{bin}/taskwing", "--version"
+      system "#{bin}/taskwing", "version"
 
 # Scoop bucket for Windows removed - focusing on Linux/macOS only
 
