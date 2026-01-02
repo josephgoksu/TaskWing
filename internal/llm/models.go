@@ -8,13 +8,14 @@ import (
 // Model represents a complete model definition including metadata and pricing.
 // This is the single source of truth for all model information.
 type Model struct {
-	ID          string   // Canonical model ID (e.g., "gpt-5-mini")
-	Provider    string   // Provider display name (e.g., "OpenAI")
-	ProviderID  string   // Internal provider ID (e.g., "openai")
-	Aliases     []string // Alternative IDs including dated versions (e.g., "gpt-5-mini-2025-08-07")
-	InputPer1M  float64  // $ per 1M input tokens
-	OutputPer1M float64  // $ per 1M output tokens
-	IsDefault   bool     // Whether this is the default model for its provider
+	ID               string   // Canonical model ID (e.g., "gpt-5-mini")
+	Provider         string   // Provider display name (e.g., "OpenAI")
+	ProviderID       string   // Internal provider ID (e.g., "openai")
+	Aliases          []string // Alternative IDs including dated versions (e.g., "gpt-5-mini-2025-08-07")
+	InputPer1M       float64  // $ per 1M input tokens
+	OutputPer1M      float64  // $ per 1M output tokens
+	IsDefault        bool     // Whether this is the default model for its provider
+	SupportsThinking bool     // Whether the model supports extended thinking mode
 }
 
 // ModelRegistry is the single source of truth for all supported models.
@@ -91,43 +92,48 @@ var ModelRegistry = []Model{
 	// Anthropic Models
 	// ============================================
 	{
-		ID:          "claude-3-5-sonnet-latest",
-		Provider:    "Anthropic",
-		ProviderID:  ProviderAnthropic,
-		Aliases:     []string{"claude-3-5-sonnet-20241022"},
-		InputPer1M:  3.00,
-		OutputPer1M: 15.00,
-		IsDefault:   true,
+		ID:               "claude-3-5-sonnet-latest",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		Aliases:          []string{"claude-3-5-sonnet-20241022"},
+		InputPer1M:       3.00,
+		OutputPer1M:      15.00,
+		IsDefault:        true,
+		SupportsThinking: true,
 	},
 	{
-		ID:          "claude-3-5-haiku-latest",
-		Provider:    "Anthropic",
-		ProviderID:  ProviderAnthropic,
-		Aliases:     []string{"claude-3-5-haiku-20241022"},
-		InputPer1M:  0.80,
-		OutputPer1M: 4.00,
+		ID:               "claude-3-5-haiku-latest",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		Aliases:          []string{"claude-3-5-haiku-20241022"},
+		InputPer1M:       0.80,
+		OutputPer1M:      4.00,
+		SupportsThinking: true,
 	},
 	{
-		ID:          "claude-3-opus-latest",
-		Provider:    "Anthropic",
-		ProviderID:  ProviderAnthropic,
-		Aliases:     []string{"claude-3-opus-20240229"},
-		InputPer1M:  15.00,
-		OutputPer1M: 75.00,
+		ID:               "claude-3-opus-latest",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		Aliases:          []string{"claude-3-opus-20240229"},
+		InputPer1M:       15.00,
+		OutputPer1M:      75.00,
+		SupportsThinking: true,
 	},
 	{
-		ID:          "claude-3-sonnet-20240229",
-		Provider:    "Anthropic",
-		ProviderID:  ProviderAnthropic,
-		InputPer1M:  3.00,
-		OutputPer1M: 15.00,
+		ID:               "claude-3-sonnet-20240229",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		InputPer1M:       3.00,
+		OutputPer1M:      15.00,
+		SupportsThinking: true,
 	},
 	{
-		ID:          "claude-3-haiku-20240307",
-		Provider:    "Anthropic",
-		ProviderID:  ProviderAnthropic,
-		InputPer1M:  0.25,
-		OutputPer1M: 1.25,
+		ID:               "claude-3-haiku-20240307",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		InputPer1M:       0.25,
+		OutputPer1M:      1.25,
+		SupportsThinking: true,
 	},
 
 	// ============================================
@@ -359,4 +365,13 @@ func CalculateCost(modelID string, inputTokens, outputTokens int) float64 {
 	inputCost := float64(inputTokens) / 1_000_000 * m.InputPer1M
 	outputCost := float64(outputTokens) / 1_000_000 * m.OutputPer1M
 	return inputCost + outputCost
+}
+
+// ModelSupportsThinking returns true if the model supports extended thinking mode.
+func ModelSupportsThinking(modelID string) bool {
+	m := GetModel(modelID)
+	if m == nil {
+		return false
+	}
+	return m.SupportsThinking
 }

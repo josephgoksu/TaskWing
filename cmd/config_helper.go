@@ -156,12 +156,20 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	// 5. Embedding Model
 	embeddingModel := viper.GetString("llm.embeddingModel")
 
+	// 6. Thinking Budget (for models that support extended thinking)
+	thinkingBudget := viper.GetInt("llm.thinkingBudget")
+	if thinkingBudget == 0 && llm.ModelSupportsThinking(model) {
+		// Default thinking budget for supported models (8K tokens)
+		thinkingBudget = 8192
+	}
+
 	return llm.Config{
 		Provider:       llmProvider,
 		Model:          model,
 		EmbeddingModel: embeddingModel,
 		APIKey:         apiKey,
 		BaseURL:        ollamaURL,
+		ThinkingBudget: thinkingBudget,
 	}, nil
 }
 

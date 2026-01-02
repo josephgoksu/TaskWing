@@ -28,6 +28,7 @@ type Config struct {
 	EmbeddingModel string // Embedding model (optional)
 	APIKey         string // Required for OpenAI
 	BaseURL        string // Required for Ollama (default: http://localhost:11434)
+	ThinkingBudget int    // Token budget for extended thinking (0 = disabled, only for supported models)
 }
 
 // CloseableChatModel wraps a chat model with optional cleanup.
@@ -117,10 +118,18 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("anthropic API key is required")
 		}
-		m, err := claude.NewChatModel(ctx, &claude.Config{
+		claudeConfig := &claude.Config{
 			APIKey: cfg.APIKey,
 			Model:  cfg.Model,
-		})
+		}
+		// Enable extended thinking if budget is set and model supports it
+		if cfg.ThinkingBudget > 0 && ModelSupportsThinking(cfg.Model) {
+			claudeConfig.Thinking = &claude.Thinking{
+				Enable:       true,
+				BudgetTokens: cfg.ThinkingBudget,
+			}
+		}
+		m, err := claude.NewChatModel(ctx, claudeConfig)
 		if err != nil {
 			return nil, err
 		}
