@@ -160,11 +160,17 @@ func (h *CallbackHandler) Build() callbacks.Handler {
 		}).
 		OnEndFn(func(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
 			h.mu.Lock()
-			start := h.startTimes[info.Name]
-			delete(h.startTimes, info.Name)
+			start, exists := h.startTimes[info.Name]
+			if exists {
+				delete(h.startTimes, info.Name)
+			}
 			h.mu.Unlock()
 
-			duration := time.Since(start)
+			// Guard against missing start time (can happen with parallel chain invokes)
+			var duration time.Duration
+			if exists && !start.IsZero() {
+				duration = time.Since(start)
+			}
 
 			if h.onEnd != nil && (string(info.Component) == "Graph" || string(info.Component) == "Chain") {
 				h.onEnd(info.Name, duration)
