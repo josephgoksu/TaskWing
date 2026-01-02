@@ -241,8 +241,9 @@ func upsertVSCodeMCPServer(configPath, serverName string, serverCfg VSCodeMCPSer
 
 func installLocalMCP(projectDir, configDirName, configFileName, binPath string) {
 	configPath := filepath.Join(projectDir, configDirName, configFileName)
+	serverName := mcpServerName(projectDir)
 
-	err := upsertMCPServer(configPath, "taskwing", MCPServerConfig{
+	err := upsertMCPServer(configPath, serverName, MCPServerConfig{
 		Command: binPath,
 		Args:    []string{"mcp"},
 	})
@@ -250,7 +251,7 @@ func installLocalMCP(projectDir, configDirName, configFileName, binPath string) 
 		fmt.Printf("❌ Failed to install for %s: %v\n", configDirName, err)
 		return
 	}
-	fmt.Printf("✅ Installed for %s in %s\n", strings.TrimPrefix(configDirName, "."), configPath)
+	fmt.Printf("✅ Installed for %s as '%s' in %s\n", strings.TrimPrefix(configDirName, "."), serverName, configPath)
 }
 
 func installClaude(binPath, projectDir string) {
@@ -345,10 +346,11 @@ func installClaudeDesktop(binPath, projectDir string) {
 // See: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
 func installCopilot(binPath, projectDir string) {
 	configPath := filepath.Join(projectDir, ".vscode", "mcp.json")
+	serverName := mcpServerName(projectDir)
 
 	fmt.Println("👉 Configuring GitHub Copilot (VS Code)...")
 
-	err := upsertVSCodeMCPServer(configPath, "taskwing", VSCodeMCPServerConfig{
+	err := upsertVSCodeMCPServer(configPath, serverName, VSCodeMCPServerConfig{
 		Type:    "stdio",
 		Command: binPath,
 		Args:    []string{"mcp"},
@@ -357,7 +359,7 @@ func installCopilot(binPath, projectDir string) {
 		fmt.Printf("❌ Failed to install for Copilot: %v\n", err)
 		return
 	}
-	fmt.Printf("✅ Installed for GitHub Copilot in %s\n", configPath)
+	fmt.Printf("✅ Installed for GitHub Copilot as '%s' in %s\n", serverName, configPath)
 	fmt.Println("   (Reload VS Code window to activate)")
 }
 

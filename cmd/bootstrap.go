@@ -391,6 +391,7 @@ This is the first thing you should do when working on this project."""
 `
 	} else {
 		// Markdown format for Claude, Cursor, Copilot, Codex
+		// Use the correct installer command for each AI assistant
 		fileName = "taskwing.md"
 		content = `# Fetch project architecture context
 
@@ -399,7 +400,7 @@ Retrieve codebase knowledge (patterns, decisions, constraints) via the TaskWing 
 ## Prerequisites
 TaskWing MCP server must be configured. If not set up, run:
 ` + "```bash" + `
-tw mcp install claude
+tw mcp install ` + aiCfg.name + `
 ` + "```" + `
 
 ## MCP Tool: ` + "`recall`" + `
