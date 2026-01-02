@@ -148,10 +148,20 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 		}
 
-		chatModel, err := gemini.NewChatModel(ctx, &gemini.Config{
+		geminiConfig := &gemini.Config{
 			Client: genaiClient,
 			Model:  cfg.Model,
-		})
+		}
+		// Enable thinking mode if budget is set and model supports it
+		if cfg.ThinkingBudget > 0 && ModelSupportsThinking(cfg.Model) {
+			budget := int32(cfg.ThinkingBudget)
+			geminiConfig.ThinkingConfig = &genai.ThinkingConfig{
+				IncludeThoughts: true,
+				ThinkingBudget:  &budget,
+			}
+		}
+
+		chatModel, err := gemini.NewChatModel(ctx, geminiConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Gemini chat model: %w", err)
 		}
