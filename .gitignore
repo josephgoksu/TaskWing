@@ -68,3 +68,6 @@ temp/
 # Internal documentation (not for public)
 # docs/internal/
 tw
+
+# Generated bundle files (stale after changes)
+repomix-output.md

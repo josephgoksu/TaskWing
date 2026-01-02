@@ -22,22 +22,22 @@ var mcpInstallCmd = &cobra.Command{
 	Short: "Install MCP server configuration for an editor",
 	Long: `Automatically configure your editor to use TaskWing's MCP server.
 
-By default, installs locally in the current project directory for Cursor/Windsurf.
-For Claude, installation is always global (User level).
-
 Supported editors:
-  - cursor    (Creates .cursor/mcp.json in current project)
-  - windsurf  (Creates .windsurf/mcp.json in current project)
-  - claude    (Configures local Claude Code CLI and Claude Desktop App)
-  - gemini    (Creates .gemini/settings.json in project, or ~/.gemini/settings.json with --global)
+  - cursor         (Creates .cursor/mcp.json in current project)
+  - claude         (Configures Claude Code CLI)
+  - claude-desktop (Configures Claude Desktop App)
+  - gemini         (Configures Gemini CLI via 'gemini mcp add')
+  - codex          (Configures OpenAI Codex CLI via 'codex mcp add')
+  - copilot        (Creates .vscode/mcp.json for GitHub Copilot)
 
 Examples:
   taskwing mcp install cursor
   taskwing mcp install claude
+  taskwing mcp install copilot
   taskwing mcp install all`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			fmt.Println("Please specify an editor: cursor, windsurf, claude, gemini, or all")
+			fmt.Println("Please specify an editor: cursor, claude, claude-desktop, gemini, codex, copilot, or all")
 			os.Exit(1)
 		}
 
@@ -60,7 +60,7 @@ Examples:
 		}
 
 		installType := "local"
-		if globalInstall || target == "claude" {
+		if globalInstall || target == "claude" || target == "claude-desktop" {
 			installType = "global"
 		}
 
@@ -71,24 +71,22 @@ Examples:
 		switch target {
 		case "cursor":
 			installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
-		case "windsurf":
-			installLocalMCP(cwd, ".windsurf", "mcp.json", binPath)
 		case "claude":
 			installClaude(binPath, cwd)
+		case "claude-desktop":
+			installClaudeDesktop(binPath, cwd)
 		case "codex":
 			installCodexGlobal(binPath, cwd)
 		case "gemini":
-			installGeminiGlobal(binPath, cwd)
+			installGeminiCLI(binPath, cwd)
+		case "copilot":
+			installCopilot(binPath, cwd)
 		case "all":
 			installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
-			installLocalMCP(cwd, ".windsurf", "mcp.json", binPath)
 			installClaude(binPath, cwd)
 			installCodexGlobal(binPath, cwd)
-			if globalInstall {
-				installGlobalMCP("gemini", binPath, cwd)
-			} else {
-				installLocalMCP(cwd, ".gemini", "settings.json", binPath)
-			}
+			installGeminiCLI(binPath, cwd)
+			installCopilot(binPath, cwd)
 		default:
 			fmt.Printf("Unknown editor: %s\n", target)
 			os.Exit(1)
@@ -112,19 +110,60 @@ type MCPConfig struct {
 	MCPServers map[string]MCPServerConfig `json:"mcpServers"`
 }
 
+// VSCodeMCPServerConfig is the VS Code/Copilot MCP server format
+// See: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
+type VSCodeMCPServerConfig struct {
+	Type    string            `json:"type"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env,omitempty"`
+}
+
+type VSCodeMCPConfig struct {
+	Servers map[string]VSCodeMCPServerConfig `json:"servers"`
+}
+
 // -----------------------------------------------------------------------------
 // Naming Helpers — Single implementation for consistent server naming
 // -----------------------------------------------------------------------------
 
-// sanitizeProjectName returns a server-safe project name (no dots)
-func sanitizeProjectName(projectDir string) string {
-	name := filepath.Base(projectDir)
-	return strings.ReplaceAll(name, ".", "_")
+// mcpServerName returns the TaskWing MCP server name for a project
+// Uses a consistent name across all projects; AI tools differentiate by working directory
+func mcpServerName(projectDir string) string {
+	return "taskwing-mcp"
 }
 
-// mcpServerName returns the TaskWing MCP server name for a project
-func mcpServerName(projectDir string) string {
-	return fmt.Sprintf("taskwing-%s", sanitizeProjectName(projectDir))
+// legacyServerName returns the OLD server name format for migration cleanup
+// Old format was: taskwing-{ProjectName} (with original casing, dots replaced with underscores)
+func legacyServerName(projectDir string) string {
+	name := filepath.Base(projectDir)
+	name = strings.ReplaceAll(name, ".", "_")
+	return fmt.Sprintf("taskwing-%s", name)
+}
+
+// removeMCPServer removes a server entry from an MCP config file if it exists.
+// Used for cleaning up legacy server names during migration.
+func removeMCPServer(configPath, serverName string) {
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		return // File doesn't exist, nothing to remove
+	}
+
+	var config MCPConfig
+	if err := json.Unmarshal(content, &config); err != nil {
+		return
+	}
+
+	if config.MCPServers == nil {
+		return
+	}
+
+	if _, exists := config.MCPServers[serverName]; !exists {
+		return // Server not in config
+	}
+
+	delete(config.MCPServers, serverName)
+	_ = writeJSONFile(configPath, config) // Ignore error - best effort cleanup
 }
 
 // upsertMCPServer reads an MCP config file, adds/updates the server, and writes it back.
@@ -171,6 +210,35 @@ func writeJSONFile(path string, data interface{}) error {
 	return os.WriteFile(path, bytes, 0644)
 }
 
+// upsertVSCodeMCPServer handles VS Code/Copilot MCP config format
+// VS Code uses {"servers": {...}} instead of {"mcpServers": {...}}
+func upsertVSCodeMCPServer(configPath, serverName string, serverCfg VSCodeMCPServerConfig) error {
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+
+	// Read existing config or create empty
+	var config VSCodeMCPConfig
+	if content, err := os.ReadFile(configPath); err == nil {
+		if err := json.Unmarshal(content, &config); err != nil {
+			config.Servers = make(map[string]VSCodeMCPServerConfig)
+		}
+	} else {
+		config.Servers = make(map[string]VSCodeMCPServerConfig)
+	}
+
+	if config.Servers == nil {
+		config.Servers = make(map[string]VSCodeMCPServerConfig)
+	}
+
+	// Upsert server
+	config.Servers[serverName] = serverCfg
+
+	// Write back
+	return writeJSONFile(configPath, config)
+}
+
 func installLocalMCP(projectDir, configDirName, configFileName, binPath string) {
 	configPath := filepath.Join(projectDir, configDirName, configFileName)
 
@@ -185,19 +253,10 @@ func installLocalMCP(projectDir, configDirName, configFileName, binPath string) 
 	fmt.Printf("✅ Installed for %s in %s\n", strings.TrimPrefix(configDirName, "."), configPath)
 }
 
-func installGlobalMCP(app string, binPath, projectDir string) {
-	switch app {
-	case "gemini":
-		installGeminiGlobal(binPath, projectDir)
-	}
-}
-
 func installClaude(binPath, projectDir string) {
-	// 1. Install for Claude Code CLI
+	// Install for Claude Code CLI only
+	// Claude Desktop is skipped by default (use 'tw mcp install claude-desktop' if needed)
 	installClaudeCodeCLI(binPath, projectDir)
-
-	// 2. Install for Claude Desktop (macOS only for now)
-	installClaudeDesktop(binPath, projectDir)
 }
 
 func installClaudeCodeCLI(binPath, projectDir string) {
@@ -211,14 +270,25 @@ func installClaudeCodeCLI(binPath, projectDir string) {
 	}
 
 	serverName := mcpServerName(projectDir)
+	legacyName := legacyServerName(projectDir)
 
 	fmt.Println("👉 Configuring Claude Code CLI...")
 
 	if viper.GetBool("preview") {
-		fmt.Printf("[PREVIEW] Would run: claude mcp add --transport stdio %s -- %s mcp\n", serverName, binPath)
-		fmt.Printf("✅ Would install for claude code as '%s'\n", serverName)
+		fmt.Printf("[PREVIEW] Would run: claude mcp remove %s && claude mcp remove %s && claude mcp add --transport stdio %s -- %s mcp\n", legacyName, serverName, serverName, binPath)
+		fmt.Printf("✅ Would install for Claude Code as '%s'\n", serverName)
 		return
 	}
+
+	// Remove legacy server name first (migration cleanup)
+	legacyRemoveCmd := exec.Command("claude", "mcp", "remove", legacyName)
+	legacyRemoveCmd.Dir = projectDir
+	_ = legacyRemoveCmd.Run() // Ignore error - server may not exist
+
+	// Remove current server name (idempotent reinstall)
+	removeCmd := exec.Command("claude", "mcp", "remove", serverName)
+	removeCmd.Dir = projectDir
+	_ = removeCmd.Run() // Ignore error - server may not exist
 
 	// Run: claude mcp add --transport stdio <name> -- <binPath> mcp
 	cmd := exec.Command("claude", "mcp", "add", "--transport", "stdio", serverName, "--", binPath, "mcp")
@@ -252,6 +322,10 @@ func installClaudeDesktop(binPath, projectDir string) {
 	fmt.Println("👉 Configuring Claude Desktop App...")
 
 	serverName := mcpServerName(projectDir)
+	legacyName := legacyServerName(projectDir)
+
+	// Remove legacy server name (migration cleanup)
+	removeMCPServer(configPath, legacyName)
 
 	err = upsertMCPServer(configPath, serverName, MCPServerConfig{
 		Command: binPath,
@@ -266,7 +340,28 @@ func installClaudeDesktop(binPath, projectDir string) {
 	fmt.Println("   (You may need to restart Claude Desktop to see the changes)")
 }
 
-func installGeminiGlobal(binPath, projectDir string) {
+// installCopilot configures MCP for GitHub Copilot in VS Code
+// Uses .vscode/mcp.json with VS Code's MCP format
+// See: https://code.visualstudio.com/docs/copilot/customization/mcp-servers
+func installCopilot(binPath, projectDir string) {
+	configPath := filepath.Join(projectDir, ".vscode", "mcp.json")
+
+	fmt.Println("👉 Configuring GitHub Copilot (VS Code)...")
+
+	err := upsertVSCodeMCPServer(configPath, "taskwing", VSCodeMCPServerConfig{
+		Type:    "stdio",
+		Command: binPath,
+		Args:    []string{"mcp"},
+	})
+	if err != nil {
+		fmt.Printf("❌ Failed to install for Copilot: %v\n", err)
+		return
+	}
+	fmt.Printf("✅ Installed for GitHub Copilot in %s\n", configPath)
+	fmt.Println("   (Reload VS Code window to activate)")
+}
+
+func installGeminiCLI(binPath, projectDir string) {
 	// Check if gemini CLI is available
 	_, err := exec.LookPath("gemini")
 	if err != nil {
@@ -277,16 +372,27 @@ func installGeminiGlobal(binPath, projectDir string) {
 	}
 
 	serverName := mcpServerName(projectDir)
+	legacyName := legacyServerName(projectDir)
 	fmt.Println("👉 Configuring Gemini CLI...")
 
 	if viper.GetBool("preview") {
-		fmt.Printf("[PREVIEW] Would run: gemini mcp add %s %s mcp --cwd %s\n", serverName, binPath, projectDir)
+		fmt.Printf("[PREVIEW] Would run: gemini mcp remove -s project %s && gemini mcp add -s project %s %s mcp\n", legacyName, serverName, binPath)
 		return
 	}
 
-	// Run: gemini mcp add <name> <command> [args...] --cwd <cwd>
-	// Note: 'gemini mcp add' syntax: gemini mcp add <name> <command> [args...]
-	cmd := exec.Command("gemini", "mcp", "add", serverName, binPath, "mcp", "--cwd", projectDir)
+	// Remove legacy server name (migration cleanup)
+	legacyRemoveCmd := exec.Command("gemini", "mcp", "remove", "-s", "project", legacyName)
+	legacyRemoveCmd.Dir = projectDir
+	_ = legacyRemoveCmd.Run() // Ignore error - server may not exist
+
+	// Remove current server name (idempotent reinstall)
+	removeCmd := exec.Command("gemini", "mcp", "remove", "-s", "project", serverName)
+	removeCmd.Dir = projectDir
+	_ = removeCmd.Run() // Ignore error - server may not exist
+
+	// Run: gemini mcp add -s project <name> <command> [args...]
+	// Uses -s project for project-level config (stored in .gemini/settings.json)
+	cmd := exec.Command("gemini", "mcp", "add", "-s", "project", serverName, binPath, "mcp")
 	cmd.Dir = projectDir
 
 	// Capture output to suppress noise, unless verbose
@@ -313,12 +419,23 @@ func installCodexGlobal(binPath, projectDir string) {
 	}
 
 	serverName := mcpServerName(projectDir)
+	legacyName := legacyServerName(projectDir)
 	fmt.Println("👉 Configuring OpenAI Codex...")
 
 	if viper.GetBool("preview") {
-		fmt.Printf("[PREVIEW] Would run: codex mcp add %s -- %s mcp\n", serverName, binPath)
+		fmt.Printf("[PREVIEW] Would run: codex mcp remove %s && codex mcp add %s -- %s mcp\n", legacyName, serverName, binPath)
 		return
 	}
+
+	// Remove legacy server name (migration cleanup)
+	legacyRemoveCmd := exec.Command("codex", "mcp", "remove", legacyName)
+	legacyRemoveCmd.Dir = projectDir
+	_ = legacyRemoveCmd.Run() // Ignore error - server may not exist
+
+	// Remove current server name (idempotent reinstall)
+	removeCmd := exec.Command("codex", "mcp", "remove", serverName)
+	removeCmd.Dir = projectDir
+	_ = removeCmd.Run() // Ignore error - server may not exist
 
 	// Run: codex mcp add <name> -- <binPath> mcp
 	cmd := exec.Command("codex", "mcp", "add", serverName, "--", binPath, "mcp")

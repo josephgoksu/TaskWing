@@ -604,7 +604,7 @@ User runs: tw context "authentication"
 ### Example 3: MCP Query
 
 ```
-AI tool queries: project-context tool
+AI tool queries: recall tool
 
 1. internal/agents/core/mcp.go handles request
 2. Query embedded + searched

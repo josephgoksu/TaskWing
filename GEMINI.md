@@ -100,6 +100,6 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 
 ## MCP Integration
 
-TaskWing exposes a `project-context` tool. When working on this feature:
+TaskWing exposes a `recall` tool. When working on this feature:
 *   Ensure responses stay within token budgets (500-1000 tokens).
 *   Test with `tw mcp` locally or use `make test-mcp`.

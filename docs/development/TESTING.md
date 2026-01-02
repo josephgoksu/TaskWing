@@ -168,7 +168,7 @@ tw context "deployment" --answer > q3.txt
 | Test Case | What to Verify |
 |-----------|----------------|
 | MCP-01 | Server starts, returns valid JSON-RPC |
-| MCP-02 | `project-context` tool returns knowledge |
+| MCP-02 | `recall` tool returns knowledge |
 | MCP-03 | Query filtering works semantically |
 | MCP-04 | Local install creates correct config |
 | MCP-05 | Global install creates correct config |
@@ -194,7 +194,7 @@ cd ~/taskwing-tests/markwise.app
 
 (echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}';
  echo '{"jsonrpc":"2.0","method":"initialized","params":{},"id":2}';
- echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"project-context","arguments":{}},"id":3}';
+ echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"recall","arguments":{}},"id":3}';
  sleep 2) | tw mcp 2>&1 | tail -20
 ```
 
@@ -209,7 +209,7 @@ cd ~/taskwing-tests/markwise.app
 
 (echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}';
  echo '{"jsonrpc":"2.0","method":"initialized","params":{},"id":2}';
- echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"project-context","arguments":{"query":"database"}},"id":3}';
+ echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"recall","arguments":{"query":"database"}},"id":3}';
  sleep 2) | tw mcp 2>&1 | grep -i "mongo\|lance"
 ```
 

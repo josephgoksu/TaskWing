@@ -26,7 +26,7 @@ var mcpCmd = &cobra.Command{
 	Long: `Start a Model Context Protocol (MCP) server to enable AI tools like Claude Code,
 Cursor, and other AI assistants to interact with TaskWing project memory.
 
-The MCP server provides the project-context tool that gives AI tools access to:
+The MCP server provides the recall tool that gives AI tools access to:
 - Knowledge nodes (decisions, features, plans, notes)
 - Semantic search across project memory
 - Relationships between components
@@ -53,7 +53,7 @@ func init() {
 	// NOTE: SSE transport (--port) intentionally removed. Stdio is the standard.
 }
 
-// ProjectContextParams defines the parameters for the project-context tool
+// ProjectContextParams defines the parameters for the recall tool
 type ProjectContextParams struct {
 	Query string `json:"query,omitempty"`
 }
@@ -104,10 +104,10 @@ func runMCPServer(ctx context.Context) error {
 
 	server := mcpsdk.NewServer(impl, serverOpts)
 
-	// Register project-context tool
+	// Register recall tool - retrieves stored codebase knowledge for AI context
 	tool := &mcpsdk.Tool{
-		Name:        "project-context",
-		Description: "Get project knowledge for AI context. Use {\"query\":\"search term\"} for semantic search, or omit for an overview.",
+		Name:        "recall",
+		Description: "Retrieve codebase architecture knowledge: decisions, patterns, constraints, and features. Returns overview by default. Use {\"query\":\"search term\"} for semantic search (e.g., {\"query\":\"authentication\"} or {\"query\":\"error handling\"}).",
 	}
 
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {

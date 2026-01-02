@@ -94,7 +94,7 @@ Bootstrap runs LLM analysis by default.
 
 ### MCP Server
 
-`tw mcp` starts a JSON-RPC stdio server exposing `project-context` tool for AI assistants. Target token budget: 500-1000 tokens per context response.
+`tw mcp` starts a JSON-RPC stdio server exposing `recall` tool for AI assistants. Target token budget: 500-1000 tokens per context response.
 
 ## Key Patterns
 

@@ -336,6 +336,26 @@ func runAutoInit(basePath string, cmd *cobra.Command) error {
 				return err
 			}
 		}
+
+		// Install MCP servers for selected AIs
+		binPath, _ := os.Executable()
+		if absPath, err := filepath.Abs(binPath); err == nil {
+			binPath = filepath.Clean(absPath)
+		}
+		for _, ai := range selectedAIs {
+			switch ai {
+			case "claude":
+				installClaude(binPath, basePath)
+			case "gemini":
+				installGeminiCLI(binPath, basePath)
+			case "codex":
+				installCodexGlobal(binPath, basePath)
+			case "cursor":
+				installLocalMCP(basePath, ".cursor", "mcp.json", binPath)
+			case "copilot":
+				installCopilot(binPath, basePath)
+			}
+		}
 	}
 
 	fmt.Println("\n✓ TaskWing initialized!")
@@ -353,42 +373,61 @@ func createSingleSlashCommand(basePath string, aiCfg aiConfig, verbose bool) err
 		return fmt.Errorf("create commands dir: %w", err)
 	}
 
-	// Single unified command
-	content := `# /taskwing
+	var content string
+	var fileName string
 
-Work on the current TaskWing plan for this project.
+	if aiCfg.fileExt == ".toml" {
+		// TOML format for Gemini CLI
+		fileName = "taskwing.toml"
+		content = `description = "Fetch project context from TaskWing"
 
-## Quick Start
-1. Check the latest plan: ` + "`cat .taskwing/plans/latest.md`" + `
-2. List tasks: ` + "`tw task list`" + `
-3. Ask me to implement a specific task
+prompt = """Call the TaskWing MCP recall tool NOW to understand this codebase.
 
-## Available Commands
+Use it with:
+- No query: Get overview (features, decisions, patterns, constraints)
+- With query: {"query": "search term"} for semantic search
+
+This is the first thing you should do when working on this project."""
+`
+	} else {
+		// Markdown format for Claude, Cursor, Copilot, Codex
+		fileName = "taskwing.md"
+		content = `# Fetch project architecture context
+
+Retrieve codebase knowledge (patterns, decisions, constraints) via the TaskWing MCP server.
+
+## Prerequisites
+TaskWing MCP server must be configured. If not set up, run:
 ` + "```bash" + `
-tw plan list              # View all plans
-tw plan export latest     # Export latest plan to .taskwing/plans/
-tw task list              # View all tasks
-tw task list --plan X     # Filter by plan
-tw context "query"        # Search project knowledge
+tw mcp install claude
 ` + "```" + `
 
-## How to Use
-1. Review the plan in .taskwing/plans/latest.md
-2. Tell me which task to work on
-3. I'll implement it following the acceptance criteria
+## MCP Tool: ` + "`recall`" + `
+- **Overview mode** (no params): Returns summary of features, decisions, patterns, constraints
+- **Search mode**: ` + "`{\"query\": \"authentication\"}`" + ` for semantic search across project memory
 
-The plan contains:
-- Task titles and descriptions
-- Acceptance criteria (checkboxes)
-- Validation commands to verify completion
+## When to Use
+- Starting work on an unfamiliar codebase
+- Before implementing features (check existing patterns)
+- When unsure about architecture decisions
+- Finding constraints before making changes
+
+## Fallback (No MCP)
+If MCP is unavailable, use the CLI directly:
+` + "```bash" + `
+tw context              # Overview
+tw context -q "search"  # Semantic search
+tw context --answer     # AI-generated response
+` + "```" + `
 `
+	}
 
-	filePath := filepath.Join(commandsDir, "taskwing.md")
+	filePath := filepath.Join(commandsDir, fileName)
 	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("create taskwing.md: %w", err)
+		return fmt.Errorf("create %s: %w", fileName, err)
 	}
 	if verbose {
-		fmt.Printf("  ✓ Created %s/taskwing.md\n", aiCfg.commandsDir)
+		fmt.Printf("  ✓ Created %s/%s\n", aiCfg.commandsDir, fileName)
 	}
 
 	return nil

@@ -194,12 +194,12 @@ taskwing mcp
 
 | Tool | Description |
 |------|-------------|
-| `project-context` | Get project knowledge. Use `{"query":"search term"}` for semantic search, or omit for summary. |
+| `recall` | Retrieve codebase architecture knowledge. Use `{"query":"search term"}` for semantic search, or omit for summary. |
 
 ### Example Request
 
 ```json
-{"jsonrpc":"2.0","method":"tools/call","params":{"name":"project-context","arguments":{"query":"database"}},"id":1}
+{"jsonrpc":"2.0","method":"tools/call","params":{"name":"recall","arguments":{"query":"database"}},"id":1}
 ```
 
 ---
@@ -244,9 +244,13 @@ tw bootstrap
 
 ## Per-Project Server
 
-The `mcp install` command automatically handles multiple projects by adding unique server names (e.g., `taskwing-projectA`) to global configurations like Claude's.
+The `mcp install` command uses a consistent server name (`taskwing-mcp`) across all projects. The AI tools differentiate projects by:
 
-Manual configuration for multiple projects:
+- **CLI-based tools** (Claude Code, Codex, Gemini): Associate the server with the project directory internally
+- **File-based configs** (Cursor, Copilot): Store config in project's local directory (`.cursor/mcp.json`, `.vscode/mcp.json`)
+- **Claude Desktop**: Uses a global config; last installed project takes precedence
+
+For manual multi-project setup with Claude Desktop, use unique server names:
 
 ```json
 {
@@ -269,7 +273,7 @@ Manual configuration for multiple projects:
 
 ## What the AI Sees
 
-When an AI tool calls `project-context`, it receives:
+When an AI tool calls `recall`, it receives:
 
 ```json
 {

@@ -261,26 +261,26 @@ func TestMCPToolsList(t *testing.T) {
 		t.Fatal("Expected tools array in response")
 	}
 
-	// Verify project-context tool exists
+	// Verify recall tool exists
 	found := false
 	for _, tool := range tools {
 		if toolMap, ok := tool.(map[string]interface{}); ok {
-			if toolMap["name"] == "project-context" {
+			if toolMap["name"] == "recall" {
 				found = true
 				break
 			}
 		}
 	}
 	if !found {
-		t.Error("Expected 'project-context' tool in tools list")
+		t.Error("Expected 'recall' tool in tools list")
 	} else {
-		t.Log("✅ project-context tool found")
+		t.Log("✅ recall tool found")
 	}
 }
 
-// TestMCPProjectContextSummary tests project-context summary mode (empty query)
+// TestMCPRecallSummary tests recall tool summary mode (empty query)
 // This verifies the TypeSummary response structure with counts and examples.
-func TestMCPProjectContextSummary(t *testing.T) {
+func TestMCPRecallSummary(t *testing.T) {
 	// This test requires a project with actual nodes
 	// Skip if running in isolation without bootstrap
 	h := newMCPTestHarness(t, "")
@@ -291,13 +291,13 @@ func TestMCPProjectContextSummary(t *testing.T) {
 	}
 	h.SendInitializedNotification()
 
-	// Call project-context with empty query (summary mode)
+	// Call recall with empty query (summary mode)
 	id := 2
 	resp, err := h.SendAndReceive(MCPRequest{
 		JSONRPC: "2.0",
 		Method:  "tools/call",
 		Params: map[string]interface{}{
-			"name":      "project-context",
+			"name":      "recall",
 			"arguments": map[string]string{}, // Empty = summary mode
 		},
 		ID: &id,
@@ -365,8 +365,8 @@ func TestMCPProjectContextSummary(t *testing.T) {
 	t.Logf("✅ Summary mode returned %d nodes across %d types", summary.Total, len(summary.Types))
 }
 
-// TestMCPProjectContextEmpty tests project-context with empty memory
-func TestMCPProjectContextEmpty(t *testing.T) {
+// TestMCPRecallEmpty tests recall tool with empty memory
+func TestMCPRecallEmpty(t *testing.T) {
 	tmpDir := t.TempDir()
 	h := newMCPTestHarness(t, tmpDir)
 	defer h.Close()
@@ -377,13 +377,13 @@ func TestMCPProjectContextEmpty(t *testing.T) {
 	}
 	h.SendInitializedNotification()
 
-	// Call project-context
+	// Call recall
 	id := 2
 	resp, err := h.SendAndReceive(MCPRequest{
 		JSONRPC: "2.0",
 		Method:  "tools/call",
 		Params: map[string]interface{}{
-			"name":      "project-context",
+			"name":      "recall",
 			"arguments": map[string]string{},
 		},
 		ID: &id,
