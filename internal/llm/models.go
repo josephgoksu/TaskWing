@@ -120,20 +120,20 @@ var ModelRegistry = []Model{
 		SupportsThinking: true,
 	},
 	{
-		ID:               "claude-3-sonnet-20240229",
-		Provider:         "Anthropic",
-		ProviderID:       ProviderAnthropic,
-		InputPer1M:       3.00,
-		OutputPer1M:      15.00,
-		SupportsThinking: true,
+		ID:          "claude-3-sonnet-20240229",
+		Provider:    "Anthropic",
+		ProviderID:  ProviderAnthropic,
+		InputPer1M:  3.00,
+		OutputPer1M: 15.00,
+		// Note: Extended thinking requires Claude 3.5+ models
 	},
 	{
-		ID:               "claude-3-haiku-20240307",
-		Provider:         "Anthropic",
-		ProviderID:       ProviderAnthropic,
-		InputPer1M:       0.25,
-		OutputPer1M:      1.25,
-		SupportsThinking: true,
+		ID:          "claude-3-haiku-20240307",
+		Provider:    "Anthropic",
+		ProviderID:  ProviderAnthropic,
+		InputPer1M:  0.25,
+		OutputPer1M: 1.25,
+		// Note: Extended thinking requires Claude 3.5+ models
 	},
 
 	// ============================================
@@ -180,11 +180,12 @@ var ModelRegistry = []Model{
 		SupportsThinking: true,
 	},
 	{
-		ID:          "gemini-2.5-flash-lite",
-		Provider:    "Google",
-		ProviderID:  ProviderGemini,
-		InputPer1M:  0.10,
-		OutputPer1M: 0.40,
+		ID:               "gemini-2.5-flash-lite",
+		Provider:         "Google",
+		ProviderID:       ProviderGemini,
+		InputPer1M:       0.10,
+		OutputPer1M:      0.40,
+		SupportsThinking: true,
 	},
 	{
 		ID:          "gemini-2.0-flash-lite",
