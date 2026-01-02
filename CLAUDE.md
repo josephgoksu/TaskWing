@@ -151,3 +151,18 @@ Examples: renaming `tw bootstrap` to `tw scan`, removing `--legacy` flag
 3. Does it only fix issues? → **PATCH**
 
 When in doubt, prefer MINOR over MAJOR (avoid breaking changes).
+
+## Release Process
+
+**CRITICAL: Do NOT release without explicit user approval.**
+
+- Never create git tags or push releases autonomously
+- Never bump version in `cmd/root.go` without user request
+- Only release when user explicitly asks (e.g., "release this", "tag and push", "create a release")
+- When releasing, follow this order:
+  1. Update version in `cmd/root.go`
+  2. Commit the version bump
+  3. Push commit to origin
+  4. Create tag on the version bump commit
+  5. Push tag to origin
+  6. Verify tag contains correct version
