@@ -11,6 +11,7 @@ const (
 	StatusDraft      TaskStatus = "draft"       // Initial creation, not ready for execution
 	StatusPending    TaskStatus = "pending"     // Ready to be picked up by an agent
 	StatusInProgress TaskStatus = "in_progress" // Agent is actively working
+	StatusBlocked    TaskStatus = "blocked"     // Blocked by external dependency or issue
 	StatusVerifying  TaskStatus = "verifying"   // Work done, running validation
 	StatusCompleted  TaskStatus = "completed"   // Successfully verified
 	StatusFailed     TaskStatus = "failed"      // Execution or verification failed
@@ -39,6 +40,23 @@ type Task struct {
 	ContextSummary     string     `json:"contextSummary"` // AI-generated summary of linked nodes
 	AcceptanceCriteria []string   `json:"acceptanceCriteria"`
 	ValidationSteps    []string   `json:"validationSteps"` // CLI commands
+
+	// AI integration fields - for MCP tool context fetching
+	Scope                  string   `json:"scope,omitempty"`                  // e.g., "auth", "api", "vectorsearch"
+	Keywords               []string `json:"keywords,omitempty"`               // Extracted from title/description
+	SuggestedRecallQueries []string `json:"suggestedRecallQueries,omitempty"` // Pre-computed queries for recall tool
+
+	// Session tracking - for AI tool state management
+	ClaimedBy   string    `json:"claimedBy,omitempty"`   // Session ID that claimed this task
+	ClaimedAt   time.Time `json:"claimedAt,omitempty"`   // When the task was claimed
+	CompletedAt time.Time `json:"completedAt,omitempty"` // When the task was completed
+
+	// Completion tracking
+	CompletionSummary string   `json:"completionSummary,omitempty"` // AI-generated summary on completion
+	FilesModified     []string `json:"filesModified,omitempty"`     // Files touched during task
+
+	// Block tracking
+	BlockReason string `json:"blockReason,omitempty"` // Reason if task is blocked
 
 	// Computed/Joined fields (not in tasks table directly)
 	Dependencies []string `json:"dependencies"` // IDs of tasks

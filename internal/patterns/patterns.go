@@ -108,9 +108,10 @@ var DependencyFiles = map[string]bool{
 }
 
 // RuleFiles contains documentation and rule filenames.
+// Note: Use canonical casing; deduplication is case-insensitive in context.go
 var RuleFiles = map[string]bool{
 	"GEMINI.md": true, "CLAUDE.md": true, "CONTRIBUTING.md": true,
-	"README.md": true, "readme.md": true,
+	"README.md": true,
 }
 
 // IsRuleFile returns true if the filename is a rule/documentation file.

@@ -343,6 +343,10 @@ func runAutoInit(basePath string, cmd *cobra.Command) error {
 			if err := createSingleSlashCommand(basePath, aiCfg, verbose); err != nil {
 				return err
 			}
+			// Also create task lifecycle commands
+			if err := createTaskSlashCommands(basePath, aiCfg, verbose); err != nil {
+				return err
+			}
 		}
 
 		// Install MCP servers for selected AIs
@@ -371,6 +375,400 @@ func runAutoInit(basePath string, cmd *cobra.Command) error {
 	// NOTE: config.yaml is NOT created here anymore.
 	// It will be created by config.SaveGlobalLLMConfig() after LLM provider selection
 	// in getLLMConfig() which runs after this function.
+	return nil
+}
+
+// createTaskSlashCommands creates task lifecycle slash commands for AI assistants
+func createTaskSlashCommands(basePath string, aiCfg aiConfig, verbose bool) error {
+	if aiCfg.fileExt == ".toml" {
+		// Skip task commands for Gemini (TOML format) - can add later if needed
+		return nil
+	}
+
+	commandsDir := filepath.Join(basePath, aiCfg.commandsDir)
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		return fmt.Errorf("create commands dir: %w", err)
+	}
+
+	// Define task lifecycle commands with full context-aware workflows
+	commands := []struct {
+		name    string
+		content string
+	}{
+		{
+			name: "tw-next.md",
+			content: `# Start Next TaskWing Task with Full Context
+
+Execute these steps IN ORDER. Do not skip any step.
+
+## Step 1: Get Next Task
+Call MCP tool ` + "`task_next`" + ` to retrieve the highest priority pending task:
+` + "```json" + `
+{"session_id": "claude-session"}
+` + "```" + `
+
+Extract from the response:
+- task_id, title, description
+- scope (e.g., "auth", "vectorsearch", "api")
+- keywords array
+- acceptance_criteria
+- suggested_recall_queries
+
+If no task returned, inform user: "No pending tasks. Use 'tw plan list' to check plan status."
+
+## Step 2: Fetch Scope-Relevant Context
+Call MCP tool ` + "`recall`" + ` with query based on task scope:
+` + "```json" + `
+{"query": "[task.scope] patterns constraints decisions"}
+` + "```" + `
+
+Examples:
+- scope "auth" → ` + "`{\"query\": \"authentication cookies session patterns\"}`" + `
+- scope "api" → ` + "`{\"query\": \"api handlers middleware patterns\"}`" + `
+- scope "vectorsearch" → ` + "`{\"query\": \"lancedb embedding vector patterns\"}`" + `
+
+Extract: patterns, constraints, related decisions.
+
+## Step 3: Fetch Task-Specific Context
+Call MCP tool ` + "`recall`" + ` with keywords from the task:
+
+Use ` + "`suggested_recall_queries`" + ` if available, otherwise extract keywords from title.
+` + "```json" + `
+{"query": "[keywords from task title/description]"}
+` + "```" + `
+
+## Step 4: Claim the Task
+Call MCP tool ` + "`task_start`" + `:
+` + "```json" + `
+{"task_id": "[task_id from step 1]", "session_id": "claude-session"}
+` + "```" + `
+
+## Step 5: Present Unified Task Brief
+
+Display this EXACT format:
+
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 TASK: [task_id] (Priority: [priority])
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**[Title]**
+
+## Description
+[Full task description]
+
+## Acceptance Criteria
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+- [ ] [Criterion 3]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏗️ ARCHITECTURE CONTEXT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Relevant Patterns
+[Patterns from recall that apply to this task]
+
+## Constraints
+[Constraints that must be respected]
+
+## Related Decisions
+[Past decisions that inform this work]
+
+## Key Files
+[Files likely to be modified based on context]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Task claimed. Ready to begin.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Step 6: Begin Implementation
+Proceed with the task, following the patterns and respecting the constraints shown above.
+
+**CRITICAL**: You MUST call all MCP tools (task_next, recall x2, task_start) before showing the brief. Do not proceed without context.
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw task list                    # List all tasks
+tw task show TASK_ID            # View task details
+tw context -q "search term"     # Get context
+` + "```" + `
+`,
+		},
+		{
+			name: "tw-done.md",
+			content: `# Complete Task with Architecture-Aware Summary
+
+Execute these steps IN ORDER.
+
+## Step 1: Get Current Task
+Call MCP tool ` + "`task_current`" + `:
+` + "```json" + `
+{"session_id": "claude-session"}
+` + "```" + `
+
+If no active task, inform user and stop.
+
+## Step 2: Fetch Original Context
+Call MCP tool ` + "`recall`" + ` with the task scope to retrieve patterns/constraints that were meant to be followed:
+` + "```json" + `
+{"query": "[task.scope] patterns constraints"}
+` + "```" + `
+
+## Step 3: Generate Completion Report
+
+Create a structured summary covering:
+
+### Files Modified
+List all files changed:
+- File path
+- Lines added/removed (approximate)
+- Purpose of change
+
+### Acceptance Criteria Verification
+For each criterion from the task:
+- ✅ **Met**: [How it was satisfied]
+- ❌ **Not Met**: [Why, and what's needed]
+- ⚠️ **Partial**: [What was done, what remains]
+
+### Pattern Compliance
+Confirm alignment with codebase patterns from recall:
+- [Pattern name]: ✅ Followed / ⚠️ Deviated because [reason]
+
+### Constraint Adherence
+Confirm constraints were respected:
+- [Constraint]: ✅ Respected / ❌ Violated (requires review)
+
+### Technical Debt / Follow-ups
+- TODOs introduced
+- Tests not written
+- Edge cases not handled
+
+## Step 4: Mark Complete
+Call MCP tool ` + "`task_complete`" + `:
+` + "```json" + `
+{
+  "task_id": "[task_id]",
+  "summary": "[The structured summary from Step 3]",
+  "files_modified": ["path/to/file1.go", "path/to/file2.go"]
+}
+` + "```" + `
+
+## Step 5: Confirm to User
+
+Display:
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ TASK COMPLETE: [task_id]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Summary report from Step 3]
+
+Recorded in TaskWing memory.
+Use /tw-next to continue with next priority task.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+**CRITICAL**: Do not tell user task is complete until task_complete MCP returns success.
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw task complete TASK_ID
+` + "```" + `
+`,
+		},
+		{
+			name: "tw-context.md",
+			content: `# Fetch Additional Context for Current Task
+
+Use this when you need more architectural context mid-task.
+
+## Step 1: Get Current Task
+Call MCP tool ` + "`task_current`" + `:
+` + "```json" + `
+{"session_id": "claude-session"}
+` + "```" + `
+
+Extract the task scope and keywords.
+
+## Step 2: Fetch Requested Context
+Call MCP tool ` + "`recall`" + `:
+
+If user provided a query argument:
+` + "```json" + `
+{"query": "[user's query]"}
+` + "```" + `
+
+If no query provided, use task scope:
+` + "```json" + `
+{"query": "[task.scope] patterns constraints decisions"}
+` + "```" + `
+
+## Step 3: Display Context
+
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍 CONTEXT: [query]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Patterns
+[Pattern results from recall]
+
+## Constraints
+[Constraint results from recall]
+
+## Decisions
+[Decision results from recall]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Usage Examples
+- ` + "`/tw-context`" + ` - Get context for current task scope
+- ` + "`/tw-context authentication`" + ` - Search for auth-related context
+- ` + "`/tw-context error handling patterns`" + ` - Specific search
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw context -q "search term"
+tw context --answer "question about codebase"
+` + "```" + `
+`,
+		},
+		{
+			name: "tw-status.md",
+			content: `# Show Current Task Status with Context
+
+## Step 1: Get Current Task
+Call MCP tool ` + "`task_current`" + `:
+` + "```json" + `
+{"session_id": "claude-session"}
+` + "```" + `
+
+If no active task:
+` + "```" + `
+No active task. Use /tw-next to start the next priority task.
+` + "```" + `
+
+## Step 2: Get Task Context
+Call MCP tool ` + "`recall`" + ` with task scope:
+` + "```json" + `
+{"query": "[task.scope] constraints patterns"}
+` + "```" + `
+
+## Step 3: Display Status
+
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 CURRENT TASK STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Task: [task_id] - [title]
+Priority: [priority]
+Status: [status]
+Started: [claimed_at timestamp]
+Scope: [scope]
+
+## Acceptance Criteria
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+
+## Active Constraints
+[Constraints from recall that apply to this task]
+
+## Patterns to Follow
+[Patterns from recall for this scope]
+
+## Dependencies
+[List of dependent tasks and their status]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Commands:
+  /tw-done    - Complete this task
+  /tw-block   - Mark as blocked
+  /tw-context - Fetch more context
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw task list --status in_progress
+tw plan list
+` + "```" + `
+`,
+		},
+		{
+			name: "tw-block.md",
+			content: `# Mark Current Task as Blocked
+
+Use this when you cannot proceed with the current task.
+
+## Step 1: Get Current Task
+Call MCP tool ` + "`task_current`" + `:
+` + "```json" + `
+{"session_id": "claude-session"}
+` + "```" + `
+
+Confirm task_id and current status.
+
+## Step 2: Document the Blocker
+Identify the specific reason:
+- Missing API documentation or credentials
+- Dependent task not completed
+- Need clarification from user
+- External service unavailable
+- Technical limitation discovered
+
+## Step 3: Block the Task
+Call MCP tool ` + "`task_block`" + `:
+` + "```json" + `
+{
+  "task_id": "[task_id]",
+  "reason": "[Detailed description of why blocked and what's needed to unblock]"
+}
+` + "```" + `
+
+## Step 4: Confirm and Offer Next Steps
+
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚫 TASK BLOCKED: [task_id]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Reason: [block reason]
+
+To unblock: [specific action needed]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+Ask user: "Would you like to work on the next available task? Use /tw-next to continue."
+
+## Step 5: Unblocking (when ready)
+When the blocker is resolved, call MCP tool ` + "`task_unblock`" + `:
+` + "```json" + `
+{"task_id": "[task_id]"}
+` + "```" + `
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw task update TASK_ID --status blocked
+` + "```" + `
+`,
+		},
+	}
+
+	for _, cmd := range commands {
+		filePath := filepath.Join(commandsDir, cmd.name)
+		if err := os.WriteFile(filePath, []byte(cmd.content), 0644); err != nil {
+			return fmt.Errorf("create %s: %w", cmd.name, err)
+		}
+		if verbose {
+			fmt.Printf("  ✓ Created %s/%s\n", aiCfg.commandsDir, cmd.name)
+		}
+	}
+
 	return nil
 }
 

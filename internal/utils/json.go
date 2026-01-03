@@ -33,6 +33,11 @@ var (
 	// Uses non-greedy match and handles escaped single quotes (backslash-quote)
 	// Pattern: match content that doesn't contain unescaped single quotes
 	singleQuoteValueRegex = regexp.MustCompile(`(:\s*)'((?:[^'\\]|\\.)*)'(\s*[,}\]])`)
+
+	// Fix unquoted string values: {"key": value} -> {"key": "value"}
+	// Only matches simple identifiers (letters, numbers, underscores, hyphens)
+	// Excludes: numbers, true, false, null, nested objects/arrays
+	unquotedValueRegex = regexp.MustCompile(`(:\s*)([a-zA-Z][a-zA-Z0-9_-]*)(\s*[,}\]])`)
 )
 
 // ExtractAndParseJSON extracts JSON from LLM responses and unmarshals it.
@@ -136,7 +141,66 @@ func repairJSON(input string) string {
 		return parts[1] + `"` + value + `"` + parts[3]
 	})
 
+	// 7. Fix unquoted string values: {"key": value} -> {"key": "value"}
+	// Skip known JSON literals (true, false, null are valid unquoted)
+	result = unquotedValueRegex.ReplaceAllStringFunc(result, func(match string) string {
+		parts := unquotedValueRegex.FindStringSubmatch(match)
+		if len(parts) != 4 {
+			return match
+		}
+		value := parts[2]
+		// Don't quote JSON literals
+		if value == "true" || value == "false" || value == "null" {
+			return match
+		}
+		return parts[1] + `"` + value + `"` + parts[3]
+	})
+
+	// 8. Fix truncated JSON (incomplete string at end)
+	// If we have unbalanced quotes, try to close the string and structure
+	result = fixTruncatedJSON(result)
+
 	return result
+}
+
+// fixTruncatedJSON attempts to fix JSON that was truncated mid-string.
+// Common with LLM output truncation.
+func fixTruncatedJSON(input string) string {
+	// Count quotes to detect imbalance
+	quoteCount := 0
+	escaped := false
+	for _, c := range input {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if c == '\\' {
+			escaped = true
+			continue
+		}
+		if c == '"' {
+			quoteCount++
+		}
+	}
+
+	// If odd number of quotes, the string was truncated
+	if quoteCount%2 != 0 {
+		input = input + `"`
+	}
+
+	// Count braces and brackets to balance
+	openBraces := strings.Count(input, "{") - strings.Count(input, "}")
+	openBrackets := strings.Count(input, "[") - strings.Count(input, "]")
+
+	// Add missing closing brackets (in reverse order for proper nesting)
+	for i := 0; i < openBrackets; i++ {
+		input = input + "]"
+	}
+	for i := 0; i < openBraces; i++ {
+		input = input + "}"
+	}
+
+	return input
 }
 
 // cleanLLMResponse extracts JSON from LLM response text.

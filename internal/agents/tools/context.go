@@ -252,10 +252,12 @@ func (g *ContextGatherer) GatherKeyFiles() string {
 
 	seen := make(map[string]bool)
 	for _, relPath := range keyFiles {
-		if seen[relPath] {
+		// Use lowercase key for case-insensitive deduplication (README.md vs readme.md)
+		keyLower := strings.ToLower(relPath)
+		if seen[keyLower] {
 			continue
 		}
-		seen[relPath] = true
+		seen[keyLower] = true
 
 		content, err := os.ReadFile(filepath.Join(g.BasePath, relPath))
 		if err != nil {
@@ -365,7 +367,9 @@ func (g *ContextGatherer) GatherSourceCode() string {
 			g.recordSkip(relPath, "max files limit reached")
 			return false
 		}
-		if seen[relPath] {
+		// Use lowercase for case-insensitive deduplication
+		relPathLower := strings.ToLower(relPath)
+		if seen[relPathLower] {
 			return false // Already processed, don't record again
 		}
 		if totalChars >= maxTotalChars {
@@ -388,7 +392,7 @@ func (g *ContextGatherer) GatherSourceCode() string {
 			g.recordSkip(relPath, fmt.Sprintf("read error: %v", err))
 			return false
 		}
-		seen[relPath] = true
+		seen[relPathLower] = true
 
 		lines := strings.Split(string(content), "\n")
 		truncated := false
@@ -564,7 +568,9 @@ func (g *ContextGatherer) GatherSourceCode() string {
 			}
 
 			// Check for duplicates FIRST (before any recording) to prevent duplicate skip records
-			if seen[relPath] || candidateSeen[relPath] {
+			// Use lowercase for case-insensitive deduplication on case-insensitive filesystems
+			relPathLower := strings.ToLower(relPath)
+			if seen[relPathLower] || candidateSeen[relPathLower] {
 				return nil
 			}
 
@@ -583,7 +589,7 @@ func (g *ContextGatherer) GatherSourceCode() string {
 			}
 
 			// Mark as seen now (even if we skip it, to prevent duplicate processing)
-			candidateSeen[relPath] = true
+			candidateSeen[relPathLower] = true
 
 			// Skip test files (but only for code files)
 			if isCode && isTestFile(name) {

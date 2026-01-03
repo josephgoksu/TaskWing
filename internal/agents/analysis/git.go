@@ -18,12 +18,12 @@ import (
 
 const (
 	// Git analysis configuration
-	gitChunkSize       = 50  // Commits per chunk
-	gitMaxCommits      = 300 // Total commits to analyze
-	gitMaxChunks       = 6   // Maximum chunks to process
-	gitRecentMaxItems  = 8   // Max findings for newest chunk
-	gitDecayFactor     = 0.6 // Each older chunk gets this fraction of previous max
-	gitMinItems        = 2   // Minimum findings per chunk
+	gitChunkSize      = 50  // Commits per chunk
+	gitMaxCommits     = 300 // Total commits to analyze
+	gitMaxChunks      = 6   // Maximum chunks to process
+	gitRecentMaxItems = 8   // Max findings for newest chunk
+	gitDecayFactor    = 0.6 // Each older chunk gets this fraction of previous max
+	gitMinItems       = 2   // Minimum findings per chunk
 )
 
 // GitAgent analyzes git history to understand project evolution.
@@ -95,13 +95,13 @@ func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 		maxFindings := calculateMaxFindings(i)
 
 		chainInput := map[string]any{
-			"ProjectName":  input.ProjectName,
-			"ChunkNumber":  i + 1,
-			"TotalChunks":  chunksToProcess,
-			"MaxFindings":  maxFindings,
-			"IsRecent":     i == 0,
-			"ProjectMeta":  projectMeta,
-			"CommitChunk":  chunk,
+			"ProjectName": input.ProjectName,
+			"ChunkNumber": i + 1,
+			"TotalChunks": chunksToProcess,
+			"MaxFindings": maxFindings,
+			"IsRecent":    i == 0,
+			"ProjectMeta": projectMeta,
+			"CommitChunk": chunk,
 		}
 
 		parsed, _, _, err := a.chain.Invoke(ctx, chainInput)

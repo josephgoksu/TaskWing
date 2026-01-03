@@ -9,11 +9,12 @@ import (
 
 // EvidenceJSON is the structured evidence format from LLM responses.
 type EvidenceJSON struct {
-	FilePath    string `json:"file_path"`
-	StartLine   int    `json:"start_line"`
-	EndLine     int    `json:"end_line"`
-	Snippet     string `json:"snippet"`
-	GrepPattern string `json:"grep_pattern,omitempty"`
+	FilePath     string `json:"file_path"`
+	StartLine    int    `json:"start_line"`
+	EndLine      int    `json:"end_line"`
+	Snippet      string `json:"snippet"`
+	GrepPattern  string `json:"grep_pattern,omitempty"`
+	EvidenceType string `json:"evidence_type,omitempty"` // "file" (default) or "git"
 }
 
 // ParseJSONResponse extracts JSON from LLM response and unmarshals it.

@@ -311,6 +311,56 @@ func (s *SQLiteStore) initSchema() error {
 	// Add index for verification status queries (enables efficient filtering)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_nodes_verification_status ON nodes(verification_status)`)
 
+	// Migration: Add AI integration columns to tasks table for MCP tool support
+	// These columns enable task lifecycle management via slash commands
+	taskMigrations := []struct {
+		column string
+		ddl    string
+	}{
+		{"scope", "ALTER TABLE tasks ADD COLUMN scope TEXT"},                                       // e.g., "auth", "api", "vectorsearch"
+		{"keywords", "ALTER TABLE tasks ADD COLUMN keywords TEXT"},                                 // JSON array of extracted keywords
+		{"suggested_recall_queries", "ALTER TABLE tasks ADD COLUMN suggested_recall_queries TEXT"}, // JSON array of pre-computed queries
+		{"claimed_by", "ALTER TABLE tasks ADD COLUMN claimed_by TEXT"},                             // Session ID that claimed this task
+		{"claimed_at", "ALTER TABLE tasks ADD COLUMN claimed_at TEXT"},                             // Timestamp when claimed
+		{"completed_at", "ALTER TABLE tasks ADD COLUMN completed_at TEXT"},                         // Timestamp when completed
+		{"completion_summary", "ALTER TABLE tasks ADD COLUMN completion_summary TEXT"},             // AI-generated summary on completion
+		{"files_modified", "ALTER TABLE tasks ADD COLUMN files_modified TEXT"},                     // JSON array of modified files
+		{"block_reason", "ALTER TABLE tasks ADD COLUMN block_reason TEXT"},                         // Reason if task is blocked
+	}
+
+	for _, m := range taskMigrations {
+		// Check if column exists
+		var exists bool
+		rows, err := s.db.Query("PRAGMA table_info(tasks)")
+		if err == nil {
+			for rows.Next() {
+				var cid int
+				var name, ctype string
+				var notnull, pk int
+				var dflt any
+				if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
+					if name == m.column {
+						exists = true
+						break
+					}
+				}
+			}
+			rows.Close()
+		}
+
+		if !exists {
+			if _, err := s.db.Exec(m.ddl); err != nil {
+				errMsg := err.Error()
+				if !strings.Contains(errMsg, "duplicate column") {
+					return fmt.Errorf("task migration %s failed: %w", m.column, err)
+				}
+			}
+		}
+	}
+
+	// Add index for finding next available task efficiently
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_status_priority ON tasks(status, priority DESC)`)
+
 	return nil
 }
 

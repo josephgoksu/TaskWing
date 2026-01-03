@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -134,6 +135,11 @@ func (v *Agent) checkEvidence(evidence core.Evidence) core.EvidenceCheckResult {
 		return result
 	}
 
+	// Detect git evidence by explicit type or path prefix
+	if evidence.EvidenceType == "git" || strings.HasPrefix(evidence.FilePath, ".git") {
+		return v.verifyGitEvidence(evidence)
+	}
+
 	fullPath := evidence.FilePath
 	if !filepath.IsAbs(evidence.FilePath) {
 		fullPath = filepath.Join(v.basePath, evidence.FilePath)
@@ -208,6 +214,82 @@ func (v *Agent) checkEvidence(evidence core.Evidence) core.EvidenceCheckResult {
 	}
 
 	return result
+}
+
+// verifyGitEvidence verifies evidence from git history using git log.
+func (v *Agent) verifyGitEvidence(evidence core.Evidence) core.EvidenceCheckResult {
+	result := core.EvidenceCheckResult{
+		FileExists: true, // Git history is always "present" in a git repo
+	}
+
+	if evidence.Snippet == "" {
+		result.SnippetFound = true
+		result.LineNumbersMatch = true
+		return result
+	}
+
+	// Run git log to fetch recent commit history
+	cmd := exec.Command("git", "log", "--all", "--oneline", "-500")
+	cmd.Dir = v.basePath
+	out, err := cmd.Output()
+	if err != nil {
+		result.ErrorMessage = "git log failed: " + err.Error()
+		result.FileExists = false
+		return result
+	}
+
+	gitHistory := string(out)
+
+	// Try exact match first (full snippet in history)
+	if strings.Contains(gitHistory, evidence.Snippet) {
+		result.SnippetFound = true
+		result.SimilarityScore = 1.0
+		result.LineNumbersMatch = true
+		return result
+	}
+
+	// Try partial match: look for commit hash (7+ char prefix) or keywords
+	words := strings.Fields(evidence.Snippet)
+	for _, word := range words {
+		// Skip very short words and common terms
+		if len(word) < 4 {
+			continue
+		}
+		// Check if word appears in git history (case-insensitive for messages)
+		if strings.Contains(strings.ToLower(gitHistory), strings.ToLower(word)) {
+			result.SnippetFound = true
+			result.SimilarityScore = 0.7
+			break
+		}
+	}
+
+	// If no match found, try to find commit hash pattern (7-40 hex chars)
+	if !result.SnippetFound {
+		for _, word := range words {
+			if len(word) >= 7 && isHexString(word) {
+				if strings.Contains(gitHistory, word[:7]) {
+					result.SnippetFound = true
+					result.SimilarityScore = 0.9
+					break
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+// isHexString returns true if s contains only hexadecimal characters.
+func isHexString(s string) bool {
+	for _, c := range s {
+		isDigit := c >= '0' && c <= '9'
+		isLowerHex := c >= 'a' && c <= 'f'
+		isUpperHex := c >= 'A' && c <= 'F'
+		if !isDigit && !isLowerHex && !isUpperHex {
+			return false
+		}
+	}
+	return true
 }
 
 func extractLines(content string, start, end int) string {

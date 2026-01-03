@@ -366,6 +366,48 @@ func (r *Repository) DeleteTask(id string) error {
 	return r.db.DeleteTask(id)
 }
 
+// === Task Lifecycle (for MCP tools) ===
+
+// GetNextTask returns the highest priority pending task from a plan.
+func (r *Repository) GetNextTask(planID string) (*task.Task, error) {
+	return r.db.GetNextTask(planID)
+}
+
+// GetCurrentTask returns the in-progress task claimed by a session.
+func (r *Repository) GetCurrentTask(sessionID string) (*task.Task, error) {
+	return r.db.GetCurrentTask(sessionID)
+}
+
+// GetAnyInProgressTask returns any in-progress task from a plan.
+func (r *Repository) GetAnyInProgressTask(planID string) (*task.Task, error) {
+	return r.db.GetAnyInProgressTask(planID)
+}
+
+// ClaimTask marks a task as in_progress and assigns it to a session.
+func (r *Repository) ClaimTask(taskID, sessionID string) error {
+	return r.db.ClaimTask(taskID, sessionID)
+}
+
+// CompleteTask marks a task as completed with summary and files modified.
+func (r *Repository) CompleteTask(taskID, summary string, filesModified []string) error {
+	return r.db.CompleteTask(taskID, summary, filesModified)
+}
+
+// BlockTask marks a task as blocked with a reason.
+func (r *Repository) BlockTask(taskID, reason string) error {
+	return r.db.BlockTask(taskID, reason)
+}
+
+// UnblockTask moves a blocked task back to pending status.
+func (r *Repository) UnblockTask(taskID string) error {
+	return r.db.UnblockTask(taskID)
+}
+
+// GetActivePlan returns the currently active plan.
+func (r *Repository) GetActivePlan() (*task.Plan, error) {
+	return r.db.GetActivePlan()
+}
+
 // === FTS5 Hybrid Search ===
 
 // ListNodesWithEmbeddings returns all nodes with embeddings in a single query.

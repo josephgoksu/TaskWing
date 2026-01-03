@@ -11,6 +11,14 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
+// nullTimeString returns nil for zero time, RFC3339 string otherwise
+func nullTimeString(t time.Time) interface{} {
+	if t.IsZero() {
+		return nil
+	}
+	return t.Format(time.RFC3339)
+}
+
 // === Plan CRUD ===
 
 // CreatePlan creates a new plan in the database.
@@ -183,6 +191,18 @@ func (s *SQLiteStore) CreateTask(t *task.Task) error {
 	if err != nil {
 		return fmt.Errorf("marshal validation steps: %w", err)
 	}
+	keywordsJSON, err := json.Marshal(t.Keywords)
+	if err != nil {
+		return fmt.Errorf("marshal keywords: %w", err)
+	}
+	queriesJSON, err := json.Marshal(t.SuggestedRecallQueries)
+	if err != nil {
+		return fmt.Errorf("marshal suggested queries: %w", err)
+	}
+	filesJSON, err := json.Marshal(t.FilesModified)
+	if err != nil {
+		return fmt.Errorf("marshal files modified: %w", err)
+	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -202,11 +222,15 @@ func (s *SQLiteStore) CreateTask(t *task.Task) error {
 			id, plan_id, title, description,
 			acceptance_criteria, validation_steps,
 			status, priority, assigned_agent, parent_task_id, context_summary,
+			scope, keywords, suggested_recall_queries,
+			claimed_by, claimed_at, completed_at, completion_summary, files_modified,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, t.ID, t.PlanID, t.Title, t.Description,
 		string(acJSON), string(vsJSON),
 		t.Status, t.Priority, t.AssignedAgent, parentID, t.ContextSummary,
+		t.Scope, string(keywordsJSON), string(queriesJSON),
+		t.ClaimedBy, nullTimeString(t.ClaimedAt), nullTimeString(t.CompletedAt), t.CompletionSummary, string(filesJSON),
 		t.CreatedAt.Format(time.RFC3339), t.UpdatedAt.Format(time.RFC3339))
 
 	if err != nil {
@@ -246,12 +270,17 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	var t task.Task
 	var desc, acJSON, vsJSON sql.NullString
 	var parentID sql.NullString
+	var scope, keywordsJSON, queriesJSON sql.NullString
+	var claimedBy, claimedAt, completedAt, completionSummary, filesJSON sql.NullString
+	var blockReason sql.NullString
 	var createdAt, updatedAt string
 
 	err := row.Scan(
 		&t.ID, &t.PlanID, &t.Title, &desc, &acJSON, &vsJSON,
 		&t.Status, &t.Priority, &t.AssignedAgent, &parentID, &t.ContextSummary,
-		&createdAt, &updatedAt,
+		&scope, &keywordsJSON, &queriesJSON,
+		&claimedBy, &claimedAt, &completedAt, &completionSummary, &filesJSON,
+		&blockReason, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return t, err
@@ -259,8 +288,19 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 
 	t.Description = desc.String
 	t.ParentTaskID = parentID.String
+	t.Scope = scope.String
+	t.ClaimedBy = claimedBy.String
+	t.CompletionSummary = completionSummary.String
+	t.BlockReason = blockReason.String
 	t.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	t.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+
+	if claimedAt.Valid && claimedAt.String != "" {
+		t.ClaimedAt, _ = time.Parse(time.RFC3339, claimedAt.String)
+	}
+	if completedAt.Valid && completedAt.String != "" {
+		t.CompletedAt, _ = time.Parse(time.RFC3339, completedAt.String)
+	}
 
 	if acJSON.Valid && acJSON.String != "" {
 		_ = json.Unmarshal([]byte(acJSON.String), &t.AcceptanceCriteria)
@@ -268,13 +308,24 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	if vsJSON.Valid && vsJSON.String != "" {
 		_ = json.Unmarshal([]byte(vsJSON.String), &t.ValidationSteps)
 	}
+	if keywordsJSON.Valid && keywordsJSON.String != "" {
+		_ = json.Unmarshal([]byte(keywordsJSON.String), &t.Keywords)
+	}
+	if queriesJSON.Valid && queriesJSON.String != "" {
+		_ = json.Unmarshal([]byte(queriesJSON.String), &t.SuggestedRecallQueries)
+	}
+	if filesJSON.Valid && filesJSON.String != "" {
+		_ = json.Unmarshal([]byte(filesJSON.String), &t.FilesModified)
+	}
 
 	return t, nil
 }
 
 const taskSelectColumns = `id, plan_id, title, description, acceptance_criteria, validation_steps,
        status, priority, assigned_agent, parent_task_id, context_summary,
-       created_at, updated_at`
+       scope, keywords, suggested_recall_queries,
+       claimed_by, claimed_at, completed_at, completion_summary, files_modified,
+       block_reason, created_at, updated_at`
 
 // GetTask retrieves a task by ID.
 func (s *SQLiteStore) GetTask(id string) (*task.Task, error) {
@@ -452,4 +503,297 @@ func (s *SQLiteStore) LinkTaskToNode(taskID, nodeID, linkType string) error {
 		INSERT OR IGNORE INTO task_node_links (task_id, node_id, link_type) VALUES (?, ?, ?)
 	`, taskID, nodeID, linkType)
 	return err
+}
+
+// === Task Lifecycle Methods (for MCP tools) ===
+
+// GetNextTask returns the highest priority pending task from a plan whose dependencies are all completed.
+// Returns nil if no pending tasks exist or all pending tasks have incomplete dependencies.
+func (s *SQLiteStore) GetNextTask(planID string) (*task.Task, error) {
+	// Find pending tasks that have NO incomplete dependencies
+	// A task is ready if:
+	// 1. It has no dependencies, OR
+	// 2. All its dependencies have status = 'completed'
+	row := s.db.QueryRow(`
+		SELECT `+taskSelectColumns+`
+		FROM tasks t
+		WHERE t.plan_id = ? AND t.status = ?
+		AND NOT EXISTS (
+			SELECT 1 FROM task_dependencies td
+			JOIN tasks dep ON dep.id = td.depends_on
+			WHERE td.task_id = t.id AND dep.status != ?
+		)
+		ORDER BY t.priority DESC, t.created_at ASC
+		LIMIT 1
+	`, planID, task.StatusPending, task.StatusCompleted)
+
+	t, err := scanTaskRow(row)
+	if err == sql.ErrNoRows {
+		return nil, nil // No ready pending tasks
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query next task: %w", err)
+	}
+
+	// Fetch dependencies
+	deps, err := s.GetTaskDependencies(t.ID)
+	if err != nil {
+		return nil, err
+	}
+	t.Dependencies = deps
+
+	// Also fetch context nodes for consistency with GetCurrentTask
+	nodes, err := s.GetTaskContextNodes(t.ID)
+	if err != nil {
+		return nil, err
+	}
+	t.ContextNodes = nodes
+
+	return &t, nil
+}
+
+// GetCurrentTask returns the in_progress task claimed by a session.
+// Returns nil if no task is currently claimed by this session.
+func (s *SQLiteStore) GetCurrentTask(sessionID string) (*task.Task, error) {
+	row := s.db.QueryRow(`
+		SELECT `+taskSelectColumns+`
+		FROM tasks
+		WHERE claimed_by = ? AND status = ?
+		LIMIT 1
+	`, sessionID, task.StatusInProgress)
+
+	t, err := scanTaskRow(row)
+	if err == sql.ErrNoRows {
+		return nil, nil // No current task
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query current task: %w", err)
+	}
+
+	// Fetch dependencies and context nodes
+	deps, err := s.GetTaskDependencies(t.ID)
+	if err != nil {
+		return nil, err
+	}
+	t.Dependencies = deps
+
+	nodes, err := s.GetTaskContextNodes(t.ID)
+	if err != nil {
+		return nil, err
+	}
+	t.ContextNodes = nodes
+
+	return &t, nil
+}
+
+// GetAnyInProgressTask returns any in_progress task from a plan (regardless of session).
+// Useful for resuming work or detecting stuck tasks.
+func (s *SQLiteStore) GetAnyInProgressTask(planID string) (*task.Task, error) {
+	row := s.db.QueryRow(`
+		SELECT `+taskSelectColumns+`
+		FROM tasks
+		WHERE plan_id = ? AND status = ?
+		ORDER BY claimed_at DESC
+		LIMIT 1
+	`, planID, task.StatusInProgress)
+
+	t, err := scanTaskRow(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query in-progress task: %w", err)
+	}
+
+	deps, err := s.GetTaskDependencies(t.ID)
+	if err != nil {
+		return nil, err
+	}
+	t.Dependencies = deps
+
+	return &t, nil
+}
+
+// ClaimTask marks a task as in_progress and assigns it to a session.
+// Fails if task is not in pending status.
+func (s *SQLiteStore) ClaimTask(taskID, sessionID string) error {
+	if taskID == "" {
+		return fmt.Errorf("task id is required")
+	}
+	if sessionID == "" {
+		return fmt.Errorf("session id is required")
+	}
+
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+
+	// Only allow claiming pending tasks
+	res, err := s.db.Exec(`
+		UPDATE tasks
+		SET status = ?, claimed_by = ?, claimed_at = ?, updated_at = ?
+		WHERE id = ? AND status = ?
+	`, task.StatusInProgress, sessionID, nowStr, nowStr, taskID, task.StatusPending)
+
+	if err != nil {
+		return fmt.Errorf("claim task: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("claim task rows affected: %w", err)
+	}
+	if affected == 0 {
+		// Check if task exists
+		var status task.TaskStatus
+		err := s.db.QueryRow(`SELECT status FROM tasks WHERE id = ?`, taskID).Scan(&status)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("task not found: %s", taskID)
+		}
+		return fmt.Errorf("cannot claim task: current status is %s (must be pending)", status)
+	}
+
+	return nil
+}
+
+// CompleteTask marks a task as completed with summary and files modified.
+func (s *SQLiteStore) CompleteTask(taskID, summary string, filesModified []string) error {
+	if taskID == "" {
+		return fmt.Errorf("task id is required")
+	}
+
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+
+	filesJSON, err := json.Marshal(filesModified)
+	if err != nil {
+		return fmt.Errorf("marshal files modified: %w", err)
+	}
+
+	// Only allow completing in_progress tasks
+	res, err := s.db.Exec(`
+		UPDATE tasks
+		SET status = ?, completed_at = ?, completion_summary = ?, files_modified = ?, updated_at = ?
+		WHERE id = ? AND status = ?
+	`, task.StatusCompleted, nowStr, summary, string(filesJSON), nowStr, taskID, task.StatusInProgress)
+
+	if err != nil {
+		return fmt.Errorf("complete task: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("complete task rows affected: %w", err)
+	}
+	if affected == 0 {
+		var status task.TaskStatus
+		err := s.db.QueryRow(`SELECT status FROM tasks WHERE id = ?`, taskID).Scan(&status)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("task not found: %s", taskID)
+		}
+		return fmt.Errorf("cannot complete task: current status is %s (must be in_progress)", status)
+	}
+
+	return nil
+}
+
+// BlockTask marks a task as blocked with a reason.
+func (s *SQLiteStore) BlockTask(taskID, reason string) error {
+	if taskID == "" {
+		return fmt.Errorf("task id is required")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Allow blocking from in_progress status
+	res, err := s.db.Exec(`
+		UPDATE tasks
+		SET status = ?, block_reason = ?, updated_at = ?
+		WHERE id = ? AND status = ?
+	`, task.StatusBlocked, reason, now, taskID, task.StatusInProgress)
+
+	if err != nil {
+		return fmt.Errorf("block task: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("block task rows affected: %w", err)
+	}
+	if affected == 0 {
+		var status task.TaskStatus
+		err := s.db.QueryRow(`SELECT status FROM tasks WHERE id = ?`, taskID).Scan(&status)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("task not found: %s", taskID)
+		}
+		return fmt.Errorf("cannot block task: current status is %s (must be in_progress)", status)
+	}
+
+	return nil
+}
+
+// UnblockTask moves a blocked task back to pending status.
+func (s *SQLiteStore) UnblockTask(taskID string) error {
+	if taskID == "" {
+		return fmt.Errorf("task id is required")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	res, err := s.db.Exec(`
+		UPDATE tasks
+		SET status = ?, block_reason = NULL, claimed_by = NULL, claimed_at = NULL, updated_at = ?
+		WHERE id = ? AND status = ?
+	`, task.StatusPending, now, taskID, task.StatusBlocked)
+
+	if err != nil {
+		return fmt.Errorf("unblock task: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("unblock task rows affected: %w", err)
+	}
+	if affected == 0 {
+		var status task.TaskStatus
+		err := s.db.QueryRow(`SELECT status FROM tasks WHERE id = ?`, taskID).Scan(&status)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("task not found: %s", taskID)
+		}
+		return fmt.Errorf("cannot unblock task: current status is %s (must be blocked)", status)
+	}
+
+	return nil
+}
+
+// GetActivePlan returns the currently active plan (status = active).
+// Returns nil if no active plan exists.
+func (s *SQLiteStore) GetActivePlan() (*task.Plan, error) {
+	var p task.Plan
+	var createdAt, updatedAt string
+
+	err := s.db.QueryRow(`
+		SELECT id, goal, enriched_goal, status, created_at, updated_at
+		FROM plans WHERE status = ?
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`, task.PlanStatusActive).Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query active plan: %w", err)
+	}
+
+	p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+
+	// Fetch tasks
+	tasks, err := s.ListTasks(p.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks for plan: %w", err)
+	}
+	p.Tasks = tasks
+
+	return &p, nil
 }
