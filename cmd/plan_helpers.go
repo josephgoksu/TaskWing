@@ -29,7 +29,7 @@ func isValidPlanStatus(status task.PlanStatus) bool {
 
 func isValidTaskStatus(status task.TaskStatus) bool {
 	switch status {
-	case task.StatusDraft, task.StatusPending, task.StatusInProgress, task.StatusVerifying, task.StatusCompleted, task.StatusFailed:
+	case task.StatusDraft, task.StatusPending, task.StatusInProgress, task.StatusBlocked, task.StatusVerifying, task.StatusCompleted, task.StatusFailed:
 		return true
 	default:
 		return false

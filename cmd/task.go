@@ -354,6 +354,6 @@ func init() {
 
 	// Task list flags
 	taskListCmd.Flags().StringP("plan", "p", "", "Filter by plan ID (prefix match)")
-	taskUpdateCmd.Flags().String("status", "", "Update the task status (draft, pending, in_progress, verifying, completed, failed)")
+	taskUpdateCmd.Flags().String("status", "", "Update the task status (draft, pending, in_progress, blocked, verifying, completed, failed)")
 	taskDeleteCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 }
