@@ -292,6 +292,8 @@ func savePlan(repo *memory.Repository, goal, enrichedGoal string, output *core.O
 				AcceptanceCriteria: tData.AcceptanceCriteria,
 				ValidationSteps:    tData.ValidationSteps,
 			}
+			// Populate AI integration fields (scope, keywords, suggested_recall_queries)
+			newTask.EnrichAIFields()
 			if err := repo.CreateTask(newTask); err == nil {
 				taskCount++
 			}

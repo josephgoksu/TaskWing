@@ -1,6 +1,8 @@
 package task
 
 import (
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -75,4 +77,125 @@ type Plan struct {
 	Tasks        []Task     `json:"tasks"`
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
+}
+
+// scopeKeywords maps scope names to keywords that indicate them
+var scopeKeywords = map[string][]string{
+	"auth":         {"auth", "authentication", "login", "logout", "session", "cookie", "jwt", "token", "password", "credential", "oauth", "sso"},
+	"api":          {"api", "endpoint", "handler", "route", "rest", "graphql", "grpc", "request", "response", "middleware"},
+	"database":     {"database", "db", "sql", "sqlite", "postgres", "mysql", "migration", "schema", "query", "table", "index"},
+	"vectorsearch": {"vector", "embedding", "lancedb", "similarity", "semantic", "search", "rag", "retrieval"},
+	"llm":          {"llm", "openai", "claude", "gemini", "ollama", "prompt", "completion", "chat", "model", "inference"},
+	"cli":          {"cli", "command", "flag", "cobra", "terminal", "argument", "subcommand"},
+	"mcp":          {"mcp", "tool", "protocol", "context", "stdio", "jsonrpc"},
+	"bootstrap":    {"bootstrap", "scan", "analyze", "extract", "discover", "pattern"},
+	"ui":           {"ui", "tui", "interface", "display", "render", "bubbletea", "lipgloss"},
+	"test":         {"test", "testing", "mock", "fixture", "assert", "benchmark", "coverage"},
+}
+
+// stopWords are common words to exclude from keyword extraction
+var stopWords = map[string]bool{
+	"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
+	"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
+	"with": true, "by": true, "from": true, "as": true, "is": true, "was": true,
+	"are": true, "be": true, "been": true, "being": true, "have": true, "has": true,
+	"had": true, "do": true, "does": true, "did": true, "will": true, "would": true,
+	"could": true, "should": true, "may": true, "might": true, "must": true,
+	"shall": true, "can": true, "need": true, "this": true, "that": true,
+	"these": true, "those": true, "it": true, "its": true, "i": true, "we": true,
+	"you": true, "he": true, "she": true, "they": true, "them": true, "their": true,
+	"what": true, "which": true, "who": true, "whom": true, "when": true, "where": true,
+	"why": true, "how": true, "all": true, "each": true, "every": true, "both": true,
+	"few": true, "more": true, "most": true, "other": true, "some": true, "such": true,
+	"no": true, "nor": true, "not": true, "only": true, "own": true, "same": true,
+	"so": true, "than": true, "too": true, "very": true, "just": true, "also": true,
+}
+
+// EnrichAIFields populates Scope, Keywords, and SuggestedRecallQueries from title/description.
+// Call this before CreateTask to ensure AI integration fields are set.
+func (t *Task) EnrichAIFields() {
+	// Extract keywords from title and description
+	text := strings.ToLower(t.Title + " " + t.Description)
+
+	// Remove punctuation and split into words
+	re := regexp.MustCompile(`[^a-zA-Z0-9\s]`)
+	text = re.ReplaceAllString(text, " ")
+	words := strings.Fields(text)
+
+	// Deduplicate and filter stop words
+	seen := make(map[string]bool)
+	var keywords []string
+	for _, word := range words {
+		if len(word) < 3 {
+			continue
+		}
+		if stopWords[word] {
+			continue
+		}
+		if seen[word] {
+			continue
+		}
+		seen[word] = true
+		keywords = append(keywords, word)
+	}
+
+	// Limit to top 10 keywords (first ones tend to be most relevant)
+	if len(keywords) > 10 {
+		keywords = keywords[:10]
+	}
+	t.Keywords = keywords
+
+	// Infer scope from keywords
+	scopeScores := make(map[string]int)
+	for scope, scopeKws := range scopeKeywords {
+		for _, kw := range scopeKws {
+			if seen[kw] {
+				scopeScores[scope]++
+			}
+		}
+	}
+
+	// Find highest scoring scope
+	bestScope := "general"
+	bestScore := 0
+	for scope, score := range scopeScores {
+		if score > bestScore {
+			bestScore = score
+			bestScope = scope
+		}
+	}
+	t.Scope = bestScope
+
+	// Generate suggested recall queries
+	var queries []string
+
+	// Query 1: Scope-based patterns and constraints
+	queries = append(queries, t.Scope+" patterns constraints decisions")
+
+	// Query 2: Top keywords (up to 5)
+	if len(keywords) > 0 {
+		topKw := keywords
+		if len(topKw) > 5 {
+			topKw = topKw[:5]
+		}
+		queries = append(queries, strings.Join(topKw, " "))
+	}
+
+	// Query 3: Title-based (simplified)
+	titleWords := strings.Fields(strings.ToLower(t.Title))
+	var titleKw []string
+	for _, w := range titleWords {
+		w = re.ReplaceAllString(w, "")
+		if len(w) >= 3 && !stopWords[w] {
+			titleKw = append(titleKw, w)
+		}
+	}
+	if len(titleKw) > 0 {
+		if len(titleKw) > 4 {
+			titleKw = titleKw[:4]
+		}
+		queries = append(queries, strings.Join(titleKw, " "))
+	}
+
+	t.SuggestedRecallQueries = queries
 }
