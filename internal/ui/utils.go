@@ -14,14 +14,6 @@ func IsInteractive() bool {
 	return (fileInfo.Mode() & os.ModeCharDevice) != 0
 }
 
-// Truncate ensures string doesn't exceed max length
-func Truncate(s string, max int) string {
-	if len(s) > max {
-		return s[:max-3] + "..."
-	}
-	return s
-}
-
 // RenderPageHeader displays a consistent styled header for commands
 func RenderPageHeader(title, subtitle string) {
 	titleStyle := lipgloss.NewStyle().

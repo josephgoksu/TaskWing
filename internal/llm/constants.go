@@ -44,7 +44,3 @@ func DefaultModelForProvider(provider string) string {
 func InferProviderFromModel(model string) (string, bool) {
 	return InferProvider(model)
 }
-
-func hasPrefix(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
-}

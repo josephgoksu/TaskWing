@@ -3,6 +3,7 @@ package llm
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // Model represents a complete model definition including metadata and pricing.
@@ -305,13 +306,13 @@ func InferProvider(modelID string) (string, bool) {
 
 	// Fallback to prefix-based inference for unknown models
 	switch {
-	case hasPrefix(modelID, "gpt-"), hasPrefix(modelID, "o1-"), hasPrefix(modelID, "o3-"):
+	case strings.HasPrefix(modelID, "gpt-"), strings.HasPrefix(modelID, "o1-"), strings.HasPrefix(modelID, "o3-"):
 		return ProviderOpenAI, true
-	case hasPrefix(modelID, "claude-"):
+	case strings.HasPrefix(modelID, "claude-"):
 		return ProviderAnthropic, true
-	case hasPrefix(modelID, "gemini-"):
+	case strings.HasPrefix(modelID, "gemini-"):
 		return ProviderGemini, true
-	case hasPrefix(modelID, "llama"), hasPrefix(modelID, "mistral"), hasPrefix(modelID, "codellama"), hasPrefix(modelID, "phi"):
+	case strings.HasPrefix(modelID, "llama"), strings.HasPrefix(modelID, "mistral"), strings.HasPrefix(modelID, "codellama"), strings.HasPrefix(modelID, "phi"):
 		return ProviderOllama, true
 	}
 

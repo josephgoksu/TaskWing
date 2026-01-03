@@ -78,7 +78,9 @@ func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 			return core.Output{AgentName: a.Name(), Error: err, Duration: duration}, nil
 		}
 		findings, relationships := a.parseFindings(parsed)
-		return core.BuildOutputWithRelationships(a.Name(), findings, relationships, "JSON output (watch)", duration), nil
+		output := core.BuildOutputWithRelationships(a.Name(), findings, relationships, "JSON output (watch)", duration)
+		output.Coverage = convertToolsCoverage(gatherer.GetCoverage())
+		return output, nil
 	}
 
 	// Full Bootstrap: Split into Parallel Execution
@@ -167,7 +169,13 @@ func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 		}, nil
 	}
 
-	return core.BuildOutputWithRelationships(a.Name(), findings, relationships, "Joint analysis (Docs+Rules)", maxDuration), nil
+	output := core.BuildOutputWithRelationships(a.Name(), findings, relationships, "Joint analysis (Docs+Rules)", maxDuration)
+
+	// Add coverage stats from context gathering
+	toolsCoverage := gatherer.GetCoverage()
+	output.Coverage = convertToolsCoverage(toolsCoverage)
+
+	return output, nil
 }
 
 type docAnalysisResponse struct {

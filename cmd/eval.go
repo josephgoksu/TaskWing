@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -1111,7 +1112,7 @@ func evaluateRules(rules []evalpkg.Rule, taskID string, text string) (map[string
 	failed := false
 
 	for _, rule := range rules {
-		if len(rule.TaskIDs) > 0 && !evalpkg.Contains(rule.TaskIDs, taskID) {
+		if len(rule.TaskIDs) > 0 && !slices.Contains(rule.TaskIDs, taskID) {
 			continue
 		}
 		check := evalpkg.RuleCheck{RequireAll: map[string]bool{}, RequireAny: map[string]bool{}, Forbid: map[string]bool{}, AllowIf: map[string]bool{}}

@@ -241,9 +241,9 @@ When you run `tw bootstrap`, TaskWing executes a **Map-Reduce pipeline**:
 │  │   │                    │  Extracts: Patterns, Decisions          │  │   │
 │  │   │                    │  Prompt: config.PromptTemplateCodeAgent │  │   │
 │  │   ├────────────────────┼─────────────────────────────────────────┤  │   │
-│  │   │  GitAgent          │  Reads: git log, git shortlog           │  │   │
+│  │   │  GitAgent          │  Reads: git log (chunked, 300 commits)  │  │   │
 │  │   │                    │  Extracts: Milestones, Evolution        │  │   │
-│  │   │                    │  Prompt: config.PromptTemplateGitAgent  │  │   │
+│  │   │                    │  Prompt: PromptTemplateGitAgentChunked  │  │   │
 │  │   ├────────────────────┼─────────────────────────────────────────┤  │   │
 │  │   │  DepsAgent         │  Reads: go.mod, package.json            │  │   │
 │  │   │                    │  Extracts: Tech decisions, Stack        │  │   │

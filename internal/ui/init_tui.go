@@ -102,13 +102,9 @@ func (m aiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m aiSelectModel) View() string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-	checkedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	checkedStyle := lipgloss.NewStyle().Foreground(ColorSelected)
 
-	s := "\n" + titleStyle.Render("Choose your AI assistant(s):") + "\n\n"
+	s := "\n" + StyleSelectTitle.Render("Choose your AI assistant(s):") + "\n\n"
 
 	for i, choice := range m.choices {
 		displayName := m.descriptions[choice]
@@ -119,7 +115,7 @@ func (m aiSelectModel) View() string {
 
 		cursor := "  "
 		checkbox := "[ ]"
-		style := normalStyle
+		style := StyleSelectNormal
 
 		if m.selected[choice] {
 			checkbox = checkedStyle.Render("[✓]")
@@ -127,11 +123,11 @@ func (m aiSelectModel) View() string {
 
 		if m.cursor == i {
 			cursor = "▶ "
-			style = selectedStyle
+			style = StyleSelectActive
 		}
-		s += cursor + checkbox + " " + style.Render(fmt.Sprintf("%-10s", choice)) + dimStyle.Render(" - "+displayName) + "\n"
+		s += cursor + checkbox + " " + style.Render(fmt.Sprintf("%-10s", choice)) + StyleSelectDim.Render(" - "+displayName) + "\n"
 	}
 
-	s += "\n" + dimStyle.Render("↑/↓ navigate • space toggle • a all • enter confirm • s skip • esc cancel") + "\n"
+	s += "\n" + StyleSelectDim.Render("↑/↓ navigate • space toggle • a all • enter confirm • s skip • esc cancel") + "\n"
 	return s
 }

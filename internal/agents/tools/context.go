@@ -139,9 +139,12 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			if err != nil {
 				continue
 			}
-			if len(content) > maxLen {
+			truncated := len(content) > maxLen
+			if truncated {
 				content = content[:maxLen]
 			}
+			// Track this file read for coverage reporting
+			g.recordRead(relPath, content, truncated)
 			// Add line numbers to content for accurate evidence extraction
 			numberedContent := addLineNumbers(string(content))
 			sb.WriteString(fmt.Sprintf("## FILE: %s\n```\n%s\n```\n\n", relPath, numberedContent))
@@ -214,9 +217,12 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			}
 			// Package docs can be longer - they contain implementation details
 			maxLen := 3000
-			if len(content) > maxLen {
+			truncated := len(content) > maxLen
+			if truncated {
 				content = append(content[:maxLen], []byte("\n...[truncated]")...)
 			}
+			// Track this file read for coverage reporting
+			g.recordRead(relPath, content, truncated)
 			numberedContent := addLineNumbers(string(content))
 			sb.WriteString(fmt.Sprintf("## PACKAGE DOC: %s\n```\n%s\n```\n\n", relPath, numberedContent))
 			return nil
@@ -255,9 +261,12 @@ func (g *ContextGatherer) GatherKeyFiles() string {
 		if err != nil {
 			continue
 		}
-		if len(content) > 3000 {
+		truncated := len(content) > 3000
+		if truncated {
 			content = append(content[:3000], []byte("\n...[truncated]")...)
 		}
+		// Track this file read for coverage reporting
+		g.recordRead(relPath, content, truncated)
 		sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, string(content)))
 	}
 	return sb.String()
@@ -283,10 +292,13 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 			if err != nil {
 				continue
 			}
-			if len(content) > maxPerFile {
+			truncated := len(content) > maxPerFile
+			if truncated {
 				content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
 			}
 			relPath := filepath.Join(".github", "workflows", name)
+			// Track this file read for coverage reporting
+			g.recordRead(relPath, content, truncated)
 			sb.WriteString(fmt.Sprintf("## %s\n```yaml\n%s\n```\n\n", relPath, string(content)))
 		}
 	}
@@ -294,18 +306,24 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 	// GitLab CI
 	gitlabCI := filepath.Join(g.BasePath, ".gitlab-ci.yml")
 	if content, err := os.ReadFile(gitlabCI); err == nil {
-		if len(content) > maxPerFile {
+		truncated := len(content) > maxPerFile
+		if truncated {
 			content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
 		}
+		// Track this file read for coverage reporting
+		g.recordRead(".gitlab-ci.yml", content, truncated)
 		sb.WriteString(fmt.Sprintf("## .gitlab-ci.yml\n```yaml\n%s\n```\n\n", string(content)))
 	}
 
 	// CircleCI
 	circleCI := filepath.Join(g.BasePath, ".circleci", "config.yml")
 	if content, err := os.ReadFile(circleCI); err == nil {
-		if len(content) > maxPerFile {
+		truncated := len(content) > maxPerFile
+		if truncated {
 			content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
 		}
+		// Track this file read for coverage reporting
+		g.recordRead(".circleci/config.yml", content, truncated)
 		sb.WriteString(fmt.Sprintf("## .circleci/config.yml\n```yaml\n%s\n```\n\n", string(content)))
 	}
 

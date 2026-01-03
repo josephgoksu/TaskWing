@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -59,9 +60,9 @@ func (a *DepsAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 		a.chain = chain
 	}
 
-	depsInfo := gatherDeps(input.BasePath)
+	depsInfo, filesRead := gatherDepsWithTracking(input.BasePath)
 	if depsInfo == "" {
-		return core.Output{Error: fmt.Errorf("no dependency files found")}, nil
+		return core.Output{AgentName: a.Name(), Error: fmt.Errorf("no dependency files found")}, nil
 	}
 
 	// Execute Chain
@@ -80,7 +81,17 @@ func (a *DepsAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 	}
 
 	findings := a.parseFindings(parsed)
-	return core.BuildOutput(a.Name(), findings, "JSON output handled by Eino", duration), nil
+	output := core.BuildOutput(a.Name(), findings, "JSON output handled by Eino", duration)
+
+	// Add coverage stats
+	output.Coverage = core.CoverageStats{
+		FilesAnalyzed:   len(filesRead),
+		TotalFiles:      len(filesRead),
+		CoveragePercent: 100.0,
+		FilesRead:       filesRead,
+	}
+
+	return output, nil
 }
 
 type depsTechDecisionsResponse struct {
@@ -116,54 +127,89 @@ func (a *DepsAgent) parseFindings(parsed depsTechDecisionsResponse) []core.Findi
 	return findings
 }
 
-func gatherDeps(basePath string) string {
+// gatherDepsWithTracking collects dependency file contents and tracks which files were read.
+// Uses os.ReadFile instead of shelling out to cat for better portability and error handling.
+func gatherDepsWithTracking(basePath string) (string, []core.FileRead) {
 	var sb strings.Builder
+	var filesRead []core.FileRead
 
+	// Find and read package.json files (excluding node_modules)
 	cmd := exec.Command("find", ".", "-name", "package.json", "-not", "-path", "*/node_modules/*", "-type", "f")
 	cmd.Dir = basePath
-	out, _ := cmd.Output()
-
-	if len(out) > 0 {
+	out, err := cmd.Output()
+	// Note: find command may fail on non-Unix systems; we continue with empty results
+	if err == nil && len(out) > 0 {
 		files := strings.Split(strings.TrimSpace(string(out)), "\n")
 		for _, file := range files {
 			if file == "" {
 				continue
 			}
-			catCmd := exec.Command("cat", file)
-			catCmd.Dir = basePath
-			content, err := catCmd.Output()
-			if err == nil {
-				if len(content) > 3000 {
-					content = content[:3000]
-				}
-				sb.WriteString(fmt.Sprintf("## %s\n```json\n%s\n```\n\n", file, string(content)))
+			// Use os.ReadFile for better error handling and portability
+			fullPath := file
+			if !strings.HasPrefix(file, "/") {
+				fullPath = basePath + "/" + strings.TrimPrefix(file, "./")
 			}
+			content, err := readFileWithLimit(fullPath, 3000)
+			if err != nil {
+				continue // Skip files we can't read
+			}
+			truncated := len(content) == 3000
+			sb.WriteString(fmt.Sprintf("## %s\n```json\n%s\n```\n\n", file, string(content)))
+			filesRead = append(filesRead, core.FileRead{
+				Path:       file,
+				Characters: len(content),
+				Lines:      strings.Count(string(content), "\n") + 1,
+				Truncated:  truncated,
+			})
 		}
 	}
 
+	// Find and read go.mod files
 	cmd = exec.Command("find", ".", "-name", "go.mod", "-type", "f")
 	cmd.Dir = basePath
-	out, _ = cmd.Output()
-
-	if len(out) > 0 {
+	out, err = cmd.Output()
+	if err == nil && len(out) > 0 {
 		files := strings.Split(strings.TrimSpace(string(out)), "\n")
 		for _, file := range files {
 			if file == "" {
 				continue
 			}
-			catCmd := exec.Command("cat", file)
-			catCmd.Dir = basePath
-			content, err := catCmd.Output()
-			if err == nil {
-				if len(content) > 2000 {
-					content = content[:2000]
-				}
-				sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", file, string(content)))
+			fullPath := file
+			if !strings.HasPrefix(file, "/") {
+				fullPath = basePath + "/" + strings.TrimPrefix(file, "./")
 			}
+			content, err := readFileWithLimit(fullPath, 2000)
+			if err != nil {
+				continue // Skip files we can't read
+			}
+			truncated := len(content) == 2000
+			sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", file, string(content)))
+			filesRead = append(filesRead, core.FileRead{
+				Path:       file,
+				Characters: len(content),
+				Lines:      strings.Count(string(content), "\n") + 1,
+				Truncated:  truncated,
+			})
 		}
 	}
 
-	return sb.String()
+	return sb.String(), filesRead
+}
+
+// readFileWithLimit reads a file up to maxBytes, returning the content read.
+func readFileWithLimit(path string, maxBytes int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	content := make([]byte, maxBytes)
+	n, err := f.Read(content)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	return content[:n], nil
 }
 
 func init() {

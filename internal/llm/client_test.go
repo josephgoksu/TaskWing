@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -171,7 +172,7 @@ func TestNewCloseableChatModel_Validation(t *testing.T) {
 				t.Errorf("NewCloseableChatModel() expected error containing %q, got nil", tt.wantErr)
 				return
 			}
-			if !containsString(err.Error(), tt.wantErr) {
+			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("NewCloseableChatModel() error = %v, want containing %q", err, tt.wantErr)
 			}
 		})
@@ -219,7 +220,7 @@ func TestNewCloseableEmbedder_Validation(t *testing.T) {
 				t.Errorf("NewCloseableEmbedder() expected error containing %q, got nil", tt.wantErr)
 				return
 			}
-			if !containsString(err.Error(), tt.wantErr) {
+			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("NewCloseableEmbedder() error = %v, want containing %q", err, tt.wantErr)
 			}
 		})
@@ -268,18 +269,4 @@ func TestGenaiClientCloser_Close(t *testing.T) {
 	if err != nil {
 		t.Errorf("genaiClientCloser.Close() should return nil, got %v", err)
 	}
-}
-
-// Helper function
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

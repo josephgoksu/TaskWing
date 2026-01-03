@@ -16,7 +16,7 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TW="${SCRIPT_DIR}/tw"
-MODELS=("gpt-5-mini-2025-08-07" "gpt-5-nano-2025-08-07")
+MODELS=("gemini-3-flash-preview")
 PROJECT_PATH=""
 
 # Colors for output

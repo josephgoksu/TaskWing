@@ -12,6 +12,10 @@ var (
 	ColorText      = lipgloss.Color("252") // White/Gray
 	ColorCyan      = lipgloss.Color("87")  // Cyan for strategy
 	ColorBlue      = lipgloss.Color("75")  // Blue for answers
+	ColorHighlight = lipgloss.Color("12")  // Blue for titles/highlights
+	ColorSelected  = lipgloss.Color("10")  // Green for selected items
+	ColorDim       = lipgloss.Color("240") // Dim gray for secondary text
+	ColorYellow    = lipgloss.Color("11")  // Yellow for badges/accents
 
 	// Base Styles
 	StyleTitle   = lipgloss.NewStyle().Foreground(ColorText).Bold(true)
@@ -67,6 +71,13 @@ var (
 	StylePrefixAgent    = lipgloss.NewStyle().Foreground(ColorPrimary)            // Pink for agent
 	StylePrefixUser     = lipgloss.NewStyle().Foreground(ColorSuccess)            // Green for user
 	StylePrefixAnswer   = lipgloss.NewStyle().Foreground(ColorBlue).Bold(true)    // Blue for answers
+
+	// Selection List Styles (for provider/model selection)
+	StyleSelectTitle  = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight)
+	StyleSelectNormal = lipgloss.NewStyle().Foreground(ColorText)
+	StyleSelectActive = lipgloss.NewStyle().Foreground(ColorSelected).Bold(true)
+	StyleSelectDim    = lipgloss.NewStyle().Foreground(ColorDim)
+	StyleSelectBadge  = lipgloss.NewStyle().Foreground(ColorYellow).Bold(true)
 )
 
 // Icon returns a styled icon string

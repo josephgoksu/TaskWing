@@ -293,7 +293,15 @@ func printCoverageSummary(report *core.BootstrapReport) {
 		if ar.Error != "" {
 			status = "✗"
 		}
-		fmt.Printf("     %s %s: %d files, %d findings\n", status, name, ar.Coverage.FilesAnalyzed, ar.FindingCount)
+		fileWord := "files"
+		if ar.Coverage.FilesAnalyzed == 1 {
+			fileWord = "file"
+		}
+		findingWord := "findings"
+		if ar.FindingCount == 1 {
+			findingWord = "finding"
+		}
+		fmt.Printf("     %s %s: %d %s, %d %s\n", status, name, ar.Coverage.FilesAnalyzed, fileWord, ar.FindingCount, findingWord)
 	}
 
 	fmt.Println()

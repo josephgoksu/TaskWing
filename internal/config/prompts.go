@@ -198,36 +198,42 @@ DOCUMENTATION:
 
 Respond with JSON only. Every finding MUST have evidence with file_path, line numbers, and snippet.`
 
-// PromptTemplateGitAgent is the template for the git history analysis agent.
-// Use with Eino ChatTemplate (Go Template format).
-const PromptTemplateGitAgent = `You are a software historian. Analyze the git history for project "{{.ProjectName}}".
+// PromptTemplateGitAgentChunked is the template for chunked git history analysis.
+// Processes commits in time-ordered chunks with recency weighting.
+const PromptTemplateGitAgentChunked = `You are a software historian analyzing git history for project "{{.ProjectName}}".
 
-Identify KEY MILESTONES and EVOLUTION PATTERNS:
-1. Major feature additions (from feat commits)
-2. Significant refactors or architecture changes
-3. Technology migrations or additions
-4. Active development areas
+CONTEXT:
+- Analyzing chunk {{.ChunkNumber}} of {{.TotalChunks}} ({{if .IsRecent}}MOST RECENT commits{{else}}older commits{{end}})
+- Extract up to {{.MaxFindings}} significant findings from this chunk
+- Focus on: major features, architecture changes, technology decisions, patterns
 
-For each finding:
-- Explain WHAT happened and WHY it matters
-- Include EVIDENCE: commit hashes, dates, and exact commit messages
-- Provide confidence score (0.0-1.0)
-- Identify which component/feature each milestone relates to from commit scopes (e.g. "feat(auth):" → scope is "auth")
+PROJECT OVERVIEW:
+{{.ProjectMeta}}
+
+COMMITS TO ANALYZE:
+{{.CommitChunk}}
+
+INSTRUCTIONS:
+{{if .IsRecent}}- This is the MOST RECENT chunk - prioritize recent developments, active features, current patterns
+{{else}}- This is an OLDER chunk - focus on foundational decisions, early architecture, historical context
+{{end}}- Each finding must cite specific commit hash(es) as evidence
+- Avoid duplicating obvious information - focus on insights
+- Confidence should reflect how clear the evidence is
 
 RESPOND IN JSON:
 {
   "milestones": [
     {
-      "title": "Milestone or decision title",
-      "scope": "Component or feature this relates to (from commit scope, e.g. 'auth', 'api', 'ui')",
-      "description": "What happened and why it matters",
+      "title": "Clear, specific title",
+      "scope": "Component/feature name from commit scope (e.g., 'auth', 'api', 'ui')",
+      "description": "What happened, why it matters, and what it tells us about the project",
       "confidence": 0.8,
       "evidence": [
         {
           "file_path": ".git/logs/HEAD",
           "start_line": 0,
           "end_line": 0,
-          "snippet": "abc123 feat(auth): Add JWT authentication support",
+          "snippet": "abc1234 2024-01-15 feat(auth): Add JWT authentication",
           "grep_pattern": "feat(auth)"
         }
       ]
@@ -235,10 +241,7 @@ RESPOND IN JSON:
   ]
 }
 
-GIT HISTORY:
-{{.GitInfo}}
-
-Respond with JSON only. Every milestone MUST have evidence with commit hash and message.`
+Respond with JSON only. Maximum {{.MaxFindings}} milestones for this chunk.`
 
 // PromptTemplateDepsAgent is the template for the dependency analysis agent.
 // Use with Eino ChatTemplate (Go Template format).

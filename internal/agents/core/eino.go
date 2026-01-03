@@ -7,12 +7,20 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"text/template"
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
+)
+
+const (
+	// MaxRetries is the maximum number of retry attempts for failed LLM parses
+	MaxRetries = 2
+	// RetryBaseDelay is the base delay between retries (doubles each attempt)
+	RetryBaseDelay = 500 * time.Millisecond
 )
 
 // DeterministicChain is a reusable pipeline: Map -> Template -> Model -> Parser -> Output
@@ -79,19 +87,82 @@ func NewDeterministicChain[T any](
 	}, nil
 }
 
-// Invoke executes the chain with manual timing.
+// Invoke executes the chain with manual timing and retry logic for JSON parse failures.
 func (c *DeterministicChain[T]) Invoke(ctx context.Context, input map[string]any) (T, string, time.Duration, error) {
 	start := time.Now()
 
-	// In Eino v0.7.x, callbacks are often handled via Options or Context injection differently.
-	// For simplicity in this fix, we will just run the chain.
-	// If needed, we can add `callbacks.WithHandler` if the API supports it in Invoke,
-	// or rely on Eino's default context propagation if headers are set.
+	var output T
+	var err error
+	var lastErr error
 
-	// Execute chain
-	// Run(ctx, input, opts...) is the standard for Runnable
-	output, err := c.chain.Invoke(ctx, input)
+	// Retry loop for handling transient LLM parse failures
+	for attempt := 0; attempt <= MaxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff: 500ms, 1000ms, etc.
+			delay := RetryBaseDelay * time.Duration(1<<(attempt-1))
+			select {
+			case <-ctx.Done():
+				return output, "", time.Since(start), ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		output, err = c.chain.Invoke(ctx, input)
+		if err == nil {
+			duration := time.Since(start)
+			return output, "", duration, nil
+		}
+
+		// Always capture the last error for reporting
+		lastErr = err
+
+		// Check if error is retryable (JSON parse, rate limit, network)
+		if isRetryableError(err) {
+			continue // Retry
+		}
+
+		// Non-retryable error, return immediately
+		duration := time.Since(start)
+		return output, "", duration, err
+	}
+
+	// All retries exhausted
 	duration := time.Since(start)
+	return output, "", duration, fmt.Errorf("failed after %d attempts: %w", MaxRetries+1, lastErr)
+}
 
-	return output, "", duration, err
+// isRetryableError checks if the error should trigger a retry.
+// Retries: JSON parse failures and rate limit errors.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+
+	// JSON parse errors
+	if strings.Contains(errStr, "parse json") ||
+		strings.Contains(errStr, "unmarshal") ||
+		strings.Contains(errStr, "invalid character") ||
+		strings.Contains(errStr, "no json found") ||
+		strings.Contains(errStr, "no json start") {
+		return true
+	}
+
+	// Rate limit errors (various providers)
+	if strings.Contains(errStr, "rate limit") ||
+		strings.Contains(errStr, "429") ||
+		strings.Contains(errStr, "too many requests") ||
+		strings.Contains(errStr, "quota exceeded") ||
+		strings.Contains(errStr, "resource exhausted") {
+		return true
+	}
+
+	// Temporary network errors
+	if strings.Contains(errStr, "temporary") ||
+		strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "connection reset") {
+		return true
+	}
+
+	return false
 }

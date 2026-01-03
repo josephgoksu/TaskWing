@@ -44,7 +44,7 @@ func RenderNodeList(nodes []memory.Node) {
 			continue
 		}
 
-		fmt.Println(StyleHeader.Render(fmt.Sprintf("%s %ss", TypeIcon(t), capitalizeFirst(t))))
+		fmt.Println(StyleHeader.Render(fmt.Sprintf("%s %ss", TypeIcon(t), utils.ToTitle(t))))
 
 		for _, n := range groupNodes {
 			summary := n.Summary
@@ -81,11 +81,4 @@ func TypeIcon(t string) string {
 	default:
 		return "❓"
 	}
-}
-
-func capitalizeFirst(s string) string {
-	if len(s) == 0 {
-		return s
-	}
-	return string(s[0]-32) + s[1:]
 }

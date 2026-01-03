@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type ProviderOption struct {
@@ -92,27 +91,22 @@ func (m providerSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m providerSelectModel) View() string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-
-	s := "\n" + titleStyle.Render("🤖 Select AI Provider") + "\n\n"
+	s := "\n" + StyleSelectTitle.Render("🤖 Select AI Provider") + "\n\n"
 
 	for i, opt := range m.options {
 		cursor := "  "
-		style := normalStyle
+		style := StyleSelectNormal
 
 		if m.cursor == i {
 			cursor = "▶ "
-			style = selectedStyle
+			style = StyleSelectActive
 		}
 
 		line := fmt.Sprintf("%s%s", cursor, style.Render(fmt.Sprintf("%-10s", opt.Name)))
-		line += dimStyle.Render(" " + opt.Description)
+		line += StyleSelectDim.Render(" " + opt.Description)
 		s += line + "\n"
 	}
 
-	s += "\n" + dimStyle.Render("↑/↓ navigate • enter select • esc cancel") + "\n"
+	s += "\n" + StyleSelectDim.Render("↑/↓ navigate • enter select • esc cancel") + "\n"
 	return s
 }

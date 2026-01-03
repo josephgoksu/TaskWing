@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // VerifierVersion is the current version of the verification logic.
@@ -182,7 +183,7 @@ func (v *Agent) checkEvidence(evidence core.Evidence) core.EvidenceCheckResult {
 
 	if evidence.StartLine > 0 {
 		actualContent := extractLines(fileContent, evidence.StartLine, evidence.EndLine)
-		result.ActualContent = truncateString(actualContent, 500)
+		result.ActualContent = utils.Truncate(actualContent, 500)
 
 		normalizedActual := normalizeWhitespace(actualContent)
 		if normalizedActual == normalizedSnippet || strings.Contains(normalizedActual, normalizedSnippet) {
@@ -283,13 +284,6 @@ func calculateSimilarity(a, b string) float64 {
 	}
 
 	return float64(intersection) / float64(union)
-}
-
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }
 
 // FilterVerifiedFindings returns only findings that passed verification.

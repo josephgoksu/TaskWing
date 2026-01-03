@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 )
 
@@ -73,31 +72,25 @@ func (m modelSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m modelSelectModel) View() string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	defaultBadge := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
-
-	s := "\n" + titleStyle.Render(fmt.Sprintf("🧠 Select Model for %s", m.provider)) + "\n\n"
+	s := "\n" + StyleSelectTitle.Render(fmt.Sprintf("🧠 Select Model for %s", m.provider)) + "\n\n"
 
 	for i, model := range m.models {
 		cursor := "  "
-		style := normalStyle
+		style := StyleSelectNormal
 
 		if m.cursor == i {
 			cursor = "▶ "
-			style = selectedStyle
+			style = StyleSelectActive
 		}
 
 		line := fmt.Sprintf("%s%s", cursor, style.Render(fmt.Sprintf("%-24s", model.DisplayName)))
 		if model.IsDefault {
-			line += defaultBadge.Render(" (default)")
+			line += StyleSelectBadge.Render(" (default)")
 		}
-		line += dimStyle.Render(" " + model.PriceInfo)
+		line += StyleSelectDim.Render(" " + model.PriceInfo)
 		s += line + "\n"
 	}
 
-	s += "\n" + dimStyle.Render("↑/↓ navigate • enter select • esc cancel") + "\n"
+	s += "\n" + StyleSelectDim.Render("↑/↓ navigate • enter select • esc cancel") + "\n"
 	return s
 }

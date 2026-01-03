@@ -187,7 +187,7 @@ func renderTaskBreakdown(data EvalReportData) {
 	// Header row
 	headerRow := fmt.Sprintf("  %-6s", "Task")
 	for _, m := range models {
-		shortName := shortenModelName(m)
+		shortName := formatModelName(m, 12)
 		headerRow += fmt.Sprintf(" %-12s", shortName)
 	}
 	fmt.Println(dimStyle.Render(headerRow))
@@ -229,7 +229,7 @@ func renderTaskBreakdown(data EvalReportData) {
 		})
 
 		for _, f := range failures {
-			shortModel := shortenModelName(f.Model)
+			shortModel := formatModelName(f.Model, 12)
 
 			// Determine what to display: failed rules or judge reason
 			var detail string
@@ -252,18 +252,6 @@ func renderTaskBreakdown(data EvalReportData) {
 				dimStyle.Render(detail))
 		}
 	}
-}
-
-func shortenModelName(name string) string {
-	// Remove common prefixes
-	name = strings.TrimPrefix(name, "openai_")
-	name = strings.TrimPrefix(name, "anthropic_")
-
-	// Truncate long names
-	if len(name) > 12 {
-		return name[:10] + ".."
-	}
-	return name
 }
 
 // RenderBenchmark renders historical benchmark data with detailed task scores

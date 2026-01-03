@@ -9,10 +9,21 @@ import (
 	"io"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+)
+
+const (
+	// Git analysis configuration
+	gitChunkSize       = 50  // Commits per chunk
+	gitMaxCommits      = 300 // Total commits to analyze
+	gitMaxChunks       = 6   // Maximum chunks to process
+	gitRecentMaxItems  = 8   // Max findings for newest chunk
+	gitDecayFactor     = 0.6 // Each older chunk gets this fraction of previous max
+	gitMinItems        = 2   // Minimum findings per chunk
 )
 
 // GitAgent analyzes git history to understand project evolution.
@@ -38,8 +49,10 @@ func (a *GitAgent) Close() error {
 	return nil
 }
 
-// Run executes the agent using Eino DeterministicChain.
+// Run executes the agent using chunked analysis with recency weighting.
 func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
+	start := time.Now()
+
 	// Initialize chain (lazy)
 	if a.chain == nil {
 		chatModel, err := a.CreateCloseableChatModel(ctx)
@@ -51,7 +64,7 @@ func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 			ctx,
 			a.Name(),
 			chatModel.BaseChatModel,
-			config.PromptTemplateGitAgent,
+			config.PromptTemplateGitAgentChunked,
 		)
 		if err != nil {
 			return core.Output{}, fmt.Errorf("create chain: %w", err)
@@ -59,28 +72,99 @@ func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 		a.chain = chain
 	}
 
-	gitInfo := gatherGitInfo(input.BasePath)
-	if gitInfo == "" {
-		return core.Output{Error: fmt.Errorf("no git history available")}, nil
+	// Gather commits and split into chunks
+	chunks, projectMeta := gatherGitChunks(input.BasePath)
+	if len(chunks) == 0 {
+		return core.Output{AgentName: a.Name(), Error: fmt.Errorf("no git history available")}, nil
 	}
 
-	// Execute Chain
-	chainInput := map[string]any{
-		"ProjectName": input.ProjectName,
-		"GitInfo":     gitInfo,
+	// Process chunks with recency weighting (newest first)
+	var allFindings []core.Finding
+	seenTitles := make(map[string]bool)
+	chunksProcessed := 0
+	chunksFailed := 0
+	totalCommits := 0
+
+	chunksToProcess := min(len(chunks), gitMaxChunks)
+	for i := 0; i < chunksToProcess; i++ {
+		chunk := chunks[i]
+		commitCount := strings.Count(chunk, "\n") + 1
+		totalCommits += commitCount
+
+		// Calculate max findings for this chunk (decay with age)
+		maxFindings := calculateMaxFindings(i)
+
+		chainInput := map[string]any{
+			"ProjectName":  input.ProjectName,
+			"ChunkNumber":  i + 1,
+			"TotalChunks":  chunksToProcess,
+			"MaxFindings":  maxFindings,
+			"IsRecent":     i == 0,
+			"ProjectMeta":  projectMeta,
+			"CommitChunk":  chunk,
+		}
+
+		parsed, _, _, err := a.chain.Invoke(ctx, chainInput)
+		if err != nil {
+			chunksFailed++
+			continue // Skip failed chunks, don't abort entirely
+		}
+		chunksProcessed++
+
+		// Parse and deduplicate findings
+		chunkFindings := a.parseFindings(parsed)
+		for _, f := range chunkFindings {
+			titleKey := strings.ToLower(f.Title)
+			if !seenTitles[titleKey] {
+				seenTitles[titleKey] = true
+				allFindings = append(allFindings, f)
+			}
+		}
 	}
 
-	parsed, _, duration, err := a.chain.Invoke(ctx, chainInput)
-	if err != nil {
+	duration := time.Since(start)
+
+	// If all chunks failed, return error
+	if chunksProcessed == 0 && chunksFailed > 0 {
 		return core.Output{
 			AgentName: a.Name(),
-			Error:     fmt.Errorf("chain execution failed: %w", err),
+			Error:     fmt.Errorf("all %d chunks failed to process", chunksFailed),
 			Duration:  duration,
 		}, nil
 	}
 
-	findings := a.parseFindings(parsed)
-	return core.BuildOutput(a.Name(), findings, "JSON output handled by Eino", duration), nil
+	output := core.BuildOutput(a.Name(), allFindings, "Chunked analysis with recency weighting", duration)
+
+	// Add coverage stats for consistency with other agents
+	// Note: Git agent analyzes commits, not files. We report this as a single "file" (git history)
+	// with metadata about chunks processed for transparency.
+	output.Coverage = core.CoverageStats{
+		FilesAnalyzed:   1, // Git history treated as single source
+		TotalFiles:      1,
+		CoveragePercent: float64(chunksProcessed) / float64(chunksToProcess) * 100,
+		CharactersRead:  totalCommits * 80, // Approximate characters analyzed
+		FilesRead: []core.FileRead{{
+			Path:       fmt.Sprintf(".git/logs/HEAD (%d/%d chunks, %d commits)", chunksProcessed, chunksToProcess, totalCommits),
+			Characters: totalCommits * 80,
+			Lines:      totalCommits,
+			Truncated:  len(chunks) > gitMaxChunks,
+		}},
+	}
+
+	return output, nil
+}
+
+// calculateMaxFindings returns max findings for a chunk based on its age (0 = newest)
+func calculateMaxFindings(chunkIndex int) int {
+	maxItems := float64(gitRecentMaxItems)
+	for i := 0; i < chunkIndex; i++ {
+		maxItems *= gitDecayFactor
+	}
+	result := int(maxItems)
+	if result < gitMinItems {
+		return gitMinItems
+	}
+	return result
 }
 
 type gitMilestonesResponse struct {
@@ -109,8 +193,8 @@ func (a *GitAgent) parseFindings(parsed gitMilestonesResponse) []core.Finding {
 			core.FindingTypeDecision,
 			m.Title,
 			m.Description,
-			m.EvidenceOld,
-			"",
+			"", // Git milestones don't have separate "why" - context is in description
+			"", // No tradeoffs for git history findings
 			m.Confidence,
 			evidence,
 			a.Name(),
@@ -120,85 +204,116 @@ func (a *GitAgent) parseFindings(parsed gitMilestonesResponse) []core.Finding {
 	return findings
 }
 
-func gatherGitInfo(basePath string) string {
-	var sb strings.Builder
-
-	cmd := exec.Command("git", "log", "--oneline", "--no-decorate", "-50")
+// gatherGitChunks returns commit chunks (newest first) and project metadata.
+func gatherGitChunks(basePath string) ([]string, string) {
+	// Fetch commits with hash, date, and message
+	cmd := exec.Command("git", "log", "--format=%h %ad %s", "--date=short", fmt.Sprintf("-%d", gitMaxCommits))
 	cmd.Dir = basePath
 	out, err := cmd.Output()
-	if err == nil && len(out) > 0 {
-		sb.WriteString("## Recent Commits (last 50)\n```\n")
-		sb.WriteString(string(out))
-		sb.WriteString("```\n\n")
+	if err != nil || len(out) == 0 {
+		return nil, ""
 	}
 
-	cmd = exec.Command("git", "log", "--format=%s", "-200")
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return nil, ""
+	}
+	lines := strings.Split(trimmed, "\n")
+
+	// Split into chunks
+	var chunks []string
+	for i := 0; i < len(lines); i += gitChunkSize {
+		end := i + gitChunkSize
+		if end > len(lines) {
+			end = len(lines)
+		}
+		chunk := strings.Join(lines[i:end], "\n")
+		chunks = append(chunks, chunk)
+	}
+
+	// Gather project metadata (once, not per-chunk)
+	meta := gatherProjectMeta(basePath, lines)
+
+	return chunks, meta
+}
+
+// gatherProjectMeta collects project-level git statistics.
+func gatherProjectMeta(basePath string, allCommits []string) string {
+	var sb strings.Builder
+
+	// Commit type distribution
+	typeCounts := make(map[string]int)
+	scopeCounts := make(map[string]int)
+
+	for _, line := range allCommits {
+		// Skip hash and date to get message
+		parts := strings.SplitN(line, " ", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		msg := parts[2]
+
+		switch {
+		case strings.HasPrefix(msg, "feat"):
+			typeCounts["feat"]++
+		case strings.HasPrefix(msg, "fix"):
+			typeCounts["fix"]++
+		case strings.HasPrefix(msg, "refactor"):
+			typeCounts["refactor"]++
+		case strings.HasPrefix(msg, "chore"):
+			typeCounts["chore"]++
+		case strings.HasPrefix(msg, "docs"):
+			typeCounts["docs"]++
+		case strings.HasPrefix(msg, "test"):
+			typeCounts["test"]++
+		case strings.HasPrefix(msg, "perf"):
+			typeCounts["perf"]++
+		}
+
+		if idx := strings.Index(msg, "("); idx != -1 {
+			if end := strings.Index(msg[idx:], ")"); end != -1 {
+				scope := msg[idx+1 : idx+end]
+				scopeCounts[scope]++
+			}
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("Total commits analyzed: %d\n\n", len(allCommits)))
+
+	if len(typeCounts) > 0 {
+		sb.WriteString("Commit Type Distribution:\n")
+		for t, c := range typeCounts {
+			sb.WriteString(fmt.Sprintf("- %s: %d\n", t, c))
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(scopeCounts) > 0 {
+		sb.WriteString("Active Scopes:\n")
+		for s, c := range scopeCounts {
+			if c >= 3 {
+				sb.WriteString(fmt.Sprintf("- %s: %d commits\n", s, c))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Top contributors
+	cmd := exec.Command("git", "shortlog", "-sn", "--all", "-5")
 	cmd.Dir = basePath
-	out, err = cmd.Output()
-	if err == nil && len(out) > 0 {
-		lines := strings.Split(string(out), "\n")
-		typeCounts := make(map[string]int)
-		scopeCounts := make(map[string]int)
-
-		for _, line := range lines {
-			switch {
-			case strings.HasPrefix(line, "feat"):
-				typeCounts["feat"]++
-			case strings.HasPrefix(line, "fix"):
-				typeCounts["fix"]++
-			case strings.HasPrefix(line, "refactor"):
-				typeCounts["refactor"]++
-			case strings.HasPrefix(line, "chore"):
-				typeCounts["chore"]++
-			case strings.HasPrefix(line, "docs"):
-				typeCounts["docs"]++
-			}
-
-			if idx := strings.Index(line, "("); idx != -1 {
-				if end := strings.Index(line[idx:], ")"); end != -1 {
-					scope := line[idx+1 : idx+end]
-					scopeCounts[scope]++
-				}
-			}
-		}
-
-		if len(typeCounts) > 0 {
-			sb.WriteString("## Commit Type Distribution\n")
-			for t, c := range typeCounts {
-				sb.WriteString(fmt.Sprintf("- %s: %d\n", t, c))
-			}
-			sb.WriteString("\n")
-		}
-
-		if len(scopeCounts) > 0 {
-			sb.WriteString("## Most Active Scopes\n")
-			for s, c := range scopeCounts {
-				if c > 2 {
-					sb.WriteString(fmt.Sprintf("- %s: %d commits\n", s, c))
-				}
-			}
-			sb.WriteString("\n")
-		}
+	out, _ := cmd.Output()
+	if len(out) > 0 {
+		sb.WriteString("Top Contributors:\n")
+		sb.WriteString(strings.TrimSpace(string(out)))
+		sb.WriteString("\n\n")
 	}
 
-	cmd = exec.Command("git", "shortlog", "-sn", "--all")
-	cmd.Dir = basePath
-	out, err = cmd.Output()
-	if err == nil && len(out) > 0 {
-		lines := strings.Split(string(out), "\n")
-		if len(lines) > 10 {
-			lines = lines[:10]
-		}
-		sb.WriteString("## Top Contributors\n```\n")
-		sb.WriteString(strings.Join(lines, "\n"))
-		sb.WriteString("\n```\n\n")
-	}
-
+	// Project age
 	cmd = exec.Command("git", "log", "--reverse", "--format=%ai", "-1")
 	cmd.Dir = basePath
-	out, err = cmd.Output()
-	if err == nil && len(out) > 0 {
-		sb.WriteString(fmt.Sprintf("## Project Started: %s\n\n", strings.TrimSpace(string(out))))
+	out, _ = cmd.Output()
+	if len(out) > 0 {
+		sb.WriteString(fmt.Sprintf("Project Started: %s\n", strings.TrimSpace(string(out))))
 	}
 
 	return sb.String()

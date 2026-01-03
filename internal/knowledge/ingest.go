@@ -51,8 +51,8 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 		return err
 	}
 
-	// 3. Ingest Structured Data (Features, Decisions, Patterns)
-	featuresCreated, decisionsCreated, patternsCreated, err := s.ingestStructuredData(findings)
+	// 3. Ingest Structured Data (Features, Decisions, Patterns, Constraints)
+	featuresCreated, decisionsCreated, patternsCreated, constraintsFound, err := s.ingestStructuredData(findings)
 	if err != nil {
 		return err
 	}
@@ -73,8 +73,8 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 		if rejectedCount > 0 {
 			fmt.Printf("\n⚠️  Rejected %d findings with unverifiable evidence.\n", rejectedCount)
 		}
-		fmt.Printf("\n✅ Saved %d knowledge nodes (%d duplicates skipped), %d features, %d patterns, %d decisions, %d edges (%d evidence, %d semantic, %d llm) to memory.\n",
-			nodesCreated, skippedDuplicates, featuresCreated, patternsCreated, decisionsCreated, totalEdges, evidenceEdges, semanticEdges, llmEdges)
+		fmt.Printf("\n✅ Saved %d knowledge nodes (%d duplicates skipped), %d features, %d patterns, %d decisions, %d constraints, %d edges (%d evidence, %d semantic, %d llm) to memory.\n",
+			nodesCreated, skippedDuplicates, featuresCreated, patternsCreated, decisionsCreated, constraintsFound, totalEdges, evidenceEdges, semanticEdges, llmEdges)
 	}
 
 	return nil
@@ -234,11 +234,12 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 	return nodesCreated, skippedDuplicates, nodesByTitle, nil
 }
 
-// ingestStructuredData processes Features, Decisions, and Patterns
-func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, error) {
+// ingestStructuredData processes Features, Decisions, Patterns, and Constraints
+func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, int, error) {
 	featuresCreated := 0
 	decisionsCreated := 0
 	patternsCreated := 0
+	constraintsFound := 0
 	featureIDByName := make(map[string]string)
 
 	// Load existing features
@@ -334,10 +335,17 @@ func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, 
 					decisionsCreated++
 				}
 			}
+
+		case core.FindingTypeConstraint:
+			// Constraints are stored as nodes (already done in ingestNodesWithIndex)
+			// We just count them here for reporting
+			if strings.TrimSpace(f.Title) != "" {
+				constraintsFound++
+			}
 		}
 	}
 
-	return featuresCreated, decisionsCreated, patternsCreated, nil
+	return featuresCreated, decisionsCreated, patternsCreated, constraintsFound, nil
 }
 
 // linkKnowledgeGraph creates meaningful edges based on:
@@ -593,6 +601,14 @@ func findNodeByPartialTitle(nodesByTitle map[string]string, search string) strin
 	return bestMatch
 }
 
+// stopWordsIngest is a package-level set for efficient word filtering
+var stopWordsIngest = map[string]bool{
+	"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
+	"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
+	"with": true, "by": true, "is": true, "are": true, "was": true, "were": true,
+	"use": true, "using": true, "based": true, "via": true,
+}
+
 // wordTokens extracts significant words from a string for matching
 func wordTokens(s string) map[string]bool {
 	tokens := make(map[string]bool)
@@ -602,16 +618,9 @@ func wordTokens(s string) map[string]bool {
 	s = strings.ReplaceAll(s, "/", " ")
 
 	words := strings.Fields(s)
-	stopWords := map[string]bool{
-		"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
-		"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
-		"with": true, "by": true, "is": true, "are": true, "was": true, "were": true,
-		"use": true, "using": true, "based": true, "via": true,
-	}
-
 	for _, w := range words {
 		w = strings.ToLower(w)
-		if len(w) > 2 && !stopWords[w] {
+		if len(w) > 2 && !stopWordsIngest[w] {
 			tokens[w] = true
 		}
 	}

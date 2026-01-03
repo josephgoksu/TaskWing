@@ -111,46 +111,52 @@ Bootstrap runs LLM analysis by default.
 - Do NOT include `Co-Authored-By` headers referencing AI
 - Keep commit messages focused on what changed and why
 
-## Versioning (Semantic Versioning)
+## Versioning (Conservative SemVer)
 
-We follow [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`
+We follow [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH` — but **err on the side of NOT bumping**.
 
-### PATCH (x.x.X) - Bug fixes only
+### Golden Rule: Batch Changes
+- Do NOT bump version for every small fix
+- Accumulate related fixes/improvements, then bump ONCE
+- Multiple bug fixes in one session = ONE patch bump, not multiple
+
+### PATCH (x.x.X) - Most changes go here
 Increment when:
-- Fixing bugs without changing functionality
-- Security patches
+- Bug fixes
+- Internal refactoring (no user-visible change)
+- Performance improvements
+- Adding/fixing internal utilities, helpers, error handling
 - Documentation fixes
-- Staticcheck/linter fixes
-- Performance improvements with no API changes
+- Linter/staticcheck fixes
+- Adding retry logic, improving reliability
+- Fixing agent coverage reporting, JSON parsing, etc.
 
-Examples: typo fixes, null pointer fix, dependency security update
+Examples: JSON repair logic, retry improvements, file tracking fixes
 
-### MINOR (x.X.0) - New features, backwards compatible
+### MINOR (x.X.0) - User-visible new features only
 Increment when:
-- Adding new commands or flags
-- Adding new features to existing commands
-- New internal capabilities (providers, models, etc.)
-- Deprecating features (but not removing)
-- Adding new files/modules
+- New CLI command users can run
+- New flag users can pass
+- New output format users can see
+- New provider/model users can configure
 
-Examples: new `tw eval` command, adding Gemini provider, new TUI component
+**NOT MINOR**: Internal refactors, new internal modules, code reorganization
 
-### MAJOR (X.0.0) - Breaking changes
+Examples: new `tw eval` command, new `--format` flag, adding Gemini provider
+
+### MAJOR (X.0.0) - Breaking changes only
 Increment when:
 - Removing commands, flags, or config options
-- Changing command behavior in incompatible ways
-- Changing config file format
-- Changing database schema without migration
-- Removing deprecated features
-
-Examples: renaming `tw bootstrap` to `tw scan`, removing `--legacy` flag
+- Changing command behavior incompatibly
+- Changing config/database format without migration
 
 ### Decision Checklist
-1. Does it break existing user workflows? → **MAJOR**
-2. Does it add new capabilities? → **MINOR**
-3. Does it only fix issues? → **PATCH**
+1. Is this visible to users running CLI commands? No → probably no bump needed yet
+2. Does it break existing workflows? → MAJOR
+3. Does it add new user-facing capability? → MINOR
+4. Everything else → PATCH (batched)
 
-When in doubt, prefer MINOR over MAJOR (avoid breaking changes).
+**Default stance**: When unsure, don't bump. Batch changes together.
 
 ## Release Process
 
