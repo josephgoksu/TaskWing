@@ -122,7 +122,15 @@ func (t *Task) EnrichAIFields() {
 	text = re.ReplaceAllString(text, " ")
 	words := strings.Fields(text)
 
-	// Deduplicate and filter stop words
+	// First pass: collect ALL words >= 2 chars for scope matching (includes "db", "ui", etc.)
+	allWords := make(map[string]bool)
+	for _, word := range words {
+		if len(word) >= 2 && !stopWords[word] {
+			allWords[word] = true
+		}
+	}
+
+	// Second pass: filter to >= 3 chars for keyword extraction (more meaningful terms)
 	seen := make(map[string]bool)
 	var keywords []string
 	for _, word := range words {
@@ -145,11 +153,11 @@ func (t *Task) EnrichAIFields() {
 	}
 	t.Keywords = keywords
 
-	// Infer scope from keywords
+	// Infer scope from ALL words (including 2-char like "db", "ui")
 	scopeScores := make(map[string]int)
 	for scope, scopeKws := range scopeKeywords {
 		for _, kw := range scopeKws {
-			if seen[kw] {
+			if allWords[kw] {
 				scopeScores[scope]++
 			}
 		}
