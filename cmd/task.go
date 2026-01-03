@@ -45,15 +45,18 @@ var taskListCmd = &cobra.Command{
 		// Handle JSON output
 		if isJSON() {
 			type taskJSON struct {
-				ID          string   `json:"id"`
-				PlanID      string   `json:"plan_id"`
-				Title       string   `json:"title"`
-				Description string   `json:"description"`
-				Status      string   `json:"status"`
-				Priority    int      `json:"priority"`
-				Agent       string   `json:"assigned_agent"`
-				Acceptance  []string `json:"acceptance_criteria"`
-				Validation  []string `json:"validation_steps"`
+				ID                     string   `json:"id"`
+				PlanID                 string   `json:"plan_id"`
+				Title                  string   `json:"title"`
+				Description            string   `json:"description"`
+				Status                 string   `json:"status"`
+				Priority               int      `json:"priority"`
+				Agent                  string   `json:"assigned_agent"`
+				Acceptance             []string `json:"acceptance_criteria"`
+				Validation             []string `json:"validation_steps"`
+				Scope                  string   `json:"scope"`
+				Keywords               []string `json:"keywords"`
+				SuggestedRecallQueries []string `json:"suggestedRecallQueries"`
 			}
 			var allTasks []taskJSON
 			for _, p := range plans {
@@ -63,15 +66,18 @@ var taskListCmd = &cobra.Command{
 				tasks, _ := repo.ListTasks(p.ID)
 				for _, t := range tasks {
 					allTasks = append(allTasks, taskJSON{
-						ID:          t.ID,
-						PlanID:      p.ID,
-						Title:       t.Title,
-						Description: t.Description,
-						Status:      string(t.Status),
-						Priority:    t.Priority,
-						Agent:       t.AssignedAgent,
-						Acceptance:  t.AcceptanceCriteria,
-						Validation:  t.ValidationSteps,
+						ID:                     t.ID,
+						PlanID:                 p.ID,
+						Title:                  t.Title,
+						Description:            t.Description,
+						Status:                 string(t.Status),
+						Priority:               t.Priority,
+						Agent:                  t.AssignedAgent,
+						Acceptance:             t.AcceptanceCriteria,
+						Validation:             t.ValidationSteps,
+						Scope:                  t.Scope,
+						Keywords:               t.Keywords,
+						SuggestedRecallQueries: t.SuggestedRecallQueries,
 					})
 				}
 			}
