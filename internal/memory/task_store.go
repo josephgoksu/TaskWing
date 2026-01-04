@@ -19,6 +19,74 @@ func nullTimeString(t time.Time) interface{} {
 	return t.Format(time.RFC3339)
 }
 
+// txExecutor abstracts sql.Tx for task insertion (enables DRY)
+type txExecutor interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+// insertTaskTx inserts a task and its relations within a transaction.
+// This is the SINGLE source of truth for task insertion logic.
+func insertTaskTx(tx txExecutor, t *task.Task) error {
+	acJSON, _ := json.Marshal(t.AcceptanceCriteria)
+	vsJSON, _ := json.Marshal(t.ValidationSteps)
+	keywordsJSON, _ := json.Marshal(t.Keywords)
+	queriesJSON, _ := json.Marshal(t.SuggestedRecallQueries)
+	filesJSON, _ := json.Marshal(t.FilesModified)
+
+	var parentID interface{}
+	if t.ParentTaskID != "" {
+		parentID = t.ParentTaskID
+	}
+
+	_, err := tx.Exec(`
+		INSERT INTO tasks (
+			id, plan_id, title, description,
+			acceptance_criteria, validation_steps,
+			status, priority, assigned_agent, parent_task_id, context_summary,
+			scope, keywords, suggested_recall_queries,
+			claimed_by, claimed_at, completed_at, completion_summary, files_modified,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, t.ID, t.PlanID, t.Title, t.Description,
+		string(acJSON), string(vsJSON),
+		t.Status, t.Priority, t.AssignedAgent, parentID, t.ContextSummary,
+		t.Scope, string(keywordsJSON), string(queriesJSON),
+		t.ClaimedBy, nullTimeString(t.ClaimedAt), nullTimeString(t.CompletedAt), t.CompletionSummary, string(filesJSON),
+		t.CreatedAt.Format(time.RFC3339), t.UpdatedAt.Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("insert task %s: %w", t.Title, err)
+	}
+
+	for _, depID := range t.Dependencies {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO task_dependencies (task_id, depends_on) VALUES (?, ?)`, t.ID, depID); err != nil {
+			return fmt.Errorf("insert dependency %s: %w", depID, err)
+		}
+	}
+
+	for _, nodeID := range t.ContextNodes {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO task_node_links (task_id, node_id, link_type) VALUES (?, ?, 'context')`, t.ID, nodeID); err != nil {
+			return fmt.Errorf("insert node link %s: %w", nodeID, err)
+		}
+	}
+
+	return nil
+}
+
+// prepareTask sets default values for a task before insertion
+func prepareTask(t *task.Task, planID string, now time.Time) {
+	t.PlanID = planID
+	if t.ID == "" {
+		t.ID = "task-" + uuid.New().String()[:8]
+	}
+	if t.Status == "" {
+		t.Status = task.StatusPending
+	}
+	if t.CreatedAt.IsZero() {
+		t.CreatedAt = now
+	}
+	t.UpdatedAt = now
+}
+
 // === Plan CRUD ===
 
 // CreatePlan creates a new plan in the database along with its tasks (atomically).
@@ -35,83 +103,23 @@ func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 	}
 	p.UpdatedAt = now
 
-	// Use transaction to ensure plan + tasks are created atomically
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	_, err = tx.Exec(`
+	if _, err = tx.Exec(`
 		INSERT INTO plans (id, goal, enriched_goal, status, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, p.ID, p.Goal, p.EnrichedGoal, p.Status, p.CreatedAt.Format(time.RFC3339), p.UpdatedAt.Format(time.RFC3339))
-
-	if err != nil {
+	`, p.ID, p.Goal, p.EnrichedGoal, p.Status, p.CreatedAt.Format(time.RFC3339), p.UpdatedAt.Format(time.RFC3339)); err != nil {
 		return fmt.Errorf("insert plan: %w", err)
 	}
 
-	// Create all tasks in the same transaction
 	for i := range p.Tasks {
-		t := &p.Tasks[i]
-		t.PlanID = p.ID
-		if t.ID == "" {
-			t.ID = "task-" + uuid.New().String()[:8]
-		}
-		if t.Status == "" {
-			t.Status = task.StatusPending
-		}
-		if t.CreatedAt.IsZero() {
-			t.CreatedAt = now
-		}
-		t.UpdatedAt = now
-
-		acJSON, err := json.Marshal(t.AcceptanceCriteria)
-		if err != nil {
-			return fmt.Errorf("marshal acceptance criteria: %w", err)
-		}
-		vsJSON, err := json.Marshal(t.ValidationSteps)
-		if err != nil {
-			return fmt.Errorf("marshal validation steps: %w", err)
-		}
-		keywordsJSON, err := json.Marshal(t.Keywords)
-		if err != nil {
-			return fmt.Errorf("marshal keywords: %w", err)
-		}
-		queriesJSON, err := json.Marshal(t.SuggestedRecallQueries)
-		if err != nil {
-			return fmt.Errorf("marshal suggested queries: %w", err)
-		}
-		filesJSON, err := json.Marshal(t.FilesModified)
-		if err != nil {
-			return fmt.Errorf("marshal files modified: %w", err)
-		}
-
-		var parentID interface{}
-		if t.ParentTaskID != "" {
-			parentID = t.ParentTaskID
-		} else {
-			parentID = nil
-		}
-
-		_, err = tx.Exec(`
-			INSERT INTO tasks (
-				id, plan_id, title, description,
-				acceptance_criteria, validation_steps,
-				status, priority, assigned_agent, parent_task_id, context_summary,
-				scope, keywords, suggested_recall_queries,
-				claimed_by, claimed_at, completed_at, completion_summary, files_modified,
-				created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, t.ID, t.PlanID, t.Title, t.Description,
-			string(acJSON), string(vsJSON),
-			t.Status, t.Priority, t.AssignedAgent, parentID, t.ContextSummary,
-			t.Scope, string(keywordsJSON), string(queriesJSON),
-			t.ClaimedBy, nullTimeString(t.ClaimedAt), nullTimeString(t.CompletedAt), t.CompletionSummary, string(filesJSON),
-			t.CreatedAt.Format(time.RFC3339), t.UpdatedAt.Format(time.RFC3339))
-
-		if err != nil {
-			return fmt.Errorf("insert task %s: %w", t.Title, err)
+		prepareTask(&p.Tasks[i], p.ID, now)
+		if err := insertTaskTx(tx, &p.Tasks[i]); err != nil {
+			return err
 		}
 	}
 
@@ -242,38 +250,7 @@ func (s *SQLiteStore) DeletePlan(id string) error {
 
 // CreateTask adds a new task to a plan.
 func (s *SQLiteStore) CreateTask(t *task.Task) error {
-	if t.ID == "" {
-		t.ID = "task-" + uuid.New().String()[:8]
-	}
-	if t.Status == "" {
-		t.Status = task.StatusPending
-	}
-	now := time.Now().UTC()
-	if t.CreatedAt.IsZero() {
-		t.CreatedAt = now
-	}
-	t.UpdatedAt = now
-
-	acJSON, err := json.Marshal(t.AcceptanceCriteria)
-	if err != nil {
-		return fmt.Errorf("marshal acceptance criteria: %w", err)
-	}
-	vsJSON, err := json.Marshal(t.ValidationSteps)
-	if err != nil {
-		return fmt.Errorf("marshal validation steps: %w", err)
-	}
-	keywordsJSON, err := json.Marshal(t.Keywords)
-	if err != nil {
-		return fmt.Errorf("marshal keywords: %w", err)
-	}
-	queriesJSON, err := json.Marshal(t.SuggestedRecallQueries)
-	if err != nil {
-		return fmt.Errorf("marshal suggested queries: %w", err)
-	}
-	filesJSON, err := json.Marshal(t.FilesModified)
-	if err != nil {
-		return fmt.Errorf("marshal files modified: %w", err)
-	}
+	prepareTask(t, t.PlanID, time.Now().UTC())
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -281,51 +258,8 @@ func (s *SQLiteStore) CreateTask(t *task.Task) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var parentID interface{}
-	if t.ParentTaskID != "" {
-		parentID = t.ParentTaskID
-	} else {
-		parentID = nil
-	}
-
-	_, err = tx.Exec(`
-		INSERT INTO tasks (
-			id, plan_id, title, description,
-			acceptance_criteria, validation_steps,
-			status, priority, assigned_agent, parent_task_id, context_summary,
-			scope, keywords, suggested_recall_queries,
-			claimed_by, claimed_at, completed_at, completion_summary, files_modified,
-			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, t.ID, t.PlanID, t.Title, t.Description,
-		string(acJSON), string(vsJSON),
-		t.Status, t.Priority, t.AssignedAgent, parentID, t.ContextSummary,
-		t.Scope, string(keywordsJSON), string(queriesJSON),
-		t.ClaimedBy, nullTimeString(t.ClaimedAt), nullTimeString(t.CompletedAt), t.CompletionSummary, string(filesJSON),
-		t.CreatedAt.Format(time.RFC3339), t.UpdatedAt.Format(time.RFC3339))
-
-	if err != nil {
-		return fmt.Errorf("insert task: %w", err)
-	}
-
-	// Insert Dependencies
-	for _, depID := range t.Dependencies {
-		_, err := tx.Exec(`
-			INSERT OR IGNORE INTO task_dependencies (task_id, depends_on) VALUES (?, ?)
-		`, t.ID, depID)
-		if err != nil {
-			return fmt.Errorf("insert dependency %s: %w", depID, err)
-		}
-	}
-
-	// Insert Context Nodes
-	for _, nodeID := range t.ContextNodes {
-		_, err := tx.Exec(`
-			INSERT OR IGNORE INTO task_node_links (task_id, node_id, link_type) VALUES (?, ?, 'context')
-		`, t.ID, nodeID)
-		if err != nil {
-			return fmt.Errorf("insert node link %s: %w", nodeID, err)
-		}
+	if err := insertTaskTx(tx, t); err != nil {
+		return err
 	}
 
 	return tx.Commit()
