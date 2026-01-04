@@ -10,35 +10,20 @@ permissions:
   packages: write
 
 jobs:
-  test:
+  release:
     runs-on: ubuntu-latest
+    # Skip redundant test job - the tagged commit already passed CI on main
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Required for goreleaser changelog
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-
-      - name: Run tests
-        run: go test ./...
-
-  goreleaser:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
+          cache: true  # Enable Go module caching
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
