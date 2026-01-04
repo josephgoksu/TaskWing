@@ -100,7 +100,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Start HTTP API server
 	memoryPath := config.GetMemoryBasePath()
-	srv, err := server.New(startPort, cwd, memoryPath, llmConfig)
+	srv, err := server.New(startPort, cwd, memoryPath, GetVersion(), llmConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create API server: %w", err)
 	}

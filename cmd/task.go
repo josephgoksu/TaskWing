@@ -25,7 +25,7 @@ var taskListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		planFilter, _ := cmd.Flags().GetString("plan")
 
@@ -171,7 +171,7 @@ var taskListCmd = &cobra.Command{
 
 		if plansShown == 0 && planFilter != "" {
 			fmt.Printf("\nNo plan found matching: %s\n", planFilter)
-			fmt.Println("Run 'tw plan list' to see available plans.")
+			fmt.Println("Run 'taskwing plan list' to see available plans.")
 		} else {
 			fmt.Printf("\n%s\n", subtle.Render(fmt.Sprintf("Total: %d tasks across %d plan(s)", totalTasks, plansShown)))
 		}
@@ -190,7 +190,7 @@ var taskShowCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		t, err := repo.GetTask(taskID)
 		if err != nil {
@@ -247,7 +247,7 @@ var taskUpdateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		if err := repo.UpdateTaskStatus(taskID, status); err != nil {
 			return err
@@ -275,7 +275,7 @@ var taskCompleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		if err := repo.UpdateTaskStatus(taskID, task.StatusCompleted); err != nil {
 			return err
@@ -305,7 +305,7 @@ var taskDeleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		if !force && !isJSON() {
 			t, err := repo.GetTask(taskID)

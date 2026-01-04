@@ -102,7 +102,7 @@ func newMCPTestHarness(t *testing.T, workDir string) *mcpTestHarness {
 
 // Close cleans up the test harness
 func (h *mcpTestHarness) Close() {
-	h.stdin.Close()
+	_ = h.stdin.Close()
 	_ = h.cmd.Process.Kill()
 	_ = h.cmd.Wait()
 	h.cancel()

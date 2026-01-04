@@ -29,7 +29,7 @@ func Classify(ctx context.Context, content string, cfg llm.Config) (*ClassifyRes
 	if err != nil {
 		return nil, fmt.Errorf("create chat model: %w", err)
 	}
-	defer chatModel.Close()
+	defer func() { _ = chatModel.Close() }()
 
 	prompt := buildClassifyPrompt(content)
 

@@ -293,7 +293,7 @@ func (s *SQLiteStore) initSchema() error {
 					}
 				}
 			}
-			rows.Close()
+			_ = rows.Close()
 		}
 
 		if !exists {
@@ -345,7 +345,7 @@ func (s *SQLiteStore) initSchema() error {
 					}
 				}
 			}
-			rows.Close()
+			_ = rows.Close()
 		}
 
 		if !exists {
@@ -1393,7 +1393,7 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 		}
 		sim := textSimilarity(n.Summary, existingSummary)
 		if sim >= textSimilarityThreshold {
-			rows.Close() // Close before executing update
+			_ = rows.Close() // Close before executing update
 			// Found a similar node - update it instead of inserting new (including evidence columns)
 			if n.Content != similarContent {
 				_, err = tx.Exec(`
@@ -1416,7 +1416,7 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 			return tx.Commit()
 		}
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	// No similar node found - insert new node (including evidence columns)
 	_, err = tx.Exec(`

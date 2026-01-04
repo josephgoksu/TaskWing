@@ -514,12 +514,12 @@ Examples:
 		ctx := cmd.Context()
 		result, err := cliRunner.Execute(ctx, "context", "architectural constraints decisions rules workflows processes patterns")
 		if err != nil {
-			return fmt.Errorf("context retrieval: %w (run 'tw bootstrap' first)", err)
+			return fmt.Errorf("context retrieval: %w (run 'taskwing bootstrap' first)", err)
 		}
 
 		contextStr := result.Stdout
 		if len(contextStr) < 100 {
-			return errors.New("not enough context in memory. Run 'tw bootstrap' first to populate knowledge")
+			return errors.New("not enough context in memory. Run 'taskwing bootstrap' first to populate knowledge")
 		}
 
 		if !viper.GetBool("quiet") {
@@ -562,7 +562,7 @@ tasks:
 		if err != nil {
 			return fmt.Errorf("create llm: %w", err)
 		}
-		defer chatModel.Close()
+		defer func() { _ = chatModel.Close() }()
 
 		resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(generatePrompt)})
 		if err != nil {
@@ -583,7 +583,7 @@ tasks:
 			if _, statErr := os.Stat(tasksPath); statErr == nil {
 				fmt.Printf("⚠️  %s already exists. Overwrite? [y/N]: ", tasksPath)
 				var response string
-				fmt.Scanln(&response)
+				_, _ = fmt.Scanln(&response)
 				if response != "y" && response != "Y" {
 					return errors.New("aborted")
 				}
@@ -833,7 +833,7 @@ func runEvalTaskInternal(ctx context.Context, llmCfg llm.Config, prompt string) 
 		}
 
 		resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(prompt)})
-		chatModel.Close() // Close immediately after use, before potential return
+		_ = chatModel.Close() // Close immediately after use, before potential return
 		if err != nil {
 			if !viper.GetBool("quiet") {
 				fmt.Printf(" [attempt %d failed: %v]", attempt+1, err)
@@ -952,7 +952,7 @@ func runSingleJudge(ctx context.Context, llmCfg llm.Config, prompt string) (eval
 	if err != nil {
 		return evalpkg.JudgeResult{}, fmt.Errorf("create judge model: %w", err)
 	}
-	defer chatModel.Close()
+	defer func() { _ = chatModel.Close() }()
 
 	resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(prompt)})
 	if err != nil {

@@ -21,7 +21,7 @@ func GenerateEmbedding(ctx context.Context, text string, cfg llm.Config) ([]floa
 	if err != nil {
 		return nil, fmt.Errorf("create embedding model: %w", err)
 	}
-	defer embedder.Close()
+	defer func() { _ = embedder.Close() }()
 
 	// Eino returns [][]float64
 	embeddings64, err := embedder.EmbedStrings(ctx, []string{text})

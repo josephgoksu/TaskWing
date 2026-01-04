@@ -662,10 +662,7 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Spinner, cmd = m.Spinner.Update(msg)
 			cmds = append(cmds, cmd)
 		}
-		// Recursive logic for state init is handled by Init() command now.
-		if m.State == StateInitializing {
-			// Ensure spinner is ticking
-		}
+		// Note: Recursive logic for state init is handled by Init() command now.
 
 	// Context Found -> Start Clarification
 	case MsgContextFound:

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "taskwing-mcp": {
-      "command": "/opt/homebrew/bin/taskwing",
+      "command": "/Users/josephgoksu/Development/products/taskwing-mono/taskWing-cli/bin/taskwing",
       "args": [
         "mcp"
       ]

@@ -155,7 +155,7 @@ Respond ONLY with the FULL, UPDATED technical specification. Use professional la
 	if err != nil {
 		return "", fmt.Errorf("create model: %w", err)
 	}
-	defer chatModel.Close()
+	defer func() { _ = chatModel.Close() }()
 
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),

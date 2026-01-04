@@ -202,7 +202,7 @@ func readFileWithLimit(path string, maxBytes int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	content := make([]byte, maxBytes)
 	n, err := f.Read(content)

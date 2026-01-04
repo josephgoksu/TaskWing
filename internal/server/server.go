@@ -23,10 +23,11 @@ type Server struct {
 	cwd        string
 	memoryPath string
 	port       int
+	version    string
 	server     *http.Server
 }
 
-func New(port int, cwd, memoryPath string, llmCfg llm.Config) (*Server, error) {
+func New(port int, cwd, memoryPath, version string, llmCfg llm.Config) (*Server, error) {
 	repo, err := memory.NewDefaultRepository(memoryPath)
 	if err != nil {
 		return nil, fmt.Errorf("open memory repo: %w", err)
@@ -41,6 +42,7 @@ func New(port int, cwd, memoryPath string, llmCfg llm.Config) (*Server, error) {
 		cwd:        cwd,
 		memoryPath: memoryPath,
 		port:       port,
+		version:    version,
 	}
 
 	handler := s.registerRoutes()

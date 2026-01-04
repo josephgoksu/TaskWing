@@ -11,7 +11,7 @@ import (
 var plansCmd = &cobra.Command{
 	Use:   "plans",
 	Short: "List all plans (alias for 'plan list')",
-	Long:  `List all development plans. This is a convenience alias for 'tw plan list'.`,
+	Long:  `List all development plans. This is a convenience alias for 'taskwing plan list'.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return planListCmd.RunE(planListCmd, args)
 	},
@@ -21,7 +21,7 @@ var plansCmd = &cobra.Command{
 var tasksCmd = &cobra.Command{
 	Use:   "tasks",
 	Short: "List all tasks (alias for 'task list')",
-	Long:  `List all tasks grouped by plan. This is a convenience alias for 'tw task list'.`,
+	Long:  `List all tasks grouped by plan. This is a convenience alias for 'taskwing task list'.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return taskListCmd.RunE(taskListCmd, args)
 	},
@@ -31,7 +31,7 @@ var tasksCmd = &cobra.Command{
 var nodesCmd = &cobra.Command{
 	Use:   "nodes",
 	Short: "List knowledge nodes (alias for 'list')",
-	Long:  `List all knowledge nodes. This is a convenience alias for 'tw list'.`,
+	Long:  `List all knowledge nodes. This is a convenience alias for 'taskwing list'.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return listCmd.RunE(listCmd, args)
 	},

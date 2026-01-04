@@ -60,13 +60,13 @@ var planNewCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("open repo: %w", err)
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		// Initialize Agents
 		clarifyingAgent := planning.NewClarifyingAgent(cfg)
-		defer clarifyingAgent.Close()
+		defer func() { _ = clarifyingAgent.Close() }()
 		planningAgent := planning.NewPlanningAgent(cfg)
-		defer planningAgent.Close()
+		defer func() { _ = planningAgent.Close() }()
 		ks := knowledge.NewService(repo, cfg)
 
 		// Create Streaming Output for "The Pulse"
@@ -138,7 +138,7 @@ var planListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		plans, err := repo.ListPlans()
 		if err != nil {
@@ -282,7 +282,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		// Resolve plan ID (support "latest" alias)
 		planID := args[0]
@@ -347,7 +347,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		planID := args[0]
 		if planID == "latest" {
@@ -388,7 +388,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		planID := args[0]
 		if planID == "latest" {
@@ -471,7 +471,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		if planID == "latest" {
 			planID, err = resolveLatestPlanID(repo)
@@ -515,7 +515,7 @@ var planRenameCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		if planID == "latest" {
 			planID, err = resolveLatestPlanID(repo)
@@ -550,7 +550,7 @@ var planArchiveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		if planID == "latest" {
 			planID, err = resolveLatestPlanID(repo)
@@ -585,7 +585,7 @@ var planUnarchiveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		if planID == "latest" {
 			planID, err = resolveLatestPlanID(repo)
@@ -628,7 +628,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		planID := args[0]
 		if planID == "latest" {
@@ -688,7 +688,7 @@ var planStatusCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer repo.Close()
+		defer func() { _ = repo.Close() }()
 
 		plan, err := repo.GetPlan(planID)
 		if err != nil {
@@ -742,7 +742,7 @@ var planStatusCmd = &cobra.Command{
 		// Task list
 		fmt.Println("   Tasks:")
 		for _, t := range tasks {
-			status := "[ ]"
+			var status string
 			title := t.Title
 			if t.Status == task.StatusCompleted {
 				status = passStyle.Render("[✓]")

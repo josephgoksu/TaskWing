@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -335,7 +336,7 @@ func runAutoInit(basePath string, cmd *cobra.Command) error {
 	fmt.Println()
 	selectedAIs := promptAISelection()
 	if len(selectedAIs) == 0 {
-		fmt.Println("  Skipping AI setup (rerun 'tw bootstrap' to add assistants)")
+		fmt.Println("  Skipping AI setup (rerun 'taskwing bootstrap' to add assistants)")
 	} else {
 		for _, ai := range selectedAIs {
 			aiCfg := aiConfigs[ai]
@@ -368,6 +369,20 @@ func runAutoInit(basePath string, cmd *cobra.Command) error {
 				installCopilot(binPath, basePath)
 			}
 		}
+
+		// Install hooks configuration for supported AIs (Claude, Codex)
+		for _, ai := range selectedAIs {
+			if err := installHooksConfig(basePath, ai, verbose); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠️  Failed to install hooks for %s: %v\n", ai, err)
+			}
+		}
+
+		// Update agent documentation with hooks info
+		for _, ai := range selectedAIs {
+			if err := updateAgentDocs(basePath, ai, verbose); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠️  Failed to update docs for %s: %v\n", ai, err)
+			}
+		}
 	}
 
 	fmt.Println("\n✓ TaskWing initialized!")
@@ -381,8 +396,8 @@ func runAutoInit(basePath string, cmd *cobra.Command) error {
 // createTaskSlashCommands creates task lifecycle slash commands for AI assistants
 func createTaskSlashCommands(basePath string, aiCfg aiConfig, verbose bool) error {
 	if aiCfg.fileExt == ".toml" {
-		// Skip task commands for Gemini (TOML format) - can add later if needed
-		return nil
+		// Create TOML format commands for Gemini
+		return createGeminiTaskCommands(basePath, aiCfg, verbose)
 	}
 
 	commandsDir := filepath.Join(basePath, aiCfg.commandsDir)
@@ -414,7 +429,7 @@ Extract from the response:
 - acceptance_criteria
 - suggested_recall_queries
 
-If no task returned, inform user: "No pending tasks. Use 'tw plan list' to check plan status."
+If no task returned, inform user: "No pending tasks. Use 'taskwing plan list' to check plan status."
 
 ## Step 2: Fetch Scope-Relevant Context
 Call MCP tool ` + "`recall`" + ` with query based on task scope:
@@ -835,6 +850,302 @@ tw context --answer     # AI-generated response
 	}
 	if verbose {
 		fmt.Printf("  ✓ Created %s/%s\n", aiCfg.commandsDir, fileName)
+	}
+
+	return nil
+}
+
+// HooksConfig represents the hooks configuration for AI assistants
+type HooksConfig struct {
+	Hooks map[string][]HookMatcher `json:"hooks"`
+}
+
+// HookMatcher represents a hook trigger
+type HookMatcher struct {
+	Hooks []HookCommand `json:"hooks"`
+}
+
+// HookCommand represents a single hook command
+type HookCommand struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+	Timeout int    `json:"timeout,omitempty"`
+}
+
+// installHooksConfig creates the hooks configuration file for AI assistants
+func installHooksConfig(basePath string, aiName string, verbose bool) error {
+	// Only Claude and Codex support hooks currently
+	var settingsPath string
+	switch aiName {
+	case "claude":
+		settingsPath = filepath.Join(basePath, ".claude", "settings.json")
+	case "codex":
+		settingsPath = filepath.Join(basePath, ".codex", "settings.json")
+	default:
+		// Gemini, Cursor, Copilot don't have hooks support yet
+		return nil
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0755); err != nil {
+		return fmt.Errorf("create settings dir: %w", err)
+	}
+
+	// Check if settings file already exists and has hooks
+	if content, err := os.ReadFile(settingsPath); err == nil {
+		var existing map[string]any
+		if err := json.Unmarshal(content, &existing); err == nil {
+			if _, hasHooks := existing["hooks"]; hasHooks {
+				if verbose {
+					fmt.Printf("  ℹ️  Hooks already configured in %s\n", settingsPath)
+				}
+				return nil
+			}
+		}
+	}
+
+	// Create hooks configuration
+	config := HooksConfig{
+		Hooks: map[string][]HookMatcher{
+			"SessionStart": {
+				{
+					Hooks: []HookCommand{
+						{
+							Type:    "command",
+							Command: "taskwing hook session-init",
+							Timeout: 10,
+						},
+					},
+				},
+			},
+			"Stop": {
+				{
+					Hooks: []HookCommand{
+						{
+							Type:    "command",
+							Command: "taskwing hook continue-check --max-tasks=5 --max-minutes=30",
+							Timeout: 15,
+						},
+					},
+				},
+			},
+			"SessionEnd": {
+				{
+					Hooks: []HookCommand{
+						{
+							Type:    "command",
+							Command: "taskwing hook session-end",
+							Timeout: 5,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Write the config
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal hooks config: %w", err)
+	}
+
+	if err := os.WriteFile(settingsPath, data, 0644); err != nil {
+		return fmt.Errorf("write hooks config: %w", err)
+	}
+
+	if verbose {
+		fmt.Printf("  ✓ Created hooks config: %s\n", settingsPath)
+	}
+
+	return nil
+}
+
+// hooksDocSection is the documentation to add to agent markdown files
+const hooksDocSection = `
+
+### Autonomous Task Execution (Hooks)
+
+TaskWing integrates with Claude Code's hook system for autonomous plan execution:
+
+` + "```bash" + `
+taskwing hook session-init      # Initialize session tracking (SessionStart hook)
+taskwing hook continue-check    # Check if should continue to next task (Stop hook)
+taskwing hook session-end       # Cleanup session (SessionEnd hook)
+taskwing hook status            # View current session state
+` + "```" + `
+
+**Circuit breakers** prevent runaway execution:
+- ` + "`--max-tasks=5`" + ` - Stop after N tasks for human review
+- ` + "`--max-minutes=30`" + ` - Stop after N minutes
+
+Configuration in ` + "`.claude/settings.json`" + ` enables auto-continuation through plans.
+`
+
+// updateAgentDocs updates agent markdown files (CLAUDE.md, AGENTS.md, etc.) with hooks documentation
+func updateAgentDocs(basePath string, aiName string, verbose bool) error {
+	// Determine which files to check based on AI type
+	var filesToCheck []string
+	switch aiName {
+	case "claude":
+		filesToCheck = []string{"CLAUDE.md", "AGENTS.md"}
+	case "codex":
+		filesToCheck = []string{"AGENTS.md", "CODEX.md"}
+	case "gemini":
+		filesToCheck = []string{"GEMINI.md", "AGENTS.md"}
+	default:
+		filesToCheck = []string{"AGENTS.md"}
+	}
+
+	for _, fileName := range filesToCheck {
+		filePath := filepath.Join(basePath, fileName)
+
+		// Check if file exists
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			continue // File doesn't exist, skip
+		}
+
+		// Check if hooks section already exists
+		if strings.Contains(string(content), "Autonomous Task Execution") ||
+			strings.Contains(string(content), "tw hook session-init") ||
+			strings.Contains(string(content), "taskwing hook session-init") {
+			if verbose {
+				fmt.Printf("  ℹ️  Hooks docs already in %s\n", fileName)
+			}
+			continue
+		}
+
+		// Append hooks documentation
+		newContent := string(content) + hooksDocSection
+
+		if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
+			return fmt.Errorf("update %s: %w", fileName, err)
+		}
+
+		if verbose {
+			fmt.Printf("  ✓ Added hooks docs to %s\n", fileName)
+		}
+
+		// Only update one file per AI
+		break
+	}
+
+	return nil
+}
+
+// createGeminiTaskCommands creates TOML format task commands for Gemini CLI
+func createGeminiTaskCommands(basePath string, aiCfg aiConfig, verbose bool) error {
+	commandsDir := filepath.Join(basePath, aiCfg.commandsDir)
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		return fmt.Errorf("create commands dir: %w", err)
+	}
+
+	// Define task lifecycle commands in TOML format
+	commands := []struct {
+		name    string
+		content string
+	}{
+		{
+			name: "tw-next.toml",
+			content: `description = "Start next TaskWing task with full context"
+
+prompt = """Execute these steps IN ORDER:
+
+1. Call MCP tool task_next with: {"session_id": "gemini-session"}
+   Extract: task_id, title, description, scope, keywords, acceptance_criteria
+
+2. Call MCP tool recall with: {"query": "[scope] patterns constraints"}
+   Extract architecture context for this task.
+
+3. Call MCP tool task_start with: {"task_id": "[task_id]", "session_id": "gemini-session"}
+
+4. Display the task brief and begin implementation.
+
+IMPORTANT: Complete all MCP calls before starting work."""
+`,
+		},
+		{
+			name: "tw-done.toml",
+			content: `description = "Complete current TaskWing task"
+
+prompt = """Execute these steps:
+
+1. Call MCP tool task_current with: {"session_id": "gemini-session"}
+   If no active task, inform user.
+
+2. Call MCP tool recall with: {"query": "[task.scope] patterns constraints"}
+   Verify work followed architecture patterns.
+
+3. Create a summary of:
+   - Files modified
+   - Acceptance criteria status
+   - Pattern compliance
+
+4. Call MCP tool task_complete with:
+   {"task_id": "[task_id]", "summary": "[summary]", "files_modified": ["file1", "file2"]}
+
+5. Inform user task is complete. Suggest running /tw-next for next task."""
+`,
+		},
+		{
+			name: "tw-status.toml",
+			content: `description = "Show current TaskWing task status"
+
+prompt = """Execute these steps:
+
+1. Call MCP tool task_current with: {"session_id": "gemini-session"}
+   If no active task, tell user to run /tw-next.
+
+2. Call MCP tool recall with: {"query": "[task.scope] constraints patterns"}
+
+3. Display task status including:
+   - Task ID, title, priority
+   - Acceptance criteria
+   - Relevant constraints and patterns"""
+`,
+		},
+		{
+			name: "tw-block.toml",
+			content: `description = "Mark current TaskWing task as blocked"
+
+prompt = """Execute these steps:
+
+1. Call MCP tool task_current with: {"session_id": "gemini-session"}
+   If no active task, inform user.
+
+2. Ask user for block reason if not provided.
+
+3. Call MCP tool task_block with:
+   {"task_id": "[task_id]", "reason": "[detailed reason]"}
+
+4. Confirm task is blocked. Suggest /tw-next for next available task."""
+`,
+		},
+		{
+			name: "tw-context.toml",
+			content: `description = "Fetch TaskWing architecture context"
+
+prompt = """Call the TaskWing MCP recall tool to get architecture context.
+
+If user provided a query, use: {"query": "[user's query]"}
+Otherwise, get task scope and use: {"query": "[scope] patterns constraints decisions"}
+
+Display the results organized by:
+- Patterns
+- Constraints
+- Decisions"""
+`,
+		},
+	}
+
+	for _, cmd := range commands {
+		filePath := filepath.Join(commandsDir, cmd.name)
+		if err := os.WriteFile(filePath, []byte(cmd.content), 0644); err != nil {
+			return fmt.Errorf("create %s: %w", cmd.name, err)
+		}
+		if verbose {
+			fmt.Printf("  ✓ Created %s/%s\n", aiCfg.commandsDir, cmd.name)
+		}
 	}
 
 	return nil

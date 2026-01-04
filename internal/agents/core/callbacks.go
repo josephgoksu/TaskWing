@@ -345,7 +345,7 @@ func CreateStreamingCallbackHandler(agentName string, stream *StreamingOutput) *
 	// Add node-level visibility for "The Pulse"
 	handler.OnNodeStartMeta(func(name, nodeType string, meta map[string]any) {
 		// Map internal node names to user-friendly activity descriptions
-		activity := name
+		var activity string
 
 		// Map by node type first
 		switch nodeType {

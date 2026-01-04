@@ -59,7 +59,7 @@ func (a *ReactAgent) Run(ctx context.Context, input core.Input) (core.Output, er
 	if err != nil {
 		return output, fmt.Errorf("create chat model: %w", err)
 	}
-	defer closeableChatModel.Close()
+	defer func() { _ = closeableChatModel.Close() }()
 
 	baseChatModel := closeableChatModel.BaseChatModel
 	toolCallingModel, ok := baseChatModel.(model.ToolCallingChatModel)

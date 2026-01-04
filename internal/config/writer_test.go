@@ -121,7 +121,7 @@ func TestSaveGlobalLLMConfig_NewFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Override config dir for test
 	origGetGlobalConfigDir := GetGlobalConfigDir
@@ -167,7 +167,7 @@ func TestSaveGlobalLLMConfig_UpdateExisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Override config dir for test
 	origGetGlobalConfigDir := GetGlobalConfigDir

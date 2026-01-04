@@ -373,7 +373,7 @@ Be concise and direct.
 	if err != nil {
 		return "", fmt.Errorf("create chat model: %w", err)
 	}
-	defer chatModel.Close()
+	defer func() { _ = chatModel.Close() }()
 
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),
@@ -464,7 +464,7 @@ Return JSON ONLY: ["concept 1", "concept 2"]`, goal)
 	if err != nil {
 		return nil, fmt.Errorf("create chat model: %w", err)
 	}
-	defer chatModel.Close()
+	defer func() { _ = chatModel.Close() }()
 
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),

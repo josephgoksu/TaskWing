@@ -298,7 +298,7 @@ func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.Cal
 		if activePlan == nil {
 			return mcpJSONResponse(TaskResponse{
 				Success: false,
-				Message: "No active plan found. Create and start a plan first with 'tw plan new' and 'tw plan start'.",
+				Message: "No active plan found. Create and start a plan first with 'taskwing plan new' and 'taskwing plan start'.",
 			})
 		}
 		planID = activePlan.ID
@@ -313,7 +313,7 @@ func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.Cal
 		return mcpJSONResponse(TaskResponse{
 			Success: true,
 			Message: "No pending tasks in this plan. All tasks may be completed or blocked.",
-			Hint:    "Check plan status with 'tw plan list' or create new tasks.",
+			Hint:    "Check plan status with 'taskwing plan list' or create new tasks.",
 		})
 	}
 

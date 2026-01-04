@@ -54,11 +54,11 @@ func TestRenderBenchmark_Alignment(t *testing.T) {
 
 	RenderBenchmark(data)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	output := buf.String()
 
 	// Basic alignment checks (column separators should be present)

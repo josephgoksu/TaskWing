@@ -47,6 +47,7 @@ cmd/                          # Cobra CLI commands
 ├── mcp_server.go             # MCP server for AI tool integration
 ├── plan.go                   # Plan management (new/list/start)
 ├── task.go                   # Atomic task management
+├── hook.go                   # Claude Code hooks for autonomous execution
 └── eval.go                   # Evaluation benchmarks
 
 internal/
@@ -95,6 +96,25 @@ Bootstrap runs LLM analysis by default.
 ### MCP Server
 
 `tw mcp` starts a JSON-RPC stdio server exposing `recall` tool for AI assistants. Target token budget: 500-1000 tokens per context response.
+
+### Autonomous Task Execution (Hooks)
+
+TaskWing integrates with Claude Code's hook system for autonomous plan execution:
+
+```bash
+tw hook session-init      # Initialize session tracking (SessionStart hook)
+tw hook continue-check    # Check if should continue to next task (Stop hook)
+tw hook session-end       # Cleanup session (SessionEnd hook)
+tw hook status            # View current session state
+```
+
+**Circuit breakers** prevent runaway execution:
+- `--max-tasks=5` - Stop after N tasks for human review
+- `--max-minutes=30` - Stop after N minutes
+
+Configuration in `.claude/settings.json` enables auto-continuation through plans.
+
+See `docs/development/AUTONOMOUS_HOOKS.md` for full documentation.
 
 ## Key Patterns
 

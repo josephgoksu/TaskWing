@@ -189,7 +189,7 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 
 	for _, pkgDir := range packageDirs {
 		searchDir := filepath.Join(g.BasePath, pkgDir)
-		filepath.WalkDir(searchDir, func(path string, d os.DirEntry, err error) error {
+		_ = filepath.WalkDir(searchDir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -546,7 +546,7 @@ func (g *ContextGatherer) GatherSourceCode() string {
 		if root != "" {
 			searchBase = filepath.Join(g.BasePath, root)
 		}
-		filepath.WalkDir(searchBase, func(path string, d os.DirEntry, err error) error {
+		_ = filepath.WalkDir(searchBase, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -668,7 +668,7 @@ func (g *ContextGatherer) ListDirectoryTree(maxDepth int) string {
 	if maxDepth == 0 {
 		maxDepth = 2
 	}
-	filepath.WalkDir(g.BasePath, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(g.BasePath, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}

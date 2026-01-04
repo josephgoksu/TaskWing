@@ -138,9 +138,10 @@ func renderModelSummary(data EvalReportData) {
 
 		// Score text
 		scoreText := fmt.Sprintf("%3.0f%% (%d/%d pass)", score, passed, summary.Total)
-		if passed == summary.Total {
+		switch passed {
+		case summary.Total:
 			scoreText = passStyle.Render(scoreText)
-		} else if passed == 0 {
+		case 0:
 			scoreText = failStyle.Render(scoreText)
 		}
 
@@ -372,7 +373,7 @@ func RenderBenchmark(data BenchmarkData) {
 			// Render Task Scores
 			for _, taskID := range data.TaskIDs {
 				score, exists := run.TaskScores[taskID]
-				scoreStr := " -"
+				var scoreStr string
 				if exists {
 					scoreStr = fmt.Sprintf("%2d", score) // right align number
 					if score >= 7 {

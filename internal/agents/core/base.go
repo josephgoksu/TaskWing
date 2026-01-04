@@ -65,7 +65,7 @@ func (b *BaseAgent) Generate(ctx context.Context, messages []*schema.Message) (s
 	if err != nil {
 		return "", err
 	}
-	defer chatModel.Close()
+	defer func() { _ = chatModel.Close() }()
 
 	resp, err := chatModel.Generate(ctx, messages)
 	if err != nil {

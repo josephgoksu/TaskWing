@@ -162,9 +162,7 @@ func (m BootstrapModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// Continue listening loop if we have a stream
-		if m.ResultsChan != nil {
-			// Checking stream is handled by the recursive cmd from StreamEvent
-		}
+		// (stream checking is handled by the recursive cmd from StreamEvent)
 		return m, tea.Batch(cmds...)
 
 	case core.StreamEvent:

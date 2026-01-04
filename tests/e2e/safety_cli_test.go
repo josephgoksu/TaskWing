@@ -35,7 +35,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	// Create temp directory for the project workspace
 	workspaceDir, err := os.MkdirTemp("", "taskwing-e2e-workspace-*")
 	if err != nil {
-		os.RemoveAll(binDir)
+		_ = os.RemoveAll(binDir)
 		t.Fatalf("failed to create temp workspace directory: %v", err)
 	}
 
@@ -49,8 +49,8 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	// Register cleanup
 	t.Cleanup(func() {
-		os.RemoveAll(binDir)
-		os.RemoveAll(workspaceDir)
+		_ = os.RemoveAll(binDir)
+		_ = os.RemoveAll(workspaceDir)
 	})
 
 	// Compile the binary

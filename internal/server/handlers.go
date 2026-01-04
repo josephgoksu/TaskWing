@@ -121,7 +121,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeAPIJSON(w, map[string]string{
 		"projectPath": s.cwd,
-		"version":     "0.1.0",
+		"version":     s.version,
 	})
 }
 
