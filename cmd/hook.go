@@ -17,6 +17,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // HookSession tracks session state for circuit breakers
@@ -197,7 +198,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	if session.CurrentTaskID != "" {
 		var err error
 		currentTask, err = repo.GetTask(session.CurrentTaskID)
-		if err != nil {
+		if err != nil && viper.GetBool("verbose") {
 			fmt.Fprintf(os.Stderr, "[DEBUG] Could not load current task %s: %v\n", session.CurrentTaskID, err)
 		}
 	}

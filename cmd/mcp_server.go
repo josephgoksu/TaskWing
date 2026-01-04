@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
@@ -112,14 +113,53 @@ func mcpJSONResponse(data any) (*mcpsdk.CallToolResultFor[any], error) {
 	}, nil
 }
 
+// initMCPRepository initializes the memory repository with fallback paths.
+// It tries: 1) local .taskwing/memory, 2) global ~/.taskwing/memory
+// This handles cases where MCP runs from read-only directories (e.g., sandboxed environments).
+func initMCPRepository() (*memory.Repository, error) {
+	// Build list of paths to try
+	var pathsToTry []string
+
+	// 1. Try configured path first (from viper)
+	configuredPath := config.GetMemoryBasePath()
+	pathsToTry = append(pathsToTry, configuredPath)
+
+	// 2. Try global ~/.taskwing/memory as fallback
+	if home, err := os.UserHomeDir(); err == nil {
+		globalPath := filepath.Join(home, ".taskwing", "memory")
+		// Only add if different from configured path
+		if globalPath != configuredPath {
+			pathsToTry = append(pathsToTry, globalPath)
+		}
+	}
+
+	// Try each path in order
+	var lastErr error
+	for _, path := range pathsToTry {
+		repo, err := memory.NewDefaultRepository(path)
+		if err == nil {
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Using memory path: %s\n", path)
+			}
+			return repo, nil
+		}
+		lastErr = err
+		if viper.GetBool("verbose") {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Failed to use path %s: %v\n", path, err)
+		}
+	}
+
+	return nil, fmt.Errorf("no writable memory path found (tried %v): %w", pathsToTry, lastErr)
+}
+
 func runMCPServer(ctx context.Context) error {
 	// NOTE: MCP uses stdio transport. stdout MUST be pure JSON-RPC.
 	// All status/debug output goes to stderr only.
 	fmt.Fprintln(os.Stderr, "TaskWing MCP Server starting...")
 
-	// Get current working directory
-	// Initialize memory repository
-	repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+	// Initialize memory repository with fallback paths
+	// Try: 1) configured path, 2) global ~/.taskwing/memory
+	repo, err := initMCPRepository()
 	if err != nil {
 		return fmt.Errorf("failed to initialize memory repo: %w", err)
 	}

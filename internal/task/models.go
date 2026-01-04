@@ -71,8 +71,8 @@ type Task struct {
 // Plan represents a collection of tasks to achieve a high-level goal
 type Plan struct {
 	ID           string     `json:"id"`
-	Goal         string     `json:"goal"`         // Initial user intent
-	EnrichedGoal string     `json:"enrichedGoal"` // Refined by Clarifying Agent
+	Goal         string     `json:"goal"`         // Concise summary for UI display (max 100 chars, AI-generated or truncated from user input)
+	EnrichedGoal string     `json:"enrichedGoal"` // Full technical specification refined by Clarifying Agent
 	Status       PlanStatus `json:"status"`       // draft, active, completed, archived
 	Tasks        []Task     `json:"tasks"`
 	CreatedAt    time.Time  `json:"createdAt"`

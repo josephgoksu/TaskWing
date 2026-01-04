@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -237,19 +238,19 @@ func parseHookCommand(cmd string, settings *HooksSettings) {
 
 func splitCommand(cmd string) []string {
 	var parts []string
-	var current string
+	var current strings.Builder
 	for _, c := range cmd {
 		if c == ' ' {
-			if current != "" {
-				parts = append(parts, current)
-				current = ""
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
 			}
 		} else {
-			current += string(c)
+			current.WriteRune(c)
 		}
 	}
-	if current != "" {
-		parts = append(parts, current)
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
 	}
 	return parts
 }
@@ -402,12 +403,5 @@ func updateCommandFlag(cmd, flag string, value int) string {
 		parts = append(parts, fmt.Sprintf("%s=%d", flag, value))
 	}
 
-	result := ""
-	for i, part := range parts {
-		if i > 0 {
-			result += " "
-		}
-		result += part
-	}
-	return result
+	return strings.Join(parts, " ")
 }

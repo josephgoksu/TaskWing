@@ -51,7 +51,8 @@ type PlanModel struct {
 	PreviousState  PlanState // For returning from overlays/cancellation
 	Err            error
 	InitialGoal    string
-	EnrichedGoal   string
+	GoalSummary    string // Concise one-liner for UI display (<100 chars)
+	EnrichedGoal   string // Full technical specification for task generation
 	PlanID         string
 	PlanSummary    string
 	ThinkingStatus string // Dynamic status message for spinner
@@ -256,7 +257,9 @@ func listenForStream(stream *core.StreamingOutput) tea.Cmd {
 }
 
 // SavePlan persists the plan
-func savePlan(repo *memory.Repository, goal, enrichedGoal string, output *core.Output) tea.Cmd {
+// goalSummary is the concise one-liner for UI display
+// enrichedGoal is the full technical specification used for task generation
+func savePlan(repo *memory.Repository, goalSummary, enrichedGoal string, output *core.Output) tea.Cmd {
 	return func() tea.Msg {
 		// Extract tasks
 		if len(output.Findings) == 0 {
@@ -272,7 +275,7 @@ func savePlan(repo *memory.Repository, goal, enrichedGoal string, output *core.O
 		planID := "plan-" + fmt.Sprintf("%d", time.Now().Unix())
 		newPlan := &task.Plan{
 			ID:           planID,
-			Goal:         goal,
+			Goal:         goalSummary, // Concise summary for UI
 			EnrichedGoal: enrichedGoal,
 			Status:       "active",
 		}
@@ -710,8 +713,18 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		meta := finding.Metadata
 		isReady, _ := meta["is_ready_to_plan"].(bool)
 		enriched, _ := meta["enriched_goal"].(string)
+		goalSummary, _ := meta["goal_summary"].(string)
 		if enriched != "" {
 			m.EnrichedGoal = enriched
+		}
+		if goalSummary != "" {
+			// Enforce max 100 chars for GoalSummary (UI display)
+			// Use rune-based truncation for proper Unicode handling
+			runes := []rune(goalSummary)
+			if len(runes) > 100 {
+				goalSummary = string(runes[:97]) + "..."
+			}
+			m.GoalSummary = goalSummary
 		}
 		// Handle questions type assertion carefully as it might be []string or []interface{}
 		var questions []string
@@ -831,7 +844,17 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.PlanningResult = msg.Output
 		m.addMsg("THINKING", "Plan drafted. Saving to memory...")
-		cmds = append(cmds, savePlan(m.Repo, m.InitialGoal, m.EnrichedGoal, msg.Output))
+		// Use GoalSummary for UI display, fallback to truncated InitialGoal
+		goalSummary := m.GoalSummary
+		if goalSummary == "" {
+			goalSummary = m.InitialGoal
+			// Use rune-based truncation to avoid corrupting multi-byte Unicode characters
+			runes := []rune(goalSummary)
+			if len(runes) > 100 {
+				goalSummary = string(runes[:97]) + "..."
+			}
+		}
+		cmds = append(cmds, savePlan(m.Repo, goalSummary, m.EnrichedGoal, msg.Output))
 
 	// Saved Plan
 	case MsgSavedPlan:

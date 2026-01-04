@@ -26,7 +26,8 @@ type ClarifyingAgent struct {
 // ClarifyingOutput defines the structured response from the LLM.
 type ClarifyingOutput struct {
 	Questions     []string `json:"questions"`
-	EnrichedGoal  string   `json:"enriched_goal"` // Best effort draft of the spec
+	GoalSummary   string   `json:"goal_summary"`   // Concise one-liner for UI display (<100 chars)
+	EnrichedGoal  string   `json:"enriched_goal"`  // Full technical specification for task generation
 	IsReadyToPlan bool     `json:"is_ready_to_plan"`
 }
 
@@ -98,7 +99,8 @@ func (a *ClarifyingAgent) Run(ctx context.Context, input core.Input) (core.Outpu
 			Metadata: map[string]any{
 				"questions":        parsed.Questions,
 				"is_ready_to_plan": parsed.IsReadyToPlan,
-				"enriched_goal":    parsed.EnrichedGoal, // Ensure it's passed out
+				"goal_summary":     parsed.GoalSummary,  // Concise one-liner for UI
+				"enriched_goal":    parsed.EnrichedGoal, // Full spec for task generation
 			},
 		}},
 		"JSON handled by Eino",

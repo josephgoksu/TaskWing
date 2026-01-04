@@ -4,11 +4,14 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/spf13/cobra"
@@ -155,20 +158,24 @@ func checkMCPServers(cwd string) []DoctorCheck {
 
 	// Check Claude Code MCP
 	claudeCheck := checkClaudeMCP()
-	checks = append(checks, claudeCheck)
+	if claudeCheck.Status != "" {
+		checks = append(checks, claudeCheck)
+	}
 
-	// Check Gemini MCP
+	// Check Gemini MCP (with size limit)
 	geminiPath := filepath.Join(cwd, ".gemini", "settings.json")
-	if content, err := os.ReadFile(geminiPath); err == nil {
-		var config map[string]any
-		if err := json.Unmarshal(content, &config); err == nil {
-			if servers, ok := config["mcpServers"].(map[string]any); ok {
-				if _, hasTaskwing := servers["taskwing-mcp"]; hasTaskwing {
-					checks = append(checks, DoctorCheck{
-						Name:    "MCP (Gemini)",
-						Status:  "ok",
-						Message: "taskwing-mcp registered",
-					})
+	if info, err := os.Stat(geminiPath); err == nil && info.Size() < 1024*1024 { // 1MB limit
+		if content, err := os.ReadFile(geminiPath); err == nil {
+			var config map[string]any
+			if err := json.Unmarshal(content, &config); err == nil {
+				if servers, ok := config["mcpServers"].(map[string]any); ok {
+					if _, hasTaskwing := servers["taskwing-mcp"]; hasTaskwing {
+						checks = append(checks, DoctorCheck{
+							Name:    "MCP (Gemini)",
+							Status:  "ok",
+							Message: "taskwing-mcp registered",
+						})
+					}
 				}
 			}
 		}
@@ -180,18 +187,20 @@ func checkMCPServers(cwd string) []DoctorCheck {
 		checks = append(checks, codexCheck)
 	}
 
-	// Check Cursor MCP
+	// Check Cursor MCP (with size limit)
 	cursorPath := filepath.Join(cwd, ".cursor", "mcp.json")
-	if content, err := os.ReadFile(cursorPath); err == nil {
-		var config map[string]any
-		if err := json.Unmarshal(content, &config); err == nil {
-			if servers, ok := config["mcpServers"].(map[string]any); ok {
-				if _, hasTaskwing := servers["taskwing-mcp"]; hasTaskwing {
-					checks = append(checks, DoctorCheck{
-						Name:    "MCP (Cursor)",
-						Status:  "ok",
-						Message: "taskwing-mcp registered",
-					})
+	if info, err := os.Stat(cursorPath); err == nil && info.Size() < 1024*1024 { // 1MB limit
+		if content, err := os.ReadFile(cursorPath); err == nil {
+			var config map[string]any
+			if err := json.Unmarshal(content, &config); err == nil {
+				if servers, ok := config["mcpServers"].(map[string]any); ok {
+					if _, hasTaskwing := servers["taskwing-mcp"]; hasTaskwing {
+						checks = append(checks, DoctorCheck{
+							Name:    "MCP (Cursor)",
+							Status:  "ok",
+							Message: "taskwing-mcp registered",
+						})
+					}
 				}
 			}
 		}
@@ -212,18 +221,24 @@ func checkMCPServers(cwd string) []DoctorCheck {
 func checkClaudeMCP() DoctorCheck {
 	// Check if claude CLI exists
 	if _, err := exec.LookPath("claude"); err != nil {
-		return DoctorCheck{
-			Name:    "MCP (Claude)",
-			Status:  "warn",
-			Message: "Claude Code CLI not installed",
-			Hint:    "Install from: https://claude.ai/code",
-		}
+		// Return empty check - Claude not installed is not an error, just skip
+		return DoctorCheck{}
 	}
 
-	// Run claude mcp list and check for taskwing-mcp
-	cmd := exec.Command("claude", "mcp", "list")
+	// Run claude mcp list with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "claude", "mcp", "list")
 	output, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return DoctorCheck{
+				Name:    "MCP (Claude)",
+				Status:  "warn",
+				Message: "Timeout checking MCP servers",
+			}
+		}
 		return DoctorCheck{
 			Name:    "MCP (Claude)",
 			Status:  "warn",
@@ -231,7 +246,7 @@ func checkClaudeMCP() DoctorCheck {
 		}
 	}
 
-	if containsString(string(output), "taskwing-mcp") {
+	if strings.Contains(string(output), "taskwing-mcp") {
 		return DoctorCheck{
 			Name:    "MCP (Claude)",
 			Status:  "ok",
@@ -253,10 +268,20 @@ func checkCodexMCP() DoctorCheck {
 		return DoctorCheck{} // Not installed, skip
 	}
 
-	// Run codex mcp list and check for taskwing-mcp
-	cmd := exec.Command("codex", "mcp", "list")
+	// Run codex mcp list with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "codex", "mcp", "list")
 	output, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return DoctorCheck{
+				Name:    "MCP (Codex)",
+				Status:  "warn",
+				Message: "Timeout checking MCP servers",
+			}
+		}
 		return DoctorCheck{
 			Name:    "MCP (Codex)",
 			Status:  "warn",
@@ -264,7 +289,7 @@ func checkCodexMCP() DoctorCheck {
 		}
 	}
 
-	if containsString(string(output), "taskwing-mcp") {
+	if strings.Contains(string(output), "taskwing-mcp") {
 		return DoctorCheck{
 			Name:    "MCP (Codex)",
 			Status:  "ok",
@@ -463,17 +488,4 @@ func printNextSteps(checks []DoctorCheck) {
 		fmt.Println("  • In Claude Code, run: /tw-next")
 		fmt.Println("  • Tasks will auto-continue until circuit breaker triggers")
 	}
-}
-
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

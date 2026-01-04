@@ -87,12 +87,12 @@ func runLLMShow() error {
 		fmt.Printf("  Base URL: %s\n", cfg.BaseURL)
 	}
 
-	// Show API key status (masked)
+	// Show API key status (masked) - check both env and config
 	fmt.Println()
 	fmt.Println("  API Keys:")
-	showAPIKeyStatus("openai", os.Getenv("OPENAI_API_KEY"))
-	showAPIKeyStatus("anthropic", os.Getenv("ANTHROPIC_API_KEY"))
-	showAPIKeyStatus("gemini", os.Getenv("GEMINI_API_KEY"))
+	showAPIKeyStatus("openai", config.ResolveAPIKey(llm.ProviderOpenAI))
+	showAPIKeyStatus("anthropic", config.ResolveAPIKey(llm.ProviderAnthropic))
+	showAPIKeyStatus("gemini", config.ResolveAPIKey(llm.ProviderGemini))
 
 	fmt.Println()
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -105,12 +105,21 @@ func runLLMShow() error {
 }
 
 func showAPIKeyStatus(provider, key string) {
-	if key != "" {
-		masked := key[:4] + "..." + key[len(key)-4:]
-		fmt.Printf("    %s: %s\n", provider, masked)
-	} else {
+	if key == "" {
 		fmt.Printf("    %s: (not set)\n", provider)
+		return
 	}
+	// Safely mask key - handle short keys
+	var masked string
+	switch {
+	case len(key) >= 8:
+		masked = key[:4] + "..." + key[len(key)-4:]
+	case len(key) >= 4:
+		masked = key[:2] + "..." + key[len(key)-2:]
+	default:
+		masked = "***"
+	}
+	fmt.Printf("    %s: %s\n", provider, masked)
 }
 
 func runLLMUse(spec string) error {

@@ -5,11 +5,13 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -58,13 +60,19 @@ func runWork(launch bool, planGoal string) error {
 		fmt.Println("📦 TaskWing not initialized. Running bootstrap...")
 		fmt.Println()
 
-		// Run bootstrap
-		bootstrapCmd := exec.Command(os.Args[0], "bootstrap")
+		// Run bootstrap with timeout (5 minutes for LLM analysis)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		bootstrapCmd := exec.CommandContext(ctx, os.Args[0], "bootstrap")
 		bootstrapCmd.Dir = cwd
 		bootstrapCmd.Stdin = os.Stdin
 		bootstrapCmd.Stdout = os.Stdout
 		bootstrapCmd.Stderr = os.Stderr
 		if err := bootstrapCmd.Run(); err != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				return fmt.Errorf("bootstrap timed out after 5 minutes")
+			}
 			return fmt.Errorf("bootstrap failed: %w", err)
 		}
 		fmt.Println()
@@ -106,23 +114,35 @@ func runWork(launch bool, planGoal string) error {
 	activePlan, _ := repo.GetActivePlan()
 
 	if planGoal != "" {
-		// Create new plan with provided goal
+		// Create new plan with provided goal (2 minute timeout for LLM)
 		fmt.Printf("\n📋 Creating plan: %s\n", planGoal)
-		planCmd := exec.Command(os.Args[0], "plan", "new", planGoal)
+		planCtx, planCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer planCancel()
+
+		planCmd := exec.CommandContext(planCtx, os.Args[0], "plan", "new", planGoal)
 		planCmd.Dir = cwd
 		planCmd.Stdin = os.Stdin
 		planCmd.Stdout = os.Stdout
 		planCmd.Stderr = os.Stderr
 		if err := planCmd.Run(); err != nil {
+			if planCtx.Err() == context.DeadlineExceeded {
+				return fmt.Errorf("plan creation timed out after 2 minutes")
+			}
 			return fmt.Errorf("plan creation failed: %w", err)
 		}
 
-		// Start the new plan
-		startCmd := exec.Command(os.Args[0], "plan", "start", "latest")
+		// Start the new plan (quick operation, 30 second timeout)
+		startCtx, startCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer startCancel()
+
+		startCmd := exec.CommandContext(startCtx, os.Args[0], "plan", "start", "latest")
 		startCmd.Dir = cwd
 		startCmd.Stdout = os.Stdout
 		startCmd.Stderr = os.Stderr
 		if err := startCmd.Run(); err != nil {
+			if startCtx.Err() == context.DeadlineExceeded {
+				return fmt.Errorf("plan start timed out")
+			}
 			return fmt.Errorf("plan start failed: %w", err)
 		}
 
@@ -147,20 +167,34 @@ func runWork(launch bool, planGoal string) error {
 			goal = strings.TrimSpace(goal)
 
 			if goal != "" {
-				planCmd := exec.Command(os.Args[0], "plan", "new", goal)
+				// Create plan with timeout (2 minutes for LLM)
+				planCtx, planCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer planCancel()
+
+				planCmd := exec.CommandContext(planCtx, os.Args[0], "plan", "new", goal)
 				planCmd.Dir = cwd
 				planCmd.Stdin = os.Stdin
 				planCmd.Stdout = os.Stdout
 				planCmd.Stderr = os.Stderr
 				if err := planCmd.Run(); err != nil {
+					if planCtx.Err() == context.DeadlineExceeded {
+						return fmt.Errorf("plan creation timed out after 2 minutes")
+					}
 					return fmt.Errorf("plan creation failed: %w", err)
 				}
 
-				startCmd := exec.Command(os.Args[0], "plan", "start", "latest")
+				// Start plan with timeout (30 seconds)
+				startCtx, startCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer startCancel()
+
+				startCmd := exec.CommandContext(startCtx, os.Args[0], "plan", "start", "latest")
 				startCmd.Dir = cwd
 				startCmd.Stdout = os.Stdout
 				startCmd.Stderr = os.Stderr
-				_ = startCmd.Run()
+				if err := startCmd.Run(); err != nil {
+					// Log warning but continue - plan was created
+					fmt.Printf("⚠️  Could not auto-start plan: %v\n", err)
+				}
 
 				activePlan, _ = repo.GetActivePlan()
 			}
