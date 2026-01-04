@@ -21,7 +21,7 @@ func nullTimeString(t time.Time) interface{} {
 
 // === Plan CRUD ===
 
-// CreatePlan creates a new plan in the database.
+// CreatePlan creates a new plan in the database along with its tasks (atomically).
 func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 	if p.ID == "" {
 		p.ID = "plan-" + uuid.New().String()[:8]
@@ -35,7 +35,14 @@ func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 	}
 	p.UpdatedAt = now
 
-	_, err := s.db.Exec(`
+	// Use transaction to ensure plan + tasks are created atomically
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.Exec(`
 		INSERT INTO plans (id, goal, enriched_goal, status, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, p.ID, p.Goal, p.EnrichedGoal, p.Status, p.CreatedAt.Format(time.RFC3339), p.UpdatedAt.Format(time.RFC3339))
@@ -44,7 +51,71 @@ func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 		return fmt.Errorf("insert plan: %w", err)
 	}
 
-	return nil
+	// Create all tasks in the same transaction
+	for i := range p.Tasks {
+		t := &p.Tasks[i]
+		t.PlanID = p.ID
+		if t.ID == "" {
+			t.ID = "task-" + uuid.New().String()[:8]
+		}
+		if t.Status == "" {
+			t.Status = task.StatusPending
+		}
+		if t.CreatedAt.IsZero() {
+			t.CreatedAt = now
+		}
+		t.UpdatedAt = now
+
+		acJSON, err := json.Marshal(t.AcceptanceCriteria)
+		if err != nil {
+			return fmt.Errorf("marshal acceptance criteria: %w", err)
+		}
+		vsJSON, err := json.Marshal(t.ValidationSteps)
+		if err != nil {
+			return fmt.Errorf("marshal validation steps: %w", err)
+		}
+		keywordsJSON, err := json.Marshal(t.Keywords)
+		if err != nil {
+			return fmt.Errorf("marshal keywords: %w", err)
+		}
+		queriesJSON, err := json.Marshal(t.SuggestedRecallQueries)
+		if err != nil {
+			return fmt.Errorf("marshal suggested queries: %w", err)
+		}
+		filesJSON, err := json.Marshal(t.FilesModified)
+		if err != nil {
+			return fmt.Errorf("marshal files modified: %w", err)
+		}
+
+		var parentID interface{}
+		if t.ParentTaskID != "" {
+			parentID = t.ParentTaskID
+		} else {
+			parentID = nil
+		}
+
+		_, err = tx.Exec(`
+			INSERT INTO tasks (
+				id, plan_id, title, description,
+				acceptance_criteria, validation_steps,
+				status, priority, assigned_agent, parent_task_id, context_summary,
+				scope, keywords, suggested_recall_queries,
+				claimed_by, claimed_at, completed_at, completion_summary, files_modified,
+				created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, t.ID, t.PlanID, t.Title, t.Description,
+			string(acJSON), string(vsJSON),
+			t.Status, t.Priority, t.AssignedAgent, parentID, t.ContextSummary,
+			t.Scope, string(keywordsJSON), string(queriesJSON),
+			t.ClaimedBy, nullTimeString(t.ClaimedAt), nullTimeString(t.CompletedAt), t.CompletionSummary, string(filesJSON),
+			t.CreatedAt.Format(time.RFC3339), t.UpdatedAt.Format(time.RFC3339))
+
+		if err != nil {
+			return fmt.Errorf("insert task %s: %w", t.Title, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // GetPlan retrieves a plan by ID, including its tasks.
