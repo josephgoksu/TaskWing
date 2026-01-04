@@ -1,0 +1,19 @@
+description = "Complete current TaskWing task"
+
+prompt = """Execute these steps:
+
+1. Call MCP tool task_current with: {"session_id": "gemini-session"}
+   If no active task, inform user.
+
+2. Call MCP tool recall with: {"query": "[task.scope] patterns constraints"}
+   Verify work followed architecture patterns.
+
+3. Create a summary of:
+   - Files modified
+   - Acceptance criteria status
+   - Pattern compliance
+
+4. Call MCP tool task_complete with:
+   {"task_id": "[task_id]", "summary": "[summary]", "files_modified": ["file1", "file2"]}
+
+5. Inform user task is complete. Suggest running /tw-next for next task."""

@@ -67,11 +67,23 @@ TaskWing extracts architectural knowledge from your codebase and uses it to:
 | **GitHub Issues + Copilot** | AI suggestions | Generic, ignores architecture |
 | **TaskWing** | AI + Knowledge Graph | Tasks match YOUR patterns |
 
+## Proof: It Actually Works
+
+> "Found a revenue-impacting bug in 8 minutes. The AI recalled our trial policy mid-investigation, identified the root cause at `service.go:126`, implemented the fix, verified the build, and updated the docs — all in one session, all context-aware."
+> — Production debugging session, Jan 2026
+
+**Full workflow in one session:** Debug → Fix → Verify → Document
+
+See [PHILOSOPHY.md](architecture/PHILOSOPHY.md#real-world-case-study-debugging-a-revenue-impacting-bug) for the full case study.
+
+---
+
 ## Success Metrics
 
 1. **Task Accuracy**: Generated tasks reference correct files/patterns (target: 80%+)
 2. **Developer Adoption**: Daily active users running `tw plan`
 3. **Context Utilization**: MCP queries per plan execution
+4. **Time-to-Root-Cause**: Bug investigations with TaskWing context vs. without
 
 ## Monetization (Future)
 

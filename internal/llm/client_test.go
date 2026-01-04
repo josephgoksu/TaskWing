@@ -80,7 +80,7 @@ func TestDefaultModelForProvider(t *testing.T) {
 		{
 			name:     "openai default model",
 			provider: "openai",
-			want:     "gpt-5-mini-2025-08-07", // From ModelRegistry, uses alias for API compat
+			want:     "gpt-5-mini", // From ModelRegistry
 		},
 		{
 			name:     "ollama default model",
@@ -90,7 +90,7 @@ func TestDefaultModelForProvider(t *testing.T) {
 		{
 			name:     "anthropic default model",
 			provider: "anthropic",
-			want:     "claude-3-5-sonnet-latest",
+			want:     "claude-sonnet-4-5", // Claude 4.5 is the new default
 		},
 		{
 			name:     "gemini default model",

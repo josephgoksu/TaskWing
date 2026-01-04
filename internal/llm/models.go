@@ -2,6 +2,7 @@ package llm
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 )
@@ -21,133 +22,136 @@ type Model struct {
 
 // ModelRegistry is the single source of truth for all supported models.
 // Add new models here - everything else derives from this registry.
-// Prices last updated: 2025-12
+// Prices last updated: 2025-12 (via web research)
 var ModelRegistry = []Model{
 	// ============================================
-	// OpenAI Models
+	// OpenAI Models (2025)
+	// https://platform.openai.com/docs/models
 	// ============================================
+	{
+		ID:               "o3",
+		Provider:         "OpenAI",
+		ProviderID:       ProviderOpenAI,
+		InputPer1M:       0.40,
+		OutputPer1M:      1.60,
+		SupportsThinking: true,
+	},
+	{
+		ID:               "o4-mini",
+		Provider:         "OpenAI",
+		ProviderID:       ProviderOpenAI,
+		InputPer1M:       1.10,
+		OutputPer1M:      4.40,
+		SupportsThinking: true,
+	},
+	{
+		ID:          "gpt-5",
+		Provider:    "OpenAI",
+		ProviderID:  ProviderOpenAI,
+		InputPer1M:  1.25,
+		OutputPer1M: 10.00,
+	},
 	{
 		ID:          "gpt-5-mini",
 		Provider:    "OpenAI",
 		ProviderID:  ProviderOpenAI,
-		Aliases:     []string{"gpt-5-mini-2025-08-07"},
-		InputPer1M:  0.22,
-		OutputPer1M: 1.80,
+		InputPer1M:  0.25,
+		OutputPer1M: 2.00,
 		IsDefault:   true,
-	},
-	{
-		ID:          "gpt-5.1",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		InputPer1M:  1.10,
-		OutputPer1M: 9.00,
 	},
 	{
 		ID:          "gpt-5-nano",
 		Provider:    "OpenAI",
 		ProviderID:  ProviderOpenAI,
-		Aliases:     []string{"gpt-5-nano-2025-09-25"},
-		InputPer1M:  0.04,
-		OutputPer1M: 0.36,
+		InputPer1M:  0.05,
+		OutputPer1M: 0.40,
+	},
+	{
+		ID:          "gpt-4.1",
+		Provider:    "OpenAI",
+		ProviderID:  ProviderOpenAI,
+		InputPer1M:  2.00,
+		OutputPer1M: 8.00,
 	},
 	{
 		ID:          "gpt-4.1-mini",
 		Provider:    "OpenAI",
 		ProviderID:  ProviderOpenAI,
-		Aliases:     []string{"gpt-4.1-mini-2025-04-14"},
-		InputPer1M:  0.15,
-		OutputPer1M: 0.60,
+		InputPer1M:  0.40,
+		OutputPer1M: 1.60,
 	},
 	{
-		ID:          "gpt-4o",
+		ID:          "gpt-4.1-nano",
 		Provider:    "OpenAI",
 		ProviderID:  ProviderOpenAI,
-		Aliases:     []string{"gpt-4o-2024-08-06"},
-		InputPer1M:  2.50,
-		OutputPer1M: 10.00,
-	},
-	{
-		ID:          "gpt-4o-mini",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		Aliases:     []string{"gpt-4o-mini-2024-07-18"},
-		InputPer1M:  0.15,
-		OutputPer1M: 0.60,
-	},
-	{
-		ID:          "gpt-4-turbo",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		InputPer1M:  10.00,
-		OutputPer1M: 30.00,
-	},
-	{
-		ID:          "gpt-3.5-turbo",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		InputPer1M:  0.50,
-		OutputPer1M: 1.50,
+		InputPer1M:  0.10,
+		OutputPer1M: 0.40,
 	},
 
 	// ============================================
-	// Anthropic Models
+	// Anthropic Claude 4.x Models (2025)
+	// https://docs.anthropic.com/en/docs/about-claude/models
 	// ============================================
 	{
-		ID:               "claude-3-5-sonnet-latest",
+		ID:               "claude-sonnet-4-5",
 		Provider:         "Anthropic",
 		ProviderID:       ProviderAnthropic,
-		Aliases:          []string{"claude-3-5-sonnet-20241022"},
+		Aliases:          []string{"claude-sonnet-4-5-20250929"},
 		InputPer1M:       3.00,
 		OutputPer1M:      15.00,
 		IsDefault:        true,
 		SupportsThinking: true,
 	},
 	{
-		ID:               "claude-3-5-haiku-latest",
+		ID:               "claude-opus-4-5",
 		Provider:         "Anthropic",
 		ProviderID:       ProviderAnthropic,
-		Aliases:          []string{"claude-3-5-haiku-20241022"},
-		InputPer1M:       0.80,
-		OutputPer1M:      4.00,
+		Aliases:          []string{"claude-opus-4-5-20251101"},
+		InputPer1M:       5.00,
+		OutputPer1M:      25.00,
 		SupportsThinking: true,
 	},
 	{
-		ID:               "claude-3-opus-latest",
+		ID:               "claude-haiku-4-5",
 		Provider:         "Anthropic",
 		ProviderID:       ProviderAnthropic,
-		Aliases:          []string{"claude-3-opus-20240229"},
+		Aliases:          []string{"claude-haiku-4-5-20251001"},
+		InputPer1M:       1.00,
+		OutputPer1M:      5.00,
+		SupportsThinking: true,
+	},
+	{
+		ID:               "claude-sonnet-4",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		Aliases:          []string{"claude-sonnet-4-20250514"},
+		InputPer1M:       3.00,
+		OutputPer1M:      15.00,
+		SupportsThinking: true,
+	},
+	{
+		ID:               "claude-opus-4-1",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		Aliases:          []string{"claude-opus-4-1-20250805"},
 		InputPer1M:       15.00,
 		OutputPer1M:      75.00,
 		SupportsThinking: true,
 	},
-	{
-		ID:          "claude-3-sonnet-20240229",
-		Provider:    "Anthropic",
-		ProviderID:  ProviderAnthropic,
-		InputPer1M:  3.00,
-		OutputPer1M: 15.00,
-		// Note: Extended thinking requires Claude 3.5+ models
-	},
+	// Legacy model for compatibility
 	{
 		ID:          "claude-3-haiku-20240307",
 		Provider:    "Anthropic",
 		ProviderID:  ProviderAnthropic,
 		InputPer1M:  0.25,
 		OutputPer1M: 1.25,
-		// Note: Extended thinking requires Claude 3.5+ models
 	},
 
 	// ============================================
-	// Google Gemini Models
+	// Google Gemini Models (2025)
+	// https://ai.google.dev/gemini-api/docs/models
+	// Note: Gemini 1.5 retired April 2025
 	// ============================================
-	{
-		ID:          "gemini-2.0-flash",
-		Provider:    "Google",
-		ProviderID:  ProviderGemini,
-		InputPer1M:  0.10,
-		OutputPer1M: 0.40,
-		IsDefault:   true,
-	},
 	{
 		ID:               "gemini-3-pro-preview",
 		Provider:         "Google",
@@ -189,21 +193,15 @@ var ModelRegistry = []Model{
 		SupportsThinking: true,
 	},
 	{
+		ID:          "gemini-2.0-flash",
+		Provider:    "Google",
+		ProviderID:  ProviderGemini,
+		InputPer1M:  0.10,
+		OutputPer1M: 0.40,
+		IsDefault:   true,
+	},
+	{
 		ID:          "gemini-2.0-flash-lite",
-		Provider:    "Google",
-		ProviderID:  ProviderGemini,
-		InputPer1M:  0.075,
-		OutputPer1M: 0.30,
-	},
-	{
-		ID:          "gemini-1.5-pro",
-		Provider:    "Google",
-		ProviderID:  ProviderGemini,
-		InputPer1M:  1.25,
-		OutputPer1M: 5.00,
-	},
-	{
-		ID:          "gemini-1.5-flash",
 		Provider:    "Google",
 		ProviderID:  ProviderGemini,
 		InputPer1M:  0.075,
@@ -218,31 +216,6 @@ var ModelRegistry = []Model{
 		Provider:   "Ollama",
 		ProviderID: ProviderOllama,
 		IsDefault:  true,
-	},
-
-	// ============================================
-	// Mistral Models (not fully supported yet)
-	// ============================================
-	{
-		ID:          "mistral-large",
-		Provider:    "Mistral",
-		ProviderID:  ProviderMistral,
-		InputPer1M:  4.00,
-		OutputPer1M: 12.00,
-	},
-	{
-		ID:          "mistral-medium",
-		Provider:    "Mistral",
-		ProviderID:  ProviderMistral,
-		InputPer1M:  2.70,
-		OutputPer1M: 8.10,
-	},
-	{
-		ID:          "mistral-small",
-		Provider:    "Mistral",
-		ProviderID:  ProviderMistral,
-		InputPer1M:  1.00,
-		OutputPer1M: 3.00,
 	},
 }
 
@@ -287,10 +260,6 @@ func GetDefaultModel(providerID string) *Model {
 func GetDefaultModelID(providerID string) string {
 	m := GetDefaultModel(providerID)
 	if m != nil {
-		// Return the dated version for OpenAI (API compatibility)
-		if providerID == ProviderOpenAI && len(m.Aliases) > 0 {
-			return m.Aliases[0]
-		}
 		return m.ID
 	}
 	return ""
@@ -306,7 +275,10 @@ func InferProvider(modelID string) (string, bool) {
 
 	// Fallback to prefix-based inference for unknown models
 	switch {
-	case strings.HasPrefix(modelID, "gpt-"), strings.HasPrefix(modelID, "o1-"), strings.HasPrefix(modelID, "o3-"):
+	case strings.HasPrefix(modelID, "gpt-"),
+		strings.HasPrefix(modelID, "o1-"),
+		strings.HasPrefix(modelID, "o3"),
+		strings.HasPrefix(modelID, "o4-"):
 		return ProviderOpenAI, true
 	case strings.HasPrefix(modelID, "claude-"):
 		return ProviderAnthropic, true
@@ -327,31 +299,46 @@ type ModelOption struct {
 	IsDefault   bool
 }
 
+// ModelOption represents a model choice for selection UI
+type modelWithPrice struct {
+	option     ModelOption
+	totalPrice float64 // input + output for sorting
+}
+
 // GetModelsForProvider returns available models for a provider (for UI selection).
+// Models are sorted: default first, then by total price (cheapest to most expensive).
 func GetModelsForProvider(providerID string) []ModelOption {
-	var options []ModelOption
+	var models []modelWithPrice
 
 	for _, m := range ModelRegistry {
 		if m.ProviderID != providerID {
 			continue
 		}
 
-		options = append(options, ModelOption{
-			ID:          m.ID,
-			DisplayName: m.ID,
-			PriceInfo:   formatPriceInfo(m.InputPer1M, m.OutputPer1M),
-			IsDefault:   m.IsDefault,
+		models = append(models, modelWithPrice{
+			option: ModelOption{
+				ID:          m.ID,
+				DisplayName: m.ID,
+				PriceInfo:   formatPriceInfo(m.InputPer1M, m.OutputPer1M),
+				IsDefault:   m.IsDefault,
+			},
+			totalPrice: m.InputPer1M + m.OutputPer1M,
 		})
 	}
 
-	// Sort: default first, then alphabetically
-	sort.Slice(options, func(i, j int) bool {
-		if options[i].IsDefault != options[j].IsDefault {
-			return options[i].IsDefault
+	// Sort: default first, then by price descending (most capable/expensive first)
+	// Price is a reasonable proxy for capability - users want latest/best models first
+	sort.Slice(models, func(i, j int) bool {
+		if models[i].option.IsDefault != models[j].option.IsDefault {
+			return models[i].option.IsDefault
 		}
-		return options[i].ID < options[j].ID
+		return models[i].totalPrice > models[j].totalPrice // descending
 	})
 
+	options := make([]ModelOption, len(models))
+	for i, m := range models {
+		options[i] = m.option
+	}
 	return options
 }
 
@@ -381,3 +368,97 @@ func ModelSupportsThinking(modelID string) bool {
 	}
 	return m.SupportsThinking
 }
+
+// ProviderInfo contains metadata about a provider for UI display.
+type ProviderInfo struct {
+	ID           string  // Internal provider ID (e.g., "openai")
+	DisplayName  string  // Human-readable name (e.g., "OpenAI")
+	EnvVar       string  // Environment variable for API key
+	DefaultModel string  // Default model ID for this provider
+	ModelCount   int     // Number of models available
+	IsLocal      bool    // Whether this is a local provider (no API key needed)
+	MinPrice     float64 // Minimum total price (input+output) per 1M tokens
+	MaxPrice     float64 // Maximum total price (input+output) per 1M tokens
+}
+
+// GetProviders returns a list of all available providers with metadata.
+// This is the single source of truth for provider information.
+func GetProviders() []ProviderInfo {
+	providerMap := make(map[string]*ProviderInfo)
+
+	for _, m := range ModelRegistry {
+		totalPrice := m.InputPer1M + m.OutputPer1M
+
+		if _, exists := providerMap[m.ProviderID]; !exists {
+			providerMap[m.ProviderID] = &ProviderInfo{
+				ID:          m.ProviderID,
+				DisplayName: m.Provider,
+				IsLocal:     m.ProviderID == ProviderOllama,
+				MinPrice:    totalPrice,
+				MaxPrice:    totalPrice,
+			}
+		}
+
+		p := providerMap[m.ProviderID]
+		p.ModelCount++
+		if m.IsDefault {
+			p.DefaultModel = m.ID
+		}
+		if totalPrice > 0 && (p.MinPrice == 0 || totalPrice < p.MinPrice) {
+			p.MinPrice = totalPrice
+		}
+		if totalPrice > p.MaxPrice {
+			p.MaxPrice = totalPrice
+		}
+	}
+
+	var providers []ProviderInfo
+	// Return in consistent order
+	providerOrder := []string{ProviderOpenAI, ProviderAnthropic, ProviderGemini, ProviderOllama}
+	for _, id := range providerOrder {
+		if p, exists := providerMap[id]; exists {
+			envVar := GetEnvVarForProvider(id)
+			if envVar == "" {
+				envVar = "(local)"
+			}
+			p.EnvVar = envVar
+			providers = append(providers, *p)
+		}
+	}
+
+	return providers
+}
+
+// providerEnvVars is the SINGLE SOURCE OF TRUTH for provider environment variable names.
+// All code needing env var names MUST use GetEnvVarForProvider() or GetEnvValueForProvider().
+var providerEnvVars = map[string]string{
+	ProviderOpenAI:    "OPENAI_API_KEY",
+	ProviderAnthropic: "ANTHROPIC_API_KEY",
+	ProviderGemini:    "GEMINI_API_KEY",
+	ProviderOllama:    "", // Local, no API key needed
+}
+
+// GetEnvVarForProvider returns the environment variable name for a provider's API key.
+// Returns empty string for local providers (Ollama) or unknown providers.
+func GetEnvVarForProvider(providerID string) string {
+	return providerEnvVars[providerID]
+}
+
+// GetEnvValueForProvider returns the API key value from environment variables.
+// Handles provider-specific fallbacks (e.g., GOOGLE_API_KEY for Gemini).
+func GetEnvValueForProvider(providerID string) string {
+	envVar := providerEnvVars[providerID]
+	if envVar == "" {
+		return ""
+	}
+
+	value := strings.TrimSpace(os.Getenv(envVar))
+
+	// Gemini fallback: also check GOOGLE_API_KEY
+	if value == "" && providerID == ProviderGemini {
+		value = strings.TrimSpace(os.Getenv("GOOGLE_API_KEY"))
+	}
+
+	return value
+}
+

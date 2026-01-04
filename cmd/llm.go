@@ -5,11 +5,11 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -18,12 +18,17 @@ var llmCmd = &cobra.Command{
 	Short: "Manage LLM provider and model configuration",
 	Long: `Configure which LLM provider and model TaskWing uses for AI operations.
 
+Running without a subcommand launches interactive provider/model selection.
+
 Examples:
+  taskwing llm                         # Interactive selection (recommended)
   taskwing llm show                    # Show current configuration
-  taskwing llm use openai/gpt-4o       # Switch to OpenAI GPT-4o
-  taskwing llm use anthropic/claude-sonnet-4-20250514  # Switch to Claude
-  taskwing llm use ollama/llama3       # Switch to local Ollama
+  taskwing llm use openai/gpt-5-mini   # Switch to OpenAI GPT-5 Mini
+  taskwing llm use anthropic/claude-sonnet-4-5  # Switch to Claude
   taskwing llm list                    # List available providers`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runLLMInteractive()
+	},
 }
 
 var llmShowCmd = &cobra.Command{
@@ -42,12 +47,12 @@ var llmUseCmd = &cobra.Command{
 Format: provider/model or just provider (uses default model)
 
 Examples:
-  taskwing llm use openai/gpt-4o
-  taskwing llm use openai/gpt-4-turbo
-  taskwing llm use anthropic/claude-sonnet-4-20250514
-  taskwing llm use ollama/llama3
-  taskwing llm use gemini/gemini-2.0-flash
-  taskwing llm use openai              # Uses default model (gpt-4o)`,
+  taskwing llm use openai/gpt-5-mini
+  taskwing llm use openai/o3
+  taskwing llm use anthropic/claude-sonnet-4-5
+  taskwing llm use ollama/llama3.2
+  taskwing llm use gemini/gemini-2.5-pro
+  taskwing llm use openai              # Uses default model (gpt-5-mini)`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runLLMUse(args[0])
@@ -67,6 +72,41 @@ func init() {
 	llmCmd.AddCommand(llmShowCmd)
 	llmCmd.AddCommand(llmUseCmd)
 	llmCmd.AddCommand(llmListCmd)
+}
+
+func runLLMInteractive() error {
+	// Launch interactive provider + model selection
+	selection, err := ui.PromptLLMSelection()
+	if err != nil {
+		if strings.Contains(err.Error(), "cancelled") {
+			return nil // User cancelled, not an error
+		}
+		return err
+	}
+
+	// Check API key
+	apiKey := config.ResolveAPIKey(llm.Provider(selection.Provider))
+	if apiKey == "" && selection.Provider != "ollama" {
+		providers := llm.GetProviders()
+		var envVar string
+		for _, p := range providers {
+			if p.ID == selection.Provider {
+				envVar = p.EnvVar
+				break
+			}
+		}
+		fmt.Printf("⚠️  No API key found for %s\n", selection.Provider)
+		fmt.Printf("Set via: export %s='your-key'\n", envVar)
+		fmt.Println()
+	}
+
+	// Save configuration
+	if err := config.SaveGlobalLLMConfigWithModel(selection.Provider, selection.Model, apiKey); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+
+	fmt.Printf("✅ Switched to %s/%s\n", selection.Provider, selection.Model)
+	return nil
 }
 
 func runLLMShow() error {
@@ -98,8 +138,8 @@ func runLLMShow() error {
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 	fmt.Println("To switch: taskwing llm use <provider/model>")
-	fmt.Println("Examples:  taskwing llm use openai/gpt-4o")
-	fmt.Println("           taskwing llm use anthropic/claude-sonnet-4-20250514")
+	fmt.Println("Examples:  taskwing llm use openai/gpt-5-mini")
+	fmt.Println("           taskwing llm use anthropic/claude-sonnet-4-5")
 
 	return nil
 }
@@ -164,13 +204,8 @@ func runLLMUse(spec string) error {
 	if apiKey == "" && provider != "ollama" {
 		fmt.Printf("⚠️  No API key found for %s\n", provider)
 		fmt.Println()
-		switch provider {
-		case "openai":
-			fmt.Println("Set via: export OPENAI_API_KEY='your-key'")
-		case "anthropic":
-			fmt.Println("Set via: export ANTHROPIC_API_KEY='your-key'")
-		case "gemini":
-			fmt.Println("Set via: export GEMINI_API_KEY='your-key'")
+		if envVar := llm.GetEnvVarForProvider(provider); envVar != "" {
+			fmt.Printf("Set via: export %s='your-key'\n", envVar)
 		}
 		fmt.Println()
 		// Still save the config so the provider is set
@@ -192,61 +227,47 @@ func runLLMUse(spec string) error {
 }
 
 func runLLMList() error {
+	// Load current config to show active selection
+	cfg, _ := config.LoadLLMConfig()
+	currentProvider := cfg.Provider
+	currentModel := cfg.Model
+
 	fmt.Println("Available LLM Providers")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	if currentProvider != "" {
+		fmt.Printf("  Current: %s/%s\n", currentProvider, currentModel)
+	}
 	fmt.Println()
 
-	providers := []struct {
-		name         string
-		envVar       string
-		defaultModel string
-		models       []string
-	}{
-		{
-			name:         "openai",
-			envVar:       "OPENAI_API_KEY",
-			defaultModel: llm.DefaultModelForProvider("openai"),
-			models:       []string{"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1", "o1-mini", "o3-mini"},
-		},
-		{
-			name:         "anthropic",
-			envVar:       "ANTHROPIC_API_KEY",
-			defaultModel: llm.DefaultModelForProvider("anthropic"),
-			models:       []string{"claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"},
-		},
-		{
-			name:         "gemini",
-			envVar:       "GEMINI_API_KEY",
-			defaultModel: llm.DefaultModelForProvider("gemini"),
-			models:       []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"},
-		},
-		{
-			name:         "ollama",
-			envVar:       "(local)",
-			defaultModel: llm.DefaultModelForProvider("ollama"),
-			models:       []string{"llama3", "llama3.2", "mistral", "codellama", "deepseek-coder"},
-		},
-	}
+	// Get providers from ModelRegistry (single source of truth)
+	providers := llm.GetProviders()
 
 	for _, p := range providers {
 		status := "❌"
-		if p.name == "ollama" {
+		if p.IsLocal {
 			status = "🏠"
-		} else if os.Getenv(p.envVar) != "" {
+		} else if config.ResolveAPIKey(llm.Provider(p.ID)) != "" {
 			status = "✅"
 		}
 
-		fmt.Printf("%s %s\n", status, p.name)
-		fmt.Printf("   Default: %s\n", p.defaultModel)
-		fmt.Printf("   Models:  %s\n", strings.Join(p.models, ", "))
-		fmt.Printf("   Env:     %s\n", p.envVar)
+		fmt.Printf("%s %s\n", status, p.DisplayName)
+		fmt.Printf("   Default: %s\n", p.DefaultModel)
+
+		// Get model IDs from ModelRegistry
+		models := llm.GetModelsForProvider(p.ID)
+		modelIDs := make([]string, len(models))
+		for i, m := range models {
+			modelIDs[i] = m.ID
+		}
+		fmt.Printf("   Models:  %s\n", strings.Join(modelIDs, ", "))
+		fmt.Printf("   Env:     %s\n", p.EnvVar)
 		fmt.Println()
 	}
 
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
-	fmt.Println("Usage: taskwing llm use <provider>/<model>")
-	fmt.Println("  e.g. taskwing llm use openai/gpt-4o")
+	fmt.Println("Tip: Run 'taskwing llm' for interactive selection")
+	fmt.Println("  or: taskwing llm use openai/gpt-5-mini")
 
 	return nil
 }

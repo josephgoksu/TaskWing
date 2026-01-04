@@ -4,41 +4,52 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/josephgoksu/TaskWing/internal/config"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 )
 
 type ProviderOption struct {
 	ID          string
 	Name        string
 	Description string
+	HasAPIKey   bool
 }
 
-var providerOptions = []ProviderOption{
-	{
-		ID:          "openai",
-		Name:        "OpenAI",
-		Description: "Cloud-based, requires API Key",
-	},
-	{
-		ID:          "anthropic",
-		Name:        "Claude",
-		Description: "Anthropic, requires API Key",
-	},
-	{
-		ID:          "gemini",
-		Name:        "Gemini",
-		Description: "Google, requires API Key",
-	},
-	{
-		ID:          "ollama",
-		Name:        "Ollama",
-		Description: "Local, private, free (requires Ollama running)",
-	},
+// buildProviderOptions creates provider options from ModelRegistry.
+func buildProviderOptions() []ProviderOption {
+	providers := llm.GetProviders()
+	options := make([]ProviderOption, 0, len(providers))
+
+	for _, p := range providers {
+		hasKey := p.IsLocal || config.ResolveAPIKey(llm.Provider(p.ID)) != ""
+
+		var desc string
+		if p.IsLocal {
+			desc = "Local, private, free"
+		} else {
+			// Show price range and model count
+			desc = fmt.Sprintf("$%.2f-$%.2f/1M • %d models", p.MinPrice, p.MaxPrice, p.ModelCount)
+			if !hasKey {
+				desc += " • ❌ key not set"
+			}
+		}
+
+		options = append(options, ProviderOption{
+			ID:          p.ID,
+			Name:        p.DisplayName,
+			Description: desc,
+			HasAPIKey:   hasKey,
+		})
+	}
+
+	return options
 }
 
 // PromptLLMProvider prompts the user to select an LLM provider.
 func PromptLLMProvider() (string, error) {
+	options := buildProviderOptions()
 	m := providerSelectModel{
-		options: providerOptions,
+		options: options,
 		cursor:  0,
 	}
 
@@ -54,6 +65,33 @@ func PromptLLMProvider() (string, error) {
 	}
 
 	return result.selectedID, nil
+}
+
+// LLMSelection contains the result of provider + model selection.
+type LLMSelection struct {
+	Provider string
+	Model    string
+}
+
+// PromptLLMSelection runs an interactive provider then model selection flow.
+// Returns the selected provider and model, or an error if cancelled.
+func PromptLLMSelection() (*LLMSelection, error) {
+	// Step 1: Select provider
+	provider, err := PromptLLMProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 2: Select model for that provider
+	model, err := PromptModelSelection(provider)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LLMSelection{
+		Provider: provider,
+		Model:    model,
+	}, nil
 }
 
 type providerSelectModel struct {

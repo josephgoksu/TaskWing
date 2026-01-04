@@ -80,6 +80,87 @@ TaskWing creates a **persistent knowledge graph** of your codebase that AI assis
 
 ---
 
+## Real-World Case Study: Debugging a Revenue-Impacting Bug
+
+> This actually happened. Not a hypothetical.
+
+### The Scenario
+
+A customer was double-charged during subscription signup. Investigation needed to determine:
+- Why two subscriptions were created 28 seconds apart
+- Why one had a trial ($0) and one was charged ($3.90)
+- Root cause in the codebase
+
+### Without TaskWing
+
+```
+Developer: "Why did this happen?"
+AI: *scans random files* "I'd need to see your subscription logic..."
+Developer: *pastes 500 lines of code*
+AI: "Can you also show me the Stripe integration?"
+Developer: *pastes more code*
+AI: "What's your trial policy?"
+Developer: *explains manually*
+... 45 minutes later, still hunting
+```
+
+### With TaskWing (Actual Session)
+
+```
+Developer: "Investigate this double-subscription issue"
+AI: *calls TaskWing recall* → Gets subscription patterns, constraints, Stripe decisions
+AI: "Found it. Bug at service.go:126-128. Code only checks 'active' subscriptions,
+     ignores 'trialing'. User subscribed → status was 'trialing' → clicked again
+     → code found no 'active' sub → allowed second checkout → charged $3.90."
+```
+
+**Time to root cause: 8 minutes**
+
+### What TaskWing Provided Mid-Investigation
+
+| Recall Query | Context Returned |
+|--------------|------------------|
+| `"subscription stripe checkout duplicate trial"` | Monetization strategy decisions, trial logic constraints |
+| Automatic doc lookup | `backend-go/internal/subscriptions/README.md` |
+
+### The Fix (Also Context-Aware)
+
+```go
+// BUG: Only checks "active"
+Status: stripe.String(string(stripe.SubscriptionStatusActive))
+
+// FIX: Check both "active" AND "trialing"
+statuses := []string{
+    string(stripe.SubscriptionStatusActive),
+    string(stripe.SubscriptionStatusTrialing),
+}
+```
+
+**Key insight**: The AI knew to check for `trialing` status because TaskWing had captured the decision that "new users get 3-day trials" — context that would otherwise require re-reading docs or asking the developer.
+
+### The Complete Workflow (Same Session)
+
+After identifying the bug, the AI continued to **implement the fix** — still context-aware:
+
+```
+1. Recall  → "subscription stripe checkout duplicate trial"
+2. Check   → Found backend-go/internal/subscriptions/README.md
+3. Implement → Modified service.go:125-188
+4. Verify  → go build, go vet (passed)
+5. Document → Updated README with new feature
+6. Summary → Generated change table for review
+```
+
+| Step | What TaskWing Provided |
+|------|------------------------|
+| Before coding | Architecture: `handler.go → service.go → model.go` |
+| During fix | Constraint: "Monetization Strategy Hardening - strict Stripe trials" |
+| After fix | Context for documentation update |
+
+**The AI didn't just find the bug — it fixed it, verified it, and documented it, all while respecting the codebase's architectural decisions.**
+
+---
+
 ## Real-World Example: "Add a new API endpoint"
 
 | Step | Without TaskWing | With TaskWing |
@@ -113,6 +194,48 @@ TaskWing creates a **persistent knowledge graph** of your codebase that AI assis
 | **Monthly AI cost (active dev)** | Higher | ~50-70% lower |
 | **Onboarding time** | Days-weeks | Hours |
 | **Knowledge loss on turnover** | High | Low (persisted) |
+
+---
+
+## Key Capability: Mid-Conversation Recall
+
+**This is what makes TaskWing different from "chat with your codebase" tools.**
+
+Traditional AI assistants require you to front-load context. TaskWing enables **dynamic context injection** — the AI can recall relevant knowledge *during* a conversation as new questions arise.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    TRADITIONAL AI FLOW                          │
+│                                                                  │
+│   Start ──► Load context ──► Work ──► Need more? ──► Start over │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    TASKWING FLOW                                 │
+│                                                                  │
+│   Start ──► Work ──► Need context? ──► Recall ──► Continue      │
+│                            │                                     │
+│                            └──► AI decides WHEN to fetch context │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why This Matters
+
+| Scenario | Without Mid-Conversation Recall | With TaskWing |
+|----------|--------------------------------|---------------|
+| Debugging takes unexpected turn | "Hold on, let me re-read the docs..." | AI recalls relevant constraints automatically |
+| Customer issue spans multiple systems | Manually cross-reference | AI queries `"subscription stripe trial"` mid-investigation |
+| Planning reveals unknown constraint | Start over with more context | AI pulls constraint on demand |
+
+### Real Example (from production use)
+
+During a subscription bug investigation, the AI:
+1. Started investigating Stripe logs
+2. **Mid-conversation**: Called `recall("subscription stripe checkout duplicate trial")`
+3. Received monetization strategy decisions and trial logic
+4. Used that context to identify the root cause
+
+The developer never had to stop and manually provide context. The AI knew when it needed more information and fetched it.
 
 ---
 

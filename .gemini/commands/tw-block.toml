@@ -1,0 +1,13 @@
+description = "Mark current TaskWing task as blocked"
+
+prompt = """Execute these steps:
+
+1. Call MCP tool task_current with: {"session_id": "gemini-session"}
+   If no active task, inform user.
+
+2. Ask user for block reason if not provided.
+
+3. Call MCP tool task_block with:
+   {"task_id": "[task_id]", "reason": "[detailed reason]"}
+
+4. Confirm task is blocked. Suggest /tw-next for next available task."""

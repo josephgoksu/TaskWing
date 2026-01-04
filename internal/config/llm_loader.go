@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -81,8 +80,8 @@ func ResolveAPIKey(provider llm.Provider) string {
 		return perProviderKey
 	}
 
-	// 2) Provider-specific env vars
-	envKey := providerEnvKey(provider)
+	// 2) Provider-specific env vars (centralized in llm.GetEnvValueForProvider)
+	envKey := llm.GetEnvValueForProvider(string(provider))
 
 	// OpenAI: allow legacy key; others: ignore legacy to avoid wrong-key usage.
 	if provider == llm.ProviderOpenAI {
@@ -90,29 +89,7 @@ func ResolveAPIKey(provider llm.Provider) string {
 		if legacyKey != "" {
 			return legacyKey
 		}
-		if envKey != "" {
-			return envKey
-		}
-	} else if envKey != "" {
-		return envKey
 	}
 
-	return ""
-}
-
-func providerEnvKey(provider llm.Provider) string {
-	switch provider {
-	case llm.ProviderOpenAI:
-		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
-	case llm.ProviderAnthropic:
-		return strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
-	case llm.ProviderGemini:
-		key := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-		if key == "" {
-			key = strings.TrimSpace(os.Getenv("GOOGLE_API_KEY"))
-		}
-		return key
-	default:
-		return ""
-	}
+	return envKey
 }

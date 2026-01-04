@@ -115,7 +115,7 @@ func runConfigSet(key, value string) error {
 
 	case "llm.provider", "llm.model":
 		fmt.Println("Use 'taskwing llm use <provider/model>' instead.")
-		fmt.Println("Example: taskwing llm use openai/gpt-4o")
+		fmt.Println("Example: taskwing llm use openai/gpt-5-mini")
 		return nil
 
 	default:

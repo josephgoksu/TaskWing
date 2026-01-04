@@ -9,8 +9,8 @@ func TestGetPricing(t *testing.T) {
 		wantProvider string
 	}{
 		{"gpt-5-mini", false, "OpenAI"},
-		{"gpt-5-mini-2025-08-07", false, "OpenAI"},
-		{"claude-3-5-sonnet-latest", false, "Anthropic"},
+		{"o3", false, "OpenAI"},
+		{"claude-sonnet-4-5", false, "Anthropic"},
 		{"gemini-2.0-flash", false, "Google"},
 		{"unknown-model", true, ""},
 	}
@@ -76,9 +76,9 @@ func TestCalculateCost(t *testing.T) {
 		outputTokens int
 		wantCost     float64
 	}{
-		{"gpt-5-mini", 1000000, 0, 0.22},            // 1M input at $0.22/1M
-		{"gpt-5-mini", 0, 1000000, 1.80},            // 1M output at $1.80/1M
-		{"gpt-5-mini", 500000, 500000, 0.11 + 0.90}, // Half each
+		{"gpt-5-mini", 1000000, 0, 0.25},            // 1M input at $0.25/1M
+		{"gpt-5-mini", 0, 1000000, 2.00},            // 1M output at $2.00/1M
+		{"gpt-5-mini", 500000, 500000, 0.125 + 1.0}, // Half each
 		{"unknown-model", 1000000, 1000000, 0},      // Unknown returns 0
 	}
 

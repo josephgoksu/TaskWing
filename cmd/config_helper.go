@@ -142,7 +142,7 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	}
 
 	if requiresKey && apiKey == "" {
-		return llm.Config{}, fmt.Errorf("API key required for %s: use --api-key, set config 'llm.apiKeys.%s', or set env var (%s)", provider, provider, getEnvVarName(llmProvider))
+		return llm.Config{}, fmt.Errorf("API key required for %s: use --api-key, set config 'llm.apiKeys.%s', or set env var (%s)", provider, provider, llm.GetEnvVarForProvider(string(llmProvider)))
 	}
 
 	// 4. Base URL (Ollama)
@@ -171,18 +171,4 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		BaseURL:        ollamaURL,
 		ThinkingBudget: thinkingBudget,
 	}, nil
-}
-
-// getEnvVarName returns the environment variable name for a provider's API key
-func getEnvVarName(provider llm.Provider) string {
-	switch provider {
-	case llm.ProviderOpenAI:
-		return "OPENAI_API_KEY"
-	case llm.ProviderAnthropic:
-		return "ANTHROPIC_API_KEY"
-	case llm.ProviderGemini:
-		return "GEMINI_API_KEY"
-	default:
-		return ""
-	}
 }

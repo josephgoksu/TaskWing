@@ -15,7 +15,7 @@ Extract from the response:
 - acceptance_criteria
 - suggested_recall_queries
 
-If no task returned, inform user: "No pending tasks. Use 'tw plan list' to check plan status."
+If no task returned, inform user: "No pending tasks. Use 'taskwing plan list' to check plan status."
 
 ## Step 2: Fetch Scope-Relevant Context
 Call MCP tool `recall` with query based on task scope:

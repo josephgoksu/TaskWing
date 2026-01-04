@@ -1,0 +1,13 @@
+description = "Show current TaskWing task status"
+
+prompt = """Execute these steps:
+
+1. Call MCP tool task_current with: {"session_id": "gemini-session"}
+   If no active task, tell user to run /tw-next.
+
+2. Call MCP tool recall with: {"query": "[task.scope] constraints patterns"}
+
+3. Display task status including:
+   - Task ID, title, priority
+   - Acceptance criteria
+   - Relevant constraints and patterns"""

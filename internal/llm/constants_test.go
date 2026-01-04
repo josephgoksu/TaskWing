@@ -9,25 +9,29 @@ func TestInferProviderFromModel(t *testing.T) {
 		wantProvider string
 		wantOk       bool
 	}{
-		// OpenAI models
+		// OpenAI models (current)
 		{"gpt-5-mini", "gpt-5-mini", ProviderOpenAI, true},
-		{"gpt-5-mini dated", "gpt-5-mini-2025-08-07", ProviderOpenAI, true},
-		{"gpt-4o", "gpt-4o", ProviderOpenAI, true},
-		{"gpt-4o-mini", "gpt-4o-mini", ProviderOpenAI, true},
+		{"gpt-5", "gpt-5", ProviderOpenAI, true},
+		{"o3", "o3", ProviderOpenAI, true},
+		{"o4-mini", "o4-mini", ProviderOpenAI, true},
+		{"gpt-4.1", "gpt-4.1", ProviderOpenAI, true},
+		// Legacy OpenAI (prefix inference should still work)
+		{"gpt-4o legacy", "gpt-4o", ProviderOpenAI, true},
 		{"o1 model", "o1-preview", ProviderOpenAI, true},
-		{"o3 model", "o3-mini", ProviderOpenAI, true},
 
-		// Anthropic models
-		{"claude-3-5-sonnet-latest", "claude-3-5-sonnet-latest", ProviderAnthropic, true},
-		{"claude-3-5-sonnet dated", "claude-3-5-sonnet-20241022", ProviderAnthropic, true},
-		{"claude-3-opus", "claude-3-opus-latest", ProviderAnthropic, true},
-		{"claude-3-haiku", "claude-3-haiku-20240307", ProviderAnthropic, true},
+		// Anthropic models (current)
+		{"claude-sonnet-4-5", "claude-sonnet-4-5", ProviderAnthropic, true},
+		{"claude-opus-4-5", "claude-opus-4-5", ProviderAnthropic, true},
+		{"claude-haiku-4-5", "claude-haiku-4-5", ProviderAnthropic, true},
+		// Legacy Claude (prefix inference should still work)
+		{"claude-3-opus legacy", "claude-3-opus-latest", ProviderAnthropic, true},
 
-		// Gemini models
+		// Gemini models (current)
 		{"gemini-2.0-flash", "gemini-2.0-flash", ProviderGemini, true},
 		{"gemini-2.5-pro", "gemini-2.5-pro", ProviderGemini, true},
-		{"gemini-3-flash-preview", "gemini-3-flash-preview", ProviderGemini, true},
-		{"gemini-1.5-pro", "gemini-1.5-pro", ProviderGemini, true},
+		{"gemini-3-pro-preview", "gemini-3-pro-preview", ProviderGemini, true},
+		// Legacy Gemini (prefix inference should still work)
+		{"gemini-1.5-pro legacy", "gemini-1.5-pro", ProviderGemini, true},
 
 		// Ollama models (prefix-based)
 		{"llama3.2", "llama3.2", ProviderOllama, true},

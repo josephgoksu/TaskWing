@@ -772,6 +772,135 @@ tw task update TASK_ID --status blocked
 ` + "```" + `
 `,
 		},
+		{
+			name: "tw-plan.md",
+			content: `# Create Development Plan with Goal
+
+**Usage:** ` + "`/tw-plan <your goal>`" + `
+
+**Example:** ` + "`/tw-plan Add Stripe billing integration`" + `
+
+This command creates a development plan through an interactive clarification flow.
+
+Execute these steps IN ORDER. Do not skip any step.
+
+## Step 0: Check for Goal
+
+**If $ARGUMENTS is empty or not provided:**
+Ask the user: "What do you want to build? Please describe your goal."
+Wait for user response, then use that as the goal.
+
+**If $ARGUMENTS is provided:**
+Use $ARGUMENTS as the goal and proceed to Step 1.
+
+## Step 1: Initial Clarification
+
+Call MCP tool ` + "`plan_clarify`" + ` with the user's goal:
+` + "```json" + `
+{"goal": "[goal from Step 0]"}
+` + "```" + `
+
+Extract from the response:
+- ` + "`questions`" + ` (array of clarifying questions)
+- ` + "`goal_summary`" + ` (concise one-liner)
+- ` + "`enriched_goal`" + ` (full technical specification)
+- ` + "`is_ready_to_plan`" + ` (boolean)
+- ` + "`context_used`" + ` (knowledge graph context retrieved)
+
+If the response fails, inform the user and suggest running ` + "`taskwing bootstrap`" + ` first.
+
+## Step 2: Ask Clarifying Questions (Loop)
+
+**If ` + "`is_ready_to_plan`" + ` is ` + "`false`" + `:**
+
+Present the questions to the user in this format:
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 GOAL: [goal_summary]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+I need a few clarifications before creating the plan:
+
+1. [Question 1]
+2. [Question 2]
+3. [Question 3]
+
+**Context:** [context_used]
+
+Please answer these questions, or say "auto" to let me answer using the project's architecture.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+Wait for user response.
+
+**If user says "auto" or similar:**
+Call ` + "`plan_clarify`" + ` again with ` + "`auto_answer: true`" + `:
+` + "```json" + `
+{"goal": "$ARGUMENTS", "auto_answer": true}
+` + "```" + `
+
+**If user provides answers:**
+Format answers as JSON and call ` + "`plan_clarify`" + ` again:
+` + "```json" + `
+{
+  "goal": "$ARGUMENTS",
+  "history": "[{\"q\": \"Question 1\", \"a\": \"User answer 1\"}, ...]"
+}
+` + "```" + `
+
+Repeat this step until ` + "`is_ready_to_plan`" + ` is ` + "`true`" + `.
+
+## Step 3: Generate Plan
+
+When ` + "`is_ready_to_plan`" + ` is ` + "`true`" + `, call MCP tool ` + "`plan_generate`" + `:
+` + "```json" + `
+{
+  "goal": "$ARGUMENTS",
+  "enriched_goal": "[enriched_goal from step 2]"
+}
+` + "```" + `
+
+Extract from the response:
+- ` + "`plan_id`" + `
+- ` + "`tasks`" + ` (array of generated tasks)
+- ` + "`hint`" + `
+
+## Step 4: Present Plan Summary
+
+Display the generated plan in this format:
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ PLAN CREATED: [plan_id]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Goal:** [goal]
+
+**Specification:**
+[enriched_goal]
+
+## Generated Tasks
+
+| # | Title | Priority |
+|---|-------|----------|
+| 1 | [Task 1 title] | [priority] |
+| 2 | [Task 2 title] | [priority] |
+...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 Plan saved and set as active.
+
+**Next steps:**
+- Run /tw-next to start working on the first task
+- Or: ` + "`tw plan show [plan_id]`" + ` to view details
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw plan new "Your goal description"
+` + "```" + `
+`,
+		},
 	}
 
 	for _, cmd := range commands {
@@ -1134,6 +1263,31 @@ Display the results organized by:
 - Patterns
 - Constraints
 - Decisions"""
+`,
+		},
+		{
+			name: "tw-plan.toml",
+			content: `description = "Create plan: /tw-plan <goal> (e.g., /tw-plan Add Stripe billing)"
+
+prompt = """Create a development plan. Usage: /tw-plan <your goal>
+
+**Step 0: Get Goal**
+If $ARGUMENTS is empty, ask user: "What do you want to build?"
+Otherwise, use $ARGUMENTS as the goal.
+
+**Step 1: Clarify**
+Call plan_clarify with: {"goal": "[goal]"}
+
+If is_ready_to_plan is false:
+- Present questions to user
+- Wait for answers (user can say "auto" to auto-answer)
+- Call plan_clarify again with history until ready
+
+**Step 2: Generate**
+Call plan_generate with: {"goal": "[goal]", "enriched_goal": "[from clarify]"}
+
+**Step 3: Present**
+Display the plan with task list and suggest /tw-next to begin."""
 `,
 		},
 	}

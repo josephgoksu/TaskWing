@@ -16,9 +16,6 @@ const (
 
 	// ProviderGemini represents the Google Gemini provider
 	ProviderGemini = "gemini"
-
-	// ProviderMistral represents the Mistral provider (not fully supported)
-	ProviderMistral = "mistral"
 )
 
 // Embedding model constants

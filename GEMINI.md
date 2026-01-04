@@ -103,3 +103,21 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 TaskWing exposes a `recall` tool. When working on this feature:
 *   Ensure responses stay within token budgets (500-1000 tokens).
 *   Test with `tw mcp` locally or use `make test-mcp`.
+
+
+### Autonomous Task Execution (Hooks)
+
+TaskWing integrates with Claude Code's hook system for autonomous plan execution:
+
+```bash
+taskwing hook session-init      # Initialize session tracking (SessionStart hook)
+taskwing hook continue-check    # Check if should continue to next task (Stop hook)
+taskwing hook session-end       # Cleanup session (SessionEnd hook)
+taskwing hook status            # View current session state
+```
+
+**Circuit breakers** prevent runaway execution:
+- `--max-tasks=5` - Stop after N tasks for human review
+- `--max-minutes=30` - Stop after N minutes
+
+Configuration in `.claude/settings.json` enables auto-continuation through plans.

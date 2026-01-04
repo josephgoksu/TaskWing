@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
+	"github.com/josephgoksu/TaskWing/internal/agents/planning"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -95,6 +97,42 @@ type TaskBlockParams struct {
 // TaskUnblockParams defines the parameters for the task_unblock tool
 type TaskUnblockParams struct {
 	TaskID string `json:"task_id"` // Required: task to unblock
+}
+
+// PlanClarifyParams defines the parameters for the plan_clarify tool
+type PlanClarifyParams struct {
+	Goal       string `json:"goal"`                  // Required: the user's goal
+	History    string `json:"history,omitempty"`     // Optional: JSON array of previous Q&A [{q, a}, ...]
+	AutoAnswer bool   `json:"auto_answer,omitempty"` // If true, use KG to auto-answer questions
+}
+
+// PlanGenerateParams defines the parameters for the plan_generate tool
+type PlanGenerateParams struct {
+	Goal         string `json:"goal"`          // Required: user's original goal
+	EnrichedGoal string `json:"enriched_goal"` // Required: full technical spec from plan_clarify
+	Save         bool   `json:"save"`          // If true (default), save plan to database
+}
+
+// PlanClarifyResponse is the response from the plan_clarify tool
+type PlanClarifyResponse struct {
+	Success       bool     `json:"success"`
+	Questions     []string `json:"questions,omitempty"`
+	GoalSummary   string   `json:"goal_summary,omitempty"`
+	EnrichedGoal  string   `json:"enriched_goal,omitempty"`
+	IsReadyToPlan bool     `json:"is_ready_to_plan"`
+	ContextUsed   string   `json:"context_used,omitempty"` // Summary of KG context retrieved
+	Message       string   `json:"message,omitempty"`
+}
+
+// PlanGenerateResponse is the response from the plan_generate tool
+type PlanGenerateResponse struct {
+	Success      bool        `json:"success"`
+	PlanID       string      `json:"plan_id,omitempty"`
+	Goal         string      `json:"goal,omitempty"`
+	EnrichedGoal string      `json:"enriched_goal,omitempty"`
+	Tasks        []task.Task `json:"tasks,omitempty"`
+	Message      string      `json:"message,omitempty"`
+	Hint         string      `json:"hint,omitempty"`
 }
 
 // Response DTOs are defined in internal/knowledge/response.go for DRY.
@@ -258,6 +296,24 @@ func runMCPServer(ctx context.Context) error {
 	}
 	mcpsdk.AddTool(server, taskUnblockTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[TaskUnblockParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		return handleTaskUnblock(repo, params.Arguments)
+	})
+
+	// Register plan_clarify tool - refine a goal with clarifying questions
+	planClarifyTool := &mcpsdk.Tool{
+		Name:        "plan_clarify",
+		Description: "Refine a development goal by asking clarifying questions. Call this in a loop until is_ready_to_plan is true. Pass user answers in the history parameter as JSON. When ready, call plan_generate with the enriched_goal.",
+	}
+	mcpsdk.AddTool(server, planClarifyTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[PlanClarifyParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handlePlanClarify(ctx, repo, params.Arguments)
+	})
+
+	// Register plan_generate tool - create a plan with tasks
+	planGenerateTool := &mcpsdk.Tool{
+		Name:        "plan_generate",
+		Description: "Generate a development plan with tasks from a refined goal. Requires enriched_goal from plan_clarify. Saves the plan to the database and sets it as active.",
+	}
+	mcpsdk.AddTool(server, planGenerateTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[PlanGenerateParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handlePlanGenerate(ctx, repo, params.Arguments)
 	})
 
 	// Run the server (stdio transport only)
@@ -599,5 +655,309 @@ func handleTaskUnblock(repo *memory.Repository, params TaskUnblockParams) (*mcps
 		Message: "Task unblocked and returned to pending status.",
 		Task:    unblockedTask,
 		Hint:    "Use task_next or task_start to begin working on this task.",
+	})
+}
+
+// === Plan Creation Handlers ===
+
+// parseQuestionsFromMetadata extracts questions from agent metadata,
+// handling both []string and []any (from JSON unmarshaling).
+func parseQuestionsFromMetadata(metadata map[string]any) []string {
+	// Try direct []string first
+	if questions, ok := metadata["questions"].([]string); ok {
+		return questions
+	}
+	// Handle []any from JSON unmarshaling
+	if qAny, ok := metadata["questions"].([]any); ok {
+		var questions []string
+		for _, q := range qAny {
+			if qs, ok := q.(string); ok {
+				questions = append(questions, qs)
+			}
+		}
+		return questions
+	}
+	return nil
+}
+
+// handlePlanClarify runs the ClarifyingAgent to refine a goal
+func handlePlanClarify(ctx context.Context, repo *memory.Repository, params PlanClarifyParams) (*mcpsdk.CallToolResultFor[any], error) {
+	if params.Goal == "" {
+		return mcpJSONResponse(PlanClarifyResponse{
+			Success: false,
+			Message: "goal is required",
+		})
+	}
+
+	// Load LLM config
+	llmCfg, err := config.LoadLLMConfig()
+	if err != nil {
+		return mcpJSONResponse(PlanClarifyResponse{
+			Success: false,
+			Message: fmt.Sprintf("LLM config error: %v", err),
+		})
+	}
+
+	// Fetch context from knowledge graph
+	ks := knowledge.NewService(repo, llmCfg)
+	contextStr := ""
+	scored, err := ks.Search(ctx, params.Goal, 5)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] KG search failed for plan_clarify: %v\n", err)
+	} else if len(scored) > 0 {
+		var parts []string
+		for _, sn := range scored {
+			parts = append(parts, fmt.Sprintf("[%s] %s: %s", sn.Node.Type, sn.Node.Summary, sn.Node.Content))
+		}
+		contextStr = strings.Join(parts, "\n\n")
+	}
+
+	// Create and run ClarifyingAgent
+	clarifyingAgent := planning.NewClarifyingAgent(llmCfg)
+	defer func() { _ = clarifyingAgent.Close() }()
+
+	input := core.Input{
+		ExistingContext: map[string]any{
+			"goal":    params.Goal,
+			"history": params.History,
+			"context": contextStr,
+		},
+	}
+
+	output, err := clarifyingAgent.Run(ctx, input)
+	if err != nil {
+		return mcpJSONResponse(PlanClarifyResponse{
+			Success: false,
+			Message: fmt.Sprintf("Clarifying agent failed: %v", err),
+		})
+	}
+	if output.Error != nil {
+		return mcpJSONResponse(PlanClarifyResponse{
+			Success: false,
+			Message: fmt.Sprintf("Clarifying agent error: %v", output.Error),
+		})
+	}
+
+	// Parse agent output
+	if len(output.Findings) == 0 {
+		return mcpJSONResponse(PlanClarifyResponse{
+			Success: false,
+			Message: "No findings from clarifying agent",
+		})
+	}
+
+	finding := output.Findings[0]
+	questions := parseQuestionsFromMetadata(finding.Metadata)
+	goalSummary, _ := finding.Metadata["goal_summary"].(string)
+	enrichedGoal, _ := finding.Metadata["enriched_goal"].(string)
+	isReady, _ := finding.Metadata["is_ready_to_plan"].(bool)
+
+	// If auto_answer and we have questions, try to answer them
+	if params.AutoAnswer && len(questions) > 0 && !isReady {
+		answer, err := clarifyingAgent.AutoAnswer(ctx, enrichedGoal, questions, contextStr)
+		if err == nil && answer != "" {
+			enrichedGoal = answer
+			// Re-run to check if now ready
+			input.ExistingContext["history"] = fmt.Sprintf("%s\n\nAuto-answered questions with:\n%s", params.History, answer)
+			output2, err := clarifyingAgent.Run(ctx, input)
+			if err == nil && len(output2.Findings) > 0 {
+				finding2 := output2.Findings[0]
+				questions = parseQuestionsFromMetadata(finding2.Metadata)
+				goalSummary, _ = finding2.Metadata["goal_summary"].(string)
+				enrichedGoal, _ = finding2.Metadata["enriched_goal"].(string)
+				isReady, _ = finding2.Metadata["is_ready_to_plan"].(bool)
+			}
+		}
+	}
+
+	contextSummary := ""
+	if len(scored) > 0 {
+		contextSummary = fmt.Sprintf("Retrieved %d relevant nodes from knowledge graph", len(scored))
+	}
+
+	return mcpJSONResponse(PlanClarifyResponse{
+		Success:       true,
+		Questions:     questions,
+		GoalSummary:   goalSummary,
+		EnrichedGoal:  enrichedGoal,
+		IsReadyToPlan: isReady,
+		ContextUsed:   contextSummary,
+	})
+}
+
+// handlePlanGenerate runs the PlanningAgent to create tasks
+func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params PlanGenerateParams) (*mcpsdk.CallToolResultFor[any], error) {
+	if params.Goal == "" {
+		return mcpJSONResponse(PlanGenerateResponse{
+			Success: false,
+			Message: "goal is required",
+		})
+	}
+	if params.EnrichedGoal == "" {
+		return mcpJSONResponse(PlanGenerateResponse{
+			Success: false,
+			Message: "enriched_goal is required (run plan_clarify first)",
+		})
+	}
+
+	// Load LLM config
+	llmCfg, err := config.LoadLLMConfig()
+	if err != nil {
+		return mcpJSONResponse(PlanGenerateResponse{
+			Success: false,
+			Message: fmt.Sprintf("LLM config error: %v", err),
+		})
+	}
+
+	// Fetch context from knowledge graph
+	ks := knowledge.NewService(repo, llmCfg)
+	contextStr := ""
+	scored, err := ks.Search(ctx, params.EnrichedGoal, 5)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] KG search failed for plan_generate: %v\n", err)
+	} else if len(scored) > 0 {
+		var parts []string
+		for _, sn := range scored {
+			parts = append(parts, fmt.Sprintf("[%s] %s: %s", sn.Node.Type, sn.Node.Summary, sn.Node.Content))
+		}
+		contextStr = strings.Join(parts, "\n\n")
+	}
+
+	// Create and run PlanningAgent
+	planningAgent := planning.NewPlanningAgent(llmCfg)
+	defer func() { _ = planningAgent.Close() }()
+
+	input := core.Input{
+		ExistingContext: map[string]any{
+			"goal":          params.Goal,
+			"enriched_goal": params.EnrichedGoal,
+			"context":       contextStr,
+		},
+	}
+
+	output, err := planningAgent.Run(ctx, input)
+	if err != nil {
+		return mcpJSONResponse(PlanGenerateResponse{
+			Success: false,
+			Message: fmt.Sprintf("Planning agent failed: %v", err),
+		})
+	}
+	if output.Error != nil {
+		return mcpJSONResponse(PlanGenerateResponse{
+			Success: false,
+			Message: fmt.Sprintf("Planning agent error: %v", output.Error),
+		})
+	}
+
+	// Parse tasks from output
+	if len(output.Findings) == 0 {
+		return mcpJSONResponse(PlanGenerateResponse{
+			Success: false,
+			Message: "No findings from planning agent",
+		})
+	}
+
+	finding := output.Findings[0]
+	tasksRaw, _ := finding.Metadata["tasks"].([]planning.PlanningTask)
+
+	// Handle tasks as []any (JSON unmarshaling)
+	var tasks []task.Task
+	if tasksRaw != nil {
+		for _, pt := range tasksRaw {
+			t := task.Task{
+				Title:              pt.Title,
+				Description:        pt.Description,
+				AcceptanceCriteria: pt.AcceptanceCriteria,
+				ValidationSteps:    pt.ValidationSteps,
+				Priority:           pt.Priority,
+				Status:             task.StatusPending,
+				AssignedAgent:      pt.AssignedAgent,
+			}
+			t.EnrichAIFields() // Populate Scope, Keywords, SuggestedRecallQueries
+			tasks = append(tasks, t)
+		}
+	} else if tasksAny, ok := finding.Metadata["tasks"].([]any); ok {
+		for _, t := range tasksAny {
+			if tm, ok := t.(map[string]any); ok {
+				title, _ := tm["title"].(string)
+				desc, _ := tm["description"].(string)
+				priority, _ := tm["priority"].(float64)
+				agent, _ := tm["assigned_agent"].(string)
+
+				var criteria []string
+				if ac, ok := tm["acceptance_criteria"].([]any); ok {
+					for _, c := range ac {
+						if cs, ok := c.(string); ok {
+							criteria = append(criteria, cs)
+						}
+					}
+				}
+
+				var validation []string
+				if vs, ok := tm["validation_steps"].([]any); ok {
+					for _, v := range vs {
+						if vs, ok := v.(string); ok {
+							validation = append(validation, vs)
+						}
+					}
+				}
+
+				t := task.Task{
+					Title:              title,
+					Description:        desc,
+					AcceptanceCriteria: criteria,
+					ValidationSteps:    validation,
+					Priority:           int(priority),
+					Status:             task.StatusPending,
+					AssignedAgent:      agent,
+				}
+				t.EnrichAIFields() // Populate Scope, Keywords, SuggestedRecallQueries
+				tasks = append(tasks, t)
+			}
+		}
+	}
+
+	if len(tasks) == 0 {
+		return mcpJSONResponse(PlanGenerateResponse{
+			Success: false,
+			Message: "No tasks generated",
+		})
+	}
+
+	// Always save the plan. The Save param in PlanGenerateParams is reserved
+	// for future use but currently ignored because JSON-RPC in Go cannot
+	// distinguish \"save: false\" from \"save field omitted\".
+
+	var planID string
+	{
+		// Create plan
+		plan := &task.Plan{
+			Goal:         params.Goal,
+			EnrichedGoal: params.EnrichedGoal,
+			Status:       task.PlanStatusActive,
+			Tasks:        tasks,
+		}
+
+		if err := repo.CreatePlan(plan); err != nil {
+			return mcpJSONResponse(PlanGenerateResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to save plan: %v", err),
+			})
+		}
+		planID = plan.ID
+
+		// Set as active plan (using the helper from plan.go)
+		if err := setActivePlan(planID); err != nil {
+			fmt.Fprintf(os.Stderr, "[WARN] Failed to set active plan: %v\n", err)
+		}
+	}
+
+	return mcpJSONResponse(PlanGenerateResponse{
+		Success:      true,
+		PlanID:       planID,
+		Goal:         params.Goal,
+		EnrichedGoal: params.EnrichedGoal,
+		Tasks:        tasks,
+		Hint:         "Use task_next to begin working on the first task.",
 	})
 }

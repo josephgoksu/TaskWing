@@ -4,9 +4,9 @@
       {
         "hooks": [
           {
-            "command": "tw hook session-end",
-            "timeout": 5,
-            "type": "command"
+            "type": "command",
+            "command": "taskwing hook session-end",
+            "timeout": 5
           }
         ]
       }
@@ -15,9 +15,9 @@
       {
         "hooks": [
           {
-            "command": "tw hook session-init",
-            "timeout": 10,
-            "type": "command"
+            "type": "command",
+            "command": "taskwing hook session-init",
+            "timeout": 10
           }
         ]
       }
@@ -26,9 +26,9 @@
       {
         "hooks": [
           {
-            "command": "tw hook continue-check --max-tasks=5 --max-minutes=30",
-            "timeout": 15,
-            "type": "command"
+            "type": "command",
+            "command": "taskwing hook continue-check --max-tasks=5 --max-minutes=30",
+            "timeout": 15
           }
         ]
       }
