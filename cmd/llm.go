@@ -116,14 +116,26 @@ func showAPIKeyStatus(provider, key string) {
 func runLLMUse(spec string) error {
 	var provider, model string
 
-	// Parse provider/model or just provider
+	// Support both / and : as separators
+	spec = strings.Replace(spec, ":", "/", 1)
+
+	// Parse provider/model or try to infer provider from model name
 	if strings.Contains(spec, "/") {
 		parts := strings.SplitN(spec, "/", 2)
 		provider = strings.ToLower(parts[0])
 		model = parts[1]
 	} else {
-		provider = strings.ToLower(spec)
-		model = llm.DefaultModelForProvider(provider)
+		// Try to infer provider from model name
+		inferredProvider, ok := llm.InferProviderFromModel(spec)
+		if ok {
+			provider = inferredProvider
+			model = spec
+			fmt.Printf("ℹ️  Detected provider: %s\n", provider)
+		} else {
+			// Assume it's a provider name, use default model
+			provider = strings.ToLower(spec)
+			model = llm.DefaultModelForProvider(provider)
+		}
 	}
 
 	// Validate provider
@@ -132,6 +144,9 @@ func runLLMUse(spec string) error {
 		fmt.Printf("❌ Unknown provider: %s\n", provider)
 		fmt.Println()
 		fmt.Println("Available providers: openai, anthropic, gemini, ollama")
+		fmt.Println()
+		fmt.Println("Usage: taskwing llm use <provider>/<model>")
+		fmt.Println("   or: taskwing llm use <model>  (auto-detect provider)")
 		return err
 	}
 
@@ -149,9 +164,12 @@ func runLLMUse(spec string) error {
 			fmt.Println("Set via: export GEMINI_API_KEY='your-key'")
 		}
 		fmt.Println()
-		fmt.Println("Or add to ~/.taskwing/config.yaml:")
-		fmt.Printf("  llm:\n    apiKeys:\n      %s: your-key\n", provider)
-		return fmt.Errorf("API key required for %s", provider)
+		// Still save the config so the provider is set
+		if err := config.SaveGlobalLLMConfigWithModel(provider, model, ""); err != nil {
+			return fmt.Errorf("save config: %w", err)
+		}
+		fmt.Printf("✅ Switched to %s/%s (API key needed before use)\n", provider, model)
+		return nil
 	}
 
 	// Save configuration
