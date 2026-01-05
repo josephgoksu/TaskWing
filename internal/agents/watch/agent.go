@@ -410,14 +410,6 @@ type AgentDispatcher struct {
 	mu              sync.Mutex
 }
 
-// NewAgentDispatcher creates a new agent dispatcher
-func NewAgentDispatcher(cfg llm.Config, basePath string) *AgentDispatcher {
-	return &AgentDispatcher{
-		llmConfig: cfg,
-		basePath:  basePath,
-	}
-}
-
 // NewAgentDispatcherWithLog creates a dispatcher with activity logging
 func NewAgentDispatcherWithLog(cfg llm.Config, basePath string, log *ActivityLog, ks *knowledge.Service) *AgentDispatcher {
 	return &AgentDispatcher{

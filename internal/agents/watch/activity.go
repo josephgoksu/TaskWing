@@ -93,15 +93,6 @@ func (l *ActivityLog) LogFinding(agent string, title string, findingType string)
 	})
 }
 
-// LogError records an error
-func (l *ActivityLog) LogError(source string, err error) {
-	l.addEntry(ActivityEntry{
-		Type:    "error",
-		Agent:   source,
-		Message: err.Error(),
-	})
-}
-
 // addEntry adds an entry to the log
 func (l *ActivityLog) addEntry(entry ActivityEntry) {
 	l.mu.Lock()
@@ -139,26 +130,6 @@ func (l *ActivityLog) GetRecent(count int) []ActivityEntry {
 	copy(result, l.entries[start:])
 
 	// Return in reverse order (newest first)
-	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
-		result[i], result[j] = result[j], result[i]
-	}
-
-	return result
-}
-
-// GetSince returns entries since a given timestamp
-func (l *ActivityLog) GetSince(since time.Time) []ActivityEntry {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	var result []ActivityEntry
-	for _, e := range l.entries {
-		if e.Timestamp.After(since) {
-			result = append(result, e)
-		}
-	}
-
-	// Reverse for newest first
 	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
 		result[i], result[j] = result[j], result[i]
 	}
@@ -213,13 +184,6 @@ func (l *ActivityLog) Clear() {
 	l.entries = make([]ActivityEntry, 0)
 	l.mu.Unlock()
 	l.save()
-}
-
-// Count returns the total number of entries
-func (l *ActivityLog) Count() int {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return len(l.entries)
 }
 
 // Summary returns a summary of activity

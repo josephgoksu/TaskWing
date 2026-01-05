@@ -41,8 +41,18 @@ var configGetCmd = &cobra.Command{
 	},
 }
 
+// configCmd is the parent config command
+var configCmd = &cobra.Command{
+	Use:   "config",
+	Short: "Manage TaskWing configuration",
+	Long:  `View and manage TaskWing configuration settings.`,
+}
+
 func init() {
-	// Add subcommands to existing configCmd (defined in telemetry_config.go)
+	// Add config command to root
+	rootCmd.AddCommand(configCmd)
+
+	// Add subcommands
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configGetCmd)

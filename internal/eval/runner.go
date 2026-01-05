@@ -59,12 +59,6 @@ func NewRunner(workDir string) *Runner {
 	}
 }
 
-// WithBinary sets the path to the tw binary.
-func (r *Runner) WithBinary(binary string) *Runner {
-	r.Binary = binary
-	return r
-}
-
 // WithTimeout sets the per-command timeout.
 func (r *Runner) WithTimeout(timeout time.Duration) *Runner {
 	r.Timeout = timeout
@@ -152,52 +146,6 @@ func (r *Runner) ExecuteWithInput(ctx context.Context, stdin string, args ...str
 	return result, nil
 }
 
-// ExecuteRaw runs an arbitrary shell command (not just tw).
-// Use sparingly - prefer Execute for tw commands.
-func (r *Runner) ExecuteRaw(ctx context.Context, command string) (Result, error) {
-	start := time.Now()
-
-	if r.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.Timeout)
-		defer cancel()
-	}
-
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
-	cmd.Dir = r.WorkDir
-	cmd.Env = os.Environ()
-	if len(r.Env) > 0 {
-		cmd.Env = append(cmd.Env, r.Env...)
-	}
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	err := cmd.Run()
-	duration := time.Since(start)
-
-	result := Result{
-		Stdout:   stdoutBuf.String(),
-		Stderr:   stderrBuf.String(),
-		Duration: duration,
-		Command:  command,
-	}
-
-	if cmd.ProcessState != nil {
-		result.ExitCode = cmd.ProcessState.ExitCode()
-	}
-
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return result, fmt.Errorf("command timed out after %v: %s", r.Timeout, command)
-		}
-		return result, fmt.Errorf("command failed (exit %d): %w", result.ExitCode, err)
-	}
-
-	return result, nil
-}
-
 // Combined returns stdout + stderr combined.
 func (r Result) Combined() string {
 	if r.Stderr == "" {
@@ -207,9 +155,4 @@ func (r Result) Combined() string {
 		return r.Stderr
 	}
 	return r.Stdout + "\n" + r.Stderr
-}
-
-// Success returns true if the command exited with code 0.
-func (r Result) Success() bool {
-	return r.ExitCode == 0
 }

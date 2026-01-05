@@ -30,17 +30,6 @@ func NewAgent(basePath string) *Agent {
 	return &Agent{basePath: basePath, verbose: false}
 }
 
-// SetVerbose enables detailed logging of verification steps.
-func (v *Agent) SetVerbose(verbose bool) { v.verbose = verbose }
-
-// Name returns the agent identifier.
-func (v *Agent) Name() string { return "verification" }
-
-// Description returns the agent description.
-func (v *Agent) Description() string {
-	return "Validates findings by checking evidence against actual codebase"
-}
-
 // VerifyFindings validates all provided findings and updates their verification status.
 func (v *Agent) VerifyFindings(ctx context.Context, findings []core.Finding) []core.Finding {
 	result := make([]core.Finding, len(findings))
@@ -71,11 +60,6 @@ func (v *Agent) VerifyFindings(ctx context.Context, findings []core.Finding) []c
 	}
 
 	return result
-}
-
-// VerifySingleFinding validates a single finding's evidence.
-func (v *Agent) VerifySingleFinding(finding *core.Finding) core.VerificationResult {
-	return v.verifyFinding(finding)
 }
 
 func (v *Agent) verifyFinding(finding *core.Finding) core.VerificationResult {
