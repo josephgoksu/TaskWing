@@ -289,9 +289,26 @@ Respond with PROPER JSON only. Do not use spaces in decimal numbers (e.g. use 0.
 
 // PromptTemplateCodeAgent is the template for the code analysis agent.
 // Use with Eino ChatTemplate (Go Template format).
-const PromptTemplateCodeAgent = `You are a software architect analyzing source code to identify architectural patterns, key decisions, and implementation details.
+const PromptTemplateCodeAgent = `You are a software architect analyzing {{if .IsIncremental}}UPDATES to{{else}}source code of{{end}} a project to identify architectural patterns, key decisions, and implementation details.
 
+{{if .IsIncremental}}
+## INCREMENTAL ANALYSIS
+Focus on the provided source files which have recently changed. Identify:
+1. New architectural patterns introduced
+2. Modifications to existing decisions
+3. New implementation details in these files
+
+{{if .ExistingKnowledge}}
+## EXISTING KNOWLEDGE CONTEXT
+The following architectural knowledge is currently recorded for these files.
+Review it to see if the recent changes contradict, update, or resolve these items.
+START YOUR FINDING WITH "[UPDATE]" if you are modifying an existing decision.
+
+{{.ExistingKnowledge}}
+{{end}}
+{{else}}
 Examine the code structure, patterns, and implementation choices. Focus on:
+{{end}}
 
 ## ARCHITECTURAL ANALYSIS
 1. **Architectural patterns**: How is the code organized? (MVC, Clean Architecture, Hexagonal, etc.)

@@ -246,7 +246,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Reuse err variable or shadow it. Using assignment since err exists.
-	if err := ingestSvc.IngestFindings(r.Context(), findings, false); err != nil {
+	if err := ingestSvc.IngestFindings(r.Context(), findings, nil, false); err != nil {
 		http.Error(w, fmt.Sprintf("ingestion failed: %v", err), http.StatusInternalServerError)
 		return
 	}

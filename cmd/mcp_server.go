@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/planning"
@@ -59,7 +60,8 @@ func init() {
 
 // ProjectContextParams defines the parameters for the recall tool
 type ProjectContextParams struct {
-	Query string `json:"query,omitempty"`
+	Query  string `json:"query,omitempty"`
+	Answer bool   `json:"answer,omitempty"` // If true, generate RAG answer using LLM
 }
 
 // TaskNextParams defines the parameters for the task_next tool
@@ -86,17 +88,6 @@ type TaskCompleteParams struct {
 	TaskID        string   `json:"task_id"`                  // Required: task to complete
 	Summary       string   `json:"summary,omitempty"`        // Optional: what was accomplished
 	FilesModified []string `json:"files_modified,omitempty"` // Optional: files that were changed
-}
-
-// TaskBlockParams defines the parameters for the task_block tool
-type TaskBlockParams struct {
-	TaskID string `json:"task_id"` // Required: task to block
-	Reason string `json:"reason"`  // Required: why the task is blocked
-}
-
-// TaskUnblockParams defines the parameters for the task_unblock tool
-type TaskUnblockParams struct {
-	TaskID string `json:"task_id"` // Required: task to unblock
 }
 
 // PlanClarifyParams defines the parameters for the plan_clarify tool
@@ -133,6 +124,22 @@ type PlanGenerateResponse struct {
 	Tasks        []task.Task `json:"tasks,omitempty"`
 	Message      string      `json:"message,omitempty"`
 	Hint         string      `json:"hint,omitempty"`
+}
+
+// RememberParams defines the parameters for the remember tool
+type RememberParams struct {
+	Content string `json:"content"`        // Required: knowledge to store
+	Type    string `json:"type,omitempty"` // Optional: decision, feature, plan, note
+}
+
+// RememberResponse is the response from the remember tool
+type RememberResponse struct {
+	Success      bool   `json:"success"`
+	ID           string `json:"id,omitempty"`
+	Type         string `json:"type,omitempty"`
+	Summary      string `json:"summary,omitempty"`
+	HasEmbedding bool   `json:"has_embedding"`
+	Message      string `json:"message,omitempty"`
 }
 
 // Response DTOs are defined in internal/knowledge/response.go for DRY.
@@ -223,12 +230,10 @@ func runMCPServer(ctx context.Context) error {
 	// Register recall tool - retrieves stored codebase knowledge for AI context
 	tool := &mcpsdk.Tool{
 		Name:        "recall",
-		Description: "Retrieve codebase architecture knowledge: decisions, patterns, constraints, and features. Returns overview by default. Use {\"query\":\"search term\"} for semantic search (e.g., {\"query\":\"authentication\"} or {\"query\":\"error handling\"}).",
+		Description: "Retrieve codebase architecture knowledge: decisions, patterns, constraints, and features. Returns overview by default. Use {\"query\":\"search term\"} for semantic search. Add {\"answer\":true} to get a synthesized RAG answer from the LLM based on retrieved context.",
 	}
 
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
-		query := strings.TrimSpace(params.Arguments.Query)
-
 		// Node-based system only
 		nodes, err := repo.ListNodes("")
 		if err != nil {
@@ -241,7 +246,7 @@ func runMCPServer(ctx context.Context) error {
 				},
 			}, nil
 		}
-		return handleNodeContext(ctx, repo, query, nodes)
+		return handleNodeContext(ctx, repo, params.Arguments, nodes)
 	})
 
 	// Register task_next tool - get the next pending task from a plan
@@ -280,24 +285,6 @@ func runMCPServer(ctx context.Context) error {
 		return handleTaskComplete(repo, params.Arguments)
 	})
 
-	// Register task_block tool - mark a task as blocked
-	taskBlockTool := &mcpsdk.Tool{
-		Name:        "task_block",
-		Description: "Mark a task as blocked with a reason. Use this when you cannot proceed due to missing information, dependencies, or external factors. The task can be unblocked later.",
-	}
-	mcpsdk.AddTool(server, taskBlockTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[TaskBlockParams]) (*mcpsdk.CallToolResultFor[any], error) {
-		return handleTaskBlock(repo, params.Arguments)
-	})
-
-	// Register task_unblock tool - unblock a blocked task
-	taskUnblockTool := &mcpsdk.Tool{
-		Name:        "task_unblock",
-		Description: "Unblock a previously blocked task, returning it to pending status. Use this when the blocker has been resolved.",
-	}
-	mcpsdk.AddTool(server, taskUnblockTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[TaskUnblockParams]) (*mcpsdk.CallToolResultFor[any], error) {
-		return handleTaskUnblock(repo, params.Arguments)
-	})
-
 	// Register plan_clarify tool - refine a goal with clarifying questions
 	planClarifyTool := &mcpsdk.Tool{
 		Name:        "plan_clarify",
@@ -316,6 +303,15 @@ func runMCPServer(ctx context.Context) error {
 		return handlePlanGenerate(ctx, repo, params.Arguments)
 	})
 
+	// Register remember tool - add knowledge to project memory
+	rememberTool := &mcpsdk.Tool{
+		Name:        "remember",
+		Description: "Add knowledge to project memory. Use this to persist decisions, patterns, or insights discovered during the session. Content will be classified automatically using AI.",
+	}
+	mcpsdk.AddTool(server, rememberTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[RememberParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handleRemember(ctx, repo, params.Arguments)
+	})
+
 	// Run the server (stdio transport only)
 	if err := server.Run(ctx, mcpsdk.NewStdioTransport()); err != nil {
 		return fmt.Errorf("MCP server failed: %w", err)
@@ -326,14 +322,16 @@ func runMCPServer(ctx context.Context) error {
 
 // handleNodeContext returns context using the knowledge.Service (same as CLI).
 // This ensures MCP and CLI use identical search logic with zero drift.
-func handleNodeContext(ctx context.Context, repo *memory.Repository, query string, nodes []memory.Node) (*mcpsdk.CallToolResultFor[any], error) {
+func handleNodeContext(ctx context.Context, repo *memory.Repository, params ProjectContextParams, nodes []memory.Node) (*mcpsdk.CallToolResultFor[any], error) {
 	// Use knowledge.Service.GetProjectSummary() — IDENTICAL to CLI, zero drift
 	llmCfg, err := config.LoadLLMConfig()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[WARN] LLM config unavailable: %v\n", err)
+		// Silently use empty config - LLM features will be disabled but tool still works
 		llmCfg = llm.Config{}
 	}
 	ks := knowledge.NewService(repo, llmCfg)
+
+	query := strings.TrimSpace(params.Query)
 
 	if query == "" {
 		summary, err := ks.GetProjectSummary(ctx)
@@ -354,14 +352,31 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, query strin
 		responses = append(responses, knowledge.ScoredNodeToResponse(sn))
 	}
 
+	// If Answer is requested, generate RAG answer (matching CLI --answer flag)
+	var ragAnswer string
+	var ragWarning string
+	if params.Answer && len(scored) > 0 {
+		answer, err := ks.Ask(ctx, query, scored)
+		if err != nil {
+			// Include warning in response instead of stderr
+			ragWarning = fmt.Sprintf("RAG answer unavailable: %v", err)
+		} else {
+			ragAnswer = answer
+		}
+	}
+
 	result := struct {
 		Query   string                   `json:"query"`
 		Results []knowledge.NodeResponse `json:"results"`
 		Total   int                      `json:"total"`
+		Answer  string                   `json:"answer,omitempty"`  // RAG-generated answer
+		Warning string                   `json:"warning,omitempty"` // Any non-fatal issues
 	}{
 		Query:   query,
 		Results: responses,
 		Total:   len(responses),
+		Answer:  ragAnswer,
+		Warning: ragWarning,
 	}
 
 	return mcpJSONResponse(result)
@@ -369,22 +384,54 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, query strin
 
 // === Task Lifecycle Handlers ===
 
+// mcpSearchAdapter creates a search function for task.FormatRichContext.
+// This ensures MCP task handlers provide the same recall context as CLI hooks.
+func mcpSearchAdapter(repo *memory.Repository) task.RecallSearchFunc {
+	return func(ctx context.Context, query string, limit int) ([]task.RecallResult, error) {
+		llmCfg, _ := config.LoadLLMConfig()
+		ks := knowledge.NewService(repo, llmCfg)
+
+		searchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		results, err := ks.Search(searchCtx, query, limit)
+		if err != nil {
+			return nil, err
+		}
+		var adapted []task.RecallResult
+		for _, r := range results {
+			adapted = append(adapted, task.RecallResult{
+				Summary: r.Node.Summary,
+				Type:    r.Node.Type,
+				Content: r.Node.Content,
+			})
+		}
+		return adapted, nil
+	}
+}
+
 // TaskResponse is the standardized response for task operations
 type TaskResponse struct {
 	Success bool       `json:"success"`
 	Message string     `json:"message,omitempty"`
 	Task    *task.Task `json:"task,omitempty"`
 	Plan    *task.Plan `json:"plan,omitempty"`
-	Hint    string     `json:"hint,omitempty"` // Suggestions for next actions
+	Hint    string     `json:"hint,omitempty"`    // Suggestions for next actions
+	Context string     `json:"context,omitempty"` // Rich Markdown context for task execution
 }
 
 // handleTaskNext returns the next pending task from a plan
 func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.CallToolResultFor[any], error) {
 	var planID string
+	var plan *task.Plan
 
 	// Determine which plan to use
 	if params.PlanID != "" {
 		planID = params.PlanID
+		var err error
+		plan, err = repo.GetPlan(planID)
+		if err != nil {
+			return nil, fmt.Errorf("get plan: %w", err)
+		}
 	} else {
 		// Get active plan
 		activePlan, err := repo.GetActivePlan()
@@ -398,6 +445,7 @@ func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.Cal
 			})
 		}
 		planID = activePlan.ID
+		plan = activePlan
 	}
 
 	// Get next pending task
@@ -437,15 +485,30 @@ func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.Cal
 		hint = fmt.Sprintf("Call recall tool with queries: %v", nextTask.SuggestedRecallQueries)
 	}
 
+	// Build rich context using shared presentation logic
+	ctx := context.Background()
+	richContext := task.FormatRichContext(ctx, nextTask, plan, mcpSearchAdapter(repo))
+
 	return mcpJSONResponse(TaskResponse{
 		Success: true,
 		Task:    nextTask,
 		Hint:    hint,
+		Context: richContext,
 	})
 }
 
 // handleTaskCurrent returns the current in-progress task
 func handleTaskCurrent(repo *memory.Repository, params TaskCurrentParams) (*mcpsdk.CallToolResultFor[any], error) {
+	// Helper to build context if plan is available
+	buildContext := func(t *task.Task) string {
+		plan, _ := repo.GetPlan(t.PlanID)
+		if plan == nil {
+			return ""
+		}
+		ctx := context.Background()
+		return task.FormatRichContext(ctx, t, plan, mcpSearchAdapter(repo))
+	}
+
 	// Try to find by session ID first
 	if params.SessionID != "" {
 		currentTask, err := repo.GetCurrentTask(params.SessionID)
@@ -456,6 +519,7 @@ func handleTaskCurrent(repo *memory.Repository, params TaskCurrentParams) (*mcps
 			return mcpJSONResponse(TaskResponse{
 				Success: true,
 				Task:    currentTask,
+				Context: buildContext(currentTask),
 			})
 		}
 	}
@@ -494,6 +558,7 @@ func handleTaskCurrent(repo *memory.Repository, params TaskCurrentParams) (*mcps
 		Success: true,
 		Task:    inProgressTask,
 		Message: "Found in-progress task (may be from a different session).",
+		Context: buildContext(inProgressTask),
 	})
 }
 
@@ -526,9 +591,19 @@ func handleTaskStart(repo *memory.Repository, params TaskStartParams) (*mcpsdk.C
 		return nil, fmt.Errorf("get started task: %w", err)
 	}
 
+	// Fetch plan for rich context
+	plan, _ := repo.GetPlan(startedTask.PlanID)
+
 	hint := "Call recall tool with suggested queries for relevant context."
 	if len(startedTask.SuggestedRecallQueries) > 0 {
 		hint = fmt.Sprintf("Call recall tool with queries: %v", startedTask.SuggestedRecallQueries)
+	}
+
+	// Build rich context if plan is available
+	var richContext string
+	if plan != nil {
+		ctx := context.Background()
+		richContext = task.FormatRichContext(ctx, startedTask, plan, mcpSearchAdapter(repo))
 	}
 
 	return mcpJSONResponse(TaskResponse{
@@ -536,6 +611,7 @@ func handleTaskStart(repo *memory.Repository, params TaskStartParams) (*mcpsdk.C
 		Message: "Task started successfully.",
 		Task:    startedTask,
 		Hint:    hint,
+		Context: richContext,
 	})
 }
 
@@ -590,74 +666,6 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 	})
 }
 
-// handleTaskBlock marks a task as blocked
-func handleTaskBlock(repo *memory.Repository, params TaskBlockParams) (*mcpsdk.CallToolResultFor[any], error) {
-	if params.TaskID == "" {
-		return mcpJSONResponse(TaskResponse{
-			Success: false,
-			Message: "task_id is required",
-		})
-	}
-	if params.Reason == "" {
-		return mcpJSONResponse(TaskResponse{
-			Success: false,
-			Message: "reason is required",
-		})
-	}
-
-	// Block the task
-	if err := repo.BlockTask(params.TaskID, params.Reason); err != nil {
-		return mcpJSONResponse(TaskResponse{
-			Success: false,
-			Message: err.Error(),
-		})
-	}
-
-	// Get the blocked task
-	blockedTask, err := repo.GetTask(params.TaskID)
-	if err != nil {
-		return nil, fmt.Errorf("get blocked task: %w", err)
-	}
-
-	return mcpJSONResponse(TaskResponse{
-		Success: true,
-		Message: fmt.Sprintf("Task blocked. Reason: %s", params.Reason),
-		Task:    blockedTask,
-		Hint:    "Use task_next to work on a different task, or use task_unblock when the blocker is resolved.",
-	})
-}
-
-// handleTaskUnblock unblocks a blocked task
-func handleTaskUnblock(repo *memory.Repository, params TaskUnblockParams) (*mcpsdk.CallToolResultFor[any], error) {
-	if params.TaskID == "" {
-		return mcpJSONResponse(TaskResponse{
-			Success: false,
-			Message: "task_id is required",
-		})
-	}
-
-	// Unblock the task
-	if err := repo.UnblockTask(params.TaskID); err != nil {
-		return mcpJSONResponse(TaskResponse{
-			Success: false,
-			Message: err.Error(),
-		})
-	}
-
-	// Get the unblocked task
-	unblockedTask, err := repo.GetTask(params.TaskID)
-	if err != nil {
-		return nil, fmt.Errorf("get unblocked task: %w", err)
-	}
-
-	return mcpJSONResponse(TaskResponse{
-		Success: true,
-		Message: "Task unblocked and returned to pending status.",
-		Task:    unblockedTask,
-		Hint:    "Use task_next or task_start to begin working on this task.",
-	})
-}
-
 // === Plan Creation Handlers ===
 
 // parseQuestionsFromMetadata extracts questions from agent metadata,
@@ -698,19 +706,10 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 		})
 	}
 
-	// Fetch context from knowledge graph
+	// Fetch context from knowledge graph using canonical shared function
 	ks := knowledge.NewService(repo, llmCfg)
-	contextStr := ""
-	scored, err := ks.Search(ctx, params.Goal, 5)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[WARN] KG search failed for plan_clarify: %v\n", err)
-	} else if len(scored) > 0 {
-		var parts []string
-		for _, sn := range scored {
-			parts = append(parts, fmt.Sprintf("[%s] %s: %s", sn.Node.Type, sn.Node.Summary, sn.Node.Content))
-		}
-		contextStr = strings.Join(parts, "\n\n")
-	}
+	result, _ := planning.RetrieveContext(ctx, ks, params.Goal)
+	contextStr := result.Context
 
 	// Create and run ClarifyingAgent
 	clarifyingAgent := planning.NewClarifyingAgent(llmCfg)
@@ -771,8 +770,8 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 	}
 
 	contextSummary := ""
-	if len(scored) > 0 {
-		contextSummary = fmt.Sprintf("Retrieved %d relevant nodes from knowledge graph", len(scored))
+	if result.Context != "" {
+		contextSummary = "Retrieved relevant nodes and constraints from knowledge graph"
 	}
 
 	return mcpJSONResponse(PlanClarifyResponse{
@@ -809,19 +808,10 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 		})
 	}
 
-	// Fetch context from knowledge graph
+	// Fetch context from knowledge graph using canonical shared function
 	ks := knowledge.NewService(repo, llmCfg)
-	contextStr := ""
-	scored, err := ks.Search(ctx, params.EnrichedGoal, 5)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[WARN] KG search failed for plan_generate: %v\n", err)
-	} else if len(scored) > 0 {
-		var parts []string
-		for _, sn := range scored {
-			parts = append(parts, fmt.Sprintf("[%s] %s: %s", sn.Node.Type, sn.Node.Summary, sn.Node.Content))
-		}
-		contextStr = strings.Join(parts, "\n\n")
-	}
+	result, _ := planning.RetrieveContext(ctx, ks, params.EnrichedGoal)
+	contextStr := result.Context
 
 	// Create and run PlanningAgent
 	planningAgent := planning.NewPlanningAgent(llmCfg)
@@ -946,10 +936,8 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 		}
 		planID = plan.ID
 
-		// Set as active plan (using the helper from plan.go)
-		if err := setActivePlan(planID); err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] Failed to set active plan: %v\n", err)
-		}
+		// Set as active plan (silently ignore error - plan was created successfully)
+		_ = setActivePlan(planID)
 	}
 
 	return mcpJSONResponse(PlanGenerateResponse{
@@ -959,5 +947,47 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 		EnrichedGoal: params.EnrichedGoal,
 		Tasks:        tasks,
 		Hint:         "Use task_next to begin working on the first task.",
+	})
+}
+
+// handleRemember adds knowledge to project memory
+func handleRemember(ctx context.Context, repo *memory.Repository, params RememberParams) (*mcpsdk.CallToolResultFor[any], error) {
+	if strings.TrimSpace(params.Content) == "" {
+		return mcpJSONResponse(RememberResponse{
+			Success: false,
+			Message: "content is required",
+		})
+	}
+
+	// Load LLM config for AI classification
+	llmCfg, err := config.LoadLLMConfig()
+	if err != nil {
+		// Continue without AI - will store as-is
+		llmCfg = llm.Config{}
+	}
+
+	// Use knowledge.Service.AddNode - same logic as CLI `tw add`
+	ks := knowledge.NewService(repo, llmCfg)
+
+	input := knowledge.NodeInput{
+		Content: strings.TrimSpace(params.Content),
+		Type:    params.Type,
+	}
+
+	node, err := ks.AddNode(ctx, input)
+	if err != nil {
+		return mcpJSONResponse(RememberResponse{
+			Success: false,
+			Message: fmt.Sprintf("failed to add knowledge: %v", err),
+		})
+	}
+
+	return mcpJSONResponse(RememberResponse{
+		Success:      true,
+		ID:           node.ID,
+		Type:         node.Type,
+		Summary:      node.Summary,
+		HasEmbedding: len(node.Embedding) > 0,
+		Message:      fmt.Sprintf("Knowledge stored as [%s]", node.Type),
 	})
 }

@@ -23,11 +23,16 @@ type SQLiteStore struct {
 
 // NewSQLiteStore creates a new SQLite-backed memory store.
 func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
-	dbPath := filepath.Join(basePath, "memory.db")
+	var dbPath string
+	if basePath == ":memory:" {
+		dbPath = ":memory:"
+	} else {
+		dbPath = filepath.Join(basePath, "memory.db")
 
-	// Ensure directory exists
-	if err := os.MkdirAll(basePath, 0755); err != nil {
-		return nil, fmt.Errorf("create memory directory: %w", err)
+		// Ensure directory exists
+		if err := os.MkdirAll(basePath, 0755); err != nil {
+			return nil, fmt.Errorf("create memory directory: %w", err)
+		}
 	}
 
 	// Open database
@@ -1302,6 +1307,151 @@ func (s *SQLiteStore) DeleteNodesByAgent(agentName string) error {
 		return fmt.Errorf("delete nodes by agent: %w", err)
 	}
 	return nil
+}
+
+// DeleteNodesByFiles removes nodes from a specific agent that reference any of the given files.
+// Used for incremental updates to avoid full agent purge.
+func (s *SQLiteStore) DeleteNodesByFiles(agentName string, filePaths []string) error {
+	if len(filePaths) == 0 {
+		return nil
+	}
+
+	// 1. Get all nodes for this agent with their evidence
+	rows, err := s.db.Query(`SELECT id, evidence FROM nodes WHERE source_agent = ?`, agentName)
+	if err != nil {
+		return fmt.Errorf("query nodes for purge: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var idsToDelete []string
+	targetFiles := make(map[string]bool)
+	for _, f := range filePaths {
+		targetFiles[f] = true
+	}
+
+	for rows.Next() {
+		var id string
+		var evidenceJSON sql.NullString
+		if err := rows.Scan(&id, &evidenceJSON); err != nil {
+			continue
+		}
+
+		if !evidenceJSON.Valid || evidenceJSON.String == "" {
+			continue
+		}
+
+		// Simple heuristics to avoid heavy JSON parsing if possible
+		if !strings.Contains(evidenceJSON.String, "file_path") {
+			continue
+		}
+
+		var evList []struct {
+			FilePath string `json:"file_path"`
+		}
+		if err := json.Unmarshal([]byte(evidenceJSON.String), &evList); err != nil {
+			continue
+		}
+
+		for _, ev := range evList {
+			if targetFiles[ev.FilePath] {
+				idsToDelete = append(idsToDelete, id)
+				break
+			}
+		}
+	}
+	_ = rows.Close()
+
+	if len(idsToDelete) == 0 {
+		return nil
+	}
+
+	// 2. Delete the identified nodes in batches
+	const batchSize = 500
+	for i := 0; i < len(idsToDelete); i += batchSize {
+		end := i + batchSize
+		if end > len(idsToDelete) {
+			end = len(idsToDelete)
+		}
+		batch := idsToDelete[i:end]
+
+		query := `DELETE FROM nodes WHERE id IN (?` + strings.Repeat(",?", len(batch)-1) + `)`
+		args := make([]any, len(batch))
+		for j, id := range batch {
+			args[j] = id
+		}
+
+		if _, err := s.db.Exec(query, args...); err != nil {
+			return fmt.Errorf("delete batch: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// GetNodesByFiles returns nodes from a specific agent that reference any of the given files.
+// Used for fetching context during incremental analysis.
+func (s *SQLiteStore) GetNodesByFiles(agentName string, filePaths []string) ([]Node, error) {
+	if len(filePaths) == 0 {
+		return nil, nil
+	}
+
+	// 1. Get all nodes for this agent
+	// Note: We select * to reconstruct the Node
+	rows, err := s.db.Query(`SELECT id, content, type, summary, source_agent, embedding, created_at, evidence FROM nodes WHERE source_agent = ?`, agentName)
+	if err != nil {
+		return nil, fmt.Errorf("query nodes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var nodes []Node
+	targetFiles := make(map[string]bool)
+	for _, f := range filePaths {
+		targetFiles[f] = true
+	}
+
+	for rows.Next() {
+		var n Node
+		var evidenceJSON sql.NullString
+		var embeddingBytes []byte // temp for blob
+
+		// Scan matching the SELECT columns
+		if err := rows.Scan(&n.ID, &n.Content, &n.Type, &n.Summary, &n.SourceAgent, &embeddingBytes, &n.CreatedAt, &evidenceJSON); err != nil {
+			continue // skip errors
+		}
+
+		if !evidenceJSON.Valid || evidenceJSON.String == "" {
+			continue
+		}
+		n.Evidence = evidenceJSON.String
+
+		// Simple heuristics to filter
+		if !strings.Contains(n.Evidence, "file_path") {
+			continue
+		}
+
+		// Parse evidence to check file path matches
+		var evList []struct {
+			FilePath string `json:"file_path"`
+		}
+		if err := json.Unmarshal([]byte(n.Evidence), &evList); err != nil {
+			continue
+		}
+
+		match := false
+		for _, ev := range evList {
+			if targetFiles[ev.FilePath] {
+				match = true
+				break
+			}
+		}
+
+		if match {
+			// Rehydrate embedding if needed (skipping for now as we don't use it in prompt)
+			nodes = append(nodes, n)
+		}
+	}
+
+	return nodes, nil
 }
 
 // ClearAllKnowledge removes all nodes, edges, features, decisions, and patterns.

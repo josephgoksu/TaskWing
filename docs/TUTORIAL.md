@@ -12,17 +12,16 @@ TaskWing extracts architectural knowledge from your codebase and exposes it to A
 # 1. Install
 brew install josephgoksu/tap/taskwing
 
-# 2. Initialize your project
+# 2. Bootstrap your project
 cd your-project
-taskwing work
+taskwing bootstrap
 
 # 3. Follow the prompts to:
 #    - Select your AI tool (Claude, Codex, Gemini)
-#    - Create a development plan
-#    - Start working
+#    - Configure MCP integration
 ```
 
-That's it. TaskWing will bootstrap your project, configure your AI tool, and guide you to start.
+That's it. TaskWing will analyze your codebase and configure your AI tool.
 
 ---
 

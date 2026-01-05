@@ -26,8 +26,8 @@ type ClarifyingAgent struct {
 // ClarifyingOutput defines the structured response from the LLM.
 type ClarifyingOutput struct {
 	Questions     []string `json:"questions"`
-	GoalSummary   string   `json:"goal_summary"`   // Concise one-liner for UI display (<100 chars)
-	EnrichedGoal  string   `json:"enriched_goal"`  // Full technical specification for task generation
+	GoalSummary   string   `json:"goal_summary"`  // Concise one-liner for UI display (<100 chars)
+	EnrichedGoal  string   `json:"enriched_goal"` // Full technical specification for task generation
 	IsReadyToPlan bool     `json:"is_ready_to_plan"`
 }
 

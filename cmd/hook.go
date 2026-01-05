@@ -150,11 +150,24 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	// Load session state
 	session, err := loadHookSession()
 	if err != nil {
-		// No session = first run, allow stop (user should run session-init first)
-		return outputHookResponse(HookResponse{
-			Decision: "approve",
-			Reason:   "No active session. Run 'taskwing hook session-init' first or use SessionStart hook.",
-		})
+		// Auto-initialize session on first continue-check call
+		// This is necessary because Claude Code does NOT support SessionStart events
+		// (only PreToolUse, PostToolUse, Notification, Stop are valid)
+		fmt.Fprintf(os.Stderr, "[INFO] No active session, auto-initializing...\n")
+		if initErr := runSessionInit(); initErr != nil {
+			return outputHookResponse(HookResponse{
+				Decision: "approve",
+				Reason:   fmt.Sprintf("Failed to auto-initialize session: %v", initErr),
+			})
+		}
+		// Reload session after init
+		session, err = loadHookSession()
+		if err != nil {
+			return outputHookResponse(HookResponse{
+				Decision: "approve",
+				Reason:   fmt.Sprintf("Session initialization succeeded but failed to load: %v", err),
+			})
+		}
 	}
 
 	// Circuit breaker 1: Max tasks reached
@@ -201,14 +214,6 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 		if err != nil && viper.GetBool("verbose") {
 			fmt.Fprintf(os.Stderr, "[DEBUG] Could not load current task %s: %v\n", session.CurrentTaskID, err)
 		}
-	}
-
-	// If current task is blocked, stop
-	if currentTask != nil && currentTask.Status == task.StatusBlocked {
-		return outputHookResponse(HookResponse{
-			Decision: "approve",
-			Reason:   fmt.Sprintf("Current task %s is blocked: %s", currentTask.ID, currentTask.BlockReason),
-		})
 	}
 
 	// Get next pending task
@@ -265,84 +270,35 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	})
 }
 
-// buildTaskContext creates the context string to inject for the next task
+// buildTaskContext creates the context string to inject for the next task.
+// Delegates to task.FormatRichContext for consistent presentation across CLI and MCP.
 func buildTaskContext(repo *memory.Repository, nextTask *task.Task, plan *task.Plan) string {
 	ctx := context.Background()
 
-	// Get recall context for the task
+	// Get knowledge service for recall context
 	llmCfg, _ := getLLMConfigFromViper()
 	ks := knowledge.NewService(repo, llmCfg)
 
-	var recallContext string
-	if len(nextTask.SuggestedRecallQueries) > 0 {
-		// Use first suggested query with timeout
+	// Create search adapter that wraps knowledge.Service for the task package
+	searchFn := func(ctx context.Context, query string, limit int) ([]task.RecallResult, error) {
 		searchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		results, err := ks.Search(searchCtx, nextTask.SuggestedRecallQueries[0], 3)
-		if err == nil && len(results) > 0 {
-			recallContext = "\n## Relevant Architecture Context\n"
-			for _, r := range results {
-				// Truncate content for display, not summary
-				content := r.Node.Content
-				if len(content) > 100 {
-					content = content[:97] + "..."
-				}
-				recallContext += fmt.Sprintf("- **%s** (%s): %s\n", r.Node.Summary, r.Node.Type, content)
-			}
+		results, err := ks.Search(searchCtx, query, limit)
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	// Build the continuation prompt
-	progress := 0
-	completed := 0
-	for _, t := range plan.Tasks {
-		if t.Status == task.StatusCompleted {
-			completed++
+		var adapted []task.RecallResult
+		for _, r := range results {
+			adapted = append(adapted, task.RecallResult{
+				Summary: r.Node.Summary,
+				Type:    r.Node.Type,
+				Content: r.Node.Content,
+			})
 		}
-	}
-	if len(plan.Tasks) > 0 {
-		progress = completed * 100 / len(plan.Tasks)
+		return adapted, nil
 	}
 
-	contextStr := fmt.Sprintf(`
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔄 CONTINUING TO NEXT TASK
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Plan Progress: %d%% (%d/%d tasks completed)
-
-## Next Task: %s
-**ID**: %s
-**Priority**: %d
-**Scope**: %s
-
-### Description
-%s
-
-### Acceptance Criteria
-`, progress, completed, len(plan.Tasks), nextTask.Title, nextTask.ID, nextTask.Priority, nextTask.Scope, nextTask.Description)
-
-	for _, ac := range nextTask.AcceptanceCriteria {
-		contextStr += fmt.Sprintf("- [ ] %s\n", ac)
-	}
-
-	if recallContext != "" {
-		contextStr += recallContext
-	}
-
-	contextStr += `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**Instructions**:
-1. First, call task_start MCP tool with task_id and session_id
-2. Implement the task following the patterns above
-3. When complete, call task_complete MCP tool with summary and files_modified
-4. The Stop hook will automatically check for the next task
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`
-
-	return contextStr
+	return task.FormatRichContext(ctx, nextTask, plan, searchFn)
 }
 
 // runSessionInit initializes a new hook session

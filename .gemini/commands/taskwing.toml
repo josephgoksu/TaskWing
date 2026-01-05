@@ -1,9 +1,0 @@
-description = "Fetch project context from TaskWing"
-
-prompt = """Call the TaskWing MCP recall tool NOW to understand this codebase.
-
-Use it with:
-- No query: Get overview (features, decisions, patterns, constraints)
-- With query: {"query": "search term"} for semantic search
-
-This is the first thing you should do when working on this project."""

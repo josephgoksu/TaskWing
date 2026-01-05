@@ -22,11 +22,6 @@ func ParseJSONResponse[T any](response string) (T, error) {
 	return utils.ExtractAndParseJSON[T](response)
 }
 
-// ParseJSONResponseToMap is a non-generic version for dynamic parsing.
-func ParseJSONResponseToMap(response string) (map[string]any, error) {
-	return ParseJSONResponse[map[string]any](response)
-}
-
 // ConvertEvidence transforms JSON evidence to Evidence structs.
 func ConvertEvidence(jsonEvidence []EvidenceJSON) []Evidence {
 	if len(jsonEvidence) == 0 {

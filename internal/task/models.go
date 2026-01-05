@@ -13,7 +13,6 @@ const (
 	StatusDraft      TaskStatus = "draft"       // Initial creation, not ready for execution
 	StatusPending    TaskStatus = "pending"     // Ready to be picked up by an agent
 	StatusInProgress TaskStatus = "in_progress" // Agent is actively working
-	StatusBlocked    TaskStatus = "blocked"     // Blocked by external dependency or issue
 	StatusVerifying  TaskStatus = "verifying"   // Work done, running validation
 	StatusCompleted  TaskStatus = "completed"   // Successfully verified
 	StatusFailed     TaskStatus = "failed"      // Execution or verification failed
@@ -56,9 +55,6 @@ type Task struct {
 	// Completion tracking
 	CompletionSummary string   `json:"completionSummary,omitempty"` // AI-generated summary on completion
 	FilesModified     []string `json:"filesModified,omitempty"`     // Files touched during task
-
-	// Block tracking
-	BlockReason string `json:"blockReason,omitempty"` // Reason if task is blocked
 
 	// Computed/Joined fields (not in tasks table directly)
 	Dependencies []string `json:"dependencies"` // IDs of tasks

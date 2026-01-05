@@ -408,7 +408,7 @@ func checkActivePlan() DoctorCheck {
 	}
 
 	// Count task statuses
-	pending, inProgress, completed, blocked := 0, 0, 0, 0
+	pending, inProgress, completed := 0, 0, 0
 	for _, t := range plan.Tasks {
 		switch t.Status {
 		case task.StatusPending:
@@ -417,8 +417,6 @@ func checkActivePlan() DoctorCheck {
 			inProgress++
 		case task.StatusCompleted:
 			completed++
-		case task.StatusBlocked:
-			blocked++
 		}
 	}
 
@@ -429,9 +427,6 @@ func checkActivePlan() DoctorCheck {
 	}
 
 	msg := fmt.Sprintf("%s (%d%% complete: %d/%d tasks)", plan.ID, progress, completed, total)
-	if blocked > 0 {
-		msg += fmt.Sprintf(" [%d blocked]", blocked)
-	}
 
 	return DoctorCheck{
 		Name:    "Active Plan",

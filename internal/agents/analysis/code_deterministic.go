@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"io"
 
+	"strings"
+
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/tools"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/memory"
 )
 
 // CodeAgent analyzes source code using a single LLM call (deterministic).
@@ -69,7 +72,17 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 	// Gather context upfront (no tool calls needed)
 	gatherer := tools.NewContextGatherer(basePath)
 	dirTree := gatherer.ListDirectoryTree(3)
-	sourceCode := gatherer.GatherSourceCode()
+
+	var sourceCode string
+	isIncremental := input.Mode == core.ModeWatch && len(input.ChangedFiles) > 0
+
+	if isIncremental {
+		// INCR ANALYSIS: Only read changed files
+		sourceCode = gatherer.GatherSpecificFiles(input.ChangedFiles)
+	} else {
+		// FULL ANALYSIS: Read key files heuristic
+		sourceCode = gatherer.GatherSourceCode()
+	}
 
 	if sourceCode == "" || sourceCode == "No source code files found." {
 		return core.Output{
@@ -78,11 +91,25 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 		}, nil
 	}
 
+	// Format existing knowledge context
+	var existingKnowledgeStr string
+	if nodesObj, ok := input.ExistingContext["existing_nodes"]; ok {
+		if nodes, ok := nodesObj.([]memory.Node); ok && len(nodes) > 0 {
+			var sb strings.Builder
+			for _, n := range nodes {
+				sb.WriteString(fmt.Sprintf("- [%s] %s: %s\n", n.Type, n.ID, n.Summary))
+			}
+			existingKnowledgeStr = sb.String()
+		}
+	}
+
 	// Execute Chain with single LLM call
 	chainInput := map[string]any{
-		"ProjectName": input.ProjectName,
-		"DirTree":     dirTree,
-		"SourceCode":  sourceCode,
+		"ProjectName":       input.ProjectName,
+		"DirTree":           dirTree,
+		"SourceCode":        sourceCode,
+		"IsIncremental":     isIncremental,
+		"ExistingKnowledge": existingKnowledgeStr,
 	}
 
 	parsed, raw, duration, err := a.chain.Invoke(ctx, chainInput)

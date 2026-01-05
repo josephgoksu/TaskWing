@@ -53,9 +53,6 @@ var aiConfigs = map[string]aiConfig{
 	},
 }
 
-// NOTE: initCmd is deprecated - use 'tw bootstrap' which auto-initializes
-// The structs and functions below are kept for use by bootstrap.go
-
 func promptAISelection() []string {
 	// Build display map for UI
 	descriptions := make(map[string]string)
@@ -65,6 +62,10 @@ func promptAISelection() []string {
 
 	selected, err := ui.PromptAISelection(aiConfigOrder, descriptions)
 	if err != nil {
+		// Try to fallback to simple prompt if UI fails?
+		// Or just log error.
+		// Since we're in cmd package, fmt.Printf is okay but might interfere with TUI if running?
+		// Bootstrap usually runs this early.
 		fmt.Printf("Error running selection: %v\n", err)
 		return nil
 	}

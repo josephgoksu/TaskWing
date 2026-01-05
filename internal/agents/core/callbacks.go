@@ -33,8 +33,6 @@ type CallbackHandler struct {
 	onError         func(name string, err error)
 	onToolCall      func(name, tool, args string)
 	onToolResult    func(name, tool, result string)
-	onNodeStart     func(name, nodeType string)
-	onNodeEnd       func(name, nodeType string)
 	onNodeStartMeta func(name, nodeType string, meta map[string]any)
 	onNodeEndMeta   func(name, nodeType string, meta map[string]any)
 }
@@ -46,18 +44,6 @@ func NewCallbackHandler() *CallbackHandler {
 		verbose:    false,
 		startTimes: make(map[string]time.Time),
 	}
-}
-
-// SetOutput sets the output writer for callback messages
-func (h *CallbackHandler) SetOutput(w io.Writer) *CallbackHandler {
-	h.out = w
-	return h
-}
-
-// SetVerbose enables verbose output mode
-func (h *CallbackHandler) SetVerbose(v bool) *CallbackHandler {
-	h.verbose = v
-	return h
 }
 
 // OnStart sets a callback for when an agent starts
@@ -90,21 +76,9 @@ func (h *CallbackHandler) OnToolResult(fn func(name, tool, result string)) *Call
 	return h
 }
 
-// OnNodeStart sets a callback for when an Eino node starts
-func (h *CallbackHandler) OnNodeStart(fn func(name, nodeType string)) *CallbackHandler {
-	h.onNodeStart = fn
-	return h
-}
-
 // OnNodeStartMeta sets a callback for when an Eino node starts with metadata.
 func (h *CallbackHandler) OnNodeStartMeta(fn func(name, nodeType string, meta map[string]any)) *CallbackHandler {
 	h.onNodeStartMeta = fn
-	return h
-}
-
-// OnNodeEnd sets a callback for when an Eino node ends
-func (h *CallbackHandler) OnNodeEnd(fn func(name, nodeType string)) *CallbackHandler {
-	h.onNodeEnd = fn
 	return h
 }
 
@@ -145,8 +119,6 @@ func (h *CallbackHandler) Build() callbacks.Handler {
 						}
 					}
 					h.onNodeStartMeta(info.Name, string(info.Component), meta)
-				} else if h.onNodeStart != nil {
-					h.onNodeStart(info.Name, string(info.Component))
 				}
 			}
 
@@ -174,10 +146,6 @@ func (h *CallbackHandler) Build() callbacks.Handler {
 
 			if h.onEnd != nil && (string(info.Component) == "Graph" || string(info.Component) == "Chain") {
 				h.onEnd(info.Name, duration)
-			}
-
-			if h.onNodeEnd != nil && string(info.Component) != "Chain" && string(info.Component) != "Graph" {
-				h.onNodeEnd(info.Name, string(info.Component))
 			}
 
 			if h.onNodeEndMeta != nil && string(info.Component) != "Chain" && string(info.Component) != "Graph" {
@@ -397,47 +365,4 @@ func CreateStreamingCallbackHandler(agentName string, stream *StreamingOutput) *
 	})
 
 	return handler
-}
-
-// ProgressReporter provides a simple progress reporting interface
-type ProgressReporter struct {
-	out         io.Writer
-	currentStep string
-	stepCount   int
-	totalSteps  int
-}
-
-// NewProgressReporter creates a new progress reporter
-func NewProgressReporter(out io.Writer) *ProgressReporter {
-	if out == nil {
-		out = os.Stderr
-	}
-	return &ProgressReporter{out: out}
-}
-
-// SetTotal sets the total number of steps
-func (p *ProgressReporter) SetTotal(n int) {
-	p.totalSteps = n
-}
-
-// Step reports progress on a step
-func (p *ProgressReporter) Step(name string) {
-	p.stepCount++
-	p.currentStep = name
-
-	if p.totalSteps > 0 {
-		_, _ = fmt.Fprintf(p.out, "  [%d/%d] %s\n", p.stepCount, p.totalSteps, name)
-	} else {
-		_, _ = fmt.Fprintf(p.out, "  → %s\n", name)
-	}
-}
-
-// Complete marks the overall operation as complete
-func (p *ProgressReporter) Complete(message string) {
-	_, _ = fmt.Fprintf(p.out, "  ✓ %s\n", message)
-}
-
-// Error reports an error
-func (p *ProgressReporter) Error(message string) {
-	_, _ = fmt.Fprintf(p.out, "  ✗ %s\n", message)
 }

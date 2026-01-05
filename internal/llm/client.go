@@ -72,17 +72,6 @@ func (g *genaiClientCloser) Close() error {
 	return nil
 }
 
-// NewChatModel creates a ChatModel instance based on the provider configuration.
-// It returns an Eino BaseChatModel that can be used for Generate() or Stream() calls.
-// Deprecated: Use NewCloseableChatModel instead and call Close() when done.
-func NewChatModel(ctx context.Context, cfg Config) (model.BaseChatModel, error) {
-	cm, err := NewCloseableChatModel(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return cm.BaseChatModel, nil
-}
-
 // NewCloseableChatModel creates a ChatModel with proper resource management.
 // Callers MUST call Close() when done to release resources.
 func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel, error) {
@@ -192,16 +181,6 @@ func ValidateProvider(p string) (Provider, error) {
 	default:
 		return "", fmt.Errorf("unsupported provider: %s", p)
 	}
-}
-
-// NewEmbeddingModel creates an EmbeddingModel instance based on the provider configuration.
-// Deprecated: Use NewCloseableEmbedder instead and call Close() when done.
-func NewEmbeddingModel(ctx context.Context, cfg Config) (embedding.Embedder, error) {
-	ce, err := NewCloseableEmbedder(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return ce.Embedder, nil
 }
 
 // NewCloseableEmbedder creates an Embedder with proper resource management.

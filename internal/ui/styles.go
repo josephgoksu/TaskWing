@@ -79,8 +79,3 @@ var (
 	StyleSelectDim    = lipgloss.NewStyle().Foreground(ColorDim)
 	StyleSelectBadge  = lipgloss.NewStyle().Foreground(ColorYellow).Bold(true)
 )
-
-// Icon returns a styled icon string
-func Icon(icon string, style lipgloss.Style) string {
-	return style.Render(icon)
-}

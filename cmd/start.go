@@ -169,17 +169,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 // startWatchMode starts the watch agent in a goroutine
 func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sync.WaitGroup, errChan chan<- error) (*watch.WatchAgent, error) {
-	// Create watch agent
-	watchAgent, err := watch.NewWatchAgent(watch.WatchConfig{
-		BasePath:  watchPath,
-		LLMConfig: llmConfig,
-		Verbose:   verbose,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create watch agent: %w", err)
-	}
-
-	// Set up findings handler for proper deduplication via knowledge.Service.IngestFindings
+	// Initialize knowledge service first (needed for context injection)
 	memoryPath := config.GetMemoryBasePath()
 	repo, err := memory.NewDefaultRepository(memoryPath)
 	if err != nil {
@@ -187,8 +177,21 @@ func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sy
 	}
 
 	ks := knowledge.NewService(repo, llmConfig)
-	watchAgent.SetFindingsHandler(func(ctx context.Context, findings []core.Finding) error {
-		return ks.IngestFindings(ctx, findings, verbose)
+
+	// Create watch agent with knowledge service
+	watchAgent, err := watch.NewWatchAgent(watch.WatchConfig{
+		BasePath:  watchPath,
+		LLMConfig: llmConfig,
+		Verbose:   verbose,
+		Service:   ks,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create watch agent: %w", err)
+	}
+
+	// Set up findings handler
+	watchAgent.SetFindingsHandler(func(ctx context.Context, findings []core.Finding, filePaths []string) error {
+		return ks.IngestFindings(ctx, findings, filePaths, verbose)
 	})
 
 	// Start watching

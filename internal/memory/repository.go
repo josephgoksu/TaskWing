@@ -288,6 +288,15 @@ func (r *Repository) DeleteNodesByAgent(agent string) error {
 	return r.db.DeleteNodesByAgent(agent)
 }
 
+func (r *Repository) DeleteNodesByFiles(agent string, filePaths []string) error {
+	return r.db.DeleteNodesByFiles(agent, filePaths)
+}
+
+// GetNodesByFiles returns nodes from a specific agent that reference any of the given files.
+func (r *Repository) GetNodesByFiles(agent string, filePaths []string) ([]Node, error) {
+	return r.db.GetNodesByFiles(agent, filePaths)
+}
+
 func (r *Repository) UpsertNodeBySummary(n Node) error {
 	return r.db.UpsertNodeBySummary(n)
 }
@@ -391,16 +400,6 @@ func (r *Repository) ClaimTask(taskID, sessionID string) error {
 // CompleteTask marks a task as completed with summary and files modified.
 func (r *Repository) CompleteTask(taskID, summary string, filesModified []string) error {
 	return r.db.CompleteTask(taskID, summary, filesModified)
-}
-
-// BlockTask marks a task as blocked with a reason.
-func (r *Repository) BlockTask(taskID, reason string) error {
-	return r.db.BlockTask(taskID, reason)
-}
-
-// UnblockTask moves a blocked task back to pending status.
-func (r *Repository) UnblockTask(taskID string) error {
-	return r.db.UnblockTask(taskID)
 }
 
 // GetActivePlan returns the currently active plan.

@@ -13,13 +13,15 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/memory"
 )
 
-// IngestFindings processes a list of agent findings and saves them to the repository
-func (s *Service) IngestFindings(ctx context.Context, findings []core.Finding, verbose bool) error {
-	return s.IngestFindingsWithRelationships(ctx, findings, nil, verbose)
+// IngestFindings processes a list of agent findings and saves them to the repository.
+// For incremental updates, provide filePaths to selectively purge/update nodes.
+// If filePaths is nil or empty, it assumes a full update for the agent(s) involved.
+func (s *Service) IngestFindings(ctx context.Context, findings []core.Finding, filePaths []string, verbose bool) error {
+	return s.IngestFindingsWithRelationships(ctx, findings, nil, filePaths, verbose)
 }
 
 // IngestFindingsWithRelationships processes findings and LLM-extracted relationships
-func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings []core.Finding, relationships []core.Relationship, verbose bool) error {
+func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings []core.Finding, relationships []core.Relationship, filePaths []string, verbose bool) error {
 	if len(findings) == 0 {
 		return nil
 	}
@@ -41,7 +43,7 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 	}
 
 	// 1. Purge Stale Data
-	if err := s.purgeStaleData(findings, verbose); err != nil {
+	if err := s.purgeStaleData(findings, filePaths, verbose); err != nil {
 		return err
 	}
 
@@ -120,18 +122,33 @@ func (s *Service) verifyFindings(ctx context.Context, findings []core.Finding, v
 	return filtered, verifiedCount, rejectedCount
 }
 
-// purgeStaleData removes nodes from agents involved in the current finding set
-func (s *Service) purgeStaleData(findings []core.Finding, verbose bool) error {
+// purgeStaleData removes nodes from agents involved in the current finding set.
+// If filePaths is provided, only nodes referencing those files are purged (incremental).
+// Otherwise, all nodes for the agent are purged (full update).
+func (s *Service) purgeStaleData(findings []core.Finding, filePaths []string, verbose bool) error {
 	seenAgents := make(map[string]bool)
 	for _, f := range findings {
 		if f.SourceAgent != "" && !seenAgents[f.SourceAgent] {
+			seenAgents[f.SourceAgent] = true
+
+			// Incremental Purge
+			if len(filePaths) > 0 {
+				if verbose {
+					fmt.Printf("  ♻️  Purging stale nodes for agent %s (files: %d)\n", f.SourceAgent, len(filePaths))
+				}
+				if err := s.repo.DeleteNodesByFiles(f.SourceAgent, filePaths); err != nil {
+					return fmt.Errorf("purge files for agent %s: %w", f.SourceAgent, err)
+				}
+				continue
+			}
+
+			// Full Purge
 			if verbose {
-				fmt.Printf("  ♻️  Purging stale nodes for agent: %s\n", f.SourceAgent)
+				fmt.Printf("  ♻️  Purging all stale nodes for agent: %s\n", f.SourceAgent)
 			}
 			if err := s.repo.DeleteNodesByAgent(f.SourceAgent); err != nil {
 				return fmt.Errorf("purge agent %s: %w", f.SourceAgent, err)
 			}
-			seenAgents[f.SourceAgent] = true
 		}
 	}
 	return nil

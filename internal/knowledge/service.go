@@ -25,6 +25,8 @@ type Repository interface {
 	CreateNode(n memory.Node) error
 	UpsertNodeBySummary(n memory.Node) error
 	DeleteNodesByAgent(agent string) error
+	DeleteNodesByFiles(agent string, filePaths []string) error
+	GetNodesByFiles(agent string, filePaths []string) ([]memory.Node, error)
 
 	// Feature/Decision/Pattern operations
 	CreateFeature(f memory.Feature) error
@@ -101,6 +103,11 @@ func (s *Service) SearchByType(ctx context.Context, query string, nodeType strin
 // This allows for retrieving ALL mandatory constraints without semantic filtering.
 func (s *Service) ListNodesByType(ctx context.Context, nodeType string) ([]memory.Node, error) {
 	return s.repo.ListNodes(nodeType)
+}
+
+// GetNodesByFiles retrieves nodes relevant to specific files.
+func (s *Service) GetNodesByFiles(agentName string, filePaths []string) ([]memory.Node, error) {
+	return s.repo.GetNodesByFiles(agentName, filePaths)
 }
 
 func (s *Service) searchInternal(ctx context.Context, query string, typeFilter string, limit int) ([]ScoredNode, error) {

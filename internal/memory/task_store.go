@@ -277,7 +277,6 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	var parentID sql.NullString
 	var scope, keywordsJSON, queriesJSON sql.NullString
 	var claimedBy, claimedAt, completedAt, completionSummary, filesJSON sql.NullString
-	var blockReason sql.NullString
 	var createdAt, updatedAt string
 
 	err := row.Scan(
@@ -285,7 +284,7 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 		&t.Status, &t.Priority, &t.AssignedAgent, &parentID, &t.ContextSummary,
 		&scope, &keywordsJSON, &queriesJSON,
 		&claimedBy, &claimedAt, &completedAt, &completionSummary, &filesJSON,
-		&blockReason, &createdAt, &updatedAt,
+		&createdAt, &updatedAt,
 	)
 	if err != nil {
 		return t, err
@@ -296,7 +295,6 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	t.Scope = scope.String
 	t.ClaimedBy = claimedBy.String
 	t.CompletionSummary = completionSummary.String
-	t.BlockReason = blockReason.String
 	t.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	t.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 
@@ -330,7 +328,7 @@ const taskSelectColumns = `id, plan_id, title, description, acceptance_criteria,
        status, priority, assigned_agent, parent_task_id, context_summary,
        scope, keywords, suggested_recall_queries,
        claimed_by, claimed_at, completed_at, completion_summary, files_modified,
-       block_reason, created_at, updated_at`
+       created_at, updated_at`
 
 // GetTask retrieves a task by ID.
 func (s *SQLiteStore) GetTask(id string) (*task.Task, error) {
@@ -696,75 +694,6 @@ func (s *SQLiteStore) CompleteTask(taskID, summary string, filesModified []strin
 			return fmt.Errorf("task not found: %s", taskID)
 		}
 		return fmt.Errorf("cannot complete task: current status is %s (must be in_progress)", status)
-	}
-
-	return nil
-}
-
-// BlockTask marks a task as blocked with a reason.
-func (s *SQLiteStore) BlockTask(taskID, reason string) error {
-	if taskID == "" {
-		return fmt.Errorf("task id is required")
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	// Allow blocking from in_progress status
-	res, err := s.db.Exec(`
-		UPDATE tasks
-		SET status = ?, block_reason = ?, updated_at = ?
-		WHERE id = ? AND status = ?
-	`, task.StatusBlocked, reason, now, taskID, task.StatusInProgress)
-
-	if err != nil {
-		return fmt.Errorf("block task: %w", err)
-	}
-
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("block task rows affected: %w", err)
-	}
-	if affected == 0 {
-		var status task.TaskStatus
-		err := s.db.QueryRow(`SELECT status FROM tasks WHERE id = ?`, taskID).Scan(&status)
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("task not found: %s", taskID)
-		}
-		return fmt.Errorf("cannot block task: current status is %s (must be in_progress)", status)
-	}
-
-	return nil
-}
-
-// UnblockTask moves a blocked task back to pending status.
-func (s *SQLiteStore) UnblockTask(taskID string) error {
-	if taskID == "" {
-		return fmt.Errorf("task id is required")
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	res, err := s.db.Exec(`
-		UPDATE tasks
-		SET status = ?, block_reason = NULL, claimed_by = NULL, claimed_at = NULL, updated_at = ?
-		WHERE id = ? AND status = ?
-	`, task.StatusPending, now, taskID, task.StatusBlocked)
-
-	if err != nil {
-		return fmt.Errorf("unblock task: %w", err)
-	}
-
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("unblock task rows affected: %w", err)
-	}
-	if affected == 0 {
-		var status task.TaskStatus
-		err := s.db.QueryRow(`SELECT status FROM tasks WHERE id = ?`, taskID).Scan(&status)
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("task not found: %s", taskID)
-		}
-		return fmt.Errorf("cannot unblock task: current status is %s (must be blocked)", status)
 	}
 
 	return nil

@@ -20,6 +20,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/josephgoksu/TaskWing/internal/agents/analysis"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
+	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/patterns"
 )
@@ -55,6 +56,7 @@ type WatchAgent struct {
 	activityLog *ActivityLog
 	hashTracker *ContentHashTracker
 	verbose     bool
+	ks          *knowledge.Service
 
 	// Control
 	ctx    context.Context
@@ -70,6 +72,7 @@ type WatchConfig struct {
 	IncludeGlobs []string // Only watch paths matching these globs
 	ExcludeGlobs []string // Skip paths matching these globs
 	Stream       *core.StreamingOutput
+	Service      *knowledge.Service
 }
 
 // NewWatchAgent creates a new file watching agent
@@ -87,6 +90,7 @@ func NewWatchAgent(cfg WatchConfig) (*WatchAgent, error) {
 		watcher:   watcher,
 		verbose:   cfg.Verbose,
 		stream:    cfg.Stream,
+		ks:        cfg.Service,
 		ctx:       ctx,
 		cancel:    cancel,
 	}
@@ -96,7 +100,7 @@ func NewWatchAgent(cfg WatchConfig) (*WatchAgent, error) {
 
 	// Initialize dispatcher with activity log
 	w.activityLog = NewActivityLog(cfg.BasePath)
-	w.dispatcher = NewAgentDispatcherWithLog(cfg.LLMConfig, cfg.BasePath, w.activityLog)
+	w.dispatcher = NewAgentDispatcherWithLog(cfg.LLMConfig, cfg.BasePath, w.activityLog, cfg.Service)
 
 	// Initialize content hash tracker for deduplication
 	w.hashTracker = NewContentHashTracker()
@@ -394,7 +398,7 @@ func (d *ChangeDebouncer) Stop() {
 
 // FindingsHandler is called when an agent produces findings.
 // This allows the caller to handle persistence (e.g., via knowledge.Service.IngestFindings).
-type FindingsHandler func(ctx context.Context, findings []core.Finding) error
+type FindingsHandler func(ctx context.Context, findings []core.Finding, filePaths []string) error
 
 // AgentDispatcher routes file changes to appropriate agents
 type AgentDispatcher struct {
@@ -402,6 +406,7 @@ type AgentDispatcher struct {
 	basePath        string
 	activityLog     *ActivityLog
 	findingsHandler FindingsHandler
+	ks              *knowledge.Service
 	mu              sync.Mutex
 }
 
@@ -414,11 +419,12 @@ func NewAgentDispatcher(cfg llm.Config, basePath string) *AgentDispatcher {
 }
 
 // NewAgentDispatcherWithLog creates a dispatcher with activity logging
-func NewAgentDispatcherWithLog(cfg llm.Config, basePath string, log *ActivityLog) *AgentDispatcher {
+func NewAgentDispatcherWithLog(cfg llm.Config, basePath string, log *ActivityLog, ks *knowledge.Service) *AgentDispatcher {
 	return &AgentDispatcher{
 		llmConfig:   cfg,
 		basePath:    basePath,
 		activityLog: log,
+		ks:          ks,
 	}
 }
 
@@ -457,10 +463,20 @@ func (d *AgentDispatcher) Dispatch(ctx context.Context, category FileCategory, c
 	}
 
 	input := core.Input{
-		BasePath:     d.basePath,
-		ProjectName:  filepath.Base(d.basePath),
-		Mode:         core.ModeWatch,
-		ChangedFiles: changedPaths,
+		BasePath:        d.basePath,
+		ProjectName:     filepath.Base(d.basePath),
+		Mode:            core.ModeWatch,
+		ChangedFiles:    changedPaths,
+		ExistingContext: make(map[string]any),
+	}
+
+	// Fetch existing nodes for context (Phase 3: No knowledge comparison fix)
+	if d.ks != nil {
+		agentName := agent.Name()
+		if existingNodes, err := d.ks.GetNodesByFiles(agentName, changedPaths); err == nil && len(existingNodes) > 0 {
+			input.ExistingContext["existing_nodes"] = existingNodes
+
+		}
 	}
 
 	// Run agent in background
@@ -492,7 +508,7 @@ func (d *AgentDispatcher) Dispatch(ctx context.Context, category FileCategory, c
 
 		// Persist findings via handler (uses knowledge.Service.IngestFindings for proper deduplication)
 		if handler != nil && len(output.Findings) > 0 {
-			if err := handler(ctx, output.Findings); err != nil {
+			if err := handler(ctx, output.Findings, changedPaths); err != nil {
 				fmt.Printf("  ⚠️  persist findings error: %v\n", err)
 			}
 		} else if handler == nil && len(output.Findings) > 0 {

@@ -216,7 +216,7 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 	ks.SetBasePath(cwd) // Enable evidence verification
 
 	// Ingest (with verification and LLM-extracted relationships)
-	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, !viper.GetBool("quiet"))
+	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, nil, !viper.GetBool("quiet"))
 }
 
 // generateBootstrapReport creates a report from agent results
@@ -341,11 +341,7 @@ func runAutoInit(basePath string, cmd *cobra.Command) error {
 		for _, ai := range selectedAIs {
 			aiCfg := aiConfigs[ai]
 			fmt.Printf("📝 Creating %s commands...\n", aiCfg.displayName)
-			if err := createSingleSlashCommand(basePath, aiCfg, verbose); err != nil {
-				return err
-			}
-			// Also create task lifecycle commands
-			if err := createTaskSlashCommands(basePath, aiCfg, verbose); err != nil {
+			if err := createSlashCommands(basePath, aiCfg, verbose); err != nil {
 				return err
 			}
 		}
@@ -393,605 +389,81 @@ func runAutoInit(basePath string, cmd *cobra.Command) error {
 	return nil
 }
 
-// createTaskSlashCommands creates task lifecycle slash commands for AI assistants
-func createTaskSlashCommands(basePath string, aiCfg aiConfig, verbose bool) error {
-	if aiCfg.fileExt == ".toml" {
-		// Create TOML format commands for Gemini
-		return createGeminiTaskCommands(basePath, aiCfg, verbose)
-	}
-
+// createSlashCommands creates all slash commands (main + task lifecycle) for AI assistants.
+// These are THIN WRAPPERS that call `taskwing slash <name>` at runtime.
+// This ensures command content always matches the installed CLI version.
+func createSlashCommands(basePath string, aiCfg aiConfig, verbose bool) error {
 	commandsDir := filepath.Join(basePath, aiCfg.commandsDir)
 	if err := os.MkdirAll(commandsDir, 0755); err != nil {
 		return fmt.Errorf("create commands dir: %w", err)
 	}
 
-	// Define task lifecycle commands with full context-aware workflows
+	// Define all commands in one place
 	commands := []struct {
-		name    string
-		content string
+		baseName    string
+		slashCmd    string
+		description string
 	}{
-		{
-			name: "tw-next.md",
-			content: `# Start Next TaskWing Task with Full Context
-
-Execute these steps IN ORDER. Do not skip any step.
-
-## Step 1: Get Next Task
-Call MCP tool ` + "`task_next`" + ` to retrieve the highest priority pending task:
-` + "```json" + `
-{"session_id": "claude-session"}
-` + "```" + `
-
-Extract from the response:
-- task_id, title, description
-- scope (e.g., "auth", "vectorsearch", "api")
-- keywords array
-- acceptance_criteria
-- suggested_recall_queries
-
-If no task returned, inform user: "No pending tasks. Use 'taskwing plan list' to check plan status."
-
-## Step 2: Fetch Scope-Relevant Context
-Call MCP tool ` + "`recall`" + ` with query based on task scope:
-` + "```json" + `
-{"query": "[task.scope] patterns constraints decisions"}
-` + "```" + `
-
-Examples:
-- scope "auth" → ` + "`{\"query\": \"authentication cookies session patterns\"}`" + `
-- scope "api" → ` + "`{\"query\": \"api handlers middleware patterns\"}`" + `
-- scope "vectorsearch" → ` + "`{\"query\": \"lancedb embedding vector patterns\"}`" + `
-
-Extract: patterns, constraints, related decisions.
-
-## Step 3: Fetch Task-Specific Context
-Call MCP tool ` + "`recall`" + ` with keywords from the task:
-
-Use ` + "`suggested_recall_queries`" + ` if available, otherwise extract keywords from title.
-` + "```json" + `
-{"query": "[keywords from task title/description]"}
-` + "```" + `
-
-## Step 4: Claim the Task
-Call MCP tool ` + "`task_start`" + `:
-` + "```json" + `
-{"task_id": "[task_id from step 1]", "session_id": "claude-session"}
-` + "```" + `
-
-## Step 5: Present Unified Task Brief
-
-Display this EXACT format:
-
-` + "```" + `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 TASK: [task_id] (Priority: [priority])
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**[Title]**
-
-## Description
-[Full task description]
-
-## Acceptance Criteria
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
-- [ ] [Criterion 3]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏗️ ARCHITECTURE CONTEXT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## Relevant Patterns
-[Patterns from recall that apply to this task]
-
-## Constraints
-[Constraints that must be respected]
-
-## Related Decisions
-[Past decisions that inform this work]
-
-## Key Files
-[Files likely to be modified based on context]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ Task claimed. Ready to begin.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-` + "```" + `
-
-## Step 6: Begin Implementation
-Proceed with the task, following the patterns and respecting the constraints shown above.
-
-**CRITICAL**: You MUST call all MCP tools (task_next, recall x2, task_start) before showing the brief. Do not proceed without context.
-
-## Fallback (No MCP)
-` + "```bash" + `
-tw task list                    # List all tasks
-tw task show TASK_ID            # View task details
-tw context -q "search term"     # Get context
-` + "```" + `
-`,
-		},
-		{
-			name: "tw-done.md",
-			content: `# Complete Task with Architecture-Aware Summary
-
-Execute these steps IN ORDER.
-
-## Step 1: Get Current Task
-Call MCP tool ` + "`task_current`" + `:
-` + "```json" + `
-{"session_id": "claude-session"}
-` + "```" + `
-
-If no active task, inform user and stop.
-
-## Step 2: Fetch Original Context
-Call MCP tool ` + "`recall`" + ` with the task scope to retrieve patterns/constraints that were meant to be followed:
-` + "```json" + `
-{"query": "[task.scope] patterns constraints"}
-` + "```" + `
-
-## Step 3: Generate Completion Report
-
-Create a structured summary covering:
-
-### Files Modified
-List all files changed:
-- File path
-- Lines added/removed (approximate)
-- Purpose of change
-
-### Acceptance Criteria Verification
-For each criterion from the task:
-- ✅ **Met**: [How it was satisfied]
-- ❌ **Not Met**: [Why, and what's needed]
-- ⚠️ **Partial**: [What was done, what remains]
-
-### Pattern Compliance
-Confirm alignment with codebase patterns from recall:
-- [Pattern name]: ✅ Followed / ⚠️ Deviated because [reason]
-
-### Constraint Adherence
-Confirm constraints were respected:
-- [Constraint]: ✅ Respected / ❌ Violated (requires review)
-
-### Technical Debt / Follow-ups
-- TODOs introduced
-- Tests not written
-- Edge cases not handled
-
-## Step 4: Mark Complete
-Call MCP tool ` + "`task_complete`" + `:
-` + "```json" + `
-{
-  "task_id": "[task_id]",
-  "summary": "[The structured summary from Step 3]",
-  "files_modified": ["path/to/file1.go", "path/to/file2.go"]
-}
-` + "```" + `
-
-## Step 5: Confirm to User
-
-Display:
-` + "```" + `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ TASK COMPLETE: [task_id]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[Summary report from Step 3]
-
-Recorded in TaskWing memory.
-Use /tw-next to continue with next priority task.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-` + "```" + `
-
-**CRITICAL**: Do not tell user task is complete until task_complete MCP returns success.
-
-## Fallback (No MCP)
-` + "```bash" + `
-tw task complete TASK_ID
-` + "```" + `
-`,
-		},
-		{
-			name: "tw-context.md",
-			content: `# Fetch Additional Context for Current Task
-
-Use this when you need more architectural context mid-task.
-
-## Step 1: Get Current Task
-Call MCP tool ` + "`task_current`" + `:
-` + "```json" + `
-{"session_id": "claude-session"}
-` + "```" + `
-
-Extract the task scope and keywords.
-
-## Step 2: Fetch Requested Context
-Call MCP tool ` + "`recall`" + `:
-
-If user provided a query argument:
-` + "```json" + `
-{"query": "[user's query]"}
-` + "```" + `
-
-If no query provided, use task scope:
-` + "```json" + `
-{"query": "[task.scope] patterns constraints decisions"}
-` + "```" + `
-
-## Step 3: Display Context
-
-` + "```" + `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔍 CONTEXT: [query]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## Patterns
-[Pattern results from recall]
-
-## Constraints
-[Constraint results from recall]
-
-## Decisions
-[Decision results from recall]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-` + "```" + `
-
-## Usage Examples
-- ` + "`/tw-context`" + ` - Get context for current task scope
-- ` + "`/tw-context authentication`" + ` - Search for auth-related context
-- ` + "`/tw-context error handling patterns`" + ` - Specific search
-
-## Fallback (No MCP)
-` + "```bash" + `
-tw context -q "search term"
-tw context --answer "question about codebase"
-` + "```" + `
-`,
-		},
-		{
-			name: "tw-status.md",
-			content: `# Show Current Task Status with Context
-
-## Step 1: Get Current Task
-Call MCP tool ` + "`task_current`" + `:
-` + "```json" + `
-{"session_id": "claude-session"}
-` + "```" + `
-
-If no active task:
-` + "```" + `
-No active task. Use /tw-next to start the next priority task.
-` + "```" + `
-
-## Step 2: Get Task Context
-Call MCP tool ` + "`recall`" + ` with task scope:
-` + "```json" + `
-{"query": "[task.scope] constraints patterns"}
-` + "```" + `
-
-## Step 3: Display Status
-
-` + "```" + `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 CURRENT TASK STATUS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Task: [task_id] - [title]
-Priority: [priority]
-Status: [status]
-Started: [claimed_at timestamp]
-Scope: [scope]
-
-## Acceptance Criteria
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
-
-## Active Constraints
-[Constraints from recall that apply to this task]
-
-## Patterns to Follow
-[Patterns from recall for this scope]
-
-## Dependencies
-[List of dependent tasks and their status]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Commands:
-  /tw-done    - Complete this task
-  /tw-block   - Mark as blocked
-  /tw-context - Fetch more context
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-` + "```" + `
-
-## Fallback (No MCP)
-` + "```bash" + `
-tw task list --status in_progress
-tw plan list
-` + "```" + `
-`,
-		},
-		{
-			name: "tw-block.md",
-			content: `# Mark Current Task as Blocked
-
-Use this when you cannot proceed with the current task.
-
-## Step 1: Get Current Task
-Call MCP tool ` + "`task_current`" + `:
-` + "```json" + `
-{"session_id": "claude-session"}
-` + "```" + `
-
-Confirm task_id and current status.
-
-## Step 2: Document the Blocker
-Identify the specific reason:
-- Missing API documentation or credentials
-- Dependent task not completed
-- Need clarification from user
-- External service unavailable
-- Technical limitation discovered
-
-## Step 3: Block the Task
-Call MCP tool ` + "`task_block`" + `:
-` + "```json" + `
-{
-  "task_id": "[task_id]",
-  "reason": "[Detailed description of why blocked and what's needed to unblock]"
-}
-` + "```" + `
-
-## Step 4: Confirm and Offer Next Steps
-
-` + "```" + `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚫 TASK BLOCKED: [task_id]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Reason: [block reason]
-
-To unblock: [specific action needed]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-` + "```" + `
-
-Ask user: "Would you like to work on the next available task? Use /tw-next to continue."
-
-## Step 5: Unblocking (when ready)
-When the blocker is resolved, call MCP tool ` + "`task_unblock`" + `:
-` + "```json" + `
-{"task_id": "[task_id]"}
-` + "```" + `
-
-## Fallback (No MCP)
-` + "```bash" + `
-tw task update TASK_ID --status blocked
-` + "```" + `
-`,
-		},
-		{
-			name: "tw-plan.md",
-			content: `# Create Development Plan with Goal
-
-**Usage:** ` + "`/tw-plan <your goal>`" + `
-
-**Example:** ` + "`/tw-plan Add Stripe billing integration`" + `
-
-This command creates a development plan through an interactive clarification flow.
-
-Execute these steps IN ORDER. Do not skip any step.
-
-## Step 0: Check for Goal
-
-**If $ARGUMENTS is empty or not provided:**
-Ask the user: "What do you want to build? Please describe your goal."
-Wait for user response, then use that as the goal.
-
-**If $ARGUMENTS is provided:**
-Use $ARGUMENTS as the goal and proceed to Step 1.
-
-## Step 1: Initial Clarification
-
-Call MCP tool ` + "`plan_clarify`" + ` with the user's goal:
-` + "```json" + `
-{"goal": "[goal from Step 0]"}
-` + "```" + `
-
-Extract from the response:
-- ` + "`questions`" + ` (array of clarifying questions)
-- ` + "`goal_summary`" + ` (concise one-liner)
-- ` + "`enriched_goal`" + ` (full technical specification)
-- ` + "`is_ready_to_plan`" + ` (boolean)
-- ` + "`context_used`" + ` (knowledge graph context retrieved)
-
-If the response fails, inform the user and suggest running ` + "`taskwing bootstrap`" + ` first.
-
-## Step 2: Ask Clarifying Questions (Loop)
-
-**If ` + "`is_ready_to_plan`" + ` is ` + "`false`" + `:**
-
-Present the questions to the user in this format:
-` + "```" + `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 GOAL: [goal_summary]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-I need a few clarifications before creating the plan:
-
-1. [Question 1]
-2. [Question 2]
-3. [Question 3]
-
-**Context:** [context_used]
-
-Please answer these questions, or say "auto" to let me answer using the project's architecture.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-` + "```" + `
-
-Wait for user response.
-
-**If user says "auto" or similar:**
-Call ` + "`plan_clarify`" + ` again with ` + "`auto_answer: true`" + `:
-` + "```json" + `
-{"goal": "$ARGUMENTS", "auto_answer": true}
-` + "```" + `
-
-**If user provides answers:**
-Format answers as JSON and call ` + "`plan_clarify`" + ` again:
-` + "```json" + `
-{
-  "goal": "$ARGUMENTS",
-  "history": "[{\"q\": \"Question 1\", \"a\": \"User answer 1\"}, ...]"
-}
-` + "```" + `
-
-Repeat this step until ` + "`is_ready_to_plan`" + ` is ` + "`true`" + `.
-
-## Step 3: Generate Plan
-
-When ` + "`is_ready_to_plan`" + ` is ` + "`true`" + `, call MCP tool ` + "`plan_generate`" + `:
-` + "```json" + `
-{
-  "goal": "$ARGUMENTS",
-  "enriched_goal": "[enriched_goal from step 2]"
-}
-` + "```" + `
-
-Extract from the response:
-- ` + "`plan_id`" + `
-- ` + "`tasks`" + ` (array of generated tasks)
-- ` + "`hint`" + `
-
-## Step 4: Present Plan Summary
-
-Display the generated plan in this format:
-` + "```" + `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ PLAN CREATED: [plan_id]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**Goal:** [goal]
-
-**Specification:**
-[enriched_goal]
-
-## Generated Tasks
-
-| # | Title | Priority |
-|---|-------|----------|
-| 1 | [Task 1 title] | [priority] |
-| 2 | [Task 2 title] | [priority] |
-...
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 Plan saved and set as active.
-
-**Next steps:**
-- Run /tw-next to start working on the first task
-- Or: ` + "`tw plan show [plan_id]`" + ` to view details
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-` + "```" + `
-
-## Fallback (No MCP)
-` + "```bash" + `
-tw plan new "Your goal description"
-` + "```" + `
-`,
-		},
+		// Main command
+		{"taskwing", "taskwing", "Fetch project architecture context from TaskWing"},
+		// Task lifecycle commands
+		{"tw-next", "next", "Start next TaskWing task with full context"},
+		{"tw-done", "done", "Complete current task with architecture-aware summary"},
+		{"tw-context", "context", "Fetch additional context for current task"},
+		{"tw-status", "status", "Show current task status"},
+		{"tw-block", "block", "Mark current task as blocked"},
+		{"tw-plan", "plan", "Create development plan with goal"},
 	}
+
+	isTOML := aiCfg.fileExt == ".toml"
 
 	for _, cmd := range commands {
-		filePath := filepath.Join(commandsDir, cmd.name)
-		if err := os.WriteFile(filePath, []byte(cmd.content), 0644); err != nil {
-			return fmt.Errorf("create %s: %w", cmd.name, err)
+		var content, fileName string
+
+		if isTOML {
+			// Gemini TOML format: !{taskwing slash ...}
+			fileName = cmd.baseName + ".toml"
+			content = fmt.Sprintf(`description = "%s"
+
+prompt = """!{taskwing slash %s}"""
+`, cmd.description, cmd.slashCmd)
+		} else {
+			// Markdown format (Claude/Cursor): !taskwing slash ...
+			fileName = cmd.baseName + ".md"
+			content = fmt.Sprintf(`---
+description: %s
+---
+!taskwing slash %s
+`, cmd.description, cmd.slashCmd)
+		}
+
+		filePath := filepath.Join(commandsDir, fileName)
+		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("create %s: %w", fileName, err)
 		}
 		if verbose {
-			fmt.Printf("  ✓ Created %s/%s\n", aiCfg.commandsDir, cmd.name)
+			fmt.Printf("  ✓ Created %s/%s (dynamic)\n", aiCfg.commandsDir, fileName)
 		}
-	}
-
-	return nil
-}
-
-// createSingleSlashCommand creates the unified /taskwing command
-func createSingleSlashCommand(basePath string, aiCfg aiConfig, verbose bool) error {
-	commandsDir := filepath.Join(basePath, aiCfg.commandsDir)
-	if err := os.MkdirAll(commandsDir, 0755); err != nil {
-		return fmt.Errorf("create commands dir: %w", err)
-	}
-
-	var content string
-	var fileName string
-
-	if aiCfg.fileExt == ".toml" {
-		// TOML format for Gemini CLI
-		fileName = "taskwing.toml"
-		content = `description = "Fetch project context from TaskWing"
-
-prompt = """Call the TaskWing MCP recall tool NOW to understand this codebase.
-
-Use it with:
-- No query: Get overview (features, decisions, patterns, constraints)
-- With query: {"query": "search term"} for semantic search
-
-This is the first thing you should do when working on this project."""
-`
-	} else {
-		// Markdown format for Claude, Cursor, Copilot, Codex
-		// Use the correct installer command for each AI assistant
-		fileName = "taskwing.md"
-		content = `# Fetch project architecture context
-
-Retrieve codebase knowledge (patterns, decisions, constraints) via the TaskWing MCP server.
-
-## Prerequisites
-TaskWing MCP server must be configured. If not set up, run:
-` + "```bash" + `
-tw mcp install ` + aiCfg.name + `
-` + "```" + `
-
-## MCP Tool: ` + "`recall`" + `
-- **Overview mode** (no params): Returns summary of features, decisions, patterns, constraints
-- **Search mode**: ` + "`{\"query\": \"authentication\"}`" + ` for semantic search across project memory
-
-## When to Use
-- Starting work on an unfamiliar codebase
-- Before implementing features (check existing patterns)
-- When unsure about architecture decisions
-- Finding constraints before making changes
-
-## Fallback (No MCP)
-If MCP is unavailable, use the CLI directly:
-` + "```bash" + `
-tw context              # Overview
-tw context -q "search"  # Semantic search
-tw context --answer     # AI-generated response
-` + "```" + `
-`
-	}
-
-	filePath := filepath.Join(commandsDir, fileName)
-	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("create %s: %w", fileName, err)
-	}
-	if verbose {
-		fmt.Printf("  ✓ Created %s/%s\n", aiCfg.commandsDir, fileName)
 	}
 
 	return nil
 }
 
 // HooksConfig represents the hooks configuration for AI assistants
+// Uses nested object format: {"hooks": {"EventName": [{"hooks": [...]}]}}
 type HooksConfig struct {
 	Hooks map[string][]HookMatcher `json:"hooks"`
 }
 
-// HookMatcher represents a hook trigger
+// HookMatcher represents a hook trigger with optional matcher
 type HookMatcher struct {
-	Hooks []HookCommand `json:"hooks"`
+	Matcher *HookMatcherConfig `json:"matcher,omitempty"`
+	Hooks   []HookCommand      `json:"hooks"`
+}
+
+// HookMatcherConfig represents matcher conditions (optional)
+type HookMatcherConfig struct {
+	Tools []string `json:"tools,omitempty"`
 }
 
 // HookCommand represents a single hook command
@@ -1033,20 +505,12 @@ func installHooksConfig(basePath string, aiName string, verbose bool) error {
 		}
 	}
 
-	// Create hooks configuration
+	// Create hooks configuration using nested object format
+	// IMPORTANT: Claude Code only supports these events: PreToolUse, PostToolUse, Notification, Stop
+	// SessionStart and SessionEnd are NOT valid events - they are silently ignored!
+	// The continue-check command auto-initializes the session on first call, so no SessionStart needed.
 	config := HooksConfig{
 		Hooks: map[string][]HookMatcher{
-			"SessionStart": {
-				{
-					Hooks: []HookCommand{
-						{
-							Type:    "command",
-							Command: "taskwing hook session-init",
-							Timeout: 10,
-						},
-					},
-				},
-			},
 			"Stop": {
 				{
 					Hooks: []HookCommand{
@@ -1054,17 +518,6 @@ func installHooksConfig(basePath string, aiName string, verbose bool) error {
 							Type:    "command",
 							Command: "taskwing hook continue-check --max-tasks=5 --max-minutes=30",
 							Timeout: 15,
-						},
-					},
-				},
-			},
-			"SessionEnd": {
-				{
-					Hooks: []HookCommand{
-						{
-							Type:    "command",
-							Command: "taskwing hook session-end",
-							Timeout: 5,
 						},
 					},
 				},
@@ -1157,149 +610,6 @@ func updateAgentDocs(basePath string, aiName string, verbose bool) error {
 
 		// Only update one file per AI
 		break
-	}
-
-	return nil
-}
-
-// createGeminiTaskCommands creates TOML format task commands for Gemini CLI
-func createGeminiTaskCommands(basePath string, aiCfg aiConfig, verbose bool) error {
-	commandsDir := filepath.Join(basePath, aiCfg.commandsDir)
-	if err := os.MkdirAll(commandsDir, 0755); err != nil {
-		return fmt.Errorf("create commands dir: %w", err)
-	}
-
-	// Define task lifecycle commands in TOML format
-	commands := []struct {
-		name    string
-		content string
-	}{
-		{
-			name: "tw-next.toml",
-			content: `description = "Start next TaskWing task with full context"
-
-prompt = """Execute these steps IN ORDER:
-
-1. Call MCP tool task_next with: {"session_id": "gemini-session"}
-   Extract: task_id, title, description, scope, keywords, acceptance_criteria
-
-2. Call MCP tool recall with: {"query": "[scope] patterns constraints"}
-   Extract architecture context for this task.
-
-3. Call MCP tool task_start with: {"task_id": "[task_id]", "session_id": "gemini-session"}
-
-4. Display the task brief and begin implementation.
-
-IMPORTANT: Complete all MCP calls before starting work."""
-`,
-		},
-		{
-			name: "tw-done.toml",
-			content: `description = "Complete current TaskWing task"
-
-prompt = """Execute these steps:
-
-1. Call MCP tool task_current with: {"session_id": "gemini-session"}
-   If no active task, inform user.
-
-2. Call MCP tool recall with: {"query": "[task.scope] patterns constraints"}
-   Verify work followed architecture patterns.
-
-3. Create a summary of:
-   - Files modified
-   - Acceptance criteria status
-   - Pattern compliance
-
-4. Call MCP tool task_complete with:
-   {"task_id": "[task_id]", "summary": "[summary]", "files_modified": ["file1", "file2"]}
-
-5. Inform user task is complete. Suggest running /tw-next for next task."""
-`,
-		},
-		{
-			name: "tw-status.toml",
-			content: `description = "Show current TaskWing task status"
-
-prompt = """Execute these steps:
-
-1. Call MCP tool task_current with: {"session_id": "gemini-session"}
-   If no active task, tell user to run /tw-next.
-
-2. Call MCP tool recall with: {"query": "[task.scope] constraints patterns"}
-
-3. Display task status including:
-   - Task ID, title, priority
-   - Acceptance criteria
-   - Relevant constraints and patterns"""
-`,
-		},
-		{
-			name: "tw-block.toml",
-			content: `description = "Mark current TaskWing task as blocked"
-
-prompt = """Execute these steps:
-
-1. Call MCP tool task_current with: {"session_id": "gemini-session"}
-   If no active task, inform user.
-
-2. Ask user for block reason if not provided.
-
-3. Call MCP tool task_block with:
-   {"task_id": "[task_id]", "reason": "[detailed reason]"}
-
-4. Confirm task is blocked. Suggest /tw-next for next available task."""
-`,
-		},
-		{
-			name: "tw-context.toml",
-			content: `description = "Fetch TaskWing architecture context"
-
-prompt = """Call the TaskWing MCP recall tool to get architecture context.
-
-If user provided a query, use: {"query": "[user's query]"}
-Otherwise, get task scope and use: {"query": "[scope] patterns constraints decisions"}
-
-Display the results organized by:
-- Patterns
-- Constraints
-- Decisions"""
-`,
-		},
-		{
-			name: "tw-plan.toml",
-			content: `description = "Create plan: /tw-plan <goal> (e.g., /tw-plan Add Stripe billing)"
-
-prompt = """Create a development plan. Usage: /tw-plan <your goal>
-
-**Step 0: Get Goal**
-If $ARGUMENTS is empty, ask user: "What do you want to build?"
-Otherwise, use $ARGUMENTS as the goal.
-
-**Step 1: Clarify**
-Call plan_clarify with: {"goal": "[goal]"}
-
-If is_ready_to_plan is false:
-- Present questions to user
-- Wait for answers (user can say "auto" to auto-answer)
-- Call plan_clarify again with history until ready
-
-**Step 2: Generate**
-Call plan_generate with: {"goal": "[goal]", "enriched_goal": "[from clarify]"}
-
-**Step 3: Present**
-Display the plan with task list and suggest /tw-next to begin."""
-`,
-		},
-	}
-
-	for _, cmd := range commands {
-		filePath := filepath.Join(commandsDir, cmd.name)
-		if err := os.WriteFile(filePath, []byte(cmd.content), 0644); err != nil {
-			return fmt.Errorf("create %s: %w", cmd.name, err)
-		}
-		if verbose {
-			fmt.Printf("  ✓ Created %s/%s\n", aiCfg.commandsDir, cmd.name)
-		}
 	}
 
 	return nil

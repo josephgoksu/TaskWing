@@ -23,6 +23,8 @@ taskwing plan start latest
 # Subsequent tasks will auto-continue
 ```
 
+> **Note**: Slash commands like `/tw-next` are dynamic wrappers that call `taskwing slash next` at runtime. This ensures command content always matches your installed CLI version—no manual update needed after `brew upgrade taskwing`.
+
 ---
 
 ## How It Works

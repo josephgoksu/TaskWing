@@ -61,11 +61,6 @@ func ShouldIgnoreDir(name string) bool {
 	return IgnoredDirs[name]
 }
 
-// IsAllowedDotDir returns true if this dot-directory should be analyzed.
-func IsAllowedDotDir(name string) bool {
-	return AllowedDotDirs[name]
-}
-
 // ShouldSkipDotEntry returns true if a dot-prefixed entry should be skipped.
 // Returns false for allowed dot-directories and important dotfiles.
 func ShouldSkipDotEntry(name string, isDir bool) bool {
@@ -112,11 +107,6 @@ var DependencyFiles = map[string]bool{
 var RuleFiles = map[string]bool{
 	"GEMINI.md": true, "CLAUDE.md": true, "CONTRIBUTING.md": true,
 	"README.md": true,
-}
-
-// IsRuleFile returns true if the filename is a rule/documentation file.
-func IsRuleFile(name string) bool {
-	return RuleFiles[name]
 }
 
 // IsCodeFile returns true if the extension belongs to a code file.

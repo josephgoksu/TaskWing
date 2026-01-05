@@ -1,0 +1,332 @@
+/*
+Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
+*/
+package cmd
+
+// slashNextContent is the prompt content for /tw-next
+const slashNextContent = `# Start Next TaskWing Task with Full Context
+
+Execute these steps IN ORDER. Do not skip any step.
+
+## Step 1: Get Next Task
+Call MCP tool ` + "`task_next`" + ` to retrieve the highest priority pending task:
+` + "```json" + `
+{"session_id": "claude-session"}
+` + "```" + `
+
+Extract from the response:
+- task_id, title, description
+- scope (e.g., "auth", "vectorsearch", "api")
+- keywords array
+- acceptance_criteria
+- suggested_recall_queries
+
+If no task returned, inform user: "No pending tasks. Use 'taskwing plan list' to check plan status."
+
+## Step 2: Fetch Scope-Relevant Context
+Call MCP tool ` + "`recall`" + ` with query based on task scope:
+` + "```json" + `
+{"query": "[task.scope] patterns constraints decisions"}
+` + "```" + `
+
+Examples:
+- scope "auth" → ` + "`{\"query\": \"authentication cookies session patterns\"}`" + `
+- scope "api" → ` + "`{\"query\": \"api handlers middleware patterns\"}`" + `
+- scope "vectorsearch" → ` + "`{\"query\": \"lancedb embedding vector patterns\"}`" + `
+
+Extract: patterns, constraints, related decisions.
+
+## Step 3: Fetch Task-Specific Context
+Call MCP tool ` + "`recall`" + ` with keywords from the task.
+Use ` + "`suggested_recall_queries`" + ` if available, otherwise extract keywords from title.
+` + "```json" + `
+{"query": "[keywords from task title/description]"}
+` + "```" + `
+
+## Step 4: Claim the Task
+Call MCP tool ` + "`task_start`" + `:
+` + "```json" + `
+{"task_id": "[task_id from step 1]", "session_id": "claude-session"}
+` + "```" + `
+
+## Step 5: Present Unified Task Brief
+
+Display in this format:
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 TASK: [task_id] (Priority: [priority])
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**[Title]**
+
+## Description
+[Full task description]
+
+## Acceptance Criteria
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+- [ ] [Criterion 3]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏗️ ARCHITECTURE CONTEXT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Relevant Patterns
+[Patterns from recall that apply to this task]
+
+## Constraints
+[Constraints that must be respected]
+
+## Related Decisions
+[Past decisions that inform this work]
+
+## Key Files
+[Files likely to be modified based on context]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Task claimed. Ready to begin.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Step 6: Begin Implementation
+Proceed with the task, following the patterns and respecting the constraints shown above.
+
+**CRITICAL**: You MUST call all MCP tools (task_next, recall x2, task_start) before showing the brief.
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw task list                    # List all tasks
+tw task show TASK_ID            # View task details
+tw context -q "search term"     # Get context
+` + "```" + `
+`
+
+// slashDoneContent is the prompt content for /tw-done
+const slashDoneContent = `# Complete Task with Architecture-Aware Summary
+
+Execute these steps IN ORDER.
+
+## Step 1: Get Current Task
+Call MCP tool ` + "`task_current`" + `:
+` + "```json" + `
+{"session_id": "claude-session"}
+` + "```" + `
+
+If no active task, inform user and stop.
+
+## Step 2: Generate Completion Report
+
+Create a structured summary covering:
+
+### Files Modified
+List all files changed with purpose of change.
+
+### Acceptance Criteria Verification
+For each criterion:
+- ✅ **Met**: [How it was satisfied]
+- ❌ **Not Met**: [Why, and what's needed]
+- ⚠️ **Partial**: [What was done, what remains]
+
+### Pattern Compliance
+Confirm alignment with codebase patterns.
+
+### Technical Debt / Follow-ups
+- TODOs introduced
+- Tests not written
+- Edge cases not handled
+
+## Step 3: Mark Complete
+Call MCP tool ` + "`task_complete`" + `:
+` + "```json" + `
+{
+  "task_id": "[task_id]",
+  "summary": "[The structured summary from Step 2]",
+  "files_modified": ["path/to/file1.go", "path/to/file2.go"]
+}
+` + "```" + `
+
+## Step 4: Confirm to User
+
+Display:
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ TASK COMPLETE: [task_id]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Summary report]
+
+Recorded in TaskWing memory.
+Use /tw-next to continue with next priority task.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw task complete TASK_ID
+` + "```" + `
+`
+
+// slashStatusContent is the prompt content for /tw-status
+const slashStatusContent = `# Show Current Task Status
+
+## Step 1: Get Current Task
+Call MCP tool ` + "`task_current`" + `:
+` + "```json" + `
+{"session_id": "claude-session"}
+` + "```" + `
+
+If no active task:
+` + "```" + `
+No active task. Use /tw-next to start the next priority task.
+` + "```" + `
+
+## Step 2: Display Status
+
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 CURRENT TASK STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Task: [task_id] - [title]
+Priority: [priority]
+Status: [status]
+Started: [claimed_at timestamp]
+Scope: [scope]
+
+## Acceptance Criteria
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Commands:
+  /tw-done    - Complete this task
+  /taskwing   - Fetch more context
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw task list --status in_progress
+tw plan list
+` + "```" + `
+`
+
+// slashPlanContent is the prompt content for /tw-plan
+const slashPlanContent = `# Create Development Plan with Goal
+
+**Usage:** ` + "`/tw-plan <your goal>`" + `
+
+**Example:** ` + "`/tw-plan Add Stripe billing integration`" + `
+
+## Step 0: Check for Goal
+
+**If $ARGUMENTS is empty or not provided:**
+Ask the user: "What do you want to build? Please describe your goal."
+Wait for user response, then use that as the goal.
+
+**If $ARGUMENTS is provided:**
+Use $ARGUMENTS as the goal and proceed to Step 1.
+
+## Step 1: Initial Clarification
+
+Call MCP tool ` + "`plan_clarify`" + ` with the user's goal:
+` + "```json" + `
+{"goal": "[goal from Step 0]"}
+` + "```" + `
+
+Extract: questions, goal_summary, enriched_goal, is_ready_to_plan, context_used.
+
+## Step 2: Ask Clarifying Questions (Loop)
+
+**If is_ready_to_plan is false:**
+Present the questions to the user. Wait for user response.
+
+**If user says "auto":**
+Call plan_clarify again with auto_answer: true.
+
+**If user provides answers:**
+Format answers as JSON and call plan_clarify again.
+
+Repeat until is_ready_to_plan is true.
+
+## Step 3: Generate Plan
+
+When is_ready_to_plan is true, call MCP tool ` + "`plan_generate`" + `:
+` + "```json" + `
+{
+  "goal": "$ARGUMENTS",
+  "enriched_goal": "[enriched_goal from step 2]",
+  "save": true
+}
+` + "```" + `
+
+## Step 4: Present Plan Summary
+
+Display the generated plan:
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ PLAN CREATED: [plan_id]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Goal:** [goal]
+
+## Generated Tasks
+
+| # | Title | Priority |
+|---|-------|----------|
+| 1 | [Task 1 title] | [priority] |
+| 2 | [Task 2 title] | [priority] |
+...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 Plan saved and set as active.
+
+**Next steps:**
+- Run /tw-next to start working on the first task
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw plan new "Your goal description"
+` + "```" + `
+`
+
+// slashTaskwingContent is the prompt content for /taskwing
+const slashTaskwingContent = `# TaskWing Project Context
+
+Call MCP tool ` + "`recall`" + ` to retrieve project architecture context:
+` + "```json" + `
+{}
+` + "```" + `
+
+This returns:
+- Project overview
+- Key decisions and rationale
+- Architecture patterns
+- Constraints
+- Features
+
+Display the results to the user formatted as a project briefing.
+
+## For Specific Queries
+
+If user provides search terms, call recall with a query:
+` + "```json" + `
+{"query": "[user's search terms]"}
+` + "```" + `
+
+## For RAG Answers
+
+If user asks a question, call recall with answer=true:
+` + "```json" + `
+{"query": "[user's question]", "answer": true}
+` + "```" + `
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw context              # Project overview
+tw context -q "query"   # Search
+tw context --answer "q" # RAG answer
+` + "```" + `
+`

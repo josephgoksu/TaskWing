@@ -96,15 +96,6 @@ func AggregateRelationships(outputs []Output) []Relationship {
 	return all
 }
 
-// GroupFindingsByType organizes findings by their type.
-func GroupFindingsByType(findings []Finding) map[FindingType][]Finding {
-	grouped := make(map[FindingType][]Finding)
-	for _, f := range findings {
-		grouped[f.Type] = append(grouped[f.Type], f)
-	}
-	return grouped
-}
-
 // ConfidenceLabelFromScore converts numeric confidence to label.
 func ConfidenceLabelFromScore(score float64) string {
 	switch {

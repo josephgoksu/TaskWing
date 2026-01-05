@@ -340,10 +340,11 @@ func (g *ContextGatherer) GatherSpecificFiles(files []string) string {
 		if err != nil {
 			continue
 		}
-		if len(content) > 8000 {
-			content = content[:8000]
+		if len(content) > 12000 { // Increased limit for specific files since we focus on them
+			content = append(content[:12000], []byte("\n...[truncated]")...)
 		}
-		sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, string(content)))
+		numberedContent := addLineNumbers(string(content))
+		sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, numberedContent))
 	}
 	return sb.String()
 }
