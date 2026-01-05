@@ -101,10 +101,14 @@ func ExtractAndParseJSON[T any](response string) (T, error) {
 }
 
 // repairJSON attempts to fix common JSON syntax errors from LLMs.
-// Handles: missing commas, trailing commas, single quotes for keys and values.
+// Handles: control characters, missing commas, trailing commas, single quotes for keys and values.
 // Uses pre-compiled regexes for performance.
 func repairJSON(input string) string {
 	result := input
+
+	// 0. Sanitize control characters inside strings (LLMs often output literal tabs/newlines)
+	// These are invalid in JSON strings and must be escaped
+	result = sanitizeControlChars(result)
 
 	// 1. Fix missing commas between properties (only when followed by a key pattern)
 	// Pattern: "value"\n"key": -> "value",\n"key":
@@ -161,6 +165,65 @@ func repairJSON(input string) string {
 	result = fixTruncatedJSON(result)
 
 	return result
+}
+
+// sanitizeControlChars escapes literal control characters inside JSON strings.
+// LLMs often output raw tabs, newlines, etc. which are invalid in JSON.
+func sanitizeControlChars(input string) string {
+	var result strings.Builder
+	result.Grow(len(input))
+
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(input); i++ {
+		c := input[i]
+
+		if escaped {
+			result.WriteByte(c)
+			escaped = false
+			continue
+		}
+
+		if c == '\\' && inString {
+			result.WriteByte(c)
+			escaped = true
+			continue
+		}
+
+		if c == '"' {
+			inString = !inString
+			result.WriteByte(c)
+			continue
+		}
+
+		// Only sanitize control chars inside strings
+		if inString {
+			switch c {
+			case '\t':
+				result.WriteString(`\t`)
+			case '\n':
+				result.WriteString(`\n`)
+			case '\r':
+				result.WriteString(`\r`)
+			case '\b':
+				result.WriteString(`\b`)
+			case '\f':
+				result.WriteString(`\f`)
+			default:
+				// Escape other control characters (0x00-0x1F)
+				if c < 0x20 {
+					result.WriteString(fmt.Sprintf(`\u%04x`, c))
+				} else {
+					result.WriteByte(c)
+				}
+			}
+		} else {
+			result.WriteByte(c)
+		}
+	}
+
+	return result.String()
 }
 
 // fixTruncatedJSON attempts to fix JSON that was truncated mid-string.

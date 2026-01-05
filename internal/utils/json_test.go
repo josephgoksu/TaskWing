@@ -355,3 +355,64 @@ func TestExtractAndParseJSON_WithRepair(t *testing.T) {
 		})
 	}
 }
+
+func TestSanitizeControlChars(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "literal tab in string",
+			input: "{\"code\": \"func()\t{ return }\"}", // literal tab
+			want:  "{\"code\": \"func()\\t{ return }\"}",
+		},
+		{
+			name:  "literal newline in string",
+			input: "{\"text\": \"line1\nline2\"}",
+			want:  "{\"text\": \"line1\\nline2\"}",
+		},
+		{
+			name:  "multiple control chars",
+			input: "{\"snippet\": \"\t\tindented\n\tnewline\"}",
+			want:  "{\"snippet\": \"\\t\\tindented\\n\\tnewline\"}",
+		},
+		{
+			name:  "tabs outside strings unchanged",
+			input: "{\t\"key\":\t\"value\"\t}",
+			want:  "{\t\"key\":\t\"value\"\t}",
+		},
+		{
+			name:  "already escaped tabs unchanged",
+			input: `{"code": "func()\t{ return }"}`, // \t in raw string = literal tab
+			want:  `{"code": "func()\t{ return }"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeControlChars(tt.input)
+			if got != tt.want {
+				t.Errorf("sanitizeControlChars() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractAndParseJSON_WithControlChars(t *testing.T) {
+	// Test that ExtractAndParseJSON handles control chars via repair
+	type TestStruct struct {
+		Code string `json:"code"`
+	}
+
+	// Create input with literal tab inside string
+	input := "{\"code\": \"func()\t{ return }\"}" // literal tab
+
+	got, err := ExtractAndParseJSON[TestStruct](input)
+	if err != nil {
+		t.Fatalf("ExtractAndParseJSON() with tab failed: %v", err)
+	}
+	if got.Code != "func()\t{ return }" {
+		t.Errorf("got Code = %q, want %q", got.Code, "func()\t{ return }")
+	}
+}
