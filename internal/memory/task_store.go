@@ -130,11 +130,12 @@ func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 func (s *SQLiteStore) GetPlan(id string) (*task.Plan, error) {
 	var p task.Plan
 	var createdAt, updatedAt string
+	var lastAuditReport sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, goal, enriched_goal, status, created_at, updated_at
+		SELECT id, goal, enriched_goal, status, created_at, updated_at, last_audit_report
 		FROM plans WHERE id = ?
-	`, id).Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt)
+	`, id).Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &lastAuditReport)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("plan not found: %s", id)
@@ -145,6 +146,9 @@ func (s *SQLiteStore) GetPlan(id string) (*task.Plan, error) {
 
 	p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	if lastAuditReport.Valid {
+		p.LastAuditReport = lastAuditReport.String
+	}
 
 	// Fetch tasks
 	tasks, err := s.ListTasks(id)
@@ -159,7 +163,7 @@ func (s *SQLiteStore) GetPlan(id string) (*task.Plan, error) {
 // ListPlans returns all plans.
 func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 	rows, err := s.db.Query(`
-		SELECT id, goal, enriched_goal, status, created_at, updated_at FROM plans ORDER BY created_at DESC
+		SELECT id, goal, enriched_goal, status, created_at, updated_at, last_audit_report FROM plans ORDER BY created_at DESC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query plans: %w", err)
@@ -170,11 +174,15 @@ func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 	for rows.Next() {
 		var p task.Plan
 		var createdAt, updatedAt string
-		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt); err != nil {
+		var lastAuditReport sql.NullString
+		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &lastAuditReport); err != nil {
 			return nil, fmt.Errorf("scan plan: %w", err)
 		}
 		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		if lastAuditReport.Valid {
+			p.LastAuditReport = lastAuditReport.String
+		}
 		plans = append(plans, p)
 	}
 	// Note: We don't fetch tasks here to keep it lightweight. Use GetPlan for details.
@@ -223,6 +231,30 @@ func (s *SQLiteStore) UpdatePlan(id string, goal, enrichedGoal string, status ta
 	affected, err := res.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("update plan rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("plan not found: %s", id)
+	}
+	return nil
+}
+
+// UpdatePlanAuditReport updates the audit report and status for a plan.
+// This is called by the audit agent after verification completes.
+func (s *SQLiteStore) UpdatePlanAuditReport(id string, status task.PlanStatus, auditReportJSON string) error {
+	if id == "" {
+		return fmt.Errorf("plan id is required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	res, err := s.db.Exec(`
+		UPDATE plans SET status = ?, last_audit_report = ?, updated_at = ? WHERE id = ?
+	`, status, auditReportJSON, now, id)
+	if err != nil {
+		return fmt.Errorf("update plan audit report: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update plan audit report rows affected: %w", err)
 	}
 	if affected == 0 {
 		return fmt.Errorf("plan not found: %s", id)
@@ -704,13 +736,14 @@ func (s *SQLiteStore) CompleteTask(taskID, summary string, filesModified []strin
 func (s *SQLiteStore) GetActivePlan() (*task.Plan, error) {
 	var p task.Plan
 	var createdAt, updatedAt string
+	var lastAuditReport sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, goal, enriched_goal, status, created_at, updated_at
+		SELECT id, goal, enriched_goal, status, created_at, updated_at, last_audit_report
 		FROM plans WHERE status = ?
 		ORDER BY updated_at DESC
 		LIMIT 1
-	`, task.PlanStatusActive).Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt)
+	`, task.PlanStatusActive).Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &lastAuditReport)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -721,6 +754,9 @@ func (s *SQLiteStore) GetActivePlan() (*task.Plan, error) {
 
 	p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	if lastAuditReport.Valid {
+		p.LastAuditReport = lastAuditReport.String
+	}
 
 	// Fetch tasks
 	tasks, err := s.ListTasks(p.ID)

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "taskwing hook continue-check --max-tasks=5 --max-minutes=30",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -15,6 +15,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/planning"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
@@ -51,7 +52,7 @@ var planNewCmd = &cobra.Command{
 		ctx := context.Background()
 		goal := args[0]
 
-		cfg, err := getLLMConfig(cmd)
+		cfg, err := getLLMConfigForRole(cmd, llm.RoleBootstrap)
 		if err != nil {
 			return fmt.Errorf("llm config: %w", err)
 		}

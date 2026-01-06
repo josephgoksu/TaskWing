@@ -7,17 +7,37 @@ import (
 	"strings"
 )
 
+// ModelRole defines the purpose of a model configuration.
+// Different roles have different cost/capability tradeoffs.
+type ModelRole string
+
+const (
+	RoleBootstrap ModelRole = "bootstrap" // Deep analysis (expensive, capable)
+	RoleQuery     ModelRole = "query"     // Quick lookups (cheap, fast)
+	RoleEmbed     ModelRole = "embed"     // Embeddings
+)
+
+// ModelCategory classifies models by their capability/cost tradeoff.
+type ModelCategory string
+
+const (
+	CategoryReasoning ModelCategory = "reasoning" // o3, opus, gpt-5, 2.5-pro - expensive, most capable
+	CategoryBalanced  ModelCategory = "balanced"  // gpt-5-mini, sonnet, flash - good balance
+	CategoryFast      ModelCategory = "fast"      // nano, haiku, flash-lite - cheap, fast
+)
+
 // Model represents a complete model definition including metadata and pricing.
 // This is the single source of truth for all model information.
 type Model struct {
-	ID               string   // Canonical model ID (e.g., "gpt-5-mini")
-	Provider         string   // Provider display name (e.g., "OpenAI")
-	ProviderID       string   // Internal provider ID (e.g., "openai")
-	Aliases          []string // Alternative IDs including dated versions (e.g., "gpt-5-mini-2025-08-07")
-	InputPer1M       float64  // $ per 1M input tokens
-	OutputPer1M      float64  // $ per 1M output tokens
-	IsDefault        bool     // Whether this is the default model for its provider
-	SupportsThinking bool     // Whether the model supports extended thinking mode
+	ID               string        // Canonical model ID (e.g., "gpt-5-mini")
+	Provider         string        // Provider display name (e.g., "OpenAI")
+	ProviderID       string        // Internal provider ID (e.g., "openai")
+	Aliases          []string      // Alternative IDs including dated versions (e.g., "gpt-5-mini-2025-08-07")
+	InputPer1M       float64       // $ per 1M input tokens
+	OutputPer1M      float64       // $ per 1M output tokens
+	IsDefault        bool          // Whether this is the default model for its provider
+	SupportsThinking bool          // Whether the model supports extended thinking mode
+	Category         ModelCategory // Capability category: reasoning, balanced, fast
 }
 
 // ModelRegistry is the single source of truth for all supported models.
@@ -35,6 +55,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       0.40,
 		OutputPer1M:      1.60,
 		SupportsThinking: true,
+		Category:         CategoryReasoning,
 	},
 	{
 		ID:               "o4-mini",
@@ -43,6 +64,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       1.10,
 		OutputPer1M:      4.40,
 		SupportsThinking: true,
+		Category:         CategoryReasoning,
 	},
 	{
 		ID:          "gpt-5",
@@ -50,6 +72,7 @@ var ModelRegistry = []Model{
 		ProviderID:  ProviderOpenAI,
 		InputPer1M:  1.25,
 		OutputPer1M: 10.00,
+		Category:    CategoryReasoning,
 	},
 	{
 		ID:          "gpt-5-mini",
@@ -58,6 +81,7 @@ var ModelRegistry = []Model{
 		InputPer1M:  0.25,
 		OutputPer1M: 2.00,
 		IsDefault:   true,
+		Category:    CategoryBalanced,
 	},
 	{
 		ID:          "gpt-5-nano",
@@ -65,6 +89,7 @@ var ModelRegistry = []Model{
 		ProviderID:  ProviderOpenAI,
 		InputPer1M:  0.05,
 		OutputPer1M: 0.40,
+		Category:    CategoryFast,
 	},
 	{
 		ID:          "gpt-4.1",
@@ -72,6 +97,7 @@ var ModelRegistry = []Model{
 		ProviderID:  ProviderOpenAI,
 		InputPer1M:  2.00,
 		OutputPer1M: 8.00,
+		Category:    CategoryReasoning,
 	},
 	{
 		ID:          "gpt-4.1-mini",
@@ -79,6 +105,7 @@ var ModelRegistry = []Model{
 		ProviderID:  ProviderOpenAI,
 		InputPer1M:  0.40,
 		OutputPer1M: 1.60,
+		Category:    CategoryBalanced,
 	},
 	{
 		ID:          "gpt-4.1-nano",
@@ -86,6 +113,7 @@ var ModelRegistry = []Model{
 		ProviderID:  ProviderOpenAI,
 		InputPer1M:  0.10,
 		OutputPer1M: 0.40,
+		Category:    CategoryFast,
 	},
 
 	// ============================================
@@ -101,6 +129,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      15.00,
 		IsDefault:        true,
 		SupportsThinking: true,
+		Category:         CategoryBalanced,
 	},
 	{
 		ID:               "claude-opus-4-5",
@@ -110,6 +139,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       5.00,
 		OutputPer1M:      25.00,
 		SupportsThinking: true,
+		Category:         CategoryReasoning,
 	},
 	{
 		ID:               "claude-haiku-4-5",
@@ -119,6 +149,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       1.00,
 		OutputPer1M:      5.00,
 		SupportsThinking: true,
+		Category:         CategoryFast,
 	},
 	{
 		ID:               "claude-sonnet-4",
@@ -128,6 +159,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       3.00,
 		OutputPer1M:      15.00,
 		SupportsThinking: true,
+		Category:         CategoryBalanced,
 	},
 	{
 		ID:               "claude-opus-4-1",
@@ -137,6 +169,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       15.00,
 		OutputPer1M:      75.00,
 		SupportsThinking: true,
+		Category:         CategoryReasoning,
 	},
 	// Legacy model for compatibility
 	{
@@ -145,6 +178,7 @@ var ModelRegistry = []Model{
 		ProviderID:  ProviderAnthropic,
 		InputPer1M:  0.25,
 		OutputPer1M: 1.25,
+		Category:    CategoryFast,
 	},
 
 	// ============================================
@@ -159,6 +193,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       2.00,
 		OutputPer1M:      12.00,
 		SupportsThinking: true,
+		Category:         CategoryReasoning,
 	},
 	{
 		ID:               "gemini-3-flash-preview",
@@ -167,6 +202,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       0.50,
 		OutputPer1M:      3.00,
 		SupportsThinking: true,
+		Category:         CategoryBalanced,
 	},
 	{
 		ID:               "gemini-2.5-pro",
@@ -175,6 +211,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       1.25,
 		OutputPer1M:      10.00,
 		SupportsThinking: true,
+		Category:         CategoryReasoning,
 	},
 	{
 		ID:               "gemini-2.5-flash",
@@ -183,6 +220,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       0.30,
 		OutputPer1M:      2.50,
 		SupportsThinking: true,
+		Category:         CategoryBalanced,
 	},
 	{
 		ID:               "gemini-2.5-flash-lite",
@@ -191,6 +229,7 @@ var ModelRegistry = []Model{
 		InputPer1M:       0.10,
 		OutputPer1M:      0.40,
 		SupportsThinking: true,
+		Category:         CategoryFast,
 	},
 	{
 		ID:          "gemini-2.0-flash",
@@ -199,6 +238,7 @@ var ModelRegistry = []Model{
 		InputPer1M:  0.10,
 		OutputPer1M: 0.40,
 		IsDefault:   true,
+		Category:    CategoryBalanced,
 	},
 	{
 		ID:          "gemini-2.0-flash-lite",
@@ -206,6 +246,7 @@ var ModelRegistry = []Model{
 		ProviderID:  ProviderGemini,
 		InputPer1M:  0.075,
 		OutputPer1M: 0.30,
+		Category:    CategoryFast,
 	},
 
 	// ============================================
@@ -216,6 +257,7 @@ var ModelRegistry = []Model{
 		Provider:   "Ollama",
 		ProviderID: ProviderOllama,
 		IsDefault:  true,
+		Category:   CategoryBalanced,
 	},
 }
 
@@ -263,6 +305,57 @@ func GetDefaultModelID(providerID string) string {
 		return m.ID
 	}
 	return ""
+}
+
+// GetRecommendedModelForRole returns the best model for a specific role within a provider.
+// For RoleBootstrap, it prefers CategoryReasoning models.
+// For RoleQuery, it prefers CategoryFast models.
+// Falls back to CategoryBalanced, then provider default if no match found.
+func GetRecommendedModelForRole(providerID string, role ModelRole) *Model {
+	var targetCategory ModelCategory
+	switch role {
+	case RoleBootstrap:
+		targetCategory = CategoryReasoning
+	case RoleQuery:
+		targetCategory = CategoryFast
+	default:
+		targetCategory = CategoryBalanced
+	}
+
+	// First pass: find exact category match
+	for i := range ModelRegistry {
+		m := &ModelRegistry[i]
+		if m.ProviderID == providerID && m.Category == targetCategory {
+			return m
+		}
+	}
+
+	// Second pass: fall back to balanced
+	if targetCategory != CategoryBalanced {
+		for i := range ModelRegistry {
+			m := &ModelRegistry[i]
+			if m.ProviderID == providerID && m.Category == CategoryBalanced {
+				return m
+			}
+		}
+	}
+
+	// Final fallback: provider default
+	return GetDefaultModel(providerID)
+}
+
+// GetCategoryBadge returns an emoji badge for the model category.
+func GetCategoryBadge(category ModelCategory) string {
+	switch category {
+	case CategoryReasoning:
+		return "🧠"
+	case CategoryBalanced:
+		return "⚡"
+	case CategoryFast:
+		return "🚀"
+	default:
+		return ""
+	}
 }
 
 // InferProvider attempts to determine the provider from a model name.

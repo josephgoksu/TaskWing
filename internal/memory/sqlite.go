@@ -366,6 +366,43 @@ func (s *SQLiteStore) initSchema() error {
 	// Add index for finding next available task efficiently
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_status_priority ON tasks(status, priority DESC)`)
 
+	// Migration: Add audit report column to plans table for audit agent
+	planMigrations := []struct {
+		column string
+		ddl    string
+	}{
+		{"last_audit_report", "ALTER TABLE plans ADD COLUMN last_audit_report TEXT"}, // JSON-serialized AuditReport
+	}
+
+	for _, m := range planMigrations {
+		var exists bool
+		rows, err := s.db.Query("PRAGMA table_info(plans)")
+		if err == nil {
+			for rows.Next() {
+				var cid int
+				var name, ctype string
+				var notnull, pk int
+				var dflt any
+				if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
+					if name == m.column {
+						exists = true
+						break
+					}
+				}
+			}
+			_ = rows.Close()
+		}
+
+		if !exists {
+			if _, err := s.db.Exec(m.ddl); err != nil {
+				errMsg := err.Error()
+				if !strings.Contains(errMsg, "duplicate column") {
+					return fmt.Errorf("plan migration %s failed: %w", m.column, err)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 

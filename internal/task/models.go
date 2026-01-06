@@ -22,10 +22,12 @@ const (
 type PlanStatus string
 
 const (
-	PlanStatusDraft     PlanStatus = "draft"     // Initial creation
-	PlanStatusActive    PlanStatus = "active"    // Currently being executed
-	PlanStatusCompleted PlanStatus = "completed" // All tasks done
-	PlanStatusArchived  PlanStatus = "archived"  // No longer active
+	PlanStatusDraft         PlanStatus = "draft"          // Initial creation
+	PlanStatusActive        PlanStatus = "active"         // Currently being executed
+	PlanStatusCompleted     PlanStatus = "completed"      // All tasks done
+	PlanStatusVerified      PlanStatus = "verified"       // Audit agent validated successfully
+	PlanStatusNeedsRevision PlanStatus = "needs_revision" // Audit agent found issues after max retries
+	PlanStatusArchived      PlanStatus = "archived"       // No longer active
 )
 
 // Task represents a discrete unit of work to be executed by an agent
@@ -64,15 +66,30 @@ type Task struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// AuditReport contains the results of an audit run
+type AuditReport struct {
+	Status          string    `json:"status"`           // "passed", "failed", "fixed"
+	BuildOutput     string    `json:"buildOutput"`      // stdout/stderr from build command
+	TestOutput      string    `json:"testOutput"`       // stdout/stderr from test command
+	SemanticIssues  []string  `json:"semanticIssues"`   // Issues found by LLM analysis
+	FixesApplied    []string  `json:"fixesApplied"`     // List of fixes that were auto-applied
+	RetryCount      int       `json:"retryCount"`       // Number of fix attempts made
+	CompletedAt     time.Time `json:"completedAt"`      // When the audit finished
+	ErrorMessage    string    `json:"errorMessage"`     // Error if audit failed to run
+}
+
 // Plan represents a collection of tasks to achieve a high-level goal
 type Plan struct {
 	ID           string     `json:"id"`
 	Goal         string     `json:"goal"`         // Concise summary for UI display (max 100 chars, AI-generated or truncated from user input)
 	EnrichedGoal string     `json:"enrichedGoal"` // Full technical specification refined by Clarifying Agent
-	Status       PlanStatus `json:"status"`       // draft, active, completed, archived
+	Status       PlanStatus `json:"status"`       // draft, active, completed, verified, needs_revision, archived
 	Tasks        []Task     `json:"tasks"`
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
+
+	// Audit fields
+	LastAuditReport string `json:"lastAuditReport,omitempty"` // JSON-serialized AuditReport
 }
 
 // scopeKeywords maps scope names to keywords that indicate them

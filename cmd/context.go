@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -50,7 +51,7 @@ func runContext(cmd *cobra.Command, args []string) error {
 	}
 
 	// 1. Get Shared LLM Config
-	llmCfg, err := getLLMConfig(cmd)
+	llmCfg, err := getLLMConfigForRole(cmd, llm.RoleQuery)
 	if err != nil {
 		return err
 	}

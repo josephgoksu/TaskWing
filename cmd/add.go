@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/spf13/cobra"
@@ -53,7 +54,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// 1. Get Unified Config
-	llmCfg, err := getLLMConfig(cmd)
+	llmCfg, err := getLLMConfigForRole(cmd, llm.RoleQuery)
 	if err != nil {
 		// Log but continue if no API key (AddNode handles missing key gracefully)
 		if !isQuiet() {

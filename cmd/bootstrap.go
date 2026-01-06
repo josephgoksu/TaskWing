@@ -69,7 +69,7 @@ Examples:
 		}
 
 		// Use centralized config loader
-		llmCfg, err := getLLMConfig(cmd)
+		llmCfg, err := getLLMConfigForRole(cmd, llm.RoleBootstrap)
 		if err != nil {
 			return err
 		}

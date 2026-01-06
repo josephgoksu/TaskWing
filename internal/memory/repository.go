@@ -407,6 +407,11 @@ func (r *Repository) GetActivePlan() (*task.Plan, error) {
 	return r.db.GetActivePlan()
 }
 
+// UpdatePlanAuditReport updates the audit report and status for a plan.
+func (r *Repository) UpdatePlanAuditReport(id string, status task.PlanStatus, auditReportJSON string) error {
+	return r.db.UpdatePlanAuditReport(id, status, auditReportJSON)
+}
+
 // === FTS5 Hybrid Search ===
 
 // ListNodesWithEmbeddings returns all nodes with embeddings in a single query.

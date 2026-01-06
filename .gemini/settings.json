@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "taskwing-mcp": {
+      "command": "/opt/homebrew/bin/taskwing",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

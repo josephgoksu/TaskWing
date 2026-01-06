@@ -1,0 +1,3 @@
+description = "Create development plan with goal"
+
+prompt = """!{taskwing slash plan}"""

@@ -93,7 +93,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	errChan := make(chan error, 2)
 
 	// Configure LLM
-	llmConfig, err := getLLMConfig(cmd)
+	llmConfig, err := getLLMConfigForRole(cmd, llm.RoleBootstrap)
 	if err != nil {
 		return fmt.Errorf("configure LLM: %w", err)
 	}

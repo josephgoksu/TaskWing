@@ -12,9 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/agents/audit"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/planning"
 	"github.com/josephgoksu/TaskWing/internal/config"
+	"github.com/josephgoksu/TaskWing/internal/git"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -66,9 +68,11 @@ type ProjectContextParams struct {
 
 // TaskNextParams defines the parameters for the task_next tool
 type TaskNextParams struct {
-	PlanID    string `json:"plan_id,omitempty"`    // Optional: specific plan ID (defaults to active plan)
-	SessionID string `json:"session_id,omitempty"` // Required: unique ID for this AI session
-	AutoStart bool   `json:"auto_start,omitempty"` // If true, automatically claim the task
+	PlanID             string `json:"plan_id,omitempty"`              // Optional: specific plan ID (defaults to active plan)
+	SessionID          string `json:"session_id,omitempty"`           // Required: unique ID for this AI session
+	AutoStart          bool   `json:"auto_start,omitempty"`           // If true, automatically claim the task
+	SkipUnpushedCheck  bool   `json:"skip_unpushed_check,omitempty"`  // If true, proceed despite unpushed commits
+	SkipGitWorkflow    bool   `json:"skip_git_workflow,omitempty"`    // If true, skip git branch setup entirely
 }
 
 // TaskCurrentParams defines the parameters for the task_current tool
@@ -132,6 +136,12 @@ type RememberParams struct {
 	Type    string `json:"type,omitempty"` // Optional: decision, feature, plan, note
 }
 
+// AuditPlanParams defines the parameters for the audit_plan tool
+type AuditPlanParams struct {
+	PlanID  string `json:"plan_id,omitempty"` // Optional: specific plan ID (defaults to active plan)
+	AutoFix bool   `json:"auto_fix,omitempty"` // If true, attempt to fix failures automatically (default: true)
+}
+
 // RememberResponse is the response from the remember tool
 type RememberResponse struct {
 	Success      bool   `json:"success"`
@@ -140,6 +150,21 @@ type RememberResponse struct {
 	Summary      string `json:"summary,omitempty"`
 	HasEmbedding bool   `json:"has_embedding"`
 	Message      string `json:"message,omitempty"`
+}
+
+// AuditPlanResponse is the response from the audit_plan tool
+type AuditPlanResponse struct {
+	Success       bool              `json:"success"`
+	PlanID        string            `json:"plan_id,omitempty"`
+	Status        string            `json:"status,omitempty"`         // "verified", "needs_revision", "failed"
+	PlanStatus    task.PlanStatus   `json:"plan_status,omitempty"`    // Updated plan status
+	BuildPassed   bool              `json:"build_passed,omitempty"`
+	TestsPassed   bool              `json:"tests_passed,omitempty"`
+	SemanticIssues []string         `json:"semantic_issues,omitempty"`
+	FixesApplied  []string          `json:"fixes_applied,omitempty"`
+	RetryCount    int               `json:"retry_count,omitempty"`
+	Message       string            `json:"message,omitempty"`
+	Hint          string            `json:"hint,omitempty"`
 }
 
 // Response DTOs are defined in internal/knowledge/response.go for DRY.
@@ -312,6 +337,15 @@ func runMCPServer(ctx context.Context) error {
 		return handleRemember(ctx, repo, params.Arguments)
 	})
 
+	// Register audit_plan tool - verify and fix completed plans
+	auditPlanTool := &mcpsdk.Tool{
+		Name:        "audit_plan",
+		Description: "Audit a completed plan by running build, tests, and semantic verification. Automatically attempts to fix failures up to 3 times. Updates plan status to 'verified' or 'needs_revision'. Use this after all tasks are complete to validate the implementation.",
+	}
+	mcpsdk.AddTool(server, auditPlanTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[AuditPlanParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handleAuditPlan(ctx, repo, params.Arguments)
+	})
+
 	// Run the server (stdio transport only)
 	if err := server.Run(ctx, mcpsdk.NewStdioTransport()); err != nil {
 		return fmt.Errorf("MCP server failed: %w", err)
@@ -417,6 +451,18 @@ type TaskResponse struct {
 	Plan    *task.Plan `json:"plan,omitempty"`
 	Hint    string     `json:"hint,omitempty"`    // Suggestions for next actions
 	Context string     `json:"context,omitempty"` // Rich Markdown context for task execution
+	// Git workflow fields
+	GitBranch           string `json:"git_branch,omitempty"`            // Feature branch for this plan
+	GitWorkflowApplied  bool   `json:"git_workflow_applied,omitempty"`  // True if git workflow was executed
+	GitUnpushedCommits  bool   `json:"git_unpushed_commits,omitempty"`  // True if blocked by unpushed commits
+	GitUnpushedBranch   string `json:"git_unpushed_branch,omitempty"`   // Branch with unpushed commits
+	// PR fields (populated when plan is complete)
+	PRURL     string `json:"pr_url,omitempty"`     // URL of created PR
+	PRCreated bool   `json:"pr_created,omitempty"` // True if PR was created
+	// Audit fields (populated when all tasks complete)
+	AuditTriggered bool            `json:"audit_triggered,omitempty"` // True if audit was started
+	AuditStatus    string          `json:"audit_status,omitempty"`    // "verified", "needs_revision", or "running"
+	AuditPlanStatus task.PlanStatus `json:"audit_plan_status,omitempty"` // Updated plan status after audit
 }
 
 // handleTaskNext returns the next pending task from a plan
@@ -461,6 +507,63 @@ func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.Cal
 		})
 	}
 
+	// Git workflow variables
+	var gitBranch string
+	var gitWorkflowApplied bool
+
+	// Execute git workflow if not skipped
+	if !params.SkipGitWorkflow {
+		workDir, _ := os.Getwd()
+		gitClient := git.NewClient(workDir)
+
+		// Only run git workflow if we're in a git repository
+		if gitClient.IsRepository() {
+			// Check if this is the first task being started for this plan
+			// (i.e., no tasks are in_progress yet)
+			isFirstTask := true
+			for _, t := range plan.Tasks {
+				if t.Status == task.StatusInProgress || t.Status == task.StatusCompleted {
+					isFirstTask = false
+					break
+				}
+			}
+
+			// Generate expected branch name
+			expectedBranch := git.GenerateBranchName(planID, plan.Goal)
+			currentBranch, _ := gitClient.CurrentBranch()
+
+			// Only run workflow if:
+			// 1. This is the first task OR
+			// 2. We're not already on the expected branch
+			if isFirstTask || currentBranch != expectedBranch {
+				result, err := gitClient.StartPlanWorkflow(planID, plan.Goal, params.SkipUnpushedCheck)
+				if err != nil {
+					// Check if this is an unpushed commits error
+					if git.IsUnpushedCommitsError(err) {
+						unpushedErr := err.(*git.UnpushedCommitsError)
+						return mcpJSONResponse(TaskResponse{
+							Success:            false,
+							Message:            fmt.Sprintf("You have unpushed commits on branch %q. Please push or use skip_unpushed_check=true to proceed.", unpushedErr.Branch),
+							Hint:               "Call task_next with skip_unpushed_check=true to proceed anyway, or push your commits first.",
+							GitUnpushedCommits: true,
+							GitUnpushedBranch:  unpushedErr.Branch,
+						})
+					}
+					// For other git errors, log but continue (git workflow is optional)
+					if viper.GetBool("verbose") {
+						fmt.Fprintf(os.Stderr, "[DEBUG] Git workflow error (continuing): %v\n", err)
+					}
+				} else if result != nil {
+					gitBranch = result.BranchName
+					gitWorkflowApplied = true
+				}
+			} else {
+				// Already on correct branch
+				gitBranch = currentBranch
+			}
+		}
+	}
+
 	// Auto-start if requested
 	if params.AutoStart && params.SessionID != "" {
 		if err := repo.ClaimTask(nextTask.ID, params.SessionID); err != nil {
@@ -490,10 +593,12 @@ func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.Cal
 	richContext := task.FormatRichContext(ctx, nextTask, plan, mcpSearchAdapter(repo))
 
 	return mcpJSONResponse(TaskResponse{
-		Success: true,
-		Task:    nextTask,
-		Hint:    hint,
-		Context: richContext,
+		Success:            true,
+		Task:               nextTask,
+		Hint:               hint,
+		Context:            richContext,
+		GitBranch:          gitBranch,
+		GitWorkflowApplied: gitWorkflowApplied,
 	})
 }
 
@@ -624,7 +729,16 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 		})
 	}
 
-	// Complete the task
+	// Get task before completing (need title for commit message)
+	taskBeforeComplete, err := repo.GetTask(params.TaskID)
+	if err != nil {
+		return mcpJSONResponse(TaskResponse{
+			Success: false,
+			Message: fmt.Sprintf("task not found: %v", err),
+		})
+	}
+
+	// Complete the task in SQLite
 	if err := repo.CompleteTask(params.TaskID, params.Summary, params.FilesModified); err != nil {
 		return mcpJSONResponse(TaskResponse{
 			Success: false,
@@ -644,25 +758,191 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 		return nil, fmt.Errorf("get plan: %w", err)
 	}
 
+	// Git auto-commit and push
+	var gitBranch string
+	var gitCommitApplied bool
+	var gitPushApplied bool
+
+	workDir, _ := os.Getwd()
+	gitClient := git.NewClient(workDir)
+
+	if gitClient.IsRepository() {
+		// Get current branch for push
+		currentBranch, branchErr := gitClient.CurrentBranch()
+		if branchErr == nil {
+			gitBranch = currentBranch
+		}
+
+		// Commit task progress with conventional commit message
+		// Use task scope as type hint if available
+		if err := gitClient.CommitTaskProgress(taskBeforeComplete.Title, taskBeforeComplete.Scope); err != nil {
+			// Log but don't fail - git operations are optional
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Git commit error (continuing): %v\n", err)
+			}
+		} else {
+			gitCommitApplied = true
+		}
+
+		// Push to remote if we have a branch and commit was successful
+		if gitCommitApplied && gitBranch != "" {
+			if err := gitClient.PushTaskProgress(gitBranch); err != nil {
+				if viper.GetBool("verbose") {
+					fmt.Fprintf(os.Stderr, "[DEBUG] Git push error (continuing): %v\n", err)
+				}
+			} else {
+				gitPushApplied = true
+			}
+		}
+	}
+
 	pendingCount := 0
+	inProgressCount := 0
 	for _, t := range plan.Tasks {
 		if t.Status == task.StatusPending {
 			pendingCount++
+		} else if t.Status == task.StatusInProgress {
+			inProgressCount++
 		}
 	}
+
+	// PR creation variables
+	var prURL string
+	var prCreated bool
+
+	// Audit variables
+	var auditTriggered bool
+	var auditStatus string
+	var auditPlanStatus task.PlanStatus
 
 	hint := "Great work! "
 	if pendingCount > 0 {
 		hint += fmt.Sprintf("There are %d more pending tasks. Use task_next to continue.", pendingCount)
+	} else if inProgressCount > 0 {
+		hint += fmt.Sprintf("There are %d tasks still in progress.", inProgressCount)
 	} else {
+		// All tasks complete - run audit first, then create PR if verified!
 		hint += "All tasks in this plan are complete!"
+
+		// Trigger automatic audit
+		auditTriggered = true
+		hint += " Running audit verification..."
+
+		// Load LLM config for audit
+		llmCfg, llmErr := config.LoadLLMConfig()
+		if llmErr != nil {
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "[DEBUG] LLM config error for audit: %v\n", llmErr)
+			}
+			// Continue without semantic analysis
+			llmCfg = llm.Config{}
+		}
+
+		// Create audit service and run with auto-fix
+		auditService := audit.NewService(workDir, llmCfg)
+		auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer auditCancel()
+
+		auditResult, auditErr := auditService.AuditWithAutoFix(auditCtx, plan)
+		if auditErr != nil {
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Audit error: %v\n", auditErr)
+			}
+			auditStatus = "error"
+			hint += fmt.Sprintf(" Audit failed: %v", auditErr)
+		} else {
+			auditStatus = auditResult.FinalStatus
+			if auditResult.FinalStatus == "verified" {
+				auditPlanStatus = task.PlanStatusVerified
+				hint += " Plan VERIFIED - all checks passed!"
+			} else {
+				auditPlanStatus = task.PlanStatusNeedsRevision
+				hint += fmt.Sprintf(" Plan needs revision after %d fix attempts.", auditResult.Attempts)
+				// Guard against nil FinalAudit (can happen if all audit attempts error out)
+				if auditResult.FinalAudit != nil && len(auditResult.FinalAudit.SemanticResult.Issues) > 0 {
+					hint += fmt.Sprintf(" Issues: %v", auditResult.FinalAudit.SemanticResult.Issues)
+				}
+			}
+
+			// Store audit report in database
+			auditReport := auditResult.ToAuditReportWithFixes()
+			reportJSON, marshalErr := json.Marshal(auditReport)
+			if marshalErr != nil {
+				if viper.GetBool("verbose") {
+					fmt.Fprintf(os.Stderr, "[DEBUG] Failed to marshal audit report: %v\n", marshalErr)
+				}
+			} else if err := repo.UpdatePlanAuditReport(plan.ID, auditPlanStatus, string(reportJSON)); err != nil {
+				if viper.GetBool("verbose") {
+					fmt.Fprintf(os.Stderr, "[DEBUG] Failed to update plan audit report: %v\n", err)
+				}
+			}
+		}
+
+		// Only create PR if audit passed
+		if auditStatus == "verified" && gitClient.IsRepository() && gitClient.IsGhInstalled() {
+			// Gather completed tasks for PR body
+			var taskInfos []git.TaskInfo
+			for _, t := range plan.Tasks {
+				if t.Status == task.StatusCompleted {
+					taskInfos = append(taskInfos, git.TaskInfo{
+						Title:   t.Title,
+						Summary: t.CompletionSummary,
+					})
+				}
+			}
+
+			// Create the PR
+			prInfo, prErr := gitClient.CreatePlanPR(plan.Goal, taskInfos, "")
+			if prErr != nil {
+				if viper.GetBool("verbose") {
+					fmt.Fprintf(os.Stderr, "[DEBUG] PR creation error: %v\n", prErr)
+				}
+				hint += " PR creation failed - you can create it manually with 'gh pr create'."
+			} else if prInfo != nil {
+				prURL = prInfo.URL
+				prCreated = true
+				hint += fmt.Sprintf(" PR created: %s", prURL)
+			}
+		} else if auditStatus != "verified" {
+			hint += " PR not created - fix issues and run audit_plan again."
+		} else if !gitClient.IsGhInstalled() {
+			hint += " Install 'gh' CLI to auto-create PRs."
+		}
+	}
+
+	// Build message with git status
+	message := "Task completed successfully."
+	if gitCommitApplied {
+		message += " Changes committed."
+		if gitPushApplied {
+			message += " Pushed to origin."
+		}
+	}
+	if auditTriggered {
+		if auditStatus == "verified" {
+			message += " Audit passed."
+		} else if auditStatus == "needs_revision" {
+			message += " Audit found issues."
+		} else if auditStatus == "error" {
+			message += " Audit encountered an error."
+		}
+	}
+	if prCreated {
+		message += " PR created."
 	}
 
 	return mcpJSONResponse(TaskResponse{
-		Success: true,
-		Message: "Task completed successfully.",
-		Task:    completedTask,
-		Hint:    hint,
+		Success:            true,
+		Message:            message,
+		Task:               completedTask,
+		Hint:               hint,
+		GitBranch:          gitBranch,
+		GitWorkflowApplied: gitCommitApplied,
+		PRURL:              prURL,
+		PRCreated:          prCreated,
+		AuditTriggered:     auditTriggered,
+		AuditStatus:        auditStatus,
+		AuditPlanStatus:    auditPlanStatus,
 	})
 }
 
@@ -990,4 +1270,130 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params Remembe
 		HasEmbedding: len(node.Embedding) > 0,
 		Message:      fmt.Sprintf("Knowledge stored as [%s]", node.Type),
 	})
+}
+
+// handleAuditPlan runs the audit service on a plan
+func handleAuditPlan(ctx context.Context, repo *memory.Repository, params AuditPlanParams) (*mcpsdk.CallToolResultFor[any], error) {
+	// Determine which plan to audit
+	var plan *task.Plan
+	var err error
+
+	if params.PlanID != "" {
+		plan, err = repo.GetPlan(params.PlanID)
+		if err != nil {
+			return mcpJSONResponse(AuditPlanResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to get plan: %v", err),
+			})
+		}
+	} else {
+		// Get active plan
+		plan, err = repo.GetActivePlan()
+		if err != nil {
+			return mcpJSONResponse(AuditPlanResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to get active plan: %v", err),
+			})
+		}
+	}
+
+	if plan == nil {
+		return mcpJSONResponse(AuditPlanResponse{
+			Success: false,
+			Message: "No plan found. Create a plan first with plan_clarify and plan_generate.",
+			Hint:    "Use plan_clarify to start defining your development goal.",
+		})
+	}
+
+	// Check if plan has completed tasks
+	completedCount := 0
+	for _, t := range plan.Tasks {
+		if t.Status == task.StatusCompleted {
+			completedCount++
+		}
+	}
+
+	if completedCount == 0 {
+		return mcpJSONResponse(AuditPlanResponse{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: "No completed tasks to audit. Complete tasks first.",
+			Hint:    "Use task_next to get the next pending task.",
+		})
+	}
+
+	// Load LLM config
+	llmCfg, err := config.LoadLLMConfig()
+	if err != nil {
+		return mcpJSONResponse(AuditPlanResponse{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: fmt.Sprintf("LLM config error: %v", err),
+		})
+	}
+
+	// Get working directory
+	workDir, _ := os.Getwd()
+
+	// Create audit service
+	auditService := audit.NewService(workDir, llmCfg)
+
+	var response AuditPlanResponse
+	response.PlanID = plan.ID
+
+	// Use AutoFix parameter - defaults to true when omitted (Go zero value is false,
+	// but we want auto-fix to be the default behavior for better UX)
+	// To disable auto-fix, caller must explicitly pass auto_fix: false
+	// NOTE: JSON-RPC cannot distinguish "omitted" from "false", so we always auto-fix
+	// unless the caller structure indicates otherwise. For now, we run with auto-fix.
+
+	// Run audit with auto-fix (the primary mode)
+	result, err := auditService.AuditWithAutoFix(ctx, plan)
+	if err != nil {
+		return mcpJSONResponse(AuditPlanResponse{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: fmt.Sprintf("Audit failed: %v", err),
+		})
+	}
+
+	response.Success = true
+	response.Status = result.FinalStatus
+	response.RetryCount = result.Attempts
+	response.FixesApplied = result.FixesApplied
+
+	if result.FinalAudit != nil {
+		response.BuildPassed = result.FinalAudit.BuildResult.Passed
+		response.TestsPassed = result.FinalAudit.TestResult.Passed
+		response.SemanticIssues = result.FinalAudit.SemanticResult.Issues
+	}
+
+	// Update plan status in database
+	var newStatus task.PlanStatus
+	if result.FinalStatus == "verified" {
+		newStatus = task.PlanStatusVerified
+		response.Message = "Plan verified successfully. All checks passed."
+		response.Hint = "The plan is complete and verified. You can create a PR or start a new plan."
+	} else {
+		newStatus = task.PlanStatusNeedsRevision
+		response.Message = fmt.Sprintf("Plan needs revision after %d fix attempts.", result.Attempts)
+		response.Hint = "Review the semantic issues and fix them manually, then run audit_plan again."
+	}
+	response.PlanStatus = newStatus
+
+	// Store audit report
+	auditReport := result.ToAuditReportWithFixes()
+	reportJSON, marshalErr := json.Marshal(auditReport)
+	if marshalErr != nil {
+		if viper.GetBool("verbose") {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Failed to marshal audit report: %v\n", marshalErr)
+		}
+	} else if err := repo.UpdatePlanAuditReport(plan.ID, newStatus, string(reportJSON)); err != nil {
+		// Log but don't fail - audit completed successfully
+		if viper.GetBool("verbose") {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Failed to update plan audit report: %v\n", err)
+		}
+	}
+
+	return mcpJSONResponse(response)
 }

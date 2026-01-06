@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
@@ -423,7 +424,62 @@ func outputHookResponse(resp HookResponse) error {
 	return nil
 }
 
-// getLLMConfigFromViper returns LLM config without requiring cobra command
+// getLLMConfigFromViper returns LLM config without requiring cobra command.
+// It checks for role-specific config (query role since hook context is a query op),
+// falling back to the default config.
 func getLLMConfigFromViper() (llm.Config, error) {
+	// Check for query role-specific config (hook context building is a query operation)
+	roleConfigKey := fmt.Sprintf("llm.models.%s", llm.RoleQuery)
+	if viper.IsSet(roleConfigKey) {
+		spec := viper.GetString(roleConfigKey)
+		return parseModelSpecFromViper(spec)
+	}
+
+	// Fall back to default config
 	return config.LoadLLMConfig()
+}
+
+// parseModelSpecFromViper parses a "provider:model" spec from Viper config.
+func parseModelSpecFromViper(spec string) (llm.Config, error) {
+	var provider, model string
+
+	// Support both : and / as separators
+	spec = strings.Replace(spec, "/", ":", 1)
+
+	if strings.Contains(spec, ":") {
+		parts := strings.SplitN(spec, ":", 2)
+		provider = strings.ToLower(parts[0])
+		model = parts[1]
+	} else {
+		// Try to infer provider from model name
+		if inferredProvider, ok := llm.InferProviderFromModel(spec); ok {
+			provider = inferredProvider
+			model = spec
+		} else {
+			// Assume it's a provider name, use default model
+			provider = strings.ToLower(spec)
+			model = llm.DefaultModelForProvider(provider)
+		}
+	}
+
+	llmProvider, err := llm.ValidateProvider(provider)
+	if err != nil {
+		return llm.Config{}, fmt.Errorf("invalid provider in role config: %w", err)
+	}
+
+	apiKey := config.ResolveAPIKey(llmProvider)
+
+	baseURL := viper.GetString("llm.baseURL")
+	if baseURL == "" {
+		baseURL = viper.GetString("llm.ollamaURL")
+	}
+	embeddingModel := viper.GetString("llm.embeddingModel")
+
+	return llm.Config{
+		Provider:       llmProvider,
+		Model:          model,
+		EmbeddingModel: embeddingModel,
+		APIKey:         apiKey,
+		BaseURL:        baseURL,
+	}, nil
 }
