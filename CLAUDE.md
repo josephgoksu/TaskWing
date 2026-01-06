@@ -182,13 +182,48 @@ Increment when:
 
 **CRITICAL: Do NOT release without explicit user approval.**
 
-- Never create git tags or push releases autonomously
-- Never bump version in `cmd/root.go` without user request
-- Only release when user explicitly asks (e.g., "release this", "tag and push", "create a release")
-- When releasing, follow this order:
-  1. Update version in `cmd/root.go`
-  2. Commit the version bump
-  3. Push commit to origin
-  4. Create tag on the version bump commit
-  5. Push tag to origin
-  6. Verify tag contains correct version
+### AI-Assisted Release (Preferred)
+
+When user says "let's release", "create a release", or similar:
+
+1. **Analyze changes** since last tag:
+   ```bash
+   git log $(git describe --tags --abbrev=0)..HEAD --oneline
+   ```
+
+2. **Generate release notes** summarizing:
+   - New features (feat:)
+   - Bug fixes (fix:)
+   - Breaking changes (if any)
+
+3. **Suggest version bump** based on changes:
+   - PATCH: bug fixes, refactors, internal improvements
+   - MINOR: new user-facing features
+   - MAJOR: breaking changes
+
+4. **Get user approval** before proceeding
+
+5. **Execute release**:
+   ```bash
+   # Update version in cmd/root.go
+   # Commit: "chore: bump version to vX.Y.Z"
+   # Create annotated tag with release notes
+   git tag -a vX.Y.Z -m "Release notes here..."
+   # Push commit and tag
+   git push origin main && git push origin vX.Y.Z
+   ```
+
+### Manual Release (Standalone)
+
+```bash
+make release
+```
+
+Interactive script that prompts for version, opens editor for notes, and pushes.
+
+### Rules
+
+- Never release without explicit user request
+- Never bump version autonomously
+- Always show release notes for approval before tagging
+- GoReleaser + GitHub Actions handle the rest after tag push
