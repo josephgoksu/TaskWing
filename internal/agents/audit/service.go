@@ -316,9 +316,10 @@ func extractJSON(response string) string {
 		// Find matching closing brace
 		depth := 0
 		for i := idx; i < len(response); i++ {
-			if response[i] == '{' {
+			switch response[i] {
+			case '{':
 				depth++
-			} else if response[i] == '}' {
+			case '}':
 				depth--
 				if depth == 0 {
 					return response[idx : i+1]
@@ -595,9 +596,9 @@ func truncateOutput(s string, maxLen int) string {
 // ToAuditReportWithFixes converts AutoFixResult to task.AuditReport.
 func (r *AutoFixResult) ToAuditReportWithFixes() task.AuditReport {
 	report := task.AuditReport{
-		RetryCount:  r.Attempts,
+		RetryCount:   r.Attempts,
 		FixesApplied: r.FixesApplied,
-		CompletedAt: time.Now().UTC(),
+		CompletedAt:  time.Now().UTC(),
 	}
 
 	if r.FinalStatus == "verified" {

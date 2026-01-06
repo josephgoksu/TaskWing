@@ -68,14 +68,14 @@ type Task struct {
 
 // AuditReport contains the results of an audit run
 type AuditReport struct {
-	Status          string    `json:"status"`           // "passed", "failed", "fixed"
-	BuildOutput     string    `json:"buildOutput"`      // stdout/stderr from build command
-	TestOutput      string    `json:"testOutput"`       // stdout/stderr from test command
-	SemanticIssues  []string  `json:"semanticIssues"`   // Issues found by LLM analysis
-	FixesApplied    []string  `json:"fixesApplied"`     // List of fixes that were auto-applied
-	RetryCount      int       `json:"retryCount"`       // Number of fix attempts made
-	CompletedAt     time.Time `json:"completedAt"`      // When the audit finished
-	ErrorMessage    string    `json:"errorMessage"`     // Error if audit failed to run
+	Status         string    `json:"status"`         // "passed", "failed", "fixed"
+	BuildOutput    string    `json:"buildOutput"`    // stdout/stderr from build command
+	TestOutput     string    `json:"testOutput"`     // stdout/stderr from test command
+	SemanticIssues []string  `json:"semanticIssues"` // Issues found by LLM analysis
+	FixesApplied   []string  `json:"fixesApplied"`   // List of fixes that were auto-applied
+	RetryCount     int       `json:"retryCount"`     // Number of fix attempts made
+	CompletedAt    time.Time `json:"completedAt"`    // When the audit finished
+	ErrorMessage   string    `json:"errorMessage"`   // Error if audit failed to run
 }
 
 // Plan represents a collection of tasks to achieve a high-level goal

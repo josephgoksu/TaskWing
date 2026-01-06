@@ -49,32 +49,10 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-# Changelog generation
+# Changelog generation - DISABLED for manual release notes
+# The release script (make release) handles manual notes via annotated tags
 changelog:
-  sort: asc
-  use: github
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^ci:"
-      - "^chore:"
-      - "merge conflict"
-      - Merge pull request
-      - Merge remote-tracking branch
-      - Merge branch
-  groups:
-    - title: Features
-      regexp: '^.*?feat(\(.+\))??!?:.+$'
-      order: 0
-    - title: "Bug fixes"
-      regexp: '^.*?fix(\(.+\))??!?:.+$'
-      order: 1
-    - title: "Enhancements"
-      regexp: '^.*?(enhancement|refactor)(\(.+\))??!?:.+$'
-      order: 2
-    - title: Others
-      order: 999
+  disable: true
 
 # GitHub release configuration
 release:
@@ -89,26 +67,7 @@ release:
   header: |
     ## TaskWing {{.Tag}}
 
-    ### AI-Assisted CLI Task Manager for Developers
-
-    TaskWing helps you manage tasks efficiently with powerful AI integration through the Model Context Protocol (MCP).
-
-    ### Quick Start
-
-    1. Download the appropriate binary for your platform
-    2. Extract the archive
-    3. Run `./taskwing init` to initialize TaskWing in your project
-    4. Start managing tasks with `./taskwing add`
-
-    ### AI Integration
-
-    TaskWing supports MCP for seamless AI tool integration:
-    ```bash
-    # Start MCP server for AI tools
-    ./taskwing mcp
-    ```
-
-    See the README for detailed instructions.
+    See release notes below for what's new in this version.
 
   footer: |
     ---

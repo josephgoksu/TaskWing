@@ -68,11 +68,11 @@ type ProjectContextParams struct {
 
 // TaskNextParams defines the parameters for the task_next tool
 type TaskNextParams struct {
-	PlanID             string `json:"plan_id,omitempty"`              // Optional: specific plan ID (defaults to active plan)
-	SessionID          string `json:"session_id,omitempty"`           // Required: unique ID for this AI session
-	AutoStart          bool   `json:"auto_start,omitempty"`           // If true, automatically claim the task
-	SkipUnpushedCheck  bool   `json:"skip_unpushed_check,omitempty"`  // If true, proceed despite unpushed commits
-	SkipGitWorkflow    bool   `json:"skip_git_workflow,omitempty"`    // If true, skip git branch setup entirely
+	PlanID            string `json:"plan_id,omitempty"`             // Optional: specific plan ID (defaults to active plan)
+	SessionID         string `json:"session_id,omitempty"`          // Required: unique ID for this AI session
+	AutoStart         bool   `json:"auto_start,omitempty"`          // If true, automatically claim the task
+	SkipUnpushedCheck bool   `json:"skip_unpushed_check,omitempty"` // If true, proceed despite unpushed commits
+	SkipGitWorkflow   bool   `json:"skip_git_workflow,omitempty"`   // If true, skip git branch setup entirely
 }
 
 // TaskCurrentParams defines the parameters for the task_current tool
@@ -138,7 +138,7 @@ type RememberParams struct {
 
 // AuditPlanParams defines the parameters for the audit_plan tool
 type AuditPlanParams struct {
-	PlanID  string `json:"plan_id,omitempty"` // Optional: specific plan ID (defaults to active plan)
+	PlanID  string `json:"plan_id,omitempty"`  // Optional: specific plan ID (defaults to active plan)
 	AutoFix bool   `json:"auto_fix,omitempty"` // If true, attempt to fix failures automatically (default: true)
 }
 
@@ -154,17 +154,17 @@ type RememberResponse struct {
 
 // AuditPlanResponse is the response from the audit_plan tool
 type AuditPlanResponse struct {
-	Success       bool              `json:"success"`
-	PlanID        string            `json:"plan_id,omitempty"`
-	Status        string            `json:"status,omitempty"`         // "verified", "needs_revision", "failed"
-	PlanStatus    task.PlanStatus   `json:"plan_status,omitempty"`    // Updated plan status
-	BuildPassed   bool              `json:"build_passed,omitempty"`
-	TestsPassed   bool              `json:"tests_passed,omitempty"`
-	SemanticIssues []string         `json:"semantic_issues,omitempty"`
-	FixesApplied  []string          `json:"fixes_applied,omitempty"`
-	RetryCount    int               `json:"retry_count,omitempty"`
-	Message       string            `json:"message,omitempty"`
-	Hint          string            `json:"hint,omitempty"`
+	Success        bool            `json:"success"`
+	PlanID         string          `json:"plan_id,omitempty"`
+	Status         string          `json:"status,omitempty"`      // "verified", "needs_revision", "failed"
+	PlanStatus     task.PlanStatus `json:"plan_status,omitempty"` // Updated plan status
+	BuildPassed    bool            `json:"build_passed,omitempty"`
+	TestsPassed    bool            `json:"tests_passed,omitempty"`
+	SemanticIssues []string        `json:"semantic_issues,omitempty"`
+	FixesApplied   []string        `json:"fixes_applied,omitempty"`
+	RetryCount     int             `json:"retry_count,omitempty"`
+	Message        string          `json:"message,omitempty"`
+	Hint           string          `json:"hint,omitempty"`
 }
 
 // Response DTOs are defined in internal/knowledge/response.go for DRY.
@@ -452,16 +452,16 @@ type TaskResponse struct {
 	Hint    string     `json:"hint,omitempty"`    // Suggestions for next actions
 	Context string     `json:"context,omitempty"` // Rich Markdown context for task execution
 	// Git workflow fields
-	GitBranch           string `json:"git_branch,omitempty"`            // Feature branch for this plan
-	GitWorkflowApplied  bool   `json:"git_workflow_applied,omitempty"`  // True if git workflow was executed
-	GitUnpushedCommits  bool   `json:"git_unpushed_commits,omitempty"`  // True if blocked by unpushed commits
-	GitUnpushedBranch   string `json:"git_unpushed_branch,omitempty"`   // Branch with unpushed commits
+	GitBranch          string `json:"git_branch,omitempty"`           // Feature branch for this plan
+	GitWorkflowApplied bool   `json:"git_workflow_applied,omitempty"` // True if git workflow was executed
+	GitUnpushedCommits bool   `json:"git_unpushed_commits,omitempty"` // True if blocked by unpushed commits
+	GitUnpushedBranch  string `json:"git_unpushed_branch,omitempty"`  // Branch with unpushed commits
 	// PR fields (populated when plan is complete)
 	PRURL     string `json:"pr_url,omitempty"`     // URL of created PR
 	PRCreated bool   `json:"pr_created,omitempty"` // True if PR was created
 	// Audit fields (populated when all tasks complete)
-	AuditTriggered bool            `json:"audit_triggered,omitempty"` // True if audit was started
-	AuditStatus    string          `json:"audit_status,omitempty"`    // "verified", "needs_revision", or "running"
+	AuditTriggered  bool            `json:"audit_triggered,omitempty"`   // True if audit was started
+	AuditStatus     string          `json:"audit_status,omitempty"`      // "verified", "needs_revision", or "running"
 	AuditPlanStatus task.PlanStatus `json:"audit_plan_status,omitempty"` // Updated plan status after audit
 }
 
@@ -799,9 +799,10 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 	pendingCount := 0
 	inProgressCount := 0
 	for _, t := range plan.Tasks {
-		if t.Status == task.StatusPending {
+		switch t.Status {
+		case task.StatusPending:
 			pendingCount++
-		} else if t.Status == task.StatusInProgress {
+		case task.StatusInProgress:
 			inProgressCount++
 		}
 	}
@@ -919,11 +920,12 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 		}
 	}
 	if auditTriggered {
-		if auditStatus == "verified" {
+		switch auditStatus {
+		case "verified":
 			message += " Audit passed."
-		} else if auditStatus == "needs_revision" {
+		case "needs_revision":
 			message += " Audit found issues."
-		} else if auditStatus == "error" {
+		case "error":
 			message += " Audit encountered an error."
 		}
 	}

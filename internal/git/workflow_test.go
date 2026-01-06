@@ -426,9 +426,9 @@ func TestDetermineCommitType(t *testing.T) {
 // TestGeneratePRBody verifies PR body generation.
 func TestGeneratePRBody(t *testing.T) {
 	tests := []struct {
-		name     string
-		planGoal string
-		tasks    []TaskInfo
+		name         string
+		planGoal     string
+		tasks        []TaskInfo
 		wantContains []string
 	}{
 		{

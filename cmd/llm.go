@@ -351,11 +351,14 @@ func runLLMList() error {
 
 // runLLMInteractiveForRole launches interactive selection for a specific role.
 func runLLMInteractiveForRole(role llm.ModelRole) error {
-	roleLabel := "default"
-	if role == llm.RoleBootstrap {
+	var roleLabel string
+	switch role {
+	case llm.RoleBootstrap:
 		roleLabel = "bootstrap (expensive, capable)"
-	} else if role == llm.RoleQuery {
+	case llm.RoleQuery:
 		roleLabel = "query (cheap, fast)"
+	default:
+		roleLabel = "default"
 	}
 	fmt.Printf("Configuring %s model...\n\n", roleLabel)
 

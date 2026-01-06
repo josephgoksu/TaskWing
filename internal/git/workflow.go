@@ -342,9 +342,8 @@ func (c *Client) CreatePlanPR(planGoal string, tasks []TaskInfo, baseBranch stri
 	}
 
 	// Ensure all changes are pushed
-	if err := c.PushTaskProgress(currentBranch); err != nil {
-		// Log but continue - PR might still work if branch exists on remote
-	}
+	// Ignore push errors - PR might still work if branch exists on remote
+	_ = c.PushTaskProgress(currentBranch)
 
 	// Generate PR body
 	body := GeneratePRBody(planGoal, tasks)

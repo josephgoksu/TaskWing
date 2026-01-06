@@ -124,16 +124,22 @@ dev-setup:
 	fi
 	@echo "✅ Development setup complete"
 
-# Release build
-.PHONY: release
-release: clean lint test-all
-	@echo "🚀 Building release version..."
+# Release snapshot (local testing)
+.PHONY: release-snapshot
+release-snapshot: clean lint test-all
+	@echo "🚀 Building release snapshot..."
 	@if command -v goreleaser >/dev/null 2>&1; then \
 		goreleaser build --snapshot --clean; \
 	else \
 		go build -ldflags="-s -w" -o $(BINARY_NAME) main.go; \
 	fi
-	@echo "✅ Release build complete"
+	@echo "✅ Release snapshot complete"
+
+# Interactive release (tag and push)
+.PHONY: release
+release:
+	@echo "🚀 Starting release process..."
+	@./scripts/release.sh
 
 # Install for local use
 .PHONY: install
@@ -161,9 +167,10 @@ help:
 	@echo "TaskWing Makefile Commands:"
 	@echo ""
 	@echo "Build Commands:"
-	@echo "  build       - Build the TaskWing binary"
-	@echo "  clean       - Clean build artifacts"
-	@echo "  release     - Build release version with optimizations"
+	@echo "  build            - Build the TaskWing binary"
+	@echo "  clean            - Clean build artifacts"
+	@echo "  release          - Interactive release (bump version, tag, push)"
+	@echo "  release-snapshot - Build release snapshot locally (no publish)"
 	@echo ""
 	@echo "Test Commands:"
 		@echo "  test        - Run all tests (unit, integration, MCP)"
