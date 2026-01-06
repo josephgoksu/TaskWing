@@ -151,8 +151,8 @@ func (c *Client) StartPlanWorkflow(planID, planTitle string, skipUnpushedCheck b
 func GenerateBranchName(planID, planTitle string) string {
 	slug := Slugify(planTitle)
 
-	// Truncate slug if too long (git has limits, keep it reasonable)
-	const maxSlugLen = 50
+	// Truncate slug if too long - keep branch names concise
+	const maxSlugLen = 20
 	if len(slug) > maxSlugLen {
 		slug = slug[:maxSlugLen]
 		// Don't end with a hyphen

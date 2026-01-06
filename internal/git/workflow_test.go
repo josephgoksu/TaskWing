@@ -116,7 +116,7 @@ func TestGenerateBranchName(t *testing.T) {
 			name:      "very long title truncated",
 			planID:    "short",
 			planTitle: "This is a very long title that should be truncated to keep the branch name reasonable in length",
-			want:      "feat/plan-short-this-is-a-very-long-title-that-should-be-truncated",
+			want:      "feat/plan-short-this-is-a-very-long",
 		},
 	}
 
