@@ -66,7 +66,10 @@ func parseEvidence(evidenceJSON string) []EvidenceRef {
 	if err := json.Unmarshal([]byte(evidenceJSON), &rawEvidence); err != nil {
 		return nil
 	}
+
+	seen := make(map[string]bool)
 	var refs []EvidenceRef
+
 	for _, e := range rawEvidence {
 		lines := ""
 		if e.StartLine > 0 {
@@ -76,6 +79,14 @@ func parseEvidence(evidenceJSON string) []EvidenceRef {
 				lines = fmt.Sprintf("%d", e.StartLine)
 			}
 		}
+
+		// Deduplicate based on file and lines
+		key := fmt.Sprintf("%s|%s", e.FilePath, lines)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+
 		refs = append(refs, EvidenceRef{File: e.FilePath, Lines: lines})
 	}
 	return refs
