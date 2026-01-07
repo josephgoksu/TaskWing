@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -17,10 +19,31 @@ type SearchStrategyResult struct {
 	Strategy string
 }
 
+// loadArchitectureMD attempts to load the generated ARCHITECTURE.md file.
+// Returns empty string if not found (graceful degradation).
+func loadArchitectureMD(basePath string) string {
+	if basePath == "" {
+		return ""
+	}
+	archPath := filepath.Join(basePath, "ARCHITECTURE.md")
+	data, err := os.ReadFile(archPath)
+	if err != nil {
+		return "" // Not found or unreadable - gracefully skip
+	}
+	return string(data)
+}
+
 // RetrieveContext performs the standard context retrieval for planning and evaluation.
 // It ensures that both the interactive CLI and the evaluation system use the exact same logic.
-func RetrieveContext(ctx context.Context, ks *knowledge.Service, goal string) (SearchStrategyResult, error) {
+// If memoryBasePath is provided, it will also inject the ARCHITECTURE.md content.
+func RetrieveContext(ctx context.Context, ks *knowledge.Service, goal string, memoryBasePath string) (SearchStrategyResult, error) {
 	var searchLog []string
+
+	// === NEW: Load comprehensive ARCHITECTURE.md if available ===
+	archContent := loadArchitectureMD(memoryBasePath)
+	if archContent != "" {
+		searchLog = append(searchLog, "✓ Loaded ARCHITECTURE.md")
+	}
 
 	// === 0. Fetch Constraints Explicitly ===
 	// Always retrieve 'constraint' type nodes, regardless of goal.
@@ -58,7 +81,15 @@ func RetrieveContext(ctx context.Context, ks *knowledge.Service, goal string) (S
 	// 3. Format Context
 	var sb strings.Builder
 
-	// === Format Constraints First ===
+	// === NEW: Include ARCHITECTURE.md first (most comprehensive context) ===
+	if archContent != "" {
+		sb.WriteString("## PROJECT ARCHITECTURE OVERVIEW\n")
+		sb.WriteString("Consolidated architecture document for this codebase:\n\n")
+		sb.WriteString(archContent)
+		sb.WriteString("\n---\n\n")
+	}
+
+	// === Format Constraints (highlighted separately for emphasis) ===
 	if len(constraintNodes) > 0 {
 		sb.WriteString("## MANDATORY ARCHITECTURAL CONSTRAINTS\n")
 		sb.WriteString("These rules MUST be obeyed by all generated tasks.\n\n")

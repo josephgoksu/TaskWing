@@ -123,6 +123,7 @@ const (
 	NodeTypeNote       = "note"
 	NodeTypeUnknown    = "unknown"
 	NodeTypeConstraint = "constraint" // For mandatory architectural rules
+	NodeTypePattern    = "pattern"    // For recurring patterns and workflows
 )
 
 // NodeRelation constants for edge types.

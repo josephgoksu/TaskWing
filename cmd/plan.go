@@ -83,6 +83,7 @@ var planNewCmd = &cobra.Command{
 			ks,
 			repo,
 			stream,
+			config.GetMemoryBasePath(),
 		)
 
 		// Run TUI

@@ -32,6 +32,7 @@ Examples:
   taskwing memory repair              # Fix integrity issues
   taskwing memory rebuild             # Rebuild the index cache
   taskwing memory generate-embeddings # Backfill missing embeddings
+  taskwing memory export              # Generate comprehensive ARCHITECTURE.md
   taskwing memory reset               # Wipe all project memory and start fresh`,
 }
 
@@ -273,6 +274,48 @@ Requires an API key for the configured provider (OpenAI/Gemini) or a local Ollam
 	},
 }
 
+// memory export command
+var memoryExportCmd = &cobra.Command{
+	Use:     "export",
+	Aliases: []string{"arch", "architecture"},
+	Short:   "Generate comprehensive ARCHITECTURE.md",
+	Long: `Generate a comprehensive ARCHITECTURE.md file that consolidates all project knowledge.
+
+The generated file includes:
+  • Architectural Constraints (mandatory rules)
+  • Features & Components (with their decisions)
+  • Design Patterns (recurring workflows)
+  • Key Decisions (cross-cutting decisions by source)
+
+The file is written to .taskwing/memory/ARCHITECTURE.md
+
+Examples:
+  taskwing memory export                    # Generate with project name from cwd
+  taskwing memory export --name "My App"    # Generate with custom project name`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+		if err != nil {
+			return fmt.Errorf("open memory repo: %w", err)
+		}
+		defer func() { _ = repo.Close() }()
+
+		// Get project name from flag or use current directory name
+		projectName, _ := cmd.Flags().GetString("name")
+		if projectName == "" {
+			cwd, _ := os.Getwd()
+			projectName = filepath.Base(cwd)
+		}
+
+		if err := repo.GenerateArchitectureMD(projectName); err != nil {
+			return fmt.Errorf("generate architecture.md: %w", err)
+		}
+
+		archPath := filepath.Join(config.GetMemoryBasePath(), "ARCHITECTURE.md")
+		fmt.Printf("✓ Generated %s\n", archPath)
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(memoryCmd)
 
@@ -282,6 +325,8 @@ func init() {
 	memoryCmd.AddCommand(memoryRebuildCmd)
 	memoryCmd.AddCommand(memoryGenerateEmbeddingsCmd)
 	memoryCmd.AddCommand(memoryResetCmd)
+	memoryCmd.AddCommand(memoryExportCmd)
 
 	memoryResetCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
+	memoryExportCmd.Flags().StringP("name", "n", "", "Project name for the document header")
 }

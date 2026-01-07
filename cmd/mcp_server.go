@@ -990,7 +990,7 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 
 	// Fetch context from knowledge graph using canonical shared function
 	ks := knowledge.NewService(repo, llmCfg)
-	result, _ := planning.RetrieveContext(ctx, ks, params.Goal)
+	result, _ := planning.RetrieveContext(ctx, ks, params.Goal, config.GetMemoryBasePath())
 	contextStr := result.Context
 
 	// Create and run ClarifyingAgent
@@ -1092,7 +1092,7 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 
 	// Fetch context from knowledge graph using canonical shared function
 	ks := knowledge.NewService(repo, llmCfg)
-	result, _ := planning.RetrieveContext(ctx, ks, params.EnrichedGoal)
+	result, _ := planning.RetrieveContext(ctx, ks, params.EnrichedGoal, config.GetMemoryBasePath())
 	contextStr := result.Context
 
 	// Create and run PlanningAgent

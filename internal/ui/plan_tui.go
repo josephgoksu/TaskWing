@@ -58,10 +58,11 @@ type PlanModel struct {
 	ThinkingStatus string // Dynamic status message for spinner
 
 	// Data
-	History      string   // Clarification history string
-	Msgs         []string // Visible chat log for viewport
-	ClarifyTurns int
-	KGContext    string // Fetched knowledge graph context
+	History        string   // Clarification history string
+	Msgs           []string // Visible chat log for viewport
+	ClarifyTurns   int
+	KGContext      string // Fetched knowledge graph context
+	MemoryBasePath string // Path to memory directory for ARCHITECTURE.md injection
 
 	// Interactive Q&A State
 	PendingQuestions []string
@@ -153,6 +154,7 @@ func NewPlanModel(
 	ks *knowledge.Service,
 	repo *memory.Repository,
 	stream *core.StreamingOutput,
+	memoryBasePath string,
 ) PlanModel {
 	// Styled TextArea
 	ti := textarea.New()
@@ -181,6 +183,7 @@ func NewPlanModel(
 		KnowledgeService: ks,
 		Repo:             repo,
 		Stream:           stream,
+		MemoryBasePath:   memoryBasePath,
 		Ctx:              ctx,
 		Spinner:          s,
 		TextInput:        ti,
@@ -199,7 +202,8 @@ func (m PlanModel) Init() tea.Cmd {
 // searchContext fetches relevant KG nodes
 func (m PlanModel) searchContext() tea.Msg {
 	// Use shared logic for consistency with Eval system
-	result, err := planning.RetrieveContext(m.Ctx, m.KnowledgeService, m.InitialGoal)
+	// Pass MemoryBasePath to enable ARCHITECTURE.md injection
+	result, err := planning.RetrieveContext(m.Ctx, m.KnowledgeService, m.InitialGoal, m.MemoryBasePath)
 	if err != nil {
 		// Even if error (unlikely as RetrieveContext handles fallbacks internally), return it
 		return MsgContextFound{Context: "", Strategy: "", Err: err}

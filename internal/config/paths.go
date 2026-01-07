@@ -19,20 +19,30 @@ var GetGlobalConfigDir = func() (string, error) {
 }
 
 // GetMemoryBasePath returns the path to the memory directory.
-// It prioritizes Viper config "memory.path", then XDG_DATA_HOME/taskwing/memory,
-// then defaults to ~/.taskwing/memory.
+// Resolution order (first match wins):
+// 1. Explicit config via "memory.path" (Viper/env/flag)
+// 2. Local project directory: .taskwing/memory (if exists)
+// 3. XDG_DATA_HOME/taskwing/memory (if XDG_DATA_HOME is set)
+// 4. Global fallback: ~/.taskwing/memory
 func GetMemoryBasePath() string {
-	// 1. Check Viper config (flags/config file)
+	// 1. Check Viper config (flags/config file/env)
 	if path := viper.GetString("memory.path"); path != "" {
 		return path
 	}
 
-	// 2. Check XDG_DATA_HOME
+	// 2. Check for local project .taskwing/memory directory
+	// This allows per-project isolation when running from within a project
+	localMemory := ".taskwing/memory"
+	if info, err := os.Stat(localMemory); err == nil && info.IsDir() {
+		return localMemory
+	}
+
+	// 3. Check XDG_DATA_HOME
 	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
 		return filepath.Join(xdgData, "taskwing", "memory")
 	}
 
-	// 3. Fallback to ~/.taskwing/memory
+	// 4. Fallback to ~/.taskwing/memory (global)
 	dir, err := GetGlobalConfigDir()
 	if err != nil {
 		return "./memory"

@@ -55,8 +55,12 @@ func initConfig() {
 	viper.SetDefault("quiet", false)
 	viper.SetDefault("preview", false)
 
-	// Memory store defaults
-	viper.SetDefault("memory.path", ".taskwing/memory")
+	// Memory store path: do NOT set a default here.
+	// The fallback logic in config.GetMemoryBasePath() handles defaults properly:
+	// 1. If user sets memory.path in config → use that
+	// 2. If XDG_DATA_HOME is set → use $XDG_DATA_HOME/taskwing/memory
+	// 3. Otherwise → use ~/.taskwing/memory (global)
+	// Setting a default here would bypass that fallback chain.
 
 	// LLM defaults (for bootstrap scanner)
 	// Do NOT set defaults for llm.provider, llm.apiKey, or llm.model
