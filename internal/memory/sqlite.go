@@ -1888,6 +1888,14 @@ func (s *SQLiteStore) SaveProjectOverview(overview *ProjectOverview) error {
 		return fmt.Errorf("overview cannot be nil")
 	}
 
+	// Validate required fields
+	if strings.TrimSpace(overview.ShortDescription) == "" {
+		return fmt.Errorf("short description cannot be empty")
+	}
+	if strings.TrimSpace(overview.LongDescription) == "" {
+		return fmt.Errorf("long description cannot be empty")
+	}
+
 	// Set generated_at if not set
 	if overview.GeneratedAt.IsZero() {
 		overview.GeneratedAt = time.Now().UTC()
