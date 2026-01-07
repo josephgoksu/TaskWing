@@ -6,7 +6,17 @@ import (
 
 // GetProjectSummary returns a high-level overview of the project memory.
 // This centralizes summary logic so CLI and MCP usage remains consistent.
+// Includes the project overview (if available) at the top of the response.
 func (s *Service) GetProjectSummary(ctx context.Context) (ProjectSummary, error) {
+	// Fetch project overview first (prepended to all recall responses)
+	var overviewInfo *ProjectOverviewInfo
+	if overview, err := s.repo.GetProjectOverview(); err == nil && overview != nil {
+		overviewInfo = &ProjectOverviewInfo{
+			ShortDescription: overview.ShortDescription,
+			LongDescription:  overview.LongDescription,
+		}
+	}
+
 	// Node-based system only
 	nodes, err := s.repo.ListNodes("")
 	if err != nil {
@@ -42,7 +52,8 @@ func (s *Service) GetProjectSummary(ctx context.Context) (ProjectSummary, error)
 	}
 
 	return ProjectSummary{
-		Total: len(nodes),
-		Types: typeSummaries,
+		Overview: overviewInfo,
+		Total:    len(nodes),
+		Types:    typeSummaries,
 	}, nil
 }

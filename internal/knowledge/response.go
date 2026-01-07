@@ -98,8 +98,15 @@ type TypeSummary struct {
 	Examples []string `json:"examples"` // Top 3 summaries
 }
 
+// ProjectOverviewInfo is a compact version of the project overview for API responses.
+type ProjectOverviewInfo struct {
+	ShortDescription string `json:"short_description"`
+	LongDescription  string `json:"long_description,omitempty"`
+}
+
 // ProjectSummary provides a high-level overview of the project memory.
 type ProjectSummary struct {
-	Total int                    `json:"total"`
-	Types map[string]TypeSummary `json:"types"`
+	Overview *ProjectOverviewInfo   `json:"overview,omitempty"` // High-level project description
+	Total    int                    `json:"total"`
+	Types    map[string]TypeSummary `json:"types"`
 }

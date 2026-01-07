@@ -43,6 +43,9 @@ type Repository interface {
 	// FTS5 Hybrid Search (new)
 	ListNodesWithEmbeddings() ([]memory.Node, error)
 	SearchFTS(query string, limit int) ([]memory.FTSResult, error)
+
+	// Project Overview
+	GetProjectOverview() (*memory.ProjectOverview, error)
 }
 
 // Service provides high-level knowledge operations
