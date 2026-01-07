@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/spf13/cobra"
 )
 
@@ -268,10 +269,11 @@ func splitCommand(cmd string) []string {
 func setHooksEnabled(cwd string, enabled bool) error {
 	if enabled {
 		// Install hooks config
-		if err := installHooksConfig(cwd, "claude", true); err != nil {
+		initializer := bootstrap.NewInitializer(cwd)
+		if err := initializer.InstallHooksConfig("claude", true); err != nil {
 			return err
 		}
-		if err := installHooksConfig(cwd, "codex", true); err != nil {
+		if err := initializer.InstallHooksConfig("codex", true); err != nil {
 			return err
 		}
 		fmt.Println("✅ Hooks enabled")

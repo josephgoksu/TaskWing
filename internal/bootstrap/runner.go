@@ -29,8 +29,8 @@ func (r *Runner) Close() {
 	core.CloseAgents(r.agents)
 }
 
-// Run executes all agents in parallel and returns aggregated findings
-func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Finding, error) {
+// Run executes all agents in parallel and returns raw agent outputs
+func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Output, error) {
 	input := core.Input{
 		BasePath:    projectPath,
 		ProjectName: filepath.Base(projectPath),
@@ -77,6 +77,6 @@ func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Finding, e
 		return nil, fmt.Errorf("all agents failed: %v", errs)
 	}
 
-	// Aggregate findings
-	return core.AggregateFindings(results), nil
+	// Return raw results (caller aggregates)
+	return results, nil
 }

@@ -245,8 +245,12 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Aggregate findings from raw output
+	aggregatedFindings := core.AggregateFindings(findings)
+	aggregatedRelationships := core.AggregateRelationships(findings)
+
 	// Reuse err variable or shadow it. Using assignment since err exists.
-	if err := ingestSvc.IngestFindings(r.Context(), findings, nil, false); err != nil {
+	if err := ingestSvc.IngestFindingsWithRelationships(r.Context(), aggregatedFindings, aggregatedRelationships, nil, false); err != nil {
 		http.Error(w, fmt.Sprintf("ingestion failed: %v", err), http.StatusInternalServerError)
 		return
 	}

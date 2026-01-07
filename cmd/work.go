@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/spf13/cobra"
 )
 
@@ -84,7 +85,7 @@ func runWork(launch bool, planGoal string) error {
 	claudeSettingsPath := filepath.Join(cwd, ".claude", "settings.json")
 	if _, err := os.Stat(claudeSettingsPath); os.IsNotExist(err) {
 		fmt.Println("⚠️  Hooks not configured. Creating...")
-		if err := installHooksConfig(cwd, "claude", false); err != nil {
+		if err := bootstrap.NewInitializer(cwd).InstallHooksConfig("claude", false); err != nil {
 			fmt.Printf("   Failed to create hooks: %v\n", err)
 		} else {
 			fmt.Println("✅ Hooks configured")

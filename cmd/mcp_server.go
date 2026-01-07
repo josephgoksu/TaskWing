@@ -1219,7 +1219,9 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 		planID = plan.ID
 
 		// Set as active plan (silently ignore error - plan was created successfully)
-		_ = setActivePlan(planID)
+		svc := task.NewService(repo, config.GetMemoryBasePath())
+		_ = svc.SetActivePlan(planID)
+
 	}
 
 	return mcpJSONResponse(PlanGenerateResponse{
