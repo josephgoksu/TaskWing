@@ -38,6 +38,13 @@ var (
 	// Only matches simple identifiers (letters, numbers, underscores, hyphens)
 	// Excludes: numbers, true, false, null, nested objects/arrays
 	unquotedValueRegex = regexp.MustCompile(`(:\s*)([a-zA-Z][a-zA-Z0-9_-]*)(\s*[,}\]])`)
+
+	// Fix unquoted semver values: {"version": ^1.0.0} -> {"version": "^1.0.0"}
+	// Matches values starting with semver range prefixes:
+	// - Single char: ^, ~, >, <, *
+	// - Double char: >=, <=
+	// Common in LLM outputs when analyzing package.json dependencies
+	unquotedSemverRegex = regexp.MustCompile(`(:\s*)((?:>=|<=|[\^~><*])[\d.a-zA-Z_-]*)(\s*[,}\]])`)
 )
 
 // ExtractAndParseJSON extracts JSON from LLM responses and unmarshals it.
@@ -160,7 +167,11 @@ func repairJSON(input string) string {
 		return parts[1] + `"` + value + `"` + parts[3]
 	})
 
-	// 8. Fix truncated JSON (incomplete string at end)
+	// 8. Fix unquoted semver values: {"version": ^1.0.0} -> {"version": "^1.0.0"}
+	// Common in LLM outputs when analyzing package.json dependencies
+	result = unquotedSemverRegex.ReplaceAllString(result, `$1"$2"$3`)
+
+	// 9. Fix truncated JSON (incomplete string at end)
 	// If we have unbalanced quotes, try to close the string and structure
 	result = fixTruncatedJSON(result)
 

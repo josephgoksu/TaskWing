@@ -272,6 +272,74 @@ func TestRepairJSON_ComplexCases(t *testing.T) {
 	}
 }
 
+func TestRepairJSON_UnquotedSemver(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "caret semver",
+			input: `{"version": ^1.0.0}`,
+			want:  `{"version": "^1.0.0"}`,
+		},
+		{
+			name:  "tilde semver",
+			input: `{"version": ~1.2.3}`,
+			want:  `{"version": "~1.2.3"}`,
+		},
+		{
+			name:  "greater than semver",
+			input: `{"min": >2.0.0}`,
+			want:  `{"min": ">2.0.0"}`,
+		},
+		{
+			name:  "less than semver",
+			input: `{"max": <3.0.0}`,
+			want:  `{"max": "<3.0.0"}`,
+		},
+		{
+			name:  "star wildcard",
+			input: `{"version": *}`,
+			want:  `{"version": "*"}`,
+		},
+		{
+			name:  "complex semver with prerelease",
+			input: `{"version": ^1.0.0-beta.1}`,
+			want:  `{"version": "^1.0.0-beta.1"}`,
+		},
+		{
+			name:  "multiple semver values",
+			input: `{"dep1": ^1.0.0, "dep2": ~2.0.0}`,
+			want:  `{"dep1": "^1.0.0", "dep2": "~2.0.0"}`,
+		},
+		{
+			name:  "greater than or equal semver",
+			input: `{"min": >=1.0.0}`,
+			want:  `{"min": ">=1.0.0"}`,
+		},
+		{
+			name:  "less than or equal semver",
+			input: `{"max": <=2.0.0}`,
+			want:  `{"max": "<=2.0.0"}`,
+		},
+		{
+			name:  "semver after brace close - nested object pattern",
+			input: `{"deps": {"fastify": ^4.28.1}}`,
+			want:  `{"deps": {"fastify": "^4.28.1"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := repairJSON(tt.input)
+			if got != tt.want {
+				t.Errorf("repairJSON() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCleanLLMResponse(t *testing.T) {
 	tests := []struct {
 		name  string

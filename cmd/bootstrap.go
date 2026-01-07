@@ -21,6 +21,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
+	"github.com/josephgoksu/TaskWing/internal/workspace"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -68,13 +69,24 @@ Examples:
 			fmt.Println()
 		}
 
+		// Detect workspace type (single, monorepo, multi-repo)
+		ws, err := workspace.Detect(cwd)
+		if err != nil {
+			return fmt.Errorf("detect workspace: %w", err)
+		}
+
 		// Use centralized config loader
 		llmCfg, err := getLLMConfigForRole(cmd, llm.RoleBootstrap)
 		if err != nil {
 			return err
 		}
 
-		// Default: use parallel agent architecture
+		// Handle multi-repo workspaces with per-service analysis
+		if ws.IsMultiRepo() {
+			return runMultiRepoBootstrap(cmd.Context(), ws, preview, llmCfg, trace, traceFile, traceStdout)
+		}
+
+		// Default: use parallel agent architecture for single repos
 		return runAgentBootstrap(cmd.Context(), cwd, preview, llmCfg, trace, traceFile, traceStdout)
 	},
 }
@@ -217,6 +229,133 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 
 	// Ingest (with verification and LLM-extracted relationships)
 	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, nil, !viper.GetBool("quiet"))
+}
+
+// runMultiRepoBootstrap handles multi-repo workspaces by analyzing each service separately.
+// Findings are prefixed with service names for clear attribution.
+func runMultiRepoBootstrap(ctx context.Context, ws *workspace.Info, preview bool, llmCfg llm.Config, _ bool, _ string, _ bool) error {
+	// Note: trace params are intentionally unused in multi-repo mode (no TUI)
+	fmt.Println("")
+	ui.RenderPageHeader("TaskWing Multi-Repo Bootstrap",
+		fmt.Sprintf("Workspace: %s | Services: %d | Using: %s (%s)",
+			ws.Name, ws.ServiceCount(), llmCfg.Model, llmCfg.Provider))
+
+	fmt.Println()
+	fmt.Printf("📦 Detected %d services in multi-repo workspace:\n", ws.ServiceCount())
+	for i, svc := range ws.Services {
+		fmt.Printf("   %d. %s\n", i+1, svc)
+	}
+	fmt.Println()
+
+	// Collect results from all services
+	var allFindings []core.Finding
+	var allRelationships []core.Relationship
+	var serviceErrors []string
+
+	// Process each service
+	for i, serviceName := range ws.Services {
+		servicePath := ws.GetServicePath(serviceName)
+
+		fmt.Printf("🔍 [%d/%d] Analyzing %s...\n", i+1, ws.ServiceCount(), serviceName)
+
+		// Create agents for this service
+		agentsList := bootstrap.NewDefaultAgents(llmCfg, servicePath)
+
+		// Prepare input
+		input := core.Input{
+			BasePath:    servicePath,
+			ProjectName: serviceName,
+			Mode:        core.ModeBootstrap,
+			Verbose:     false, // Suppress detailed output in multi-repo mode
+		}
+
+		// Run agents directly without TUI (simpler for multi-repo)
+		results, err := runAgentsSimple(ctx, agentsList, input)
+		core.CloseAgents(agentsList)
+
+		if err != nil {
+			serviceErrors = append(serviceErrors, fmt.Sprintf("%s: %s", serviceName, err.Error()))
+			fmt.Printf("   ⚠️  %s had errors\n", serviceName)
+			continue
+		}
+
+		// Prefix findings with service name
+		findings := core.AggregateFindings(results)
+		for i := range findings {
+			findings[i].Title = fmt.Sprintf("[%s] %s", serviceName, findings[i].Title)
+			if findings[i].Metadata == nil {
+				findings[i].Metadata = make(map[string]any)
+			}
+			findings[i].Metadata["service"] = serviceName
+		}
+
+		relationships := core.AggregateRelationships(results)
+		for i := range relationships {
+			relationships[i].From = fmt.Sprintf("[%s] %s", serviceName, relationships[i].From)
+			relationships[i].To = fmt.Sprintf("[%s] %s", serviceName, relationships[i].To)
+		}
+
+		// Check for agent-level errors in results
+		for _, r := range results {
+			if r.Error != nil {
+				serviceErrors = append(serviceErrors, fmt.Sprintf("%s/%s: %s", serviceName, r.AgentName, r.Error.Error()))
+			}
+		}
+
+		allFindings = append(allFindings, findings...)
+		allRelationships = append(allRelationships, relationships...)
+
+		fmt.Printf("   ✓ Found %d items\n", len(findings))
+	}
+
+	if len(serviceErrors) > 0 {
+		fmt.Println()
+		fmt.Println("⚠️  Some services had errors:")
+		for _, e := range serviceErrors {
+			fmt.Printf("   - %s\n", e)
+		}
+	}
+
+	// Summary
+	fmt.Println()
+	fmt.Printf("📊 Aggregated: %d findings from %d services\n", len(allFindings), ws.ServiceCount()-len(serviceErrors))
+
+	if preview || viper.GetBool("preview") {
+		fmt.Println("\n💡 This was a preview. Run 'taskwing bootstrap' to save to memory.")
+		return nil
+	}
+
+	// Save to memory
+	memoryPath := config.GetMemoryBasePath()
+	repo, err := memory.NewDefaultRepository(memoryPath)
+	if err != nil {
+		return fmt.Errorf("open memory repo: %w", err)
+	}
+	defer func() { _ = repo.Close() }()
+
+	ks := knowledge.NewService(repo, llmCfg)
+	ks.SetBasePath(ws.RootPath)
+
+	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, nil, !viper.GetBool("quiet"))
+}
+
+// runAgentsSimple runs agents without TUI for batch processing
+func runAgentsSimple(ctx context.Context, agents []core.Agent, input core.Input) ([]core.Output, error) {
+	var results []core.Output
+
+	for _, agent := range agents {
+		output, err := agent.Run(ctx, input)
+		if err != nil {
+			// Agent error - record but continue
+			output = core.Output{
+				AgentName: agent.Name(),
+				Error:     err,
+			}
+		}
+		results = append(results, output)
+	}
+
+	return results, nil
 }
 
 // generateBootstrapReport creates a report from agent results
