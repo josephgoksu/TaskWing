@@ -216,7 +216,17 @@ func runAgentBootstrap(ctx context.Context, cwd string, preview bool, llmCfg llm
 	ks.SetBasePath(cwd) // Enable evidence verification
 
 	// Ingest (with verification and LLM-extracted relationships)
-	return ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, nil, !viper.GetBool("quiet"))
+	if err := ks.IngestFindingsWithRelationships(ctx, allFindings, allRelationships, nil, !viper.GetBool("quiet")); err != nil {
+		return err
+	}
+
+	// Generate project overview if it doesn't exist
+	if err := generateProjectOverviewIfNeeded(ctx, repo, llmCfg, cwd); err != nil {
+		// Non-fatal: log warning but don't fail bootstrap
+		fmt.Fprintf(os.Stderr, "⚠️  Failed to generate project overview: %v\n", err)
+	}
+
+	return nil
 }
 
 // generateBootstrapReport creates a report from agent results
@@ -610,6 +620,45 @@ func updateAgentDocs(basePath string, aiName string, verbose bool) error {
 
 		// Only update one file per AI
 		break
+	}
+
+	return nil
+}
+
+// generateProjectOverviewIfNeeded generates a project overview if one doesn't exist.
+// This runs at the end of bootstrap to create a high-level description of the project.
+func generateProjectOverviewIfNeeded(ctx context.Context, repo *memory.Repository, llmCfg llm.Config, projectPath string) error {
+	// Check if overview already exists
+	existing, err := repo.GetProjectOverview()
+	if err != nil {
+		return fmt.Errorf("check existing overview: %w", err)
+	}
+	if existing != nil {
+		if !viper.GetBool("quiet") {
+			fmt.Println("\n📋 Project overview already exists (use 'tw overview regenerate' to update)")
+		}
+		return nil
+	}
+
+	// Generate new overview
+	if !viper.GetBool("quiet") {
+		fmt.Println("\n📋 Generating project overview...")
+	}
+
+	analyzer := bootstrap.NewOverviewAnalyzer(llmCfg, projectPath)
+	overview, err := analyzer.Analyze(ctx)
+	if err != nil {
+		return fmt.Errorf("analyze project: %w", err)
+	}
+
+	// Save to database
+	if err := repo.SaveProjectOverview(overview); err != nil {
+		return fmt.Errorf("save overview: %w", err)
+	}
+
+	if !viper.GetBool("quiet") {
+		fmt.Println("   ✓ Project overview generated")
+		fmt.Printf("   \"%s\"\n", overview.ShortDescription)
 	}
 
 	return nil
