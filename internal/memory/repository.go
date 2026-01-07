@@ -434,3 +434,16 @@ func (r *Repository) RebuildFTS() error {
 func (r *Repository) Close() error {
 	return r.db.Close()
 }
+
+// === Project Overview ===
+
+// GetProjectOverview retrieves the project overview from the database.
+// Returns nil if no overview exists yet.
+func (r *Repository) GetProjectOverview() (*ProjectOverview, error) {
+	return r.db.GetProjectOverview()
+}
+
+// SaveProjectOverview creates or updates the project overview.
+func (r *Repository) SaveProjectOverview(overview *ProjectOverview) error {
+	return r.db.SaveProjectOverview(overview)
+}

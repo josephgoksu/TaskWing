@@ -134,3 +134,12 @@ const (
 	NodeRelationSemanticallySimilar = "semantically_similar"
 	NodeRelationSharesEvidence      = "shares_evidence" // Nodes referencing same files
 )
+
+// ProjectOverview represents the high-level description of a project.
+// It provides context for AI assistants about what the project does.
+type ProjectOverview struct {
+	ShortDescription string    `json:"short_description"` // One-sentence summary (max ~100 chars)
+	LongDescription  string    `json:"long_description"`  // Detailed description (2-3 paragraphs)
+	GeneratedAt      time.Time `json:"generated_at"`      // When the overview was auto-generated
+	LastEditedAt     time.Time `json:"last_edited_at"`    // When manually edited (zero if never)
+}
