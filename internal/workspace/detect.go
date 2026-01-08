@@ -63,27 +63,22 @@ func Detect(basePath string) (*Info, error) {
 	// Check for .git at root
 	hasRootGit := hasGitDir(absPath)
 
-	// Find nested git repositories
-	nestedRepos := findNestedGitRepos(absPath)
+	// Find nested projects (git repos or manifest-based services)
+	nestedRepos := findNestedProjects(absPath)
 
 	switch {
-	case hasRootGit && len(nestedRepos) == 0:
-		// Normal single repo
-		info.Type = TypeSingle
-		info.Services = []string{"."}
-
-	case hasRootGit && len(nestedRepos) > 0:
-		// Monorepo with submodules or nested repos
-		info.Type = TypeMonorepo
-		info.Services = nestedRepos
-
-	case !hasRootGit && len(nestedRepos) > 0:
-		// Multi-repo workspace (like Tazama)
-		info.Type = TypeMultiRepo
+	case len(nestedRepos) > 0:
+		// Monorepo or Multi-repo
+		// If root has git, it's a Monorepo. If not, it's Multi-repo (conceptually, or just a non-git monorepo)
+		if hasRootGit {
+			info.Type = TypeMonorepo
+		} else {
+			info.Type = TypeMultiRepo
+		}
 		info.Services = nestedRepos
 
 	default:
-		// No git at all - treat as single project
+		// Normal single repo
 		info.Type = TypeSingle
 		info.Services = []string{"."}
 	}
@@ -101,13 +96,13 @@ func hasGitDir(path string) bool {
 	return stat.IsDir()
 }
 
-// findNestedGitRepos finds all directories containing .git (excluding root)
-func findNestedGitRepos(basePath string) []string {
-	var repos []string
+// findNestedProjects finds all sub-directories that look like independent projects/services
+func findNestedProjects(basePath string) []string {
+	var projects []string
 
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
-		return repos
+		return projects
 	}
 
 	for _, entry := range entries {
@@ -125,12 +120,34 @@ func findNestedGitRepos(basePath string) []string {
 		}
 
 		dirPath := filepath.Join(basePath, name)
-		if hasGitDir(dirPath) {
-			repos = append(repos, name)
+		if isProjectDir(dirPath) {
+			projects = append(projects, name)
 		}
 	}
 
-	return repos
+	return projects
+}
+
+// isProjectDir checks if a directory contains project markers
+func isProjectDir(path string) bool {
+	markers := []string{
+		".git",
+		"package.json",
+		"go.mod",
+		"pom.xml",
+		"build.gradle",
+		"requirements.txt",
+		"pyproject.toml",
+		"Cargo.toml",
+		"Dockerfile",
+	}
+
+	for _, marker := range markers {
+		if _, err := os.Stat(filepath.Join(path, marker)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // isSkippableDir returns true for directories that shouldn't be treated as repos
@@ -140,6 +157,9 @@ func isSkippableDir(name string) bool {
 		"vendor":       true,
 		"dist":         true,
 		"build":        true,
+		"out":          true,
+		"target":       true,
+		"bin":          true,
 		"__pycache__":  true,
 		".next":        true,
 		"coverage":     true,
