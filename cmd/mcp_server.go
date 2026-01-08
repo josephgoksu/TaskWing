@@ -255,7 +255,7 @@ func runMCPServer(ctx context.Context) error {
 	// Register recall tool - retrieves stored codebase knowledge for AI context
 	tool := &mcpsdk.Tool{
 		Name:        "recall",
-		Description: "Retrieve codebase architecture knowledge: decisions, patterns, constraints, and features. Returns overview by default. Use {\"query\":\"search term\"} for semantic search. Add {\"answer\":true} to get a synthesized RAG answer from the LLM based on retrieved context.",
+		Description: "Retrieve codebase architecture knowledge: decisions, patterns, constraints, and features. Returns an AI-synthesized answer and relevant context by default. Use {\"query\":\"search term\"} for semantic search.",
 	}
 
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
@@ -386,10 +386,13 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params Proj
 		responses = append(responses, knowledge.ScoredNodeToResponse(sn))
 	}
 
-	// If Answer is requested, generate RAG answer (matching CLI --answer flag)
+	// If Answer is requested OR we have a query (default to true), generate RAG answer
 	var ragAnswer string
 	var ragWarning string
-	if params.Answer && len(scored) > 0 {
+	// Default to answering if query is present, unless explicitly disabled (not currently supported by params)
+	shouldAnswer := (params.Answer || query != "") && len(scored) > 0
+
+	if shouldAnswer {
 		answer, err := ks.Ask(ctx, query, scored)
 		if err != nil {
 			// Include warning in response instead of stderr

@@ -192,7 +192,7 @@ func (a *ReactAgent) runSimpleFallback(ctx context.Context, chatModel model.Base
 	gatherer := agenttools.NewContextGatherer(basePath)
 	var contextBuilder strings.Builder
 	contextBuilder.WriteString("## Directory Structure\n")
-	contextBuilder.WriteString(gatherer.ListDirectoryTree(2))
+	contextBuilder.WriteString(gatherer.ListDirectoryTree(5))
 	contextBuilder.WriteString("\n\n")
 	contextBuilder.WriteString(gatherer.GatherKeyFiles())
 

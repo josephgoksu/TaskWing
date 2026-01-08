@@ -71,7 +71,7 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 
 	// Gather context upfront (no tool calls needed)
 	gatherer := tools.NewContextGatherer(basePath)
-	dirTree := gatherer.ListDirectoryTree(3)
+	dirTree := gatherer.ListDirectoryTree(5)
 
 	var sourceCode string
 	isIncremental := input.Mode == core.ModeWatch && len(input.ChangedFiles) > 0

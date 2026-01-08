@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/josephgoksu/TaskWing/internal/memory"
 )
 
 // -----------------------------------------------------------------------------
@@ -413,5 +415,102 @@ func TestMCPRecallEmpty(t *testing.T) {
 		t.Log("✅ Empty project correctly returns bootstrap guidance")
 	} else {
 		t.Logf("Response text: %s", text)
+	}
+}
+
+// TestMCPRecallQuery tests recall tool with a search query
+func TestMCPRecallQuery(t *testing.T) {
+	// This test requires setting up a real (temporary) DB with nodes
+	tmpDir := t.TempDir()
+
+	// Enforce structure that TaskWing CLI looks for (.taskwing/memory)
+	// This ensures config.GetMemoryBasePath() finds the local memory instead of falling back to global
+	memoryDir := filepath.Join(tmpDir, ".taskwing", "memory")
+
+	// Pre-seed the DB
+	repo, err := memory.NewDefaultRepository(memoryDir)
+	if err != nil {
+		t.Fatalf("Failed to create repo: %v", err)
+	}
+
+	// Create a dummy node
+	err = repo.CreateNode(memory.Node{
+		ID:      "test-node-1",
+		Type:    memory.NodeTypeDecision,
+		Summary: "Use SQLite for storage",
+		Content: "We decided to use SQLite because it is embedded and simple.",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create node: %v", err)
+	}
+	repo.Close() // Close so the server can open it
+
+	h := newMCPTestHarness(t, tmpDir)
+	defer h.Close()
+
+	if _, err := h.Initialize(); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+	h.SendInitializedNotification()
+
+	// Call recall with query
+	id := 3
+	resp, err := h.SendAndReceive(MCPRequest{
+		JSONRPC: "2.0",
+		Method:  "tools/call",
+		Params: map[string]interface{}{
+			"name":      "recall",
+			"arguments": map[string]string{"query": "sqlite"},
+		},
+		ID: &id,
+	})
+	if err != nil {
+		t.Fatalf("Failed to read tools/call response: %v\nStderr: %s", err, h.Stderr())
+	}
+
+	if resp.Error != nil {
+		t.Fatalf("tools/call returned error: %s", resp.Error.Message)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("Failed to parse result: %v", err)
+	}
+
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		t.Fatal("Expected content array in response")
+	}
+
+	firstContent := content[0].(map[string]interface{})
+	text, _ := firstContent["text"].(string)
+
+	// Parse the inner JSON result
+	var searchResult struct {
+		Query   string        `json:"query"`
+		Results []interface{} `json:"results"`
+		Answer  string        `json:"answer"`
+		Warning string        `json:"warning"`
+	}
+	if err := json.Unmarshal([]byte(text), &searchResult); err != nil {
+		t.Fatalf("Failed to parse search result JSON: %v\nText: %s", err, text)
+	}
+
+	if searchResult.Query != "sqlite" {
+		t.Errorf("Expected query 'sqlite', got '%s'", searchResult.Query)
+	}
+	if len(searchResult.Results) == 0 {
+		t.Error("Expected search results, got 0")
+	}
+
+	// VERIFY DEFAULT ANSWER BEHAVIOR
+	// Since we don't have an LLM configured in test env, we expect EITHER a generated answer OR a warning
+	// consistently. The key is that the fields exist in the JSON structure.
+	if searchResult.Answer == "" && searchResult.Warning == "" {
+		t.Error("Expected either 'answer' or 'warning' to be populated (default answer enabled), but both are empty")
+	} else if searchResult.Warning != "" {
+		t.Logf("✅ Verified answer attempt (got expected warning since no LLM): %s", searchResult.Warning)
+	} else {
+		t.Log("✅ Verified answer generated successfully")
 	}
 }

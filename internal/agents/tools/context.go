@@ -356,9 +356,9 @@ func (g *ContextGatherer) GatherSpecificFiles(files []string) string {
 func (g *ContextGatherer) GatherSourceCode() string {
 	var sb strings.Builder
 	gathered := 0
-	maxFiles := 50          // Need to see more of the codebase
-	maxPerFile := 4000      // Chars per file
-	maxTotalChars := 150000 // Budget cap to prevent token overflow
+	maxFiles := 200         // Balanced: Enough for polyrepos but prevents noise
+	maxPerFile := 12000     // Keep large file context (important for huge files)
+	maxTotalChars := 600000 // Safe Cap: ~150k tokens. Fits comfortably in modern windows without breaking the bank.
 	totalChars := 0
 	seen := make(map[string]bool)
 
@@ -490,7 +490,11 @@ func (g *ContextGatherer) GatherSourceCode() string {
 
 	// Phase 1: Add ONLY root-level entry points and main config (strict budget: max 5 files)
 	// CI/CD and other config files will be added in Phase 2 with lower priority
-	phase1Budget := 5
+	// Budget scales with number of roots to ensure all microservices get representation
+	phase1Budget := 10 + (len(projectRoots) * 3)
+	if phase1Budget > 100 {
+		phase1Budget = 100
+	}
 	phase1Added := 0
 
 	// Entry point files to look for (in priority order)
@@ -651,10 +655,17 @@ func (g *ContextGatherer) GatherSourceCode() string {
 
 	// Phase 3: Add files in priority order until budget exhausted
 	for _, c := range candidates {
-		if gathered >= maxFiles || totalChars >= maxTotalChars {
-			break
+		// Try to add the file
+		if gathered >= maxFiles {
+			g.recordSkip(c.path, "max files limit reached")
+			continue
 		}
-		addFile(c.path, 150)
+		if totalChars >= maxTotalChars {
+			g.recordSkip(c.path, "character budget exhausted")
+			continue
+		}
+
+		addFile(c.path, 300)
 	}
 
 	if gathered == 0 {
