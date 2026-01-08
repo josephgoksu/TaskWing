@@ -136,7 +136,20 @@ func (s *Service) ingestToMemory(ctx context.Context, findings []core.Finding, r
 	}
 
 	// Generate Project Overview if needed
-	return s.generateOverviewIfNeeded(ctx, repo, !isQuiet)
+	if err := s.generateOverviewIfNeeded(ctx, repo, !isQuiet); err != nil {
+		return err // Non-fatal? Maybe, but consistent with other errors
+	}
+
+	// Generate ARCHITECTURE.md
+	projectName := filepath.Base(s.basePath)
+	if err := repo.GenerateArchitectureMD(projectName); err != nil {
+		// Log warning but don't fail bootstrap
+		fmt.Fprintf(os.Stderr, "⚠️  Failed to generate ARCHITECTURE.md: %v\n", err)
+	} else if !isQuiet {
+		fmt.Println("   ✓ Generated .taskwing/ARCHITECTURE.md")
+	}
+
+	return nil
 }
 
 // generateOverviewIfNeeded checks existence and generates overview
