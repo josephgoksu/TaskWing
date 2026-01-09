@@ -54,7 +54,6 @@ var aiConfigs = map[string]aiConfig{
 }
 
 func promptAISelection() []string {
-	// Build display map for UI
 	descriptions := make(map[string]string)
 	for _, id := range aiConfigOrder {
 		descriptions[id] = aiConfigs[id].displayName
@@ -62,10 +61,6 @@ func promptAISelection() []string {
 
 	selected, err := ui.PromptAISelection(aiConfigOrder, descriptions)
 	if err != nil {
-		// Try to fallback to simple prompt if UI fails?
-		// Or just log error.
-		// Since we're in cmd package, fmt.Printf is okay but might interfere with TUI if running?
-		// Bootstrap usually runs this early.
 		fmt.Printf("Error running selection: %v\n", err)
 		return nil
 	}

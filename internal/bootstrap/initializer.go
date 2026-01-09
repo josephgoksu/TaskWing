@@ -135,7 +135,6 @@ func (i *Initializer) createSlashCommands(aiName string, verbose bool) error {
 
 		if isTOML {
 			fileName = cmd.baseName + ".toml"
-			fileName = cmd.baseName + ".toml"
 			content = fmt.Sprintf(`description = "%s"
 
 prompt = """!{taskwing slash %s}"""

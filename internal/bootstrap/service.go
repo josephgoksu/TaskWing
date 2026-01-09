@@ -38,16 +38,6 @@ func (s *Service) InitializeProject(verbose bool, selectedAIs []string) error {
 	return s.initializer.Run(verbose, selectedAIs)
 }
 
-// RunAgentAnalysis executes the analysis agents for a single project/service.
-// It returns raw results which can be used for UI streaming or batch processing.
-// Note: UI orchestration (TUI) remains in the CLI layer, but this method supports headless execution.
-func (s *Service) RunAgentAnalysis(ctx context.Context, projectPath string) ([]core.Output, error) {
-	runner := NewRunner(s.llmCfg, projectPath)
-	defer runner.Close()
-
-	return runner.Run(ctx, projectPath)
-}
-
 // RunMultiRepoAnalysis executes analysis for all services in a workspace.
 func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *workspace.Info) ([]core.Finding, []core.Relationship, []string, error) {
 	var allFindings []core.Finding

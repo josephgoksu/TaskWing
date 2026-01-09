@@ -443,7 +443,7 @@ func TestMCPRecallQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create node: %v", err)
 	}
-	repo.Close() // Close so the server can open it
+	_ = repo.Close() // Close so the server can open it
 
 	h := newMCPTestHarness(t, tmpDir)
 	defer h.Close()

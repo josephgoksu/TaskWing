@@ -125,7 +125,11 @@ func runContext(cmd *cobra.Command, args []string) error {
 	}
 
 	// TUI Output
-	ui.RenderContextResults(query, scored, answer)
+	if isVerbose() {
+		ui.RenderContextResultsVerbose(query, scored, answer)
+	} else {
+		ui.RenderContextResults(query, scored, answer)
+	}
 
 	return nil
 }

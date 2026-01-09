@@ -12,10 +12,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	configName = ".taskwing"
-	envPrefix  = "TASKWING"
-)
+const envPrefix = "TASKWING"
 
 // initConfig reads in config file and ENV variables if set.
 // This is called by cobra.OnInitialize in root.go

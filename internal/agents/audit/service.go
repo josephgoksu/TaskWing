@@ -331,42 +331,8 @@ func extractJSON(response string) string {
 	return response
 }
 
-// ToAuditReport converts AuditResult to task.AuditReport for storage.
-func (r *AuditResult) ToAuditReport() task.AuditReport {
-	report := task.AuditReport{
-		Status:      r.Status,
-		BuildOutput: r.BuildResult.Output,
-		TestOutput:  r.TestResult.Output,
-		CompletedAt: r.Timestamp,
-	}
-
-	if !r.BuildResult.Passed && r.BuildResult.Error != "" {
-		report.ErrorMessage = "Build failed: " + r.BuildResult.Error
-	} else if !r.TestResult.Passed && r.TestResult.Error != "" {
-		report.ErrorMessage = "Tests failed: " + r.TestResult.Error
-	}
-
-	report.SemanticIssues = r.SemanticResult.Issues
-
-	return report
-}
-
 // MaxRetries is the maximum number of auto-fix attempts.
 const MaxRetries = 3
-
-// FileWriter is an interface for writing files.
-// This allows mocking in tests.
-type FileWriter interface {
-	WriteFile(path string, content []byte) error
-}
-
-// OSFileWriter writes files using the OS.
-type OSFileWriter struct{}
-
-// WriteFile writes content to a file.
-func (w *OSFileWriter) WriteFile(path string, content []byte) error {
-	return writeFile(path, content)
-}
 
 // writeFile is a wrapper for os.WriteFile for easier testing.
 var writeFile = func(path string, content []byte) error {

@@ -83,7 +83,8 @@ var memoryCheckCmd = &cobra.Command{
 Checks for:
   • Missing markdown files
   • Orphan edges (relationships to non-existent features)
-  • Index cache staleness`,
+  • Index cache staleness
+  • Embedding dimension consistency`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 		if err != nil {
@@ -96,13 +97,44 @@ Checks for:
 			return fmt.Errorf("check integrity: %w", err)
 		}
 
+		// Check embedding stats
+		embStats, embErr := repo.GetEmbeddingStats()
+
 		if viper.GetBool("json") {
-			output, _ := json.MarshalIndent(map[string]interface{}{
-				"issues": issues,
-				"count":  len(issues),
+			output, _ := json.MarshalIndent(map[string]any{
+				"issues":          issues,
+				"count":           len(issues),
+				"embedding_stats": embStats,
 			}, "", "  ")
 			fmt.Println(string(output))
 			return nil
+		}
+
+		// Show embedding stats first
+		if embErr == nil && embStats != nil {
+			fmt.Println("Embedding Statistics:")
+			fmt.Printf("  Total nodes:     %d\n", embStats.TotalNodes)
+			fmt.Printf("  With embeddings: %d\n", embStats.NodesWithEmbeddings)
+			fmt.Printf("  Missing:         %d\n", embStats.NodesWithoutEmbeddings)
+			if embStats.EmbeddingDimension > 0 {
+				fmt.Printf("  Dimension:       %d\n", embStats.EmbeddingDimension)
+			}
+			fmt.Println()
+
+			// Warn about missing embeddings
+			if embStats.NodesWithoutEmbeddings > 0 {
+				fmt.Printf("⚠  %d nodes are missing embeddings.\n", embStats.NodesWithoutEmbeddings)
+				fmt.Println("   Run 'tw memory generate-embeddings' to backfill.")
+				fmt.Println()
+			}
+
+			// Warn about mixed dimensions
+			if embStats.MixedDimensions {
+				fmt.Println("⚠  WARNING: Mixed embedding dimensions detected!")
+				fmt.Println("   This can happen when switching between different embedding models.")
+				fmt.Println("   Run 'tw memory rebuild-embeddings' to regenerate all embeddings.")
+				fmt.Println()
+			}
 		}
 
 		if len(issues) == 0 {
@@ -167,9 +199,8 @@ Actions:
 
 // memory rebuild command
 var memoryRebuildCmd = &cobra.Command{
-	Use:     "rebuild-index",
-	Aliases: []string{"rebuild"},
-	Short:   "Rebuild the index cache",
+	Use:   "rebuild-index",
+	Short: "Rebuild the index cache",
 	Long: `Regenerate the index.json cache from SQLite data.
 
 This is useful if the cache is out of sync with the database.`,
@@ -196,9 +227,8 @@ This is useful if the cache is out of sync with the database.`,
 
 // memory generate-embeddings command
 var memoryGenerateEmbeddingsCmd = &cobra.Command{
-	Use:     "generate-embeddings",
-	Aliases: []string{"embed"},
-	Short:   "Generate embeddings for nodes without them",
+	Use:   "generate-embeddings",
+	Short: "Generate embeddings for nodes without them",
 	Long: `Backfill embeddings for knowledge nodes that don't have them.
 
 Requires an API key for the configured provider (OpenAI/Gemini) or a local Ollama setup. Useful after:
@@ -276,9 +306,8 @@ Requires an API key for the configured provider (OpenAI/Gemini) or a local Ollam
 
 // memory export command
 var memoryExportCmd = &cobra.Command{
-	Use:     "export",
-	Aliases: []string{"arch", "architecture"},
-	Short:   "Generate comprehensive ARCHITECTURE.md",
+	Use:   "export",
+	Short: "Generate comprehensive ARCHITECTURE.md",
 	Long: `Generate a comprehensive ARCHITECTURE.md file that consolidates all project knowledge.
 
 The generated file includes:
@@ -316,6 +345,104 @@ Examples:
 	},
 }
 
+// memory rebuild-embeddings command
+var memoryRebuildEmbeddingsCmd = &cobra.Command{
+	Use:   "rebuild-embeddings",
+	Short: "Regenerate ALL embeddings",
+	Long: `Regenerate embeddings for ALL nodes in the memory database.
+
+This is useful when:
+  • Switching to a different embedding model
+  • Mixed embedding dimensions detected
+  • Upgrading to a better embedding model (e.g., Qwen3)
+
+Unlike 'generate-embeddings' (which only backfills missing), this command
+regenerates embeddings for ALL nodes, ensuring consistency.
+
+WARNING: This can be expensive if you have many nodes and are using a paid API.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ui.RenderPageHeader("TaskWing Embeddings", "Regenerating all vectors")
+
+		force, _ := cmd.Flags().GetBool("force")
+		if !force {
+			fmt.Print("⚠  This will regenerate ALL embeddings. Are you sure? [y/N]: ")
+			var response string
+			_, _ = fmt.Scanln(&response)
+			if response != "y" && response != "Y" {
+				fmt.Println("Rebuild cancelled.")
+				return nil
+			}
+		}
+
+		llmCfg, err := config.LoadLLMConfig()
+		if err != nil {
+			return fmt.Errorf("load llm config: %w", err)
+		}
+		if llmCfg.Provider == llm.ProviderAnthropic {
+			return fmt.Errorf("embedding generation is not supported for provider %q; use openai, gemini, or ollama", llmCfg.Provider)
+		}
+		if llmCfg.APIKey == "" && llmCfg.Provider != llm.ProviderOllama {
+			return fmt.Errorf("API key required for embedding generation with provider %q", llmCfg.Provider)
+		}
+
+		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+		if err != nil {
+			return fmt.Errorf("open memory repo: %w", err)
+		}
+		defer func() { _ = repo.Close() }()
+
+		nodes, err := repo.ListNodes("")
+		if err != nil {
+			return fmt.Errorf("list nodes: %w", err)
+		}
+
+		if len(nodes) == 0 {
+			fmt.Println("No nodes to process.")
+			return nil
+		}
+
+		fmt.Printf("Regenerating embeddings for %d nodes...\n\n", len(nodes))
+
+		ctx := context.Background()
+		generated := 0
+		failed := 0
+
+		for _, n := range nodes {
+			fullNode, err := repo.GetNode(n.ID)
+			if err != nil {
+				failed++
+				continue
+			}
+
+			embedding, err := knowledge.GenerateEmbedding(ctx, fullNode.Content, llmCfg)
+			if err != nil {
+				fmt.Printf("  ✗ %s: %v\n", n.ID, err)
+				failed++
+				continue
+			}
+
+			if err := repo.UpdateNodeEmbedding(n.ID, embedding); err != nil {
+				fmt.Printf("  ✗ %s: save failed\n", n.ID)
+				failed++
+				continue
+			}
+
+			generated++
+			if !viper.GetBool("quiet") {
+				fmt.Printf("  ✓ %s (dim: %d)\n", fullNode.Summary, len(embedding))
+			}
+		}
+
+		fmt.Printf("\n✓ Regenerated %d/%d embeddings", generated, len(nodes))
+		if failed > 0 {
+			fmt.Printf(" (%d failed)", failed)
+		}
+		fmt.Println()
+
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(memoryCmd)
 
@@ -324,9 +451,11 @@ func init() {
 	memoryCmd.AddCommand(memoryRepairCmd)
 	memoryCmd.AddCommand(memoryRebuildCmd)
 	memoryCmd.AddCommand(memoryGenerateEmbeddingsCmd)
+	memoryCmd.AddCommand(memoryRebuildEmbeddingsCmd)
 	memoryCmd.AddCommand(memoryResetCmd)
 	memoryCmd.AddCommand(memoryExportCmd)
 
 	memoryResetCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
+	memoryRebuildEmbeddingsCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 	memoryExportCmd.Flags().StringP("name", "n", "", "Project name for the document header")
 }

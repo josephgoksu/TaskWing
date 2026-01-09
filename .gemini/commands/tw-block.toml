@@ -1,3 +1,0 @@
-description = "Mark current task as blocked"
-
-prompt = """!{taskwing slash block}"""

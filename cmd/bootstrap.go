@@ -64,7 +64,7 @@ The bootstrap command analyzes:
 			fmt.Println("🚀 First time setup detected!")
 			fmt.Println()
 
-			// UI Step: Prompt for AI selection (CLI specific interaction)
+			// Step 1: Prompt for AI assistant selection
 			fmt.Println("🤖 Which AI assistant(s) do you use?")
 			fmt.Println()
 			selectedAIs := promptAISelection()
@@ -79,6 +79,11 @@ The bootstrap command analyzes:
 
 			fmt.Println("\n✓ TaskWing initialized!")
 			fmt.Println()
+
+			// Step 2: Prompt for additional model configuration
+			if err := promptAdditionalModels(); err != nil {
+				fmt.Printf("⚠️  Additional model config skipped: %v\n", err)
+			}
 		}
 
 		// Detect workspace type
@@ -263,5 +268,45 @@ func checkAgentFailures(agents []*ui.AgentState) error {
 		}
 		return fmt.Errorf("bootstrap failed: %d agent(s) errored", len(failedAgents))
 	}
+	return nil
+}
+
+// promptAdditionalModels offers to configure query model, embedding, and reranking
+func promptAdditionalModels() error {
+	fmt.Println("📋 Additional Model Configuration")
+	fmt.Println("   You can configure these now or later via 'tw config'")
+	fmt.Println()
+
+	// Query model
+	fmt.Print("   Configure fast query model? (for cheap/fast lookups) [y/N]: ")
+	var input string
+	fmt.Scanln(&input)
+	if input == "y" || input == "Y" || input == "yes" {
+		if err := configureQueryModel(); err != nil {
+			fmt.Printf("   ⚠️  Skipped: %v\n", err)
+		}
+		fmt.Println()
+	}
+
+	// Embedding model
+	fmt.Print("   Configure embedding model? (for semantic search) [y/N]: ")
+	fmt.Scanln(&input)
+	if input == "y" || input == "Y" || input == "yes" {
+		if err := configureEmbedding(); err != nil {
+			fmt.Printf("   ⚠️  Skipped: %v\n", err)
+		}
+		fmt.Println()
+	}
+
+	// Reranking
+	fmt.Print("   Configure reranking? (optional, improves search quality) [y/N]: ")
+	fmt.Scanln(&input)
+	if input == "y" || input == "Y" || input == "yes" {
+		if err := configureReranking(); err != nil {
+			fmt.Printf("   ⚠️  Skipped: %v\n", err)
+		}
+		fmt.Println()
+	}
+
 	return nil
 }

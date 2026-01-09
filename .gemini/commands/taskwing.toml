@@ -1,3 +1,0 @@
-description = "Fetch project architecture context from TaskWing"
-
-prompt = """!{taskwing slash taskwing}"""

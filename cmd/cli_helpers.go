@@ -20,6 +20,10 @@ func isQuiet() bool {
 	return viper.GetBool("quiet")
 }
 
+func isVerbose() bool {
+	return viper.GetBool("verbose")
+}
+
 func printJSON(v any) error {
 	output, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {

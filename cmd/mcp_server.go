@@ -235,6 +235,18 @@ func runMCPServer(ctx context.Context) error {
 	}
 	defer func() { _ = repo.Close() }()
 
+	// Automatic embedding dimension consistency check on startup
+	llmCfg, llmErr := config.LoadLLMConfig()
+	if llmErr != nil {
+		fmt.Fprintf(os.Stderr, "⚠  LLM config warning: %v\n", llmErr)
+	}
+	ks := knowledge.NewService(repo, llmCfg)
+	if check, err := ks.CheckEmbeddingConsistency(); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠  Embedding check failed: %v\n", err)
+	} else if check != nil {
+		fmt.Fprintf(os.Stderr, "⚠  %s\n", check.Message)
+	}
+
 	// Create MCP server
 	impl := &mcpsdk.Implementation{
 		Name:    "taskwing",

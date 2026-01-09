@@ -12,7 +12,10 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
+	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // configShowCmd shows current configuration
@@ -46,7 +49,13 @@ var configGetCmd = &cobra.Command{
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage TaskWing configuration",
-	Long:  `View and manage TaskWing configuration settings.`,
+	Long: `View and manage TaskWing configuration settings.
+
+Running without a subcommand launches an interactive configuration menu
+where you can view and edit all model settings.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runConfigInteractive()
+	},
 }
 
 func init() {
@@ -416,4 +425,204 @@ func updateCommandFlag(cmd, flag string, value int) string {
 	}
 
 	return strings.Join(parts, " ")
+}
+
+// runConfigInteractive runs the interactive configuration menu
+func runConfigInteractive() error {
+	for {
+		result, err := ui.RunConfigMenu()
+		if err != nil {
+			return err
+		}
+
+		if result.Action == "quit" {
+			return nil
+		}
+
+		// Handle selection
+		switch result.Selected {
+		case "bootstrap":
+			if err := configureBootstrapModel(); err != nil {
+				fmt.Printf("⚠️  %v\n", err)
+			}
+		case "query":
+			if err := configureQueryModel(); err != nil {
+				fmt.Printf("⚠️  %v\n", err)
+			}
+		case "embedding":
+			if err := configureEmbedding(); err != nil {
+				fmt.Printf("⚠️  %v\n", err)
+			}
+		case "reranking":
+			if err := configureReranking(); err != nil {
+				fmt.Printf("⚠️  %v\n", err)
+			}
+		}
+	}
+}
+
+func configureBootstrapModel() error {
+	fmt.Println("\n🧠 Configure Complex Tasks Model")
+	fmt.Println("   Used for: bootstrap, planning, deep analysis")
+	fmt.Println()
+
+	selection, err := ui.PromptLLMSelection()
+	if err != nil {
+		if strings.Contains(err.Error(), "cancelled") {
+			return nil
+		}
+		return err
+	}
+
+	// Save as bootstrap model
+	configValue := fmt.Sprintf("%s:%s", selection.Provider, selection.Model)
+	viper.Set("llm.models.bootstrap", configValue)
+
+	// Also set as default if not set
+	if !viper.IsSet("llm.provider") {
+		viper.Set("llm.provider", selection.Provider)
+		viper.Set("llm.model", selection.Model)
+	}
+
+	if err := writeConfig(); err != nil {
+		return err
+	}
+
+	fmt.Printf("\n✅ Complex tasks: %s/%s\n", selection.Provider, selection.Model)
+	return nil
+}
+
+func configureQueryModel() error {
+	fmt.Println("\n⚡ Configure Fast Queries Model")
+	fmt.Println("   Used for: context lookups, recall (cheaper, faster)")
+	fmt.Println()
+
+	selection, err := ui.PromptLLMSelection()
+	if err != nil {
+		if strings.Contains(err.Error(), "cancelled") {
+			return nil
+		}
+		return err
+	}
+
+	// Save as query model
+	configValue := fmt.Sprintf("%s:%s", selection.Provider, selection.Model)
+	viper.Set("llm.models.query", configValue)
+
+	if err := writeConfig(); err != nil {
+		return err
+	}
+
+	fmt.Printf("\n✅ Fast queries: %s/%s\n", selection.Provider, selection.Model)
+	return nil
+}
+
+func configureEmbedding() error {
+	fmt.Println("\n📐 Configure Embeddings")
+	fmt.Println("   Used for: semantic search in knowledge base")
+	fmt.Println("   Tip: Ollama is free and runs locally")
+	fmt.Println()
+
+	selection, err := ui.PromptEmbeddingSelection()
+	if err != nil {
+		if strings.Contains(err.Error(), "cancelled") {
+			return nil
+		}
+		return err
+	}
+
+	// Save embedding config
+	viper.Set("llm.embedding_provider", selection.Provider)
+	viper.Set("llm.embedding_model", selection.Model)
+
+	// Set default base URL for local providers
+	switch selection.Provider {
+	case llm.ProviderOllama:
+		if !viper.IsSet("llm.embedding_base_url") {
+			viper.Set("llm.embedding_base_url", llm.DefaultOllamaURL)
+		}
+	case llm.ProviderTEI:
+		if !viper.IsSet("llm.embedding_base_url") {
+			viper.Set("llm.embedding_base_url", llm.DefaultTEIURL)
+		}
+	}
+
+	if err := writeConfig(); err != nil {
+		return err
+	}
+
+	fmt.Printf("\n✅ Embeddings: %s/%s\n", selection.Provider, selection.Model)
+	return nil
+}
+
+func configureReranking() error {
+	fmt.Println("\n🔄 Configure Reranking")
+	fmt.Println("   Optional: improves search result quality")
+	fmt.Println("   Requires: TEI server with reranker model")
+	fmt.Println()
+
+	// Simple toggle for now
+	enabled := viper.GetBool("retrieval.reranking.enabled")
+	if enabled {
+		fmt.Println("   Currently: ENABLED")
+		fmt.Println()
+		fmt.Print("   Disable reranking? [y/N]: ")
+		var input string
+		fmt.Scanln(&input)
+		if strings.ToLower(input) == "y" || strings.ToLower(input) == "yes" {
+			viper.Set("retrieval.reranking.enabled", false)
+			if err := writeConfig(); err != nil {
+				return err
+			}
+			fmt.Println("\n✅ Reranking disabled")
+		}
+	} else {
+		fmt.Println("   Currently: DISABLED")
+		fmt.Println()
+		fmt.Print("   Enable reranking? [y/N]: ")
+		var input string
+		fmt.Scanln(&input)
+		if strings.ToLower(input) == "y" || strings.ToLower(input) == "yes" {
+			fmt.Print("   TEI server URL [http://localhost:8081]: ")
+			var url string
+			fmt.Scanln(&url)
+			if url == "" {
+				url = "http://localhost:8081"
+			}
+			viper.Set("retrieval.reranking.enabled", true)
+			viper.Set("retrieval.reranking.base_url", url)
+			if err := writeConfig(); err != nil {
+				return err
+			}
+			fmt.Println("\n✅ Reranking enabled")
+		}
+	}
+	return nil
+}
+
+func writeConfig() error {
+	// Try to write to existing config file
+	if err := viper.WriteConfig(); err != nil {
+		// If no config file exists yet, create one
+		if err := viper.SafeWriteConfig(); err != nil {
+			// SafeWriteConfig fails if file exists, so try WriteConfigAs
+			configPath := viper.ConfigFileUsed()
+			if configPath == "" {
+				// No config file loaded, write to default location
+				home, homeErr := os.UserHomeDir()
+				if homeErr != nil {
+					return fmt.Errorf("failed to get home directory: %w", homeErr)
+				}
+				configPath = filepath.Join(home, ".taskwing", "config.yaml")
+				// Ensure directory exists
+				if mkErr := os.MkdirAll(filepath.Dir(configPath), 0755); mkErr != nil {
+					return fmt.Errorf("failed to create config directory: %w", mkErr)
+				}
+			}
+			if err := viper.WriteConfigAs(configPath); err != nil {
+				return fmt.Errorf("failed to write config to %s: %w", configPath, err)
+			}
+		}
+	}
+	return nil
 }

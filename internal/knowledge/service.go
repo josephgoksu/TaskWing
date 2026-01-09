@@ -44,16 +44,23 @@ type Repository interface {
 	ListNodesWithEmbeddings() ([]memory.Node, error)
 	SearchFTS(query string, limit int) ([]memory.FTSResult, error)
 
+	// Embedding stats for dimension consistency checks
+	GetEmbeddingStats() (*memory.EmbeddingStats, error)
+
 	// Project Overview
 	GetProjectOverview() (*memory.ProjectOverview, error)
 }
 
 // Service provides high-level knowledge operations
 type Service struct {
-	repo             Repository
-	llmCfg           llm.Config
-	basePath         string // Project base path for verification
-	chatModelFactory func(ctx context.Context, cfg llm.Config) (*llm.CloseableChatModel, error)
+	repo              Repository
+	llmCfg            llm.Config
+	retrievalCfg      RetrievalConfig // Dynamic search configuration
+	basePath          string          // Project base path for verification
+	chatModelFactory  func(ctx context.Context, cfg llm.Config) (*llm.CloseableChatModel, error)
+	reranker          Reranker        // Optional reranker for two-stage retrieval
+	rerankerFactory   RerankerFactory // Factory for creating reranker
+	rerankerInitError error           // Cached error from reranker initialization
 }
 
 type NodeInput struct {
@@ -64,13 +71,55 @@ type NodeInput struct {
 	Timestamp   time.Time
 }
 
-// NewService creates a new knowledge service
+// NewService creates a new knowledge service with default retrieval config.
 func NewService(repo Repository, cfg llm.Config) *Service {
+	retrievalCfg := LoadRetrievalConfig()
 	return &Service{
 		repo:             repo,
 		llmCfg:           cfg,
+		retrievalCfg:     retrievalCfg,
 		chatModelFactory: llm.NewCloseableChatModel,
+		rerankerFactory:  DefaultRerankerFactory,
 	}
+}
+
+// NewServiceWithConfig creates a new knowledge service with custom retrieval config.
+func NewServiceWithConfig(repo Repository, llmCfg llm.Config, retrievalCfg RetrievalConfig) *Service {
+	return &Service{
+		repo:             repo,
+		llmCfg:           llmCfg,
+		retrievalCfg:     retrievalCfg,
+		chatModelFactory: llm.NewCloseableChatModel,
+		rerankerFactory:  DefaultRerankerFactory,
+	}
+}
+
+// GetRetrievalConfig returns the current retrieval configuration.
+func (s *Service) GetRetrievalConfig() RetrievalConfig {
+	return s.retrievalCfg
+}
+
+// getReranker lazily initializes and returns the reranker.
+// Returns nil if reranking is disabled or initialization failed.
+func (s *Service) getReranker(ctx context.Context) Reranker {
+	if s.reranker != nil {
+		return s.reranker
+	}
+	if s.rerankerInitError != nil {
+		return nil // Already tried and failed
+	}
+	if s.rerankerFactory == nil {
+		return nil
+	}
+
+	reranker, err := s.rerankerFactory(ctx, s.retrievalCfg)
+	if err != nil {
+		s.rerankerInitError = err
+		slog.Warn("failed to initialize reranker", "error", err)
+		return nil
+	}
+	s.reranker = reranker
+	return reranker
 }
 
 // SetBasePath sets the project base path for verification.
@@ -86,9 +135,6 @@ type ScoredNode struct {
 	ExpandedFrom string       `json:"expanded_from,omitempty"` // Parent node ID if this came from graph expansion
 }
 
-// Search performs a hybrid search combining FTS5 keyword matching and vector similarity.
-// This fixes the N+1 query pattern and provides keyword fallback when embeddings fail.
-// Weights and thresholds are defined in config.go for centralized tuning.
 // Search performs a hybrid search combining FTS5 keyword matching and vector similarity.
 // This fixes the N+1 query pattern and provides keyword fallback when embeddings fail.
 // Weights and thresholds are defined in config.go for centralized tuning.
@@ -118,13 +164,31 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 		limit = 5
 	}
 
+	// Use dynamic configuration values
+	cfg := s.retrievalCfg
+	ftsWeight := float32(cfg.FTSWeight)
+	vectorWeight := float32(cfg.VectorWeight)
+	vectorThreshold := float32(cfg.VectorScoreThreshold)
+	minResultThreshold := float32(cfg.MinResultScoreThreshold)
+
+	// Two-stage retrieval: fetch more candidates for reranking
+	// Stage 1 (Recall): Fetch Top-25 candidates using hybrid search
+	recallLimit := cfg.RerankTopK
+	if recallLimit <= 0 {
+		recallLimit = 25 // Default recall candidates
+	}
+	if !cfg.RerankingEnabled {
+		// If reranking disabled, just fetch what we need
+		recallLimit = limit * 2 // Fetch 2x for graph expansion buffer
+	}
+
 	// Collect results from both search methods
 	scoreByID := make(map[string]float32)
 	nodeByID := make(map[string]*memory.Node)
 
 	// 1. FTS5 keyword search (fast, no API call, always works)
 	// Note: FTS currently searches all types. We filter later.
-	ftsResults, err := s.repo.SearchFTS(query, limit*2)
+	ftsResults, err := s.repo.SearchFTS(query, recallLimit)
 	if err != nil {
 		// FTS5 errors are logged but don't fail the search
 		// FTS5 may be unavailable on some systems (missing extension)
@@ -151,7 +215,7 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 		}
 		node := r.Node // Copy to avoid pointer issues
 		nodeByID[r.Node.ID] = &node
-		scoreByID[r.Node.ID] = ftsScore * FTSWeight
+		scoreByID[r.Node.ID] = ftsScore * ftsWeight
 	}
 
 	// 2. Vector similarity search (single query, not N+1)
@@ -184,7 +248,7 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 				}
 
 				vectorScore := CosineSimilarity(queryEmbedding, n.Embedding)
-				if vectorScore < VectorScoreThreshold {
+				if vectorScore < vectorThreshold {
 					continue // Skip low-relevance results
 				}
 
@@ -192,7 +256,7 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 					nodeByID[n.ID] = n
 					scoreByID[n.ID] = 0
 				}
-				scoreByID[n.ID] += vectorScore * VectorWeight
+				scoreByID[n.ID] += vectorScore * vectorWeight
 			}
 		}
 	}
@@ -201,7 +265,7 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 	var scored []ScoredNode
 	for id, score := range scoreByID {
 		// Filter out noise: only include results above minimum threshold
-		if score < MinResultScoreThreshold {
+		if score < minResultThreshold {
 			continue
 		}
 		if node, ok := nodeByID[id]; ok {
@@ -213,13 +277,27 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 		return scored[i].Score > scored[j].Score
 	})
 
-	// 4. Graph Expansion: Add connected nodes via knowledge graph edges
-	if GraphExpansionEnabled && len(scored) > 0 {
-		scored = s.expandViaGraph(scored, scoreByID, limit)
+	// Limit to recall candidates before reranking
+	if len(scored) > recallLimit {
+		scored = scored[:recallLimit]
 	}
 
-	// 5. Limit results with reserved slots for graph-expanded nodes
-	if GraphExpansionEnabled && GraphExpansionReservedSlots > 0 {
+	// 4. Stage 2 (Precision): Rerank using TEI if enabled
+	if cfg.RerankingEnabled && len(scored) > 0 {
+		reranker := s.getReranker(ctx)
+		if reranker != nil {
+			// Apply reranking with 5s timeout and fallback
+			scored = rerankResults(ctx, reranker, query, scored, 5*time.Second)
+		}
+	}
+
+	// 5. Graph Expansion: Add connected nodes via knowledge graph edges
+	if cfg.GraphExpansionEnabled && len(scored) > 0 {
+		scored = s.expandViaGraph(scored, cfg)
+	}
+
+	// 6. Limit results with reserved slots for graph-expanded nodes
+	if cfg.GraphExpansionEnabled && cfg.GraphExpansionReservedSlots > 0 {
 		// Separate expanded and non-expanded nodes
 		var nonExpanded, expanded []ScoredNode
 		for _, sn := range scored {
@@ -231,14 +309,8 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 		}
 
 		// Calculate slots: reserve up to GraphExpansionReservedSlots for expanded
-		reservedSlots := GraphExpansionReservedSlots
-		if len(expanded) < reservedSlots {
-			reservedSlots = len(expanded)
-		}
-		primarySlots := limit - reservedSlots
-		if primarySlots < 0 {
-			primarySlots = 0
-		}
+		reservedSlots := min(len(expanded), cfg.GraphExpansionReservedSlots)
+		primarySlots := max(0, limit-reservedSlots)
 
 		// Take top primarySlots from non-expanded
 		if len(nonExpanded) > primarySlots {
@@ -266,7 +338,12 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 
 // expandViaGraph traverses knowledge graph edges to include related nodes.
 // Connected nodes receive a discounted score based on parent score and edge confidence.
-func (s *Service) expandViaGraph(initial []ScoredNode, existingScores map[string]float32, limit int) []ScoredNode {
+func (s *Service) expandViaGraph(initial []ScoredNode, cfg RetrievalConfig) []ScoredNode {
+	// Use config values
+	minEdgeConfidence := cfg.GraphExpansionMinEdgeConfidence
+	discount := float32(cfg.GraphExpansionDiscount)
+	minResultThreshold := float32(cfg.MinResultScoreThreshold)
+
 	// Track which nodes we've already included
 	includedIDs := make(map[string]bool)
 	for _, sn := range initial {
@@ -278,10 +355,7 @@ func (s *Service) expandViaGraph(initial []ScoredNode, existingScores map[string
 	expanded = append(expanded, initial...)
 
 	// Only expand from top results to avoid noise
-	topN := len(initial)
-	if topN > 5 {
-		topN = 5 // Limit expansion to top 5 matches
-	}
+	topN := min(len(initial), 5)
 
 	addedCount := 0
 	for i := 0; i < topN; i++ {
@@ -302,8 +376,8 @@ func (s *Service) expandViaGraph(initial []ScoredNode, existingScores map[string
 
 		for _, edge := range edges {
 			// Filter weak edges
-			if edge.Confidence < GraphExpansionMinEdgeConfidence {
-				slog.Debug("graph expansion: edge below confidence threshold", "confidence", edge.Confidence, "threshold", GraphExpansionMinEdgeConfidence)
+			if edge.Confidence < minEdgeConfidence {
+				slog.Debug("graph expansion: edge below confidence threshold", "confidence", edge.Confidence, "threshold", minEdgeConfidence)
 				continue
 			}
 
@@ -326,11 +400,11 @@ func (s *Service) expandViaGraph(initial []ScoredNode, existingScores map[string
 			}
 
 			// Calculate discounted score: parent_score * edge_confidence * discount
-			connectedScore := parentScore * float32(edge.Confidence) * GraphExpansionDiscount
+			connectedScore := parentScore * float32(edge.Confidence) * discount
 
 			// Only include if score is above minimum threshold
-			if connectedScore < MinResultScoreThreshold {
-				slog.Debug("graph expansion: score below threshold", "score", connectedScore, "threshold", MinResultScoreThreshold)
+			if connectedScore < minResultThreshold {
+				slog.Debug("graph expansion: score below threshold", "score", connectedScore, "threshold", minResultThreshold)
 				continue
 			}
 
@@ -451,6 +525,68 @@ func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, e
 	}
 
 	return node, nil
+}
+
+// EmbeddingConsistencyCheck represents the result of an embedding consistency check.
+type EmbeddingConsistencyCheck struct {
+	TotalNodes             int
+	NodesWithEmbeddings    int
+	NodesWithoutEmbeddings int
+	EmbeddingDimension     int
+	MixedDimensions        bool
+	NeedsAttention         bool   // True if issues were found
+	Message                string // Human-readable summary
+}
+
+// CheckEmbeddingConsistency verifies embedding dimension consistency.
+// This should be called on application startup to detect issues early.
+// Returns nil if no issues are found, otherwise returns a check result.
+func (s *Service) CheckEmbeddingConsistency() (*EmbeddingConsistencyCheck, error) {
+	stats, err := s.repo.GetEmbeddingStats()
+	if err != nil {
+		return nil, fmt.Errorf("get embedding stats: %w", err)
+	}
+	if stats == nil || stats.TotalNodes == 0 {
+		// Empty database - nothing to check
+		return nil, nil
+	}
+
+	check := &EmbeddingConsistencyCheck{
+		TotalNodes:             stats.TotalNodes,
+		NodesWithEmbeddings:    stats.NodesWithEmbeddings,
+		NodesWithoutEmbeddings: stats.NodesWithoutEmbeddings,
+		EmbeddingDimension:     stats.EmbeddingDimension,
+		MixedDimensions:        stats.MixedDimensions,
+	}
+
+	// Build message and determine if attention is needed
+	var issues []string
+
+	if stats.MixedDimensions {
+		issues = append(issues, fmt.Sprintf("mixed embedding dimensions detected (found %d-dim, but others exist)", stats.EmbeddingDimension))
+		check.NeedsAttention = true
+	}
+
+	if stats.NodesWithoutEmbeddings > 0 {
+		issues = append(issues, fmt.Sprintf("%d nodes missing embeddings", stats.NodesWithoutEmbeddings))
+		check.NeedsAttention = true
+	}
+
+	if check.NeedsAttention {
+		check.Message = fmt.Sprintf("Embedding issues: %s. Run 'tw memory rebuild-embeddings' to fix.", strings.Join(issues, "; "))
+		slog.Warn("embedding consistency check failed",
+			"total_nodes", stats.TotalNodes,
+			"nodes_with_embeddings", stats.NodesWithEmbeddings,
+			"nodes_without_embeddings", stats.NodesWithoutEmbeddings,
+			"mixed_dimensions", stats.MixedDimensions,
+		)
+	}
+
+	if !check.NeedsAttention {
+		return nil, nil // No issues
+	}
+
+	return check, nil
 }
 
 // SuggestContextQueries runs a lightweight LLM call to strategize what knowledge is needed.

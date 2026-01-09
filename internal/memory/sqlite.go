@@ -2009,3 +2009,77 @@ func textSimilarity(a, b string) float64 {
 
 	return jaccardSimilarity(a, b)
 }
+
+// EmbeddingStats holds statistics about embeddings in the database.
+type EmbeddingStats struct {
+	TotalNodes             int  // Total number of nodes
+	NodesWithEmbeddings    int  // Nodes that have embeddings
+	NodesWithoutEmbeddings int  // Nodes missing embeddings
+	EmbeddingDimension     int  // Dimension of embeddings (0 if none exist)
+	MixedDimensions        bool // True if embeddings have different dimensions
+}
+
+// GetEmbeddingStats returns statistics about embeddings in the database.
+// This is useful for validating embedding consistency and detecting dimension mismatches.
+func (s *SQLiteStore) GetEmbeddingStats() (*EmbeddingStats, error) {
+	stats := &EmbeddingStats{}
+
+	// Count total nodes
+	var totalCount int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&totalCount)
+	if err != nil {
+		return nil, fmt.Errorf("count nodes: %w", err)
+	}
+	stats.TotalNodes = totalCount
+
+	// Count nodes with embeddings
+	var withEmbeddings int
+	err = s.db.QueryRow("SELECT COUNT(*) FROM nodes WHERE embedding IS NOT NULL AND length(embedding) > 0").Scan(&withEmbeddings)
+	if err != nil {
+		return nil, fmt.Errorf("count nodes with embeddings: %w", err)
+	}
+	stats.NodesWithEmbeddings = withEmbeddings
+	stats.NodesWithoutEmbeddings = totalCount - withEmbeddings
+
+	if withEmbeddings == 0 {
+		return stats, nil
+	}
+
+	// Get embedding dimensions by sampling a few embeddings
+	// Embedding is stored as binary: 4 bytes per float32
+	rows, err := s.db.Query(`
+		SELECT length(embedding) / 4 as dim
+		FROM nodes
+		WHERE embedding IS NOT NULL AND length(embedding) > 0
+		LIMIT 100
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query embedding dimensions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	dimensions := make(map[int]bool)
+	for rows.Next() {
+		var dim int
+		if err := rows.Scan(&dim); err != nil {
+			return nil, fmt.Errorf("scan dimension: %w", err)
+		}
+		dimensions[dim] = true
+	}
+
+	// Check for mixed dimensions
+	if len(dimensions) > 1 {
+		stats.MixedDimensions = true
+		// Return the first dimension found
+		for dim := range dimensions {
+			stats.EmbeddingDimension = dim
+			break
+		}
+	} else if len(dimensions) == 1 {
+		for dim := range dimensions {
+			stats.EmbeddingDimension = dim
+		}
+	}
+
+	return stats, nil
+}

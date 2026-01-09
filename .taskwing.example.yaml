@@ -36,6 +36,38 @@ data:
 #   maxOutputTokens: 16384
 #   temperature: 0.7
 
+# Optional: Retrieval Configuration (for hybrid search tuning)
+# retrieval:
+#   # Hybrid search weights (should sum to 1.0)
+#   weights:
+#     fts: 0.40      # FTS5 keyword matching weight (default: 0.40)
+#     vector: 0.60   # Vector similarity weight (default: 0.60)
+#
+#   # Score thresholds for filtering results
+#   thresholds:
+#     vector_score: 0.35      # Min vector similarity to include (default: 0.35)
+#     min_result_score: 0.12  # Min combined score to return (default: 0.12)
+#
+#   # Graph expansion settings (traverse knowledge graph edges)
+#   graph:
+#     enabled: true           # Enable graph-enhanced search (default: true)
+#     discount: 0.8           # Score multiplier for connected nodes (default: 0.8)
+#     max_depth: 1            # Max edge traversal depth (default: 1)
+#     min_edge_confidence: 0.5 # Min edge confidence to traverse (default: 0.5)
+#     reserved_slots: 2       # Slots reserved for expanded nodes (default: 2)
+#
+#   # TEI (Text Embeddings Inference) settings for Qwen3
+#   tei:
+#     base_url: "http://localhost:8080"  # TEI server URL
+#     model_name: "Qwen/Qwen3-Embedding-8B"  # Embedding model
+#
+#   # Reranking settings (requires TEI with reranker model)
+#   reranking:
+#     enabled: false          # Enable reranking (default: false)
+#     base_url: "http://localhost:8081"  # Reranker TEI server URL (default: 8081)
+#     top_k: 20               # Candidates to rerank (default: 20)
+#     model_name: "Qwen/Qwen3-Reranker-8B"  # Reranker model
+
 # Optional: Debug settings
 debug: false
 verbose: false

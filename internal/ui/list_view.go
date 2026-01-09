@@ -8,8 +8,18 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
-// RenderNodeList renders a list of knowledge nodes to stdout used by the list command.
+// RenderNodeList renders a list of knowledge nodes to stdout in compact mode.
+// For verbose output with full metadata, use RenderNodeListVerbose.
 func RenderNodeList(nodes []memory.Node) {
+	renderNodeListInternal(nodes, false)
+}
+
+// RenderNodeListVerbose renders nodes with full metadata (ID, dates, type).
+func RenderNodeListVerbose(nodes []memory.Node) {
+	renderNodeListInternal(nodes, true)
+}
+
+func renderNodeListInternal(nodes []memory.Node, verbose bool) {
 	// Group by type
 	byType := make(map[string][]memory.Node)
 	for _, n := range nodes {
@@ -37,7 +47,17 @@ func RenderNodeList(nodes []memory.Node) {
 	fmt.Printf(" 🧠 Knowledge: %d nodes (%s)\n", totalCount, strings.Join(stats, " • "))
 	fmt.Println(StyleSubtle.Render(strings.Repeat("─", 50)))
 
-	// Render Lists
+	if verbose {
+		// Verbose mode: Table with full metadata
+		renderVerboseTable(byType, typeOrder)
+	} else {
+		// Compact mode: Grouped bullet lists
+		renderCompactList(byType, typeOrder)
+	}
+}
+
+// renderCompactList renders nodes as compact grouped bullet lists.
+func renderCompactList(byType map[string][]memory.Node, typeOrder []string) {
 	for _, t := range typeOrder {
 		groupNodes := byType[t]
 		if len(groupNodes) == 0 {
@@ -52,14 +72,48 @@ func RenderNodeList(nodes []memory.Node) {
 				summary = utils.Truncate(n.Content, 60)
 			}
 
-			dateStr := n.CreatedAt.Format("Jan 02")
-			idStr := n.ID
-			if len(idStr) > 6 {
-				idStr = idStr[:6]
+			// Compact: just summary, no metadata
+			fmt.Printf(" • %s\n", StyleTitle.Render(summary))
+		}
+		fmt.Println()
+	}
+}
+
+// renderVerboseTable renders nodes as a table with full metadata.
+func renderVerboseTable(byType map[string][]memory.Node, typeOrder []string) {
+	for _, t := range typeOrder {
+		groupNodes := byType[t]
+		if len(groupNodes) == 0 {
+			continue
+		}
+
+		fmt.Println(StyleHeader.Render(fmt.Sprintf("%s %ss", TypeIcon(t), utils.ToTitle(t))))
+
+		table := &Table{
+			Headers:  []string{"ID", "Summary", "Created", "Agent"},
+			MaxWidth: 45,
+		}
+
+		for _, n := range groupNodes {
+			summary := n.Summary
+			if summary == "" {
+				summary = utils.Truncate(n.Content, 45)
 			}
 
-			fmt.Printf(" • %s %s\n", StyleTitle.Render(summary), StyleSubtle.Render(fmt.Sprintf("[%s %s]", idStr, dateStr)))
+			agent := n.SourceAgent
+			if agent == "" {
+				agent = "-"
+			}
+
+			table.Rows = append(table.Rows, []string{
+				TruncateID(n.ID),
+				summary,
+				n.CreatedAt.Format("Jan 02 15:04"),
+				agent,
+			})
 		}
+
+		fmt.Print(table.Render())
 		fmt.Println()
 	}
 }

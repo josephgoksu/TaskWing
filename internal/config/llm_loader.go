@@ -46,8 +46,27 @@ func LoadLLMConfig() (llm.Config, error) {
 	// 5. Embedding Model
 	embeddingModel := viper.GetString("llm.embeddingModel")
 	if embeddingModel == "" {
-		// Set defaults for embeddings if not specified
-		switch llmProvider {
+		embeddingModel = viper.GetString("llm.embedding_model") // snake_case variant
+	}
+
+	// 6. Embedding Provider (optional, defaults to main provider)
+	var embeddingProvider llm.Provider
+	embeddingProviderStr := viper.GetString("llm.embedding_provider")
+	if embeddingProviderStr != "" {
+		ep, err := llm.ValidateProvider(embeddingProviderStr)
+		if err != nil {
+			return llm.Config{}, fmt.Errorf("invalid embedding_provider: %w", err)
+		}
+		embeddingProvider = ep
+	}
+
+	// Set embedding model defaults based on embedding provider (or main provider)
+	effectiveEmbeddingProvider := embeddingProvider
+	if effectiveEmbeddingProvider == "" {
+		effectiveEmbeddingProvider = llmProvider
+	}
+	if embeddingModel == "" {
+		switch effectiveEmbeddingProvider {
 		case llm.ProviderOpenAI:
 			embeddingModel = llm.DefaultOpenAIEmbeddingModel
 		case llm.ProviderOllama:
@@ -55,12 +74,34 @@ func LoadLLMConfig() (llm.Config, error) {
 		}
 	}
 
+	// 7. Embedding Base URL (for Ollama/TEI embeddings with different endpoint)
+	embeddingBaseURL := viper.GetString("llm.embedding_base_url")
+	if embeddingBaseURL == "" {
+		switch embeddingProvider {
+		case llm.ProviderOllama:
+			embeddingBaseURL = llm.DefaultOllamaURL
+		case llm.ProviderTEI:
+			embeddingBaseURL = llm.DefaultTEIURL
+		}
+	}
+
+	// 8. Embedding API Key (resolve for embedding provider if different from main)
+	var embeddingAPIKey string
+	if embeddingProvider != "" && embeddingProvider != llmProvider {
+		// Separate embedding provider: resolve its own API key
+		embeddingAPIKey = ResolveAPIKey(embeddingProvider)
+	}
+	// If same provider or empty, client.go will fallback to main APIKey
+
 	return llm.Config{
-		Provider:       llmProvider,
-		Model:          model,
-		EmbeddingModel: embeddingModel,
-		APIKey:         apiKey,
-		BaseURL:        baseURL,
+		Provider:          llmProvider,
+		Model:             model,
+		EmbeddingModel:    embeddingModel,
+		APIKey:            apiKey,
+		BaseURL:           baseURL,
+		EmbeddingProvider: embeddingProvider,
+		EmbeddingAPIKey:   embeddingAPIKey,
+		EmbeddingBaseURL:  embeddingBaseURL,
 	}, nil
 }
 

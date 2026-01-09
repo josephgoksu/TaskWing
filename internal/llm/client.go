@@ -15,6 +15,7 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/model"
+	"github.com/josephgoksu/TaskWing/internal/llm/providers/tei"
 	"google.golang.org/genai"
 )
 
@@ -29,6 +30,11 @@ type Config struct {
 	APIKey         string // Required for OpenAI
 	BaseURL        string // Required for Ollama (default: http://localhost:11434)
 	ThinkingBudget int    // Token budget for extended thinking (0 = disabled, only for supported models)
+
+	// Embedding-specific provider (optional, defaults to Provider if empty)
+	EmbeddingProvider Provider
+	EmbeddingAPIKey   string // API key for embedding provider (if different)
+	EmbeddingBaseURL  string // Base URL for embedding provider (e.g., Ollama URL)
 }
 
 // CloseableChatModel wraps a chat model with optional cleanup.
@@ -178,6 +184,8 @@ func ValidateProvider(p string) (Provider, error) {
 		return ProviderAnthropic, nil
 	case ProviderGemini:
 		return ProviderGemini, nil
+	case ProviderTEI:
+		return ProviderTEI, nil
 	default:
 		return "", fmt.Errorf("unsupported provider: %s", p)
 	}
@@ -185,10 +193,27 @@ func ValidateProvider(p string) (Provider, error) {
 
 // NewCloseableEmbedder creates an Embedder with proper resource management.
 // Callers MUST call Close() when done to release resources.
+// If EmbeddingProvider is set, it uses that provider for embeddings; otherwise falls back to Provider.
 func NewCloseableEmbedder(ctx context.Context, cfg Config) (*CloseableEmbedder, error) {
-	switch cfg.Provider {
+	// Determine which provider to use for embeddings
+	embeddingProvider := cfg.EmbeddingProvider
+	if embeddingProvider == "" {
+		embeddingProvider = cfg.Provider
+	}
+
+	// Resolve API key and base URL for embedding provider
+	apiKey := cfg.EmbeddingAPIKey
+	if apiKey == "" {
+		apiKey = cfg.APIKey
+	}
+	baseURL := cfg.EmbeddingBaseURL
+	if baseURL == "" {
+		baseURL = cfg.BaseURL
+	}
+
+	switch embeddingProvider {
 	case ProviderOpenAI:
-		if cfg.APIKey == "" {
+		if apiKey == "" {
 			return nil, fmt.Errorf("OpenAI API key is required")
 		}
 		modelName := cfg.EmbeddingModel
@@ -197,7 +222,7 @@ func NewCloseableEmbedder(ctx context.Context, cfg Config) (*CloseableEmbedder, 
 		}
 		e, err := openaiEmbed.NewEmbedder(ctx, &openaiEmbed.EmbeddingConfig{
 			Model:  modelName,
-			APIKey: cfg.APIKey,
+			APIKey: apiKey,
 		})
 		if err != nil {
 			return nil, err
@@ -205,7 +230,6 @@ func NewCloseableEmbedder(ctx context.Context, cfg Config) (*CloseableEmbedder, 
 		return &CloseableEmbedder{Embedder: e, closer: nil}, nil
 
 	case ProviderOllama:
-		baseURL := cfg.BaseURL
 		if baseURL == "" {
 			baseURL = DefaultOllamaURL
 		}
@@ -223,12 +247,12 @@ func NewCloseableEmbedder(ctx context.Context, cfg Config) (*CloseableEmbedder, 
 		return &CloseableEmbedder{Embedder: e, closer: nil}, nil
 
 	case ProviderGemini:
-		if cfg.APIKey == "" {
+		if apiKey == "" {
 			return nil, fmt.Errorf("gemini API key is required")
 		}
 		// Create genai.Client with API key
 		genaiClient, err := genai.NewClient(ctx, &genai.ClientConfig{
-			APIKey:  cfg.APIKey,
+			APIKey:  apiKey,
 			Backend: genai.BackendGeminiAPI,
 		})
 		if err != nil {
@@ -252,7 +276,24 @@ func NewCloseableEmbedder(ctx context.Context, cfg Config) (*CloseableEmbedder, 
 			closer:   &genaiClientCloser{client: genaiClient},
 		}, nil
 
+	case ProviderTEI:
+		teiBaseURL := baseURL
+		if teiBaseURL == "" {
+			teiBaseURL = DefaultTEIURL
+		}
+		modelName := cfg.EmbeddingModel
+		// TEI doesn't require a model name - it uses whatever model the server was started with
+
+		e, err := tei.NewEmbedder(ctx, &tei.Config{
+			BaseURL: teiBaseURL,
+			Model:   modelName,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create TEI embedder: %w", err)
+		}
+		return &CloseableEmbedder{Embedder: e, closer: e}, nil
+
 	default:
-		return nil, fmt.Errorf("unsupported LLM provider: %s", cfg.Provider)
+		return nil, fmt.Errorf("unsupported embedding provider: %s", embeddingProvider)
 	}
 }

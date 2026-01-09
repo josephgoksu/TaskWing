@@ -16,7 +16,15 @@ const (
 
 	// ProviderGemini represents the Google Gemini provider
 	ProviderGemini = "gemini"
+
+	// ProviderTEI represents Text Embeddings Inference (embeddings only)
+	// TEI is a high-performance embedding server from Hugging Face
+	// See: https://github.com/huggingface/text-embeddings-inference
+	ProviderTEI = "tei"
 )
+
+// DefaultTEIURL is the default URL for TEI server
+const DefaultTEIURL = "http://localhost:8080"
 
 // Embedding model constants
 const (

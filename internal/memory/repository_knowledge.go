@@ -110,3 +110,8 @@ func (r *Repository) SearchFTS(query string, limit int) ([]FTSResult, error) {
 func (r *Repository) RebuildFTS() error {
 	return r.db.RebuildFTS()
 }
+
+// GetEmbeddingStats returns statistics about embeddings in the database.
+func (r *Repository) GetEmbeddingStats() (*EmbeddingStats, error) {
+	return r.db.GetEmbeddingStats()
+}

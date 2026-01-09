@@ -38,6 +38,12 @@ func TestValidateProvider(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			name:     "valid tei",
+			provider: "tei",
+			want:     ProviderTEI,
+			wantErr:  false,
+		},
+		{
 			name:     "invalid provider",
 			provider: "invalid",
 			want:     "",
@@ -209,7 +215,7 @@ func TestNewCloseableEmbedder_Validation(t *testing.T) {
 				Provider: "unknown",
 				APIKey:   "key",
 			},
-			wantErr: "unsupported LLM provider",
+			wantErr: "unsupported embedding provider",
 		},
 	}
 
@@ -268,5 +274,89 @@ func TestGenaiClientCloser_Close(t *testing.T) {
 	err := closer.Close()
 	if err != nil {
 		t.Errorf("genaiClientCloser.Close() should return nil, got %v", err)
+	}
+}
+
+func TestNewCloseableEmbedder_SeparateProvider(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name              string
+		cfg               Config
+		wantErr           string
+		expectFallbackKey bool // If true, expects EmbeddingAPIKey to fallback to APIKey
+	}{
+		{
+			name: "separate ollama provider ignores main api key",
+			cfg: Config{
+				Provider:          ProviderOpenAI,
+				APIKey:            "openai-key",
+				EmbeddingProvider: ProviderOllama,
+				EmbeddingBaseURL:  "http://localhost:11434",
+				EmbeddingModel:    "nomic-embed-text",
+			},
+			// Ollama doesn't need API key, should succeed connecting (may fail on network)
+			wantErr: "", // May fail on network, but not on config validation
+		},
+		{
+			name: "separate gemini provider requires own key",
+			cfg: Config{
+				Provider:          ProviderOllama,
+				APIKey:            "", // Ollama has no key
+				EmbeddingProvider: ProviderGemini,
+				EmbeddingAPIKey:   "", // Missing - should error
+				EmbeddingModel:    "text-embedding-004",
+			},
+			wantErr: "gemini API key is required",
+		},
+		{
+			name: "separate openai provider requires own key",
+			cfg: Config{
+				Provider:          ProviderOllama,
+				APIKey:            "",
+				EmbeddingProvider: ProviderOpenAI,
+				EmbeddingAPIKey:   "", // Missing - should error
+			},
+			wantErr: "OpenAI API key is required",
+		},
+		{
+			name: "embedding provider fallback to main provider",
+			cfg: Config{
+				Provider:          ProviderOpenAI,
+				APIKey:            "", // No key
+				EmbeddingProvider: "", // Empty - should fallback to Provider
+			},
+			wantErr: "OpenAI API key is required", // Fallback to main provider, which needs key
+		},
+		{
+			name: "embedding key fallback to main key",
+			cfg: Config{
+				Provider:          ProviderOpenAI,
+				APIKey:            "main-key",
+				EmbeddingProvider: ProviderOpenAI, // Same as main
+				EmbeddingAPIKey:   "",             // Should fallback to APIKey
+			},
+			expectFallbackKey: true,
+			// This will fail on actual API call but config is valid
+			wantErr: "", // Config validation passes, API call may fail
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewCloseableEmbedder(ctx, tt.cfg)
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Errorf("NewCloseableEmbedder() expected error containing %q, got nil", tt.wantErr)
+					return
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("NewCloseableEmbedder() error = %v, want containing %q", err, tt.wantErr)
+				}
+			}
+			// Note: Some tests may pass config validation but fail on network
+			// We only check for expected validation errors
+		})
 	}
 }

@@ -64,9 +64,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Styles are now imported from internal/ui
-
-	// Delegate rendering to UI package
-	ui.RenderNodeList(nodes)
+	// Delegate rendering to UI package based on verbosity
+	if isVerbose() {
+		ui.RenderNodeListVerbose(nodes)
+	} else {
+		ui.RenderNodeList(nodes)
+	}
 	return nil
 }

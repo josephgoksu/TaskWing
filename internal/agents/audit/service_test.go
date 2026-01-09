@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/task"
@@ -306,45 +305,6 @@ func TestExtractJSON(t *testing.T) {
 				t.Errorf("Expected '%s', got '%s'", tc.expected, result)
 			}
 		})
-	}
-}
-
-func TestToAuditReport(t *testing.T) {
-	result := &AuditResult{
-		PlanID: "plan-123",
-		Status: "failed",
-		BuildResult: VerificationResult{
-			Passed: false,
-			Output: "build failed",
-			Error:  "exit 1",
-		},
-		TestResult: VerificationResult{
-			Passed: true,
-			Output: "ok",
-		},
-		SemanticResult: SemanticResult{
-			Passed: false,
-			Issues: []string{"Missing tests"},
-		},
-		Timestamp: time.Now(),
-	}
-
-	report := result.ToAuditReport()
-
-	if report.Status != "failed" {
-		t.Errorf("Expected status 'failed', got '%s'", report.Status)
-	}
-
-	if report.BuildOutput != "build failed" {
-		t.Errorf("Expected BuildOutput 'build failed', got '%s'", report.BuildOutput)
-	}
-
-	if report.ErrorMessage != "Build failed: exit 1" {
-		t.Errorf("Expected ErrorMessage to contain build error, got '%s'", report.ErrorMessage)
-	}
-
-	if len(report.SemanticIssues) != 1 {
-		t.Errorf("Expected 1 semantic issue, got %d", len(report.SemanticIssues))
 	}
 }
 

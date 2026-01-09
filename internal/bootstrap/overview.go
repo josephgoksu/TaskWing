@@ -75,7 +75,7 @@ func (a *OverviewAnalyzer) Analyze(ctx context.Context) (*memory.ProjectOverview
 	if err != nil {
 		return nil, fmt.Errorf("create chat model: %w", err)
 	}
-	defer chatModel.Close()
+	defer func() { _ = chatModel.Close() }()
 
 	chain, err := core.NewDeterministicChain[overviewResponse](
 		ctx,
