@@ -105,22 +105,12 @@ The bootstrap command analyzes:
 				fmt.Println("📋 Setting up local project (global MCP config found)")
 				fmt.Println()
 				fmt.Printf("🔍 Found TaskWing registered globally for: %s\n", strings.Join(existingGlobalAIs, ", "))
-				fmt.Print("   Use these AI assistants for this project? [Y/n]: ")
-				var input string
-				fmt.Scanln(&input)
-				input = strings.TrimSpace(strings.ToLower(input))
-				if input == "" || input == "y" || input == "yes" {
-					selectedAIs = existingGlobalAIs
-					skipMCPRegistration = true // Already registered globally
-					fmt.Println("   ✓ Will create local project files for detected AIs")
-					fmt.Println()
-				} else {
-					fmt.Println()
-					fmt.Println("🤖 Which AI assistant(s) do you use?")
-					fmt.Printf("   (Detected %s pre-selected, modify as needed)\n", strings.Join(existingGlobalAIs, ", "))
-					fmt.Println()
-					selectedAIs = promptAISelection(existingGlobalAIs...)
-				}
+				fmt.Println()
+				fmt.Println("🤖 Which AI assistant(s) do you want to use?")
+				fmt.Printf("   (Detected %s pre-selected)\n", strings.Join(existingGlobalAIs, ", "))
+				fmt.Println()
+				selectedAIs = promptAISelection(existingGlobalAIs...)
+				// Note: MCP registration will be handled below - only for AIs not already registered
 
 			// Scenario 3: .taskwing exists but some AI configs missing (recovery with global MCP)
 			} else if taskwingExists && needsAISetup {
@@ -160,9 +150,22 @@ The bootstrap command analyzes:
 					return fmt.Errorf("initialization failed: %w", err)
 				}
 
-				// Only run CLI registration if needed
+				// Only run CLI registration if needed (and only for AIs not already registered)
 				if !skipMCPRegistration {
-					installMCPServers(cwd, selectedAIs)
+					// Filter out AIs already registered globally
+					var aisNeedingRegistration []string
+					globalSet := make(map[string]bool)
+					for _, ai := range existingGlobalAIs {
+						globalSet[ai] = true
+					}
+					for _, ai := range selectedAIs {
+						if !globalSet[ai] {
+							aisNeedingRegistration = append(aisNeedingRegistration, ai)
+						}
+					}
+					if len(aisNeedingRegistration) > 0 {
+						installMCPServers(cwd, aisNeedingRegistration)
+					}
 				}
 
 				fmt.Println("\n✓ TaskWing initialized!")
