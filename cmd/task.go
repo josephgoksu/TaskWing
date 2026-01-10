@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
@@ -265,32 +268,67 @@ var taskUpdateCmd = &cobra.Command{
 	},
 }
 
+var (
+	taskCompleteSummary string
+	taskCompleteFiles   []string
+)
+
 var taskCompleteCmd = &cobra.Command{
 	Use:   "complete [task-id]",
 	Short: "Mark a task as completed",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		taskID := args[0]
-		repo, err := openRepo()
-		if err != nil {
-			return err
-		}
-		defer func() { _ = repo.Close() }()
+	Long: `Mark a task as completed with optional summary and file list.
 
-		if err := repo.UpdateTaskStatus(taskID, task.StatusCompleted); err != nil {
-			return err
-		}
+When all tasks in a plan are completed:
+- Runs audit verification automatically
+- Creates PR if audit passes (requires gh CLI)
+- Commits and pushes changes to git`,
+	Args: cobra.ExactArgs(1),
+	RunE: runTaskComplete,
+}
 
-		if isJSON() {
-			updated, _ := repo.GetTask(taskID)
-			return printJSON(updated)
-		}
+func runTaskComplete(cmd *cobra.Command, args []string) error {
+	taskID := args[0]
+	repo, err := openRepo()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = repo.Close() }()
 
-		if !isQuiet() {
-			fmt.Printf("✓ Completed task %s\n", taskID)
+	// Use TaskApp for complete - single source of truth
+	appCtx := app.NewContext(repo)
+	taskApp := app.NewTaskApp(appCtx)
+
+	ctx := context.Background()
+	result, err := taskApp.Complete(ctx, app.TaskCompleteOptions{
+		TaskID:        taskID,
+		Summary:       taskCompleteSummary,
+		FilesModified: taskCompleteFiles,
+	})
+	if err != nil {
+		return fmt.Errorf("complete task: %w", err)
+	}
+
+	if !result.Success {
+		return fmt.Errorf("%s", result.Message)
+	}
+
+	if isJSON() {
+		return printJSON(result)
+	}
+
+	if !isQuiet() {
+		fmt.Printf("✓ %s\n", result.Message)
+		if result.Hint != "" {
+			fmt.Printf("  %s\n", result.Hint)
 		}
-		return nil
-	},
+		if result.GitWorkflowApplied {
+			fmt.Printf("  Git: committed to %s\n", result.GitBranch)
+		}
+		if result.PRCreated {
+			fmt.Printf("  PR: %s\n", result.PRURL)
+		}
+	}
+	return nil
 }
 
 var taskDeleteCmd = &cobra.Command{
@@ -349,6 +387,227 @@ var taskValidateCmd = &cobra.Command{
 	},
 }
 
+// taskNextCmd gets the next pending task
+var taskNextCmd = &cobra.Command{
+	Use:   "next",
+	Short: "Get the next pending task",
+	Long: `Get the next pending task from the active plan (or specified plan).
+
+Optionally auto-start the task by providing a session ID.
+Git workflow creates a feature branch on first task.
+
+Examples:
+  taskwing task next
+  taskwing task next --plan p-abc123
+  taskwing task next --auto-start --session my-session`,
+	RunE: runTaskNext,
+}
+
+var (
+	taskNextPlanID            string
+	taskNextSessionID         string
+	taskNextAutoStart         bool
+	taskNextCreateBranch      bool
+	taskNextSkipUnpushedCheck bool
+)
+
+func runTaskNext(cmd *cobra.Command, args []string) error {
+	repo, err := openRepo()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = repo.Close() }()
+
+	appCtx := app.NewContext(repo)
+	taskApp := app.NewTaskApp(appCtx)
+
+	if !isQuiet() && !isJSON() {
+		fmt.Fprint(os.Stderr, "🔍 Getting next task...")
+	}
+
+	ctx := context.Background()
+	result, err := taskApp.Next(ctx, app.TaskNextOptions{
+		PlanID:            taskNextPlanID,
+		SessionID:         taskNextSessionID,
+		AutoStart:         taskNextAutoStart,
+		CreateBranch:      taskNextCreateBranch,
+		SkipUnpushedCheck: taskNextSkipUnpushedCheck,
+	})
+	if err != nil {
+		return err
+	}
+
+	if !isQuiet() && !isJSON() {
+		fmt.Fprintln(os.Stderr, " done")
+	}
+
+	if isJSON() {
+		return printJSON(result)
+	}
+
+	if !result.Success {
+		fmt.Printf("⚠️  %s\n", result.Message)
+		if result.Hint != "" {
+			fmt.Printf("💡 %s\n", result.Hint)
+		}
+		return nil
+	}
+
+	if result.Task == nil {
+		fmt.Printf("✓ %s\n", result.Message)
+		if result.Hint != "" {
+			fmt.Printf("💡 %s\n", result.Hint)
+		}
+		return nil
+	}
+
+	// Show task details
+	ui.RenderPageHeader("Next Task", "")
+
+	if result.GitWorkflowApplied {
+		fmt.Printf("🌿 Branch: %s\n\n", result.GitBranch)
+	}
+
+	fmt.Printf("📋 %s\n", result.Task.Title)
+	fmt.Printf("   ID: %s\n", result.Task.ID)
+	fmt.Printf("   Status: %s\n", result.Task.Status)
+	fmt.Printf("   Priority: %d\n", result.Task.Priority)
+
+	if result.Task.Description != "" {
+		fmt.Printf("\n📝 %s\n", result.Task.Description)
+	}
+
+	if result.Hint != "" {
+		fmt.Printf("\n💡 %s\n", result.Hint)
+	}
+
+	return nil
+}
+
+// taskCurrentCmd shows the current in-progress task
+var taskCurrentCmd = &cobra.Command{
+	Use:   "current",
+	Short: "Show the current in-progress task",
+	Long: `Show the task currently being worked on.
+
+Looks up by session ID first, then falls back to any in-progress task in the active plan.
+
+Examples:
+  taskwing task current
+  taskwing task current --session my-session`,
+	RunE: runTaskCurrent,
+}
+
+var (
+	taskCurrentSessionID string
+	taskCurrentPlanID    string
+)
+
+func runTaskCurrent(cmd *cobra.Command, args []string) error {
+	repo, err := openRepo()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = repo.Close() }()
+
+	appCtx := app.NewContext(repo)
+	taskApp := app.NewTaskApp(appCtx)
+
+	ctx := context.Background()
+	result, err := taskApp.Current(ctx, taskCurrentSessionID, taskCurrentPlanID)
+	if err != nil {
+		return err
+	}
+
+	if isJSON() {
+		return printJSON(result)
+	}
+
+	if !result.Success || result.Task == nil {
+		fmt.Printf("ℹ️  %s\n", result.Message)
+		if result.Hint != "" {
+			fmt.Printf("💡 %s\n", result.Hint)
+		}
+		return nil
+	}
+
+	// Show task details
+	ui.RenderPageHeader("Current Task", "")
+
+	fmt.Printf("📋 %s\n", result.Task.Title)
+	fmt.Printf("   ID: %s\n", result.Task.ID)
+	fmt.Printf("   Status: %s\n", result.Task.Status)
+	if !result.Task.ClaimedAt.IsZero() {
+		fmt.Printf("   Started: %s\n", result.Task.ClaimedAt.Format("2006-01-02 15:04"))
+	}
+
+	if result.Task.Description != "" {
+		fmt.Printf("\n📝 %s\n", result.Task.Description)
+	}
+
+	return nil
+}
+
+// taskStartCmd claims a specific task
+var taskStartCmd = &cobra.Command{
+	Use:   "start [task-id]",
+	Short: "Start working on a specific task",
+	Long: `Claim a task and mark it as in-progress.
+
+Requires a session ID to track which session owns the task.
+
+Examples:
+  taskwing task start t-abc123 --session my-session`,
+	Args: cobra.ExactArgs(1),
+	RunE: runTaskStart,
+}
+
+var taskStartSessionID string
+
+func runTaskStart(cmd *cobra.Command, args []string) error {
+	taskID := args[0]
+
+	if taskStartSessionID == "" {
+		return fmt.Errorf("--session is required")
+	}
+
+	repo, err := openRepo()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = repo.Close() }()
+
+	appCtx := app.NewContext(repo)
+	taskApp := app.NewTaskApp(appCtx)
+
+	ctx := context.Background()
+	result, err := taskApp.Start(ctx, app.TaskStartOptions{
+		TaskID:    taskID,
+		SessionID: taskStartSessionID,
+	})
+	if err != nil {
+		return err
+	}
+
+	if isJSON() {
+		return printJSON(result)
+	}
+
+	if !result.Success {
+		fmt.Printf("⚠️  %s\n", result.Message)
+		return nil
+	}
+
+	fmt.Printf("✓ Started task: %s\n", result.Task.Title)
+	fmt.Printf("  ID: %s\n", result.Task.ID)
+
+	if result.Hint != "" {
+		fmt.Printf("\n💡 %s\n", result.Hint)
+	}
+
+	return nil
+}
+
 func init() {
 	rootCmd.AddCommand(taskCmd)
 	taskCmd.AddCommand(taskListCmd)
@@ -357,9 +616,30 @@ func init() {
 	taskCmd.AddCommand(taskCompleteCmd)
 	taskCmd.AddCommand(taskDeleteCmd)
 	taskCmd.AddCommand(taskValidateCmd)
+	taskCmd.AddCommand(taskNextCmd)
+	taskCmd.AddCommand(taskCurrentCmd)
+	taskCmd.AddCommand(taskStartCmd)
 
 	// Task list flags
 	taskListCmd.Flags().StringP("plan", "p", "", "Filter by plan ID (prefix match)")
 	taskUpdateCmd.Flags().String("status", "", "Update the task status (draft, pending, in_progress, verifying, completed, failed)")
 	taskDeleteCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
+
+	// Task complete flags
+	taskCompleteCmd.Flags().StringVar(&taskCompleteSummary, "summary", "", "Summary of what was accomplished")
+	taskCompleteCmd.Flags().StringSliceVar(&taskCompleteFiles, "files", nil, "Files that were modified (comma-separated)")
+
+	// Task next flags
+	taskNextCmd.Flags().StringVar(&taskNextPlanID, "plan", "", "Specific plan ID (defaults to active plan)")
+	taskNextCmd.Flags().StringVar(&taskNextSessionID, "session", "", "Session ID for auto-start")
+	taskNextCmd.Flags().BoolVar(&taskNextAutoStart, "auto-start", false, "Automatically claim the task")
+	taskNextCmd.Flags().BoolVar(&taskNextCreateBranch, "create-branch", false, "Create a new git branch for this plan")
+	taskNextCmd.Flags().BoolVar(&taskNextSkipUnpushedCheck, "skip-unpushed-check", false, "Proceed despite unpushed commits (only with --create-branch)")
+
+	// Task current flags
+	taskCurrentCmd.Flags().StringVar(&taskCurrentSessionID, "session", "", "Session ID to look up")
+	taskCurrentCmd.Flags().StringVar(&taskCurrentPlanID, "plan", "", "Plan ID to search in")
+
+	// Task start flags
+	taskStartCmd.Flags().StringVar(&taskStartSessionID, "session", "", "Session ID (required)")
 }

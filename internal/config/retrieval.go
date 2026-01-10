@@ -34,6 +34,9 @@ type RetrievalConfig struct {
 	RerankBaseURL    string `mapstructure:"rerank_base_url"`
 	RerankTopK       int    `mapstructure:"rerank_top_k"`
 	RerankModelName  string `mapstructure:"rerank_model_name"`
+
+	// Query rewriting settings
+	QueryRewriteEnabled bool `mapstructure:"query_rewrite_enabled"`
 }
 
 // DefaultRetrievalConfig returns the default retrieval configuration.
@@ -68,6 +71,9 @@ func DefaultRetrievalConfig() RetrievalConfig {
 		RerankBaseURL:    "http://localhost:8081",
 		RerankTopK:       20,
 		RerankModelName:  "Qwen/Qwen3-Reranker-8B",
+
+		// Query rewriting
+		QueryRewriteEnabled: true, // Enabled by default - improves search quality
 	}
 }
 
@@ -104,6 +110,9 @@ func LoadRetrievalConfig() RetrievalConfig {
 		RerankBaseURL:    getStringWithDefault("retrieval.reranking.base_url", defaults.RerankBaseURL),
 		RerankTopK:       getIntWithDefault("retrieval.reranking.top_k", defaults.RerankTopK),
 		RerankModelName:  getStringWithDefault("retrieval.reranking.model_name", defaults.RerankModelName),
+
+		// Query rewriting
+		QueryRewriteEnabled: getBoolWithDefault("retrieval.query_rewrite.enabled", defaults.QueryRewriteEnabled),
 	}
 }
 

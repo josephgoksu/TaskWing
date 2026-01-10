@@ -1,0 +1,3 @@
+description = "Show current task status"
+
+prompt = """!{taskwing slash status}"""

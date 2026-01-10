@@ -34,7 +34,6 @@ type Repository interface {
 	AddDecision(featureID string, d memory.Decision) error
 	ListFeatures() ([]memory.Feature, error)
 	GetDecisions(featureID string) ([]memory.Decision, error)
-	Link(fromID, toID string, relType string) error
 
 	// Graph edge operations
 	LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error
@@ -133,6 +132,74 @@ type ScoredNode struct {
 	Node         *memory.Node `json:"node"`
 	Score        float32      `json:"score"`
 	ExpandedFrom string       `json:"expanded_from,omitempty"` // Parent node ID if this came from graph expansion
+}
+
+// RewriteQuery uses LLM to improve a user query for better search results.
+// It fixes typos, clarifies intent, and makes queries more concise.
+// Returns the original query if rewriting fails or is disabled.
+func (s *Service) RewriteQuery(ctx context.Context, query string) (string, error) {
+	if !s.retrievalCfg.QueryRewriteEnabled {
+		return query, nil
+	}
+
+	// Use a domain-aware prompt for query rewriting
+	// Include context about TaskWing to help fix domain-specific typos
+	prompt := fmt.Sprintf(`You are improving a search query for TaskWing, a developer tool that gives AI coding assistants permanent memory about codebases.
+
+Rules:
+1. Fix typos (e.g., "TaskWink" → "TaskWing", "teh" → "the")
+2. Keep all important context and terms - do NOT over-simplify
+3. Remove only true redundancy (repeated words)
+4. Preserve the user's intent completely
+5. Return ONLY the improved query, nothing else
+
+Original query: %s
+
+Improved query:`, query)
+
+	chatModel, err := s.chatModelFactory(ctx, s.llmCfg)
+	if err != nil {
+		slog.Debug("query rewrite: failed to get chat model", "error", err)
+		return query, nil // Fallback to original on error
+	}
+	defer func() { _ = chatModel.Close() }()
+
+	resp, err := chatModel.Generate(ctx, []*schema.Message{
+		{Role: schema.User, Content: prompt},
+	})
+	if err != nil {
+		slog.Debug("query rewrite: LLM call failed", "error", err)
+		return query, nil // Fallback to original on error
+	}
+
+	rewritten := strings.TrimSpace(resp.Content)
+
+	// Strip common LLM preambles that ignore our "ONLY the query" instruction
+	preambles := []string{
+		"Improved query:",
+		"Here's the improved query:",
+		"Here is the improved query:",
+		"The improved query is:",
+		"Rewritten query:",
+	}
+	for _, prefix := range preambles {
+		if strings.HasPrefix(strings.ToLower(rewritten), strings.ToLower(prefix)) {
+			rewritten = strings.TrimSpace(rewritten[len(prefix):])
+			break
+		}
+	}
+
+	// Remove quotes if LLM wrapped the query in them
+	rewritten = strings.Trim(rewritten, `"'`)
+	rewritten = strings.TrimSpace(rewritten)
+
+	if rewritten == "" || len(rewritten) > len(query)*3 {
+		// If response is empty or suspiciously long, use original
+		return query, nil
+	}
+
+	slog.Debug("query rewrite", "original", query, "rewritten", rewritten)
+	return rewritten, nil
 }
 
 // Search performs a hybrid search combining FTS5 keyword matching and vector similarity.
@@ -358,7 +425,7 @@ func (s *Service) expandViaGraph(initial []ScoredNode, cfg RetrievalConfig) []Sc
 	topN := min(len(initial), 5)
 
 	addedCount := 0
-	for i := 0; i < topN; i++ {
+	for i := range topN {
 		parentNode := initial[i]
 		parentScore := parentNode.Score
 

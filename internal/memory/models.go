@@ -37,24 +37,6 @@ type Decision struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// Edge represents a relationship between two features.
-// Edges form a directed graph enabling dependency analysis.
-type Edge struct {
-	ID          int64     `json:"id"`          // Auto-increment ID
-	FromFeature string    `json:"fromFeature"` // Source feature ID
-	ToFeature   string    `json:"toFeature"`   // Target feature ID
-	EdgeType    string    `json:"edgeType"`    // depends_on, extends, replaces, related
-	CreatedAt   time.Time `json:"createdAt"`
-}
-
-// EdgeType constants for relationship types.
-const (
-	EdgeTypeDependsOn = "depends_on" // A requires B to function
-	EdgeTypeExtends   = "extends"    // A adds capabilities to B
-	EdgeTypeReplaces  = "replaces"   // A supersedes B (migration)
-	EdgeTypeRelated   = "related"    // Loose association
-)
-
 // FeatureStatus constants.
 const (
 	FeatureStatusActive     = "active"

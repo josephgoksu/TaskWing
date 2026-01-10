@@ -9,10 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/memory"
-	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -53,62 +51,60 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("content cannot be empty")
 	}
 
-	// 1. Get Unified Config
-	llmCfg, err := getLLMConfigForRole(cmd, llm.RoleQuery)
-	if err != nil {
-		// Log but continue if no API key (AddNode handles missing key gracefully)
-		if !isQuiet() {
-			fmt.Fprintf(os.Stderr, "⚠️  Config warning: %v\n", err)
-		}
-	}
-
-	// 2. Initialize Repo
+	// 1. Initialize repository
 	repo, err := openRepo()
 	if err != nil {
 		return fmt.Errorf("open memory repo: %w", err)
 	}
 	defer func() { _ = repo.Close() }()
 
-	// 3. Initialize Service
-	ks := knowledge.NewService(repo, llmCfg)
-
-	// 4. Prepare Input
-	input := knowledge.NodeInput{
-		Content: content,
-		Type:    addType, // from flag
-	}
-	if addSkipAI {
-		if input.Type == "" {
-			input.Type = memory.NodeTypeUnknown
+	// 2. Create app context with LLM config
+	llmCfg, err := getLLMConfigForRole(cmd, llm.RoleQuery)
+	if err != nil {
+		// Log but continue - AddNode handles missing key gracefully
+		if !isQuiet() {
+			fmt.Fprintf(os.Stderr, "⚠️  Config warning: %v\n", err)
 		}
-		input.Summary = utils.Truncate(content, 100)
 	}
+	appCtx := app.NewContextWithConfig(repo, llmCfg)
+	memoryApp := app.NewMemoryApp(appCtx)
 
+	// 3. Show progress (CLI-specific)
 	if !isQuiet() {
 		fmt.Fprint(os.Stderr, "🧠 Processing...")
 	}
 
-	// 5. Execute
-	node, err := ks.AddNode(context.Background(), input)
+	// 4. Execute add via app layer (ALL business logic here)
+	ctx := context.Background()
+	result, err := memoryApp.Add(ctx, content, app.AddOptions{
+		Type:   addType,
+		SkipAI: addSkipAI,
+	})
 	if err != nil {
+		if !isQuiet() {
+			fmt.Fprintln(os.Stderr, " failed")
+		}
 		return fmt.Errorf("add node failed: %w", err)
 	}
 
+	// 5. Output (JSON or CLI)
 	if isJSON() {
 		return printJSON(nodeCreatedResponse{
 			Status:       "created",
-			ID:           node.ID,
-			Type:         node.Type,
-			Summary:      node.Summary,
-			HasEmbedding: len(node.Embedding) > 0,
+			ID:           result.ID,
+			Type:         result.Type,
+			Summary:      result.Summary,
+			HasEmbedding: result.HasEmbedding,
 		})
-	} else if !isQuiet() {
+	}
+
+	if !isQuiet() {
 		fmt.Fprintln(os.Stderr, " done")
 		embStatus := ""
-		if len(node.Embedding) > 0 {
+		if result.HasEmbedding {
 			embStatus = " 🔍"
 		}
-		fmt.Printf("✓ Added [%s]: %s%s\n", node.Type, node.Summary, embStatus)
+		fmt.Printf("✓ Added [%s]: %s%s\n", result.Type, result.Summary, embStatus)
 	}
 
 	return nil

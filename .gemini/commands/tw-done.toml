@@ -1,0 +1,3 @@
+description = "Complete current task with architecture-aware summary"
+
+prompt = """!{taskwing slash done}"""

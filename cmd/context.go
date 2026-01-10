@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -46,90 +48,95 @@ func init() {
 
 func runContext(cmd *cobra.Command, args []string) error {
 	query := args[0]
+
+	// 1. Render header (CLI-specific)
 	if !isJSON() && !isQuiet() {
 		ui.RenderPageHeader("TaskWing Context", fmt.Sprintf("Query: \"%s\"", query))
 	}
 
-	// 1. Get Shared LLM Config
-	llmCfg, err := getLLMConfigForRole(cmd, llm.RoleQuery)
-	if err != nil {
-		return err
-	}
-
-	// 2. Initialize Memory Repository (Source of Truth)
-	// 2. Initialize Memory Repository (Source of Truth)
+	// 2. Initialize repository
 	repo, err := openRepo()
 	if err != nil {
 		return fmt.Errorf("open memory repo: %w", err)
 	}
 	defer func() { _ = repo.Close() }()
 
-	// 3. Initialize Knowledge Service (Intelligence Layer)
-	ks := knowledge.NewService(repo, llmCfg)
+	// 3. Create app context with LLM config
+	llmCfg, err := getLLMConfigForRole(cmd, llm.RoleQuery)
+	if err != nil {
+		return err
+	}
+	appCtx := app.NewContextWithConfig(repo, llmCfg)
+	recallApp := app.NewRecallApp(appCtx)
 
+	// 4. Show progress (CLI-specific)
 	if !isQuiet() {
 		fmt.Fprint(os.Stderr, "🔍 Searching...")
 	}
 
-	// 4. Execute Search
+	// 5. Execute query via app layer (ALL business logic here)
 	ctx := context.Background()
-	scored, err := ks.Search(ctx, query, contextLimit)
+	result, err := recallApp.Query(ctx, query, app.RecallOptions{
+		Limit:          contextLimit,
+		GenerateAnswer: contextAnswer,
+	})
 	if err != nil {
 		if !isQuiet() {
 			fmt.Fprintln(os.Stderr, " failed")
 		}
-		// Fallback to simpler search or just error out?
-		// For consistency, we error out and let user fix config
 		return fmt.Errorf("search failed: %w", err)
 	}
 
+	// 6. Show completion (CLI-specific)
 	if !isQuiet() {
 		fmt.Fprintln(os.Stderr, " done")
+		// Show query rewriting info if it happened
+		if result.RewrittenQuery != "" {
+			fmt.Fprintf(os.Stderr, "✨ Query improved: \"%s\"\n", result.RewrittenQuery)
+		}
+		fmt.Fprintf(os.Stderr, "📊 Pipeline: %s\n", result.Pipeline)
 	}
 
-	if len(scored) == 0 {
+	// 7. Handle empty results
+	if len(result.Results) == 0 {
 		fmt.Println("No matching knowledge found.")
 		fmt.Println("Try adding more context with: taskwing add \"...\"")
 		return nil
 	}
 
-	// 5. Generate Answer (if requested)
-	var answer string
-	if contextAnswer {
-		if !isQuiet() {
-			fmt.Fprint(os.Stderr, "🧠 Generating answer...")
-		}
-		ans, err := ks.Ask(ctx, query, scored)
-		if err != nil {
-			return fmt.Errorf("ask failed: %w", err)
-		}
-		answer = ans
-		if !isQuiet() {
-			fmt.Fprintln(os.Stderr, " done")
-		}
-	}
-
-	// 6. Output (JSON or TUI)
+	// 8. Output (JSON or TUI)
 	if isJSON() {
-		// Convert to NodeResponse for consistent format with MCP (no embeddings, has evidence)
-		var nodeResponses []knowledge.NodeResponse
-		for _, sn := range scored {
-			nodeResponses = append(nodeResponses, knowledge.ScoredNodeToResponse(sn))
-		}
-		type result struct {
-			Query   string                   `json:"query"`
-			Results []knowledge.NodeResponse `json:"results"`
-			Answer  string                   `json:"answer,omitempty"`
-		}
-		return printJSON(result{Query: query, Results: nodeResponses, Answer: answer})
+		return printJSON(result)
 	}
 
-	// TUI Output
+	// TUI Output - convert back to ScoredNodes for UI rendering
+	// (UI layer expects ScoredNode for detailed rendering)
+	scored := nodeResponsesToScoredNodes(result.Results)
 	if isVerbose() {
-		ui.RenderContextResultsVerbose(query, scored, answer)
+		ui.RenderContextResultsVerbose(query, scored, result.Answer)
 	} else {
-		ui.RenderContextResults(query, scored, answer)
+		ui.RenderContextResults(query, scored, result.Answer)
 	}
 
 	return nil
+}
+
+// nodeResponsesToScoredNodes converts NodeResponse slice back to ScoredNode slice
+// for compatibility with existing UI rendering functions.
+func nodeResponsesToScoredNodes(responses []knowledge.NodeResponse) []knowledge.ScoredNode {
+	result := make([]knowledge.ScoredNode, len(responses))
+	for i, r := range responses {
+		result[i] = knowledge.ScoredNode{
+			Node: &memory.Node{
+				ID:                 r.ID,
+				Content:            r.Content,
+				Type:               r.Type,
+				Summary:            r.Summary,
+				ConfidenceScore:    r.ConfidenceScore,
+				VerificationStatus: r.VerificationStatus,
+			},
+			Score: r.MatchScore,
+		}
+	}
+	return result
 }

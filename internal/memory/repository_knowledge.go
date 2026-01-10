@@ -2,26 +2,6 @@ package memory
 
 // === Knowledge Graph & Search ===
 
-func (r *Repository) Link(from, to, relationType string) error {
-	return r.db.Link(from, to, relationType)
-}
-
-func (r *Repository) Unlink(from, to, relationType string) error {
-	return r.db.Unlink(from, to, relationType)
-}
-
-func (r *Repository) GetDependencies(featureID string) ([]string, error) {
-	return r.db.GetDependencies(featureID)
-}
-
-func (r *Repository) GetDependents(featureID string) ([]string, error) {
-	return r.db.GetDependents(featureID)
-}
-
-func (r *Repository) GetRelated(featureID string, maxDepth int) ([]string, error) {
-	return r.db.GetRelated(featureID, maxDepth)
-}
-
 // LinkNodes creates an edge between two nodes in the knowledge graph.
 func (r *Repository) LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error {
 	return r.db.LinkNodes(from, to, relation, confidence, properties)

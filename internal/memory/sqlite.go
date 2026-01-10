@@ -88,18 +88,7 @@ func (s *SQLiteStore) initSchema() error {
 		FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
 	);
 
-	CREATE TABLE IF NOT EXISTS edges (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		from_feature TEXT NOT NULL,
-		to_feature TEXT NOT NULL,
-		edge_type TEXT NOT NULL,
-		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY (from_feature) REFERENCES features(id) ON DELETE CASCADE,
-		FOREIGN KEY (to_feature) REFERENCES features(id) ON DELETE CASCADE,
-		UNIQUE(from_feature, to_feature, edge_type)
-	);
-
-	-- New knowledge graph tables (v2 pivot)
+	-- Knowledge graph tables
 	CREATE TABLE IF NOT EXISTS nodes (
 		id TEXT PRIMARY KEY,
 		content TEXT NOT NULL,              -- Original text input
@@ -123,13 +112,8 @@ func (s *SQLiteStore) initSchema() error {
 		UNIQUE(from_node, to_node, relation)
 	);
 
-	-- Indexes for legacy tables
-	CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_feature);
-	CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_feature);
-	CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type);
+	-- Indexes
 	CREATE INDEX IF NOT EXISTS idx_decisions_feature ON decisions(feature_id);
-
-	-- Indexes for new tables
 	CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
 	CREATE INDEX IF NOT EXISTS idx_nodes_source_agent ON nodes(source_agent);
 	CREATE INDEX IF NOT EXISTS idx_nodes_summary_agent ON nodes(summary, source_agent);
@@ -504,21 +488,9 @@ func (s *SQLiteStore) UpdateFeature(f Feature) error {
 }
 
 func (s *SQLiteStore) DeleteFeature(id string) error {
-	// Check for dependents
-	var count int
-	err := s.db.QueryRow(`
-		SELECT COUNT(*) FROM edges WHERE to_feature = ? AND edge_type = 'depends_on'
-	`, id).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check dependents: %w", err)
-	}
-	if count > 0 {
-		return fmt.Errorf("cannot delete feature with %d dependents", count)
-	}
-
 	// Get file path before deletion
 	var filePath string
-	err = s.db.QueryRow("SELECT file_path FROM features WHERE id = ?", id).Scan(&filePath)
+	err := s.db.QueryRow("SELECT file_path FROM features WHERE id = ?", id).Scan(&filePath)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("feature not found: %s", id)
 	}
@@ -526,7 +498,7 @@ func (s *SQLiteStore) DeleteFeature(id string) error {
 		return fmt.Errorf("get feature: %w", err)
 	}
 
-	// Delete from SQLite (cascades to decisions and edges)
+	// Delete from SQLite (cascades to decisions)
 	_, err = s.db.Exec("DELETE FROM features WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete feature: %w", err)
@@ -793,198 +765,6 @@ func (s *SQLiteStore) ListPatterns() ([]Pattern, error) {
 	return patterns, nil
 }
 
-// === Relationships ===
-
-func (s *SQLiteStore) Link(from, to, relationType string) error {
-	// Validate relation type
-	validTypes := map[string]bool{
-		EdgeTypeDependsOn: true,
-		EdgeTypeExtends:   true,
-		EdgeTypeReplaces:  true,
-		EdgeTypeRelated:   true,
-	}
-	if !validTypes[relationType] {
-		return fmt.Errorf("invalid relation type: %s", relationType)
-	}
-
-	// Check features exist
-	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM features WHERE id IN (?, ?)", from, to).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("check features: %w", err)
-	}
-	if count != 2 {
-		return fmt.Errorf("one or both features not found")
-	}
-
-	// Check for circular dependency (for depends_on)
-	if relationType == EdgeTypeDependsOn {
-		deps, err := s.GetDependencies(to)
-		if err != nil {
-			return fmt.Errorf("check circular: %w", err)
-		}
-		for _, dep := range deps {
-			if dep == from {
-				return fmt.Errorf("circular dependency detected")
-			}
-		}
-	}
-
-	_, err = s.db.Exec(`
-		INSERT OR IGNORE INTO edges (from_feature, to_feature, edge_type, created_at)
-		VALUES (?, ?, ?, ?)
-	`, from, to, relationType, time.Now().UTC().Format(time.RFC3339))
-
-	return err
-}
-
-func (s *SQLiteStore) Unlink(from, to, relationType string) error {
-	result, err := s.db.Exec(`
-		DELETE FROM edges WHERE from_feature = ? AND to_feature = ? AND edge_type = ?
-	`, from, to, relationType)
-	if err != nil {
-		return fmt.Errorf("delete edge: %w", err)
-	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("relationship not found")
-	}
-
-	return nil
-}
-
-func (s *SQLiteStore) GetDependencies(featureID string) ([]string, error) {
-	// Recursive CTE to get all dependencies
-	rows, err := s.db.Query(`
-		WITH RECURSIVE deps AS (
-			SELECT to_feature, 1 as depth
-			FROM edges
-			WHERE from_feature = ? AND edge_type = 'depends_on'
-			UNION ALL
-			SELECT e.to_feature, d.depth + 1
-			FROM edges e
-			JOIN deps d ON e.from_feature = d.to_feature
-			WHERE e.edge_type = 'depends_on' AND d.depth < 10
-		)
-		SELECT DISTINCT to_feature FROM deps
-	`, featureID)
-	if err != nil {
-		return nil, fmt.Errorf("query dependencies: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var deps []string
-	for rows.Next() {
-		var dep string
-		if err := rows.Scan(&dep); err != nil {
-			return nil, fmt.Errorf("scan dependency: %w", err)
-		}
-		deps = append(deps, dep)
-	}
-
-	return deps, nil
-}
-
-func (s *SQLiteStore) GetDependents(featureID string) ([]string, error) {
-	rows, err := s.db.Query(`
-		WITH RECURSIVE dependents AS (
-			SELECT from_feature, 1 as depth
-			FROM edges
-			WHERE to_feature = ? AND edge_type = 'depends_on'
-			UNION ALL
-			SELECT e.from_feature, d.depth + 1
-			FROM edges e
-			JOIN dependents d ON e.to_feature = d.from_feature
-			WHERE e.edge_type = 'depends_on' AND d.depth < 10
-		)
-		SELECT DISTINCT from_feature FROM dependents
-	`, featureID)
-	if err != nil {
-		return nil, fmt.Errorf("query dependents: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var dependents []string
-	for rows.Next() {
-		var dep string
-		if err := rows.Scan(&dep); err != nil {
-			return nil, fmt.Errorf("scan dependent: %w", err)
-		}
-		dependents = append(dependents, dep)
-	}
-
-	return dependents, nil
-}
-
-func (s *SQLiteStore) GetRelated(featureID string, maxDepth int) ([]string, error) {
-	if maxDepth <= 0 {
-		maxDepth = 3
-	}
-
-	rows, err := s.db.Query(`
-		WITH RECURSIVE related AS (
-			SELECT to_feature as feature, 1 as depth
-			FROM edges WHERE from_feature = ?
-			UNION
-			SELECT from_feature as feature, 1 as depth
-			FROM edges WHERE to_feature = ?
-			UNION ALL
-			SELECT CASE WHEN e.from_feature = r.feature THEN e.to_feature ELSE e.from_feature END,
-				   r.depth + 1
-			FROM edges e
-			JOIN related r ON e.from_feature = r.feature OR e.to_feature = r.feature
-			WHERE r.depth < ?
-		)
-		SELECT DISTINCT feature FROM related WHERE feature != ?
-	`, featureID, featureID, maxDepth, featureID)
-	if err != nil {
-		return nil, fmt.Errorf("query related: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var related []string
-	for rows.Next() {
-		var rel string
-		if err := rows.Scan(&rel); err != nil {
-			return nil, fmt.Errorf("scan related: %w", err)
-		}
-		related = append(related, rel)
-	}
-
-	return related, nil
-}
-
-func (s *SQLiteStore) FindPath(from, to string) ([]string, error) {
-	// BFS to find shortest path
-	rows, err := s.db.Query(`
-		WITH RECURSIVE path AS (
-			SELECT from_feature, to_feature, from_feature || ',' || to_feature as route, 1 as depth
-			FROM edges WHERE from_feature = ?
-			UNION ALL
-			SELECT e.from_feature, e.to_feature, p.route || ',' || e.to_feature, p.depth + 1
-			FROM edges e
-			JOIN path p ON e.from_feature = p.to_feature
-			WHERE p.depth < 10 AND p.route NOT LIKE '%' || e.to_feature || '%'
-		)
-		SELECT route FROM path WHERE to_feature = ? ORDER BY depth LIMIT 1
-	`, from, to)
-	if err != nil {
-		return nil, fmt.Errorf("query path: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	if rows.Next() {
-		var route string
-		if err := rows.Scan(&route); err != nil {
-			return nil, fmt.Errorf("scan path: %w", err)
-		}
-		return strings.Split(route, ","), nil
-	}
-
-	return nil, nil // No path found
-}
-
 // === Cache Management ===
 
 func (s *SQLiteStore) RebuildIndex() error {
@@ -1062,60 +842,10 @@ func (s *SQLiteStore) Check() ([]Issue, error) {
 		}
 	}
 
-	// Check: edges reference existing features
-	edgeRows, err := s.db.Query(`
-		SELECT e.from_feature, e.to_feature
-		FROM edges e
-		LEFT JOIN features f1 ON e.from_feature = f1.id
-		LEFT JOIN features f2 ON e.to_feature = f2.id
-		WHERE f1.id IS NULL OR f2.id IS NULL
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("query orphan edges: %w", err)
-	}
-	defer func() { _ = edgeRows.Close() }()
-
-	for edgeRows.Next() {
-		var from, to string
-		if err := edgeRows.Scan(&from, &to); err != nil {
-			return nil, fmt.Errorf("scan edge: %w", err)
-		}
-		issues = append(issues, Issue{
-			Type:    "orphan_edge",
-			Message: fmt.Sprintf("Edge references non-existent feature: %s -> %s", from, to),
-		})
-	}
-
 	return issues, nil
 }
 
 func (s *SQLiteStore) Repair() error {
-	// Get all issues
-	issues, err := s.Check()
-	if err != nil {
-		return fmt.Errorf("check: %w", err)
-	}
-
-	for _, issue := range issues {
-		switch issue.Type {
-		// case "missing_file":
-		// 	// Regenerate markdown file from SQLite data
-		// 	f, err := s.GetFeature(issue.FeatureID)
-		// 	if err != nil {
-		// 		continue
-		// 	}
-		// 	// if err := s.writeMarkdownFile(*f); err != nil {
-		// 	// 	continue
-		// 	// }
-		case "orphan_edge":
-			// Delete orphan edges
-			_, _ = s.db.Exec(`
-				DELETE FROM edges WHERE from_feature NOT IN (SELECT id FROM features)
-				OR to_feature NOT IN (SELECT id FROM features)
-			`)
-		}
-	}
-
 	// Rebuild index
 	return s.RebuildIndex()
 }
@@ -1500,7 +1230,7 @@ func (s *SQLiteStore) GetNodesByFiles(agentName string, filePaths []string) ([]N
 	return nodes, nil
 }
 
-// ClearAllKnowledge removes all nodes, edges, features, decisions, and patterns.
+// ClearAllKnowledge removes all nodes, features, decisions, and patterns.
 // Used for clean-slate re-bootstrapping when the user wants to start fresh.
 func (s *SQLiteStore) ClearAllKnowledge() error {
 	tx, err := s.db.Begin()
@@ -1509,8 +1239,8 @@ func (s *SQLiteStore) ClearAllKnowledge() error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Clear in order respecting foreign key constraints (if any)
-	tables := []string{"node_edges", "nodes", "decisions", "edges", "patterns", "features"}
+	// Clear in order respecting foreign key constraints
+	tables := []string{"node_edges", "nodes", "decisions", "patterns", "features"}
 	for _, table := range tables {
 		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
 			return fmt.Errorf("clear %s: %w", table, err)
