@@ -53,13 +53,15 @@ var aiConfigs = map[string]aiConfig{
 	},
 }
 
-func promptAISelection() []string {
+// promptAISelection shows the AI selection UI.
+// preSelected: optional list of AI IDs to pre-select (e.g., from detected global config)
+func promptAISelection(preSelected ...string) []string {
 	descriptions := make(map[string]string)
 	for _, id := range aiConfigOrder {
 		descriptions[id] = aiConfigs[id].displayName
 	}
 
-	selected, err := ui.PromptAISelection(aiConfigOrder, descriptions)
+	selected, err := ui.PromptAISelection(aiConfigOrder, descriptions, preSelected...)
 	if err != nil {
 		fmt.Printf("Error running selection: %v\n", err)
 		return nil

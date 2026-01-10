@@ -38,6 +38,8 @@ func (i *Initializer) Run(verbose bool, selectedAIs []string) error {
 	// Since we can't easily move `aiConfig` from `cmd` without refactoring `cmd/mcp_install.go` too,
 	// let's define the necessary config here for slash commands.
 
+	fmt.Printf("🔧 Setting up AI integrations for: %s\n", strings.Join(selectedAIs, ", "))
+
 	for _, ai := range selectedAIs {
 		// Create slash commands
 		if err := i.createSlashCommands(ai, verbose); err != nil {
@@ -49,10 +51,12 @@ func (i *Initializer) Run(verbose bool, selectedAIs []string) error {
 			fmt.Fprintf(os.Stderr, "⚠️  Failed to install hooks for %s: %v\n", ai, err)
 		}
 
-		// Update agent docs
-		if err := i.updateAgentDocs(ai, verbose); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  Failed to update docs for %s: %v\n", ai, err)
-		}
+		fmt.Printf("   ✓ Created local config for %s\n", ai)
+	}
+
+	// Update agent docs once (applies to all: CLAUDE.md, GEMINI.md, AGENTS.md)
+	if err := i.updateAgentDocs(verbose); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Failed to update agent docs: %v\n", err)
 	}
 
 	// Note: Actual MCP installation (binary copy) is handled by `cmd/mcp_install.go`.
@@ -246,27 +250,14 @@ func (i *Initializer) InstallHooksConfig(aiName string, verbose bool) error {
 	return nil
 }
 
-const hooksDocSection = `
+// Markers for TaskWing-managed documentation section (HTML comments, invisible when rendered)
+const (
+	taskwingDocMarkerStart = "<!-- TASKWING_DOCS_START -->"
+	taskwingDocMarkerEnd   = "<!-- TASKWING_DOCS_END -->"
+)
 
-### Autonomous Task Execution (Hooks)
-
-TaskWing integrates with Claude Code's hook system for autonomous plan execution:
-
-` + "```bash" + `
-taskwing hook session-init      # Initialize session tracking (SessionStart hook)
-taskwing hook continue-check    # Check if should continue to next task (Stop hook)
-taskwing hook session-end       # Cleanup session (SessionEnd hook)
-taskwing hook status            # View current session state
-` + "```" + `
-
-**Circuit breakers** prevent runaway execution:
-- ` + "`--max-tasks=5`" + ` - Stop after N tasks for human review
-- ` + "`--max-minutes=30`" + ` - Stop after N minutes
-
-Configuration in ` + "`.claude/settings.json`" + ` enables auto-continuation through plans.
-`
-
-const taskwingUsageDocSection = `
+// taskwingDocSection is the complete TaskWing documentation block with markers
+const taskwingDocSection = taskwingDocMarkerStart + `
 
 ## TaskWing Integration
 
@@ -298,63 +289,119 @@ tw add "content"    # Add knowledge to memory
 tw plan new "goal"  # Create development plan
 tw task list        # List tasks from active plan
 ` + "```" + `
-`
 
-func (i *Initializer) updateAgentDocs(aiName string, verbose bool) error {
-	var filesToCheck []string
-	switch aiName {
-	case "claude":
-		filesToCheck = []string{"CLAUDE.md", "AGENTS.md"}
-	case "codex":
-		filesToCheck = []string{"AGENTS.md", "CODEX.md"}
-	case "gemini":
-		filesToCheck = []string{"GEMINI.md", "AGENTS.md"}
-	default:
-		filesToCheck = []string{"AGENTS.md"}
-	}
+### Autonomous Task Execution (Hooks)
 
-	for _, fileName := range filesToCheck {
+TaskWing integrates with Claude Code's hook system for autonomous plan execution:
+
+` + "```bash" + `
+taskwing hook session-init      # Initialize session tracking (SessionStart hook)
+taskwing hook continue-check    # Check if should continue to next task (Stop hook)
+taskwing hook session-end       # Cleanup session (SessionEnd hook)
+taskwing hook status            # View current session state
+` + "```" + `
+
+**Circuit breakers** prevent runaway execution:
+- ` + "`--max-tasks=5`" + ` - Stop after N tasks for human review
+- ` + "`--max-minutes=30`" + ` - Stop after N minutes
+
+Configuration in ` + "`.claude/settings.json`" + ` enables auto-continuation through plans.
+
+` + taskwingDocMarkerEnd
+
+func (i *Initializer) updateAgentDocs(verbose bool) error {
+	// Always update all three agent doc files: CLAUDE.md, GEMINI.md, AGENTS.md
+	filesToUpdate := []string{"CLAUDE.md", "GEMINI.md", "AGENTS.md"}
+
+	for _, fileName := range filesToUpdate {
 		filePath := filepath.Join(i.basePath, fileName)
 		content, err := os.ReadFile(filePath)
 		if err != nil {
+			// File doesn't exist - skip silently
 			continue
 		}
 
 		contentStr := string(content)
-		updated := false
+		var newContent string
+		action := ""
 
-		// Add TaskWing usage docs if not present
-		if !strings.Contains(contentStr, "TaskWing Integration") &&
-			!strings.Contains(contentStr, "### MCP Tools") {
-			contentStr += taskwingUsageDocSection
-			updated = true
-			if verbose {
-				fmt.Printf("  ✓ Added TaskWing usage docs to %s\n", fileName)
+		// Check if markers exist (previous TaskWing installation with markers)
+		startIdx := strings.Index(contentStr, taskwingDocMarkerStart)
+		endIdx := strings.Index(contentStr, taskwingDocMarkerEnd)
+
+		// Validate marker state
+		hasStartMarker := startIdx != -1
+		hasEndMarker := endIdx != -1
+
+		if hasStartMarker && hasEndMarker && endIdx > startIdx {
+			// Valid markers - replace content between them
+			before := contentStr[:startIdx]
+			after := contentStr[endIdx+len(taskwingDocMarkerEnd):]
+			newContent = before + taskwingDocSection + after
+			action = "updated"
+		} else if hasStartMarker != hasEndMarker {
+			// Partial markers - warn and skip to avoid corruption
+			fmt.Fprintf(os.Stderr, "  ⚠️  %s has incomplete TaskWing markers - skipping (please fix manually)\n", fileName)
+			continue
+		} else if legacyStart, legacyEnd := findLegacyTaskWingSection(contentStr); legacyStart != -1 {
+			// Legacy content without markers - replace with new marked section
+			before := contentStr[:legacyStart]
+			after := ""
+			if legacyEnd < len(contentStr) {
+				after = contentStr[legacyEnd:]
 			}
-		} else if verbose {
-			fmt.Printf("  ℹ️  TaskWing usage docs already in %s\n", fileName)
+			newContent = strings.TrimRight(before, "\n") + "\n" + taskwingDocSection + after
+			action = "migrated"
+		} else {
+			// No existing TaskWing content - append
+			newContent = strings.TrimRight(contentStr, "\n") + "\n" + taskwingDocSection
+			action = "added"
 		}
 
-		// Add hooks docs if not present
-		if !strings.Contains(contentStr, "Autonomous Task Execution") &&
-			!strings.Contains(contentStr, "tw hook session-init") {
-			contentStr += hooksDocSection
-			updated = true
-			if verbose {
-				fmt.Printf("  ✓ Added hooks docs to %s\n", fileName)
-			}
-		} else if verbose {
-			fmt.Printf("  ℹ️  Hooks docs already in %s\n", fileName)
-		}
-
-		if updated {
-			if err := os.WriteFile(filePath, []byte(contentStr), 0644); err != nil {
+		if action != "" && newContent != contentStr {
+			if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
 				return fmt.Errorf("update %s: %w", fileName, err)
 			}
+			if verbose {
+				fmt.Printf("  ✓ TaskWing docs %s in %s\n", action, fileName)
+			}
+		} else if verbose {
+			fmt.Printf("  ℹ️  TaskWing docs unchanged in %s\n", fileName)
 		}
-
-		// Only update the first found file
-		break
 	}
 	return nil
+}
+
+// findLegacyTaskWingSection finds legacy TaskWing content without markers.
+// Returns (startIndex, endIndex) or (-1, -1) if not found.
+// Uses case-insensitive matching and handles multiple heading levels.
+func findLegacyTaskWingSection(content string) (int, int) {
+	contentLower := strings.ToLower(content)
+
+	// Find "## taskwing integration" case-insensitively
+	legacyStart := strings.Index(contentLower, "## taskwing integration")
+	if legacyStart == -1 {
+		return -1, -1
+	}
+
+	// Find the end of TaskWing section by looking for next heading at same or higher level
+	// This handles ## headings and # headings
+	afterSection := content[legacyStart+len("## taskwing integration"):]
+
+	// Look for next heading (# or ##) that would end our section
+	legacyEnd := len(content) // Default to end of file
+	lines := strings.Split(afterSection, "\n")
+	offset := legacyStart + len("## taskwing integration")
+
+	for _, line := range lines {
+		offset += len(line) + 1 // +1 for newline
+		trimmed := strings.TrimLeft(line, " \t")
+		// Stop at # or ## headings (but not ### which are subsections)
+		if strings.HasPrefix(trimmed, "## ") || (strings.HasPrefix(trimmed, "# ") && !strings.HasPrefix(trimmed, "## ")) {
+			legacyEnd = offset - len(line) - 1 // Point to before the newline
+			break
+		}
+	}
+
+	return legacyStart, legacyEnd
 }

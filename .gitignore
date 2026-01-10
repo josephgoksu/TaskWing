@@ -47,6 +47,8 @@ Thumbs.db
 .cursor/
 .cursorrules
 .claude/
+.codex/
+.gemini/
 
 # Test files and temporary test data
 test_*.py

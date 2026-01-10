@@ -1,3 +1,0 @@
-description = "Fetch additional context for current task"
-
-prompt = """!{taskwing slash context}"""

@@ -80,7 +80,7 @@ func ParseModelSpec(spec string, role llm.ModelRole) (llm.Config, error) {
 	// NOTE: Embedding config is NOT loaded here to match CLI behavior.
 	// With empty EmbeddingProvider, client.go falls back to using Provider for embeddings.
 	// This ensures consistency: if bootstrap used gemini, queries also use gemini.
-	embeddingModel := viper.GetString("llm.embeddingModel") // camelCase only, like CLI
+	embeddingModel := viper.GetString("llm.embedding_model")
 
 	thinkingBudget := viper.GetInt("llm.thinkingBudget")
 	if thinkingBudget == 0 && llm.ModelSupportsThinking(model) {
@@ -136,10 +136,7 @@ func LoadLLMConfig() (llm.Config, error) {
 	}
 
 	// 5. Embedding Model
-	embeddingModel := viper.GetString("llm.embeddingModel")
-	if embeddingModel == "" {
-		embeddingModel = viper.GetString("llm.embedding_model") // snake_case variant
-	}
+	embeddingModel := viper.GetString("llm.embedding_model")
 
 	// 6. Embedding Provider (optional, defaults to main provider)
 	var embeddingProvider llm.Provider

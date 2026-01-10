@@ -154,7 +154,7 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	}
 
 	// 5. Embedding Model
-	embeddingModel := viper.GetString("llm.embeddingModel")
+	embeddingModel := viper.GetString("llm.embedding_model")
 
 	// 6. Thinking Budget (for models that support extended thinking)
 	thinkingBudget := viper.GetInt("llm.thinkingBudget")

@@ -1,3 +1,0 @@
-description = "Start next TaskWing task with full context"
-
-prompt = """!{taskwing slash next}"""

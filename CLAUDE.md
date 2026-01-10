@@ -227,3 +227,54 @@ Interactive script that prompts for version, opens editor for notes, and pushes.
 - Never bump version autonomously
 - Always show release notes for approval before tagging
 - GoReleaser + GitHub Actions handle the rest after tag push
+<!-- TASKWING_DOCS_START -->
+
+## TaskWing Integration
+
+TaskWing provides project memory for AI assistants via MCP tools and slash commands.
+
+### Slash Commands
+- `/taskwing` - Fetch full project context (decisions, patterns, constraints)
+- `/tw-next` - Start next task with architecture context
+- `/tw-done` - Complete current task with summary
+- `/tw-plan` - Create development plan from goal
+- `/tw-status` - Show current task status
+
+### MCP Tools
+| Tool | Description |
+|------|-------------|
+| `recall` | Retrieve project knowledge (decisions, patterns, constraints) |
+| `task_next` | Get next pending task from plan |
+| `task_start` | Claim and start a specific task |
+| `task_complete` | Mark task as completed |
+| `plan_clarify` | Refine goal with clarifying questions |
+| `plan_generate` | Generate plan with tasks |
+| `remember` | Store knowledge in project memory |
+
+### CLI Commands
+```bash
+tw bootstrap        # Initialize project memory (first-time setup)
+tw context "query"  # Search knowledge semantically
+tw add "content"    # Add knowledge to memory
+tw plan new "goal"  # Create development plan
+tw task list        # List tasks from active plan
+```
+
+### Autonomous Task Execution (Hooks)
+
+TaskWing integrates with Claude Code's hook system for autonomous plan execution:
+
+```bash
+taskwing hook session-init      # Initialize session tracking (SessionStart hook)
+taskwing hook continue-check    # Check if should continue to next task (Stop hook)
+taskwing hook session-end       # Cleanup session (SessionEnd hook)
+taskwing hook status            # View current session state
+```
+
+**Circuit breakers** prevent runaway execution:
+- `--max-tasks=5` - Stop after N tasks for human review
+- `--max-minutes=30` - Stop after N minutes
+
+Configuration in `.claude/settings.json` enables auto-continuation through plans.
+
+<!-- TASKWING_DOCS_END -->

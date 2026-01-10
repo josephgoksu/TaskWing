@@ -10,12 +10,18 @@ import (
 // PromptAISelection displays a multi-select list for choosing AI assistants.
 // choices: ordered list of IDs (e.g., "claude", "cursor")
 // descriptions: map of ID -> Display Name (e.g., "claude" -> "Claude Code")
-func PromptAISelection(choices []string, descriptions map[string]string) ([]string, error) {
+// preSelected: optional list of IDs to pre-select (e.g., from detected global config)
+func PromptAISelection(choices []string, descriptions map[string]string, preSelected ...string) ([]string, error) {
+	selected := make(map[string]bool)
+	for _, id := range preSelected {
+		selected[id] = true
+	}
+
 	m := aiSelectModel{
 		choices:      choices,
 		descriptions: descriptions,
 		cursor:       0,
-		selected:     make(map[string]bool),
+		selected:     selected,
 	}
 
 	p := tea.NewProgram(m)
@@ -30,13 +36,13 @@ func PromptAISelection(choices []string, descriptions map[string]string) ([]stri
 	}
 
 	// Build list of selected in order
-	var selected []string
+	var resultSelected []string
 	for _, c := range choices {
 		if result.selected[c] {
-			selected = append(selected, c)
+			resultSelected = append(resultSelected, c)
 		}
 	}
-	return selected, nil
+	return resultSelected, nil
 }
 
 // aiSelectModel is the Bubble Tea model for AI multi-selection

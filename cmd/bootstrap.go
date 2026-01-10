@@ -71,22 +71,24 @@ The bootstrap command analyzes:
 			// Check for existing global MCP configurations
 			existingAIs := detectExistingMCPConfigs()
 			if len(existingAIs) > 0 {
-				fmt.Printf("🔍 Detected existing TaskWing MCP configuration for: %s\n", strings.Join(existingAIs, ", "))
-				fmt.Print("   Use existing configuration? [Y/n]: ")
+				fmt.Printf("🔍 Found TaskWing MCP in global CLI config for: %s\n", strings.Join(existingAIs, ", "))
+				fmt.Println("   (Registered via CLI, e.g., 'codex mcp add' - not project-local)")
+				fmt.Print("   Reuse this configuration? [Y/n]: ")
 				var input string
 				fmt.Scanln(&input)
 				input = strings.TrimSpace(strings.ToLower(input))
 				if input == "" || input == "y" || input == "yes" {
 					selectedAIs = existingAIs
 					usingExisting = true
-					fmt.Println("   ✓ Using existing configuration")
+					fmt.Println("   ✓ Reusing global MCP config, will create local project files")
 					fmt.Println()
 				} else {
-					// User wants to reconfigure
+					// User wants to reconfigure - pre-select existing ones
 					fmt.Println()
 					fmt.Println("🤖 Which AI assistant(s) do you use?")
+					fmt.Printf("   (Detected %s pre-selected, modify as needed)\n", strings.Join(existingAIs, ", "))
 					fmt.Println()
-					selectedAIs = promptAISelection()
+					selectedAIs = promptAISelection(existingAIs...)
 				}
 			} else {
 				// No existing config, prompt normally
@@ -99,8 +101,10 @@ The bootstrap command analyzes:
 				return fmt.Errorf("initialization failed: %w", err)
 			}
 
-			// Only install MCP servers if not using existing config
-			// (avoid redundant CLI calls when config is already in place)
+			// Only run CLI registration if not using existing global config
+			// (installMCPServers runs 'claude mcp add', 'codex mcp add', etc.)
+			// Note: Local project files (.claude/settings.json, slash commands) are
+			// created above by InitializeProject regardless of usingExisting
 			if !usingExisting {
 				installMCPServers(cwd, selectedAIs)
 			}
@@ -299,41 +303,92 @@ func checkAgentFailures(agents []*ui.AgentState) error {
 	return nil
 }
 
-// promptAdditionalModels offers to configure query model, embedding, and reranking
+// promptAdditionalModels shows existing config or offers to configure query model, embedding, and reranking
 func promptAdditionalModels() error {
-	fmt.Println("📋 Additional Model Configuration")
-	fmt.Println("   You can configure these now or later via 'tw config'")
-	fmt.Println()
+	// Check what's already configured
+	queryModel := viper.GetString("llm.models.query")
+	embeddingProvider := viper.GetString("llm.embedding_provider")
+	embeddingModel := viper.GetString("llm.embedding_model")
+	rerankingEnabled := viper.GetBool("retrieval.reranking.enabled")
+	rerankingURL := viper.GetString("retrieval.reranking.base_url")
 
-	// Query model
-	fmt.Print("   Configure fast query model? (for cheap/fast lookups) [y/N]: ")
+	// Count configured items
+	configured := 0
+	if queryModel != "" {
+		configured++
+	}
+	if embeddingModel != "" {
+		configured++
+	}
+	if rerankingEnabled {
+		configured++
+	}
+
+	// If all configured, just show status
+	if configured == 3 {
+		fmt.Println("📋 Model Configuration (from config file)")
+		fmt.Printf("   ✓ Query model: %s\n", queryModel)
+		fmt.Printf("   ✓ Embedding: %s (%s)\n", embeddingModel, embeddingProvider)
+		fmt.Printf("   ✓ Reranking: enabled (%s)\n", rerankingURL)
+		fmt.Println()
+		return nil
+	}
+
+	// If some configured, show status and offer to configure missing
+	if configured > 0 {
+		fmt.Println("📋 Model Configuration")
+		if queryModel != "" {
+			fmt.Printf("   ✓ Query model: %s\n", queryModel)
+		}
+		if embeddingModel != "" {
+			fmt.Printf("   ✓ Embedding: %s (%s)\n", embeddingModel, embeddingProvider)
+		}
+		if rerankingEnabled {
+			fmt.Printf("   ✓ Reranking: enabled (%s)\n", rerankingURL)
+		}
+		fmt.Println()
+	} else {
+		fmt.Println("📋 Additional Model Configuration")
+		fmt.Println("   You can configure these now or later via 'tw config'")
+		fmt.Println()
+	}
+
 	var input string
-	fmt.Scanln(&input)
-	if input == "y" || input == "Y" || input == "yes" {
-		if err := configureQueryModel(); err != nil {
-			fmt.Printf("   ⚠️  Skipped: %v\n", err)
+
+	// Query model - only prompt if not configured
+	if queryModel == "" {
+		fmt.Print("   Configure fast query model? (for cheap/fast lookups) [y/N]: ")
+		fmt.Scanln(&input)
+		if input == "y" || input == "Y" || input == "yes" {
+			if err := configureQueryModel(); err != nil {
+				fmt.Printf("   ⚠️  Skipped: %v\n", err)
+			}
+			fmt.Println()
 		}
-		fmt.Println()
 	}
 
-	// Embedding model
-	fmt.Print("   Configure embedding model? (for semantic search) [y/N]: ")
-	fmt.Scanln(&input)
-	if input == "y" || input == "Y" || input == "yes" {
-		if err := configureEmbedding(); err != nil {
-			fmt.Printf("   ⚠️  Skipped: %v\n", err)
+	// Embedding model - only prompt if not configured
+	if embeddingModel == "" {
+		fmt.Print("   Configure embedding model? (for semantic search) [y/N]: ")
+		fmt.Scanln(&input)
+		if input == "y" || input == "Y" || input == "yes" {
+			if err := configureEmbedding(); err != nil {
+				fmt.Printf("   ⚠️  Skipped: %v\n", err)
+			}
+			fmt.Println()
 		}
-		fmt.Println()
 	}
 
-	// Reranking
-	fmt.Print("   Configure reranking? (optional, improves search quality) [y/N]: ")
-	fmt.Scanln(&input)
-	if input == "y" || input == "Y" || input == "yes" {
-		if err := configureReranking(); err != nil {
-			fmt.Printf("   ⚠️  Skipped: %v\n", err)
+	// Reranking - only prompt if not configured
+	if !rerankingEnabled {
+		fmt.Print("   Configure reranking? (optional, improves search quality) [y/N]: ")
+		fmt.Scanln(&input)
+		if input == "y" || input == "Y" || input == "yes" {
+			if err := configureReranking(); err != nil {
+				fmt.Printf("   ⚠️  Skipped: %v\n", err)
+			}
+			fmt.Println()
 		}
-		fmt.Println()
 	}
 
 	return nil
