@@ -206,6 +206,17 @@ func (i *Initializer) InstallHooksConfig(aiName string, verbose bool) error {
 
 	config := HooksConfig{
 		Hooks: map[string][]HookMatcher{
+			"SessionStart": {
+				{
+					Hooks: []HookCommand{
+						{
+							Type:    "command",
+							Command: "taskwing hook session-init",
+							Timeout: 10,
+						},
+					},
+				},
+			},
 			"Stop": {
 				{
 					Hooks: []HookCommand{
@@ -255,6 +266,40 @@ taskwing hook status            # View current session state
 Configuration in ` + "`.claude/settings.json`" + ` enables auto-continuation through plans.
 `
 
+const taskwingUsageDocSection = `
+
+## TaskWing Integration
+
+TaskWing provides project memory for AI assistants via MCP tools and slash commands.
+
+### Slash Commands
+- ` + "`/taskwing`" + ` - Fetch full project context (decisions, patterns, constraints)
+- ` + "`/tw-next`" + ` - Start next task with architecture context
+- ` + "`/tw-done`" + ` - Complete current task with summary
+- ` + "`/tw-plan`" + ` - Create development plan from goal
+- ` + "`/tw-status`" + ` - Show current task status
+
+### MCP Tools
+| Tool | Description |
+|------|-------------|
+| ` + "`recall`" + ` | Retrieve project knowledge (decisions, patterns, constraints) |
+| ` + "`task_next`" + ` | Get next pending task from plan |
+| ` + "`task_start`" + ` | Claim and start a specific task |
+| ` + "`task_complete`" + ` | Mark task as completed |
+| ` + "`plan_clarify`" + ` | Refine goal with clarifying questions |
+| ` + "`plan_generate`" + ` | Generate plan with tasks |
+| ` + "`remember`" + ` | Store knowledge in project memory |
+
+### CLI Commands
+` + "```bash" + `
+tw bootstrap        # Initialize project memory (first-time setup)
+tw context "query"  # Search knowledge semantically
+tw add "content"    # Add knowledge to memory
+tw plan new "goal"  # Create development plan
+tw task list        # List tasks from active plan
+` + "```" + `
+`
+
 func (i *Initializer) updateAgentDocs(aiName string, verbose bool) error {
 	var filesToCheck []string
 	switch aiName {
@@ -275,22 +320,40 @@ func (i *Initializer) updateAgentDocs(aiName string, verbose bool) error {
 			continue
 		}
 
-		if strings.Contains(string(content), "Autonomous Task Execution") ||
-			strings.Contains(string(content), "tw hook session-init") {
+		contentStr := string(content)
+		updated := false
+
+		// Add TaskWing usage docs if not present
+		if !strings.Contains(contentStr, "TaskWing Integration") &&
+			!strings.Contains(contentStr, "### MCP Tools") {
+			contentStr += taskwingUsageDocSection
+			updated = true
 			if verbose {
-				fmt.Printf("  ℹ️  Hooks docs already in %s\n", fileName)
+				fmt.Printf("  ✓ Added TaskWing usage docs to %s\n", fileName)
 			}
-			continue
+		} else if verbose {
+			fmt.Printf("  ℹ️  TaskWing usage docs already in %s\n", fileName)
 		}
 
-		newContent := string(content) + hooksDocSection
-		if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
-			return fmt.Errorf("update %s: %w", fileName, err)
+		// Add hooks docs if not present
+		if !strings.Contains(contentStr, "Autonomous Task Execution") &&
+			!strings.Contains(contentStr, "tw hook session-init") {
+			contentStr += hooksDocSection
+			updated = true
+			if verbose {
+				fmt.Printf("  ✓ Added hooks docs to %s\n", fileName)
+			}
+		} else if verbose {
+			fmt.Printf("  ℹ️  Hooks docs already in %s\n", fileName)
 		}
 
-		if verbose {
-			fmt.Printf("  ✓ Added hooks docs to %s\n", fileName)
+		if updated {
+			if err := os.WriteFile(filePath, []byte(contentStr), 0644); err != nil {
+				return fmt.Errorf("update %s: %w", fileName, err)
+			}
 		}
+
+		// Only update the first found file
 		break
 	}
 	return nil

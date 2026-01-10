@@ -148,15 +148,14 @@ Called by `Stop` hook. Determines if Claude should continue or stop.
 
 **Output (allow stop):**
 ```json
-{"decision": "approve", "reason": "Circuit breaker: Completed 5/5 tasks this session."}
+{"reason": "Circuit breaker: Completed 5/5 tasks this session."}
 ```
 
 **Output (continue to next task):**
 ```json
 {
   "decision": "block",
-  "reason": "Continue to task 2/5: Implement authentication middleware",
-  "context": "... next task details and architecture context ..."
+  "reason": "Continue to task 2/5: Implement authentication middleware\n\n... next task details and architecture context ..."
 }
 ```
 
@@ -384,10 +383,11 @@ cmd/hook.go                           # Hook command implementation
 ### Hook Response Schema
 
 ```go
+// Per Claude Code docs: decision is "block" or omit to allow stop.
+// Reason is the context injected when decision="block".
 type HookResponse struct {
-    Decision string `json:"decision"`  // "approve" or "block"
-    Reason   string `json:"reason"`    // Human-readable explanation
-    Context  string `json:"context"`   // Injected into conversation (block only)
+    Decision *string `json:"decision,omitempty"` // "block" or nil (omit to allow stop)
+    Reason   string  `json:"reason,omitempty"`   // Context/explanation (required when blocking)
 }
 ```
 

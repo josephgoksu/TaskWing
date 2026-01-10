@@ -293,21 +293,22 @@ tw plan new "Your goal description"
 `
 
 // slashTaskwingContent is the prompt content for /taskwing
-const slashTaskwingContent = `# TaskWing Project Context
+const slashTaskwingContent = `# TaskWing Full Repository Context
 
-Call MCP tool ` + "`recall`" + ` to retrieve project architecture context:
+Call MCP tool ` + "`recall`" + ` to retrieve the complete project knowledge base:
 ` + "```json" + `
 {}
 ` + "```" + `
 
-This returns:
-- Project overview
-- Key decisions and rationale
-- Architecture patterns
-- Constraints
-- Features
+This returns the full repository context including:
+- **Project Overview**: High-level description and purpose
+- **Key Decisions**: Architectural choices and their rationale
+- **Patterns**: Recurring architectural solutions used in the codebase
+- **Constraints**: Rules and limitations that must be followed
+- **Features**: Product capabilities and components
+- **Knowledge Summary**: Total nodes across all types with examples
 
-Display the results to the user formatted as a project briefing.
+Present this as a comprehensive project briefing, organized by category.
 
 ## For Specific Queries
 

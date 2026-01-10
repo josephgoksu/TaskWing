@@ -30,11 +30,12 @@ type HookSession struct {
 	PlanID         string    `json:"plan_id,omitempty"`
 }
 
-// HookResponse is the JSON response format for Claude Code hooks
+// HookResponse is the JSON response format for Claude Code Stop hooks.
+// Per Claude Code docs: decision is "block" to prevent stopping, or omit to allow stop.
+// When decision="block", reason is injected as context for Claude to continue.
 type HookResponse struct {
-	Decision string `json:"decision"`          // "approve" or "block"
-	Reason   string `json:"reason,omitempty"`  // Explanation
-	Context  string `json:"context,omitempty"` // Additional context to inject (for block)
+	Decision *string `json:"decision,omitempty"` // "block" or nil (omit to allow stop)
+	Reason   string  `json:"reason,omitempty"`   // Context/explanation (required when blocking)
 }
 
 // Circuit breaker defaults
@@ -76,7 +77,7 @@ var hookContinueCheckCmd = &cobra.Command{
 	Short: "Check if Claude should continue to next task (for Stop hook)",
 	Long: `Called by Claude Code's Stop hook to determine if execution should continue.
 
-Returns JSON with decision "approve" (allow stop) or "block" (inject next task).
+Returns JSON: omit "decision" to allow Claude to stop, or "block" to inject next task.
 Implements circuit breakers for:
 - Maximum tasks per session (default: 5)
 - Maximum session duration (default: 30 minutes)
@@ -151,21 +152,18 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	session, err := loadHookSession()
 	if err != nil {
 		// Auto-initialize session on first continue-check call
-		// This is necessary because Claude Code does NOT support SessionStart events
-		// (only PreToolUse, PostToolUse, Notification, Stop are valid)
+		// This handles cases where SessionStart hook didn't fire (e.g., resumed session)
 		fmt.Fprintf(os.Stderr, "[INFO] No active session, auto-initializing...\n")
 		if initErr := runSessionInit(); initErr != nil {
 			return outputHookResponse(HookResponse{
-				Decision: "approve",
-				Reason:   fmt.Sprintf("Failed to auto-initialize session: %v", initErr),
+				Reason: fmt.Sprintf("Failed to auto-initialize session: %v", initErr),
 			})
 		}
 		// Reload session after init
 		session, err = loadHookSession()
 		if err != nil {
 			return outputHookResponse(HookResponse{
-				Decision: "approve",
-				Reason:   fmt.Sprintf("Session initialization succeeded but failed to load: %v", err),
+				Reason: fmt.Sprintf("Session initialization succeeded but failed to load: %v", err),
 			})
 		}
 	}
@@ -173,8 +171,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	// Circuit breaker 1: Max tasks reached
 	if session.TasksCompleted >= maxTasks {
 		return outputHookResponse(HookResponse{
-			Decision: "approve",
-			Reason:   fmt.Sprintf("Circuit breaker: Completed %d/%d tasks this session. Take a break for human review.", session.TasksCompleted, maxTasks),
+			Reason: fmt.Sprintf("Circuit breaker: Completed %d/%d tasks this session. Take a break for human review.", session.TasksCompleted, maxTasks),
 		})
 	}
 
@@ -182,8 +179,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	elapsed := time.Since(session.StartedAt)
 	if int(elapsed.Minutes()) >= maxMinutes {
 		return outputHookResponse(HookResponse{
-			Decision: "approve",
-			Reason:   fmt.Sprintf("Circuit breaker: Session duration %d/%d minutes. Take a break for human review.", int(elapsed.Minutes()), maxMinutes),
+			Reason: fmt.Sprintf("Circuit breaker: Session duration %d/%d minutes. Take a break for human review.", int(elapsed.Minutes()), maxMinutes),
 		})
 	}
 
@@ -191,8 +187,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	repo, err := openRepo()
 	if err != nil {
 		return outputHookResponse(HookResponse{
-			Decision: "approve",
-			Reason:   fmt.Sprintf("Failed to open repository: %v", err),
+			Reason: fmt.Sprintf("Failed to open repository: %v", err),
 		})
 	}
 	defer func() { _ = repo.Close() }()
@@ -201,8 +196,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	activePlan, err := repo.GetActivePlan()
 	if err != nil || activePlan == nil {
 		return outputHookResponse(HookResponse{
-			Decision: "approve",
-			Reason:   "No active plan. Use 'taskwing plan start <plan-id>' to set one.",
+			Reason: "No active plan. Use 'taskwing plan start <plan-id>' to set one.",
 		})
 	}
 
@@ -220,8 +214,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	nextTask, err := repo.GetNextTask(activePlan.ID)
 	if err != nil {
 		return outputHookResponse(HookResponse{
-			Decision: "approve",
-			Reason:   fmt.Sprintf("Error getting next task: %v", err),
+			Reason: fmt.Sprintf("Error getting next task: %v", err),
 		})
 	}
 
@@ -237,13 +230,11 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 		}
 		if allDone {
 			return outputHookResponse(HookResponse{
-				Decision: "approve",
-				Reason:   fmt.Sprintf("Plan complete! All %d tasks finished.", len(activePlan.Tasks)),
+				Reason: fmt.Sprintf("Plan complete! All %d tasks finished.", len(activePlan.Tasks)),
 			})
 		}
 		return outputHookResponse(HookResponse{
-			Decision: "approve",
-			Reason:   "No pending tasks available. Some tasks may be blocked or have unmet dependencies.",
+			Reason: "No pending tasks available. Some tasks may be blocked or have unmet dependencies.",
 		})
 	}
 
@@ -262,11 +253,12 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 		fmt.Fprintf(os.Stderr, "[WARN] Failed to save session state: %v\n", err)
 	}
 
-	// Return block with next task context
+	// Return block with next task context in reason field
+	// Per Claude Code docs, "reason" IS the context injected when decision="block"
+	blockDecision := "block"
 	return outputHookResponse(HookResponse{
-		Decision: "block",
-		Reason:   fmt.Sprintf("Continue to task %d/%d: %s", session.TasksCompleted+1, len(activePlan.Tasks), nextTask.Title),
-		Context:  contextStr,
+		Decision: &blockDecision,
+		Reason:   fmt.Sprintf("Continue to task %d/%d: %s\n\n%s", session.TasksCompleted+1, len(activePlan.Tasks), nextTask.Title, contextStr),
 	})
 }
 

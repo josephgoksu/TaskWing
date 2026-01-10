@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,18 +65,45 @@ The bootstrap command analyzes:
 			fmt.Println("🚀 First time setup detected!")
 			fmt.Println()
 
-			// Step 1: Prompt for AI assistant selection
-			fmt.Println("🤖 Which AI assistant(s) do you use?")
-			fmt.Println()
-			selectedAIs := promptAISelection()
+			var selectedAIs []string
+			usingExisting := false
+
+			// Check for existing global MCP configurations
+			existingAIs := detectExistingMCPConfigs()
+			if len(existingAIs) > 0 {
+				fmt.Printf("🔍 Detected existing TaskWing MCP configuration for: %s\n", strings.Join(existingAIs, ", "))
+				fmt.Print("   Use existing configuration? [Y/n]: ")
+				var input string
+				fmt.Scanln(&input)
+				input = strings.TrimSpace(strings.ToLower(input))
+				if input == "" || input == "y" || input == "yes" {
+					selectedAIs = existingAIs
+					usingExisting = true
+					fmt.Println("   ✓ Using existing configuration")
+					fmt.Println()
+				} else {
+					// User wants to reconfigure
+					fmt.Println()
+					fmt.Println("🤖 Which AI assistant(s) do you use?")
+					fmt.Println()
+					selectedAIs = promptAISelection()
+				}
+			} else {
+				// No existing config, prompt normally
+				fmt.Println("🤖 Which AI assistant(s) do you use?")
+				fmt.Println()
+				selectedAIs = promptAISelection()
+			}
 
 			if err := svc.InitializeProject(viper.GetBool("verbose"), selectedAIs); err != nil {
 				return fmt.Errorf("initialization failed: %w", err)
 			}
 
-			// Note: Binary installation for MCP handles matches selected AIs
-			// This part remains in CLI as it deals with os.Executable and global installs
-			installMCPServers(cwd, selectedAIs)
+			// Only install MCP servers if not using existing config
+			// (avoid redundant CLI calls when config is already in place)
+			if !usingExisting {
+				installMCPServers(cwd, selectedAIs)
+			}
 
 			fmt.Println("\n✓ TaskWing initialized!")
 			fmt.Println()
