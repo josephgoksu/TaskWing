@@ -6,7 +6,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -187,74 +186,11 @@ func getLLMConfigForRole(cmd *cobra.Command, role llm.ModelRole) (llm.Config, er
 	roleConfigKey := fmt.Sprintf("llm.models.%s", role)
 	if viper.IsSet(roleConfigKey) {
 		spec := viper.GetString(roleConfigKey)
-		return parseModelSpec(spec, role)
+		// Use shared implementation from config package (single source of truth)
+		return config.ParseModelSpec(spec, role)
 	}
 
-	// Fall back to default config
+	// Fall back to default config (handles interactive prompts and flags)
 	return getLLMConfig(cmd)
 }
 
-// parseModelSpec parses a "provider:model" or "provider/model" spec into an LLM config.
-// If only provider is specified, auto-selects the recommended model for the role.
-func parseModelSpec(spec string, role llm.ModelRole) (llm.Config, error) {
-	var provider, model string
-
-	// Support both : and / as separators
-	spec = strings.Replace(spec, "/", ":", 1)
-
-	if strings.Contains(spec, ":") {
-		parts := strings.SplitN(spec, ":", 2)
-		provider = strings.ToLower(parts[0])
-		model = parts[1]
-	} else {
-		// Try to infer provider from model name
-		if inferredProvider, ok := llm.InferProviderFromModel(spec); ok {
-			provider = inferredProvider
-			model = spec
-		} else {
-			// Assume it's a provider name, auto-select model for role
-			provider = strings.ToLower(spec)
-			if recommended := llm.GetRecommendedModelForRole(provider, role); recommended != nil {
-				model = recommended.ID
-			} else {
-				model = llm.DefaultModelForProvider(provider)
-			}
-		}
-	}
-
-	llmProvider, err := llm.ValidateProvider(provider)
-	if err != nil {
-		return llm.Config{}, fmt.Errorf("invalid provider in role config: %w", err)
-	}
-
-	apiKey := config.ResolveAPIKey(llmProvider)
-
-	// Validate API key requirement
-	requiresKey := llmProvider == llm.ProviderOpenAI ||
-		llmProvider == llm.ProviderAnthropic ||
-		llmProvider == llm.ProviderGemini
-
-	if requiresKey && apiKey == "" {
-		return llm.Config{}, fmt.Errorf("API key required for %s: set env var %s", provider, llm.GetEnvVarForProvider(provider))
-	}
-
-	// Get other config values from viper
-	ollamaURL := viper.GetString("llm.baseURL")
-	if ollamaURL == "" {
-		ollamaURL = viper.GetString("llm.ollamaURL")
-	}
-	embeddingModel := viper.GetString("llm.embeddingModel")
-	thinkingBudget := viper.GetInt("llm.thinkingBudget")
-	if thinkingBudget == 0 && llm.ModelSupportsThinking(model) {
-		thinkingBudget = 8192
-	}
-
-	return llm.Config{
-		Provider:       llmProvider,
-		Model:          model,
-		EmbeddingModel: embeddingModel,
-		APIKey:         apiKey,
-		BaseURL:        ollamaURL,
-		ThinkingBudget: thinkingBudget,
-	}, nil
-}

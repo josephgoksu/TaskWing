@@ -20,8 +20,21 @@ type Context struct {
 // NewContext creates an app context with standard initialization.
 // LLM config loading is best-effort - operations continue with empty config
 // if loading fails (LLM features will be disabled but basic features work).
+// NOTE: For role-specific config (query, bootstrap), use NewContextForRole instead.
 func NewContext(repo *memory.Repository) *Context {
 	llmCfg, err := config.LoadLLMConfig()
+	if err != nil {
+		// Non-fatal: continue with empty config
+		llmCfg = llm.Config{}
+	}
+	return &Context{Repo: repo, LLMCfg: llmCfg}
+}
+
+// NewContextForRole creates an app context with role-aware LLM config.
+// This respects llm.models.<role> configuration (e.g., llm.models.query: "gemini:gemini-3-flash").
+// Use this in MCP handlers to match CLI behavior for query vs bootstrap operations.
+func NewContextForRole(repo *memory.Repository, role llm.ModelRole) *Context {
+	llmCfg, err := config.LoadLLMConfigForRole(role)
 	if err != nil {
 		// Non-fatal: continue with empty config
 		llmCfg = llm.Config{}

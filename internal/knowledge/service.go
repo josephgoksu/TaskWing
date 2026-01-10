@@ -259,7 +259,7 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 	if err != nil {
 		// FTS5 errors are logged but don't fail the search
 		// FTS5 may be unavailable on some systems (missing extension)
-		_ = err
+		slog.Debug("FTS search error", "error", err)
 	}
 	for _, r := range ftsResults {
 		// Filter by type if requested

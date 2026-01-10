@@ -8,9 +8,101 @@ import (
 	"github.com/spf13/viper"
 )
 
+// LoadLLMConfigForRole loads LLM configuration with role-based overrides.
+// It checks llm.models.<role> first (e.g., llm.models.query for RoleQuery),
+// then falls back to the default llm.provider/model.
+// This ensures MCP and CLI both respect role-specific configurations.
+func LoadLLMConfigForRole(role llm.ModelRole) (llm.Config, error) {
+	// Check for role-specific config first (e.g., llm.models.query: "gemini:gemini-3-flash")
+	roleConfigKey := fmt.Sprintf("llm.models.%s", role)
+	if viper.IsSet(roleConfigKey) {
+		spec := viper.GetString(roleConfigKey)
+		return ParseModelSpec(spec, role)
+	}
+	// Fall back to default config
+	return LoadLLMConfig()
+}
+
+// ParseModelSpec parses a "provider:model" or "provider/model" spec into an LLM config.
+// If only provider is specified, auto-selects the recommended model for the role.
+// NOTE: This intentionally does NOT load embedding config (embedding_provider, embedding_model)
+// to match CLI behavior. Embeddings fall back to using the main provider. If you need
+// embedding config, use LoadLLMConfig() which loads all embedding settings.
+// This is exported so CLI can use it directly, avoiding duplicate implementations.
+func ParseModelSpec(spec string, role llm.ModelRole) (llm.Config, error) {
+	var provider, model string
+
+	// Support both : and / as separators
+	spec = strings.Replace(spec, "/", ":", 1)
+
+	if strings.Contains(spec, ":") {
+		parts := strings.SplitN(spec, ":", 2)
+		provider = strings.ToLower(parts[0])
+		model = parts[1]
+	} else {
+		// Try to infer provider from model name
+		if inferredProvider, ok := llm.InferProviderFromModel(spec); ok {
+			provider = inferredProvider
+			model = spec
+		} else {
+			// Assume it's a provider name, auto-select model for role
+			provider = strings.ToLower(spec)
+			if recommended := llm.GetRecommendedModelForRole(provider, role); recommended != nil {
+				model = recommended.ID
+			} else {
+				model = llm.DefaultModelForProvider(provider)
+			}
+		}
+	}
+
+	llmProvider, err := llm.ValidateProvider(provider)
+	if err != nil {
+		return llm.Config{}, fmt.Errorf("invalid provider in role config: %w", err)
+	}
+
+	apiKey := ResolveAPIKey(llmProvider)
+
+	// Validate API key requirement (matching CLI behavior)
+	requiresKey := llmProvider == llm.ProviderOpenAI ||
+		llmProvider == llm.ProviderAnthropic ||
+		llmProvider == llm.ProviderGemini
+
+	if requiresKey && apiKey == "" {
+		return llm.Config{}, fmt.Errorf("API key required for %s: set env var %s", provider, llm.GetEnvVarForProvider(provider))
+	}
+
+	// Get other config values from viper (matching CLI behavior)
+	baseURL := viper.GetString("llm.baseURL")
+	if baseURL == "" {
+		baseURL = viper.GetString("llm.ollamaURL") // Legacy
+	}
+
+	// NOTE: Embedding config is NOT loaded here to match CLI behavior.
+	// With empty EmbeddingProvider, client.go falls back to using Provider for embeddings.
+	// This ensures consistency: if bootstrap used gemini, queries also use gemini.
+	embeddingModel := viper.GetString("llm.embeddingModel") // camelCase only, like CLI
+
+	thinkingBudget := viper.GetInt("llm.thinkingBudget")
+	if thinkingBudget == 0 && llm.ModelSupportsThinking(model) {
+		thinkingBudget = 8192
+	}
+
+	return llm.Config{
+		Provider:       llmProvider,
+		Model:          model,
+		EmbeddingModel: embeddingModel,
+		APIKey:         apiKey,
+		BaseURL:        baseURL,
+		ThinkingBudget: thinkingBudget,
+		// EmbeddingProvider, EmbeddingAPIKey, EmbeddingBaseURL left empty
+		// client.go will fallback to main Provider for embeddings
+	}, nil
+}
+
 // LoadLLMConfig loads LLM configuration from Viper and Environment variables.
 // It handles precedence: Explicit Viper Config > Environment Variables > Defaults.
 // It does NOT handle interactive prompts (that belongs in the CLI layer).
+// NOTE: For role-aware config (e.g., query vs bootstrap), use LoadLLMConfigForRole instead.
 func LoadLLMConfig() (llm.Config, error) {
 	// 1. Provider
 	provider := viper.GetString("llm.provider")

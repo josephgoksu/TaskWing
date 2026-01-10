@@ -14,6 +14,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -68,7 +69,6 @@ type TaskNextParams struct {
 	AutoStart         bool   `json:"auto_start,omitempty"`          // If true, automatically claim the task
 	CreateBranch      bool   `json:"create_branch,omitempty"`       // If true, create a new git branch for this plan
 	SkipUnpushedCheck bool   `json:"skip_unpushed_check,omitempty"` // If true, proceed despite unpushed commits (only if create_branch=true)
-	SkipGitWorkflow   bool   `json:"skip_git_workflow,omitempty"`   // Deprecated: ignored. Use create_branch instead.
 }
 
 // TaskCurrentParams defines the parameters for the task_current tool
@@ -366,8 +366,8 @@ func runMCPServer(ctx context.Context) error {
 // This ensures MCP and CLI use identical search logic with zero drift.
 // Uses the app.RecallApp for all business logic - single source of truth.
 func handleNodeContext(ctx context.Context, repo *memory.Repository, params ProjectContextParams) (*mcpsdk.CallToolResultFor[any], error) {
-	// Create app context (handles LLM config loading internally)
-	appCtx := app.NewContext(repo)
+	// Create app context with query role - respects llm.models.query config (same as CLI)
+	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
 	recallApp := app.NewRecallApp(appCtx)
 
 	query := strings.TrimSpace(params.Query)
@@ -497,7 +497,8 @@ func handleTaskStart(repo *memory.Repository, params TaskStartParams) (*mcpsdk.C
 // handleTaskComplete marks a task as completed.
 // Uses app.TaskApp for all business logic - single source of truth.
 func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mcpsdk.CallToolResultFor[any], error) {
-	appCtx := app.NewContext(repo)
+	// Use RoleBootstrap for audit operations triggered on plan completion
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	taskApp := app.NewTaskApp(appCtx)
 
 	ctx := context.Background()
@@ -531,7 +532,8 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 // handlePlanClarify runs the ClarifyingAgent to refine a goal.
 // Uses app.PlanApp for all business logic - single source of truth.
 func handlePlanClarify(ctx context.Context, repo *memory.Repository, params PlanClarifyParams) (*mcpsdk.CallToolResultFor[any], error) {
-	appCtx := app.NewContext(repo)
+	// Use RoleBootstrap for planning operations (same as CLI bootstrap/plan commands)
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Clarify(ctx, app.ClarifyOptions{
@@ -557,7 +559,8 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 // handlePlanGenerate runs the PlanningAgent to create tasks.
 // Uses app.PlanApp for all business logic - single source of truth.
 func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params PlanGenerateParams) (*mcpsdk.CallToolResultFor[any], error) {
-	appCtx := app.NewContext(repo)
+	// Use RoleBootstrap for planning operations (same as CLI bootstrap/plan commands)
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Generate(ctx, app.GenerateOptions{
@@ -592,7 +595,8 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params Remembe
 	}
 
 	// Use MemoryApp for add (same as CLI `tw add`)
-	appCtx := app.NewContext(repo)
+	// Use RoleBootstrap for knowledge ingestion (classification + embedding)
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	memoryApp := app.NewMemoryApp(appCtx)
 
 	result, err := memoryApp.Add(ctx, content, app.AddOptions{
@@ -618,7 +622,8 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params Remembe
 // handleAuditPlan runs the audit service on a plan.
 // Uses app.PlanApp for all business logic - single source of truth.
 func handleAuditPlan(ctx context.Context, repo *memory.Repository, params AuditPlanParams) (*mcpsdk.CallToolResultFor[any], error) {
-	appCtx := app.NewContext(repo)
+	// Use RoleBootstrap for audit operations (same as CLI plan/audit commands)
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Audit(ctx, app.AuditOptions{

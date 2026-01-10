@@ -25,9 +25,8 @@ type Finding struct {
 	Why                string
 	Tradeoffs          string
 	ConfidenceScore    float64 // 0.0-1.0
-	Confidence         string  // Deprecated: use ConfidenceScore
+	Confidence         string  // Deprecated: use ConfidenceScore (kept for backward compat with doc.go)
 	SourceAgent        string
-	SourceFiles        []string // Deprecated: use Evidence
 	Evidence           []Evidence
 	VerificationStatus VerificationStatus
 	VerificationResult *VerificationResult
