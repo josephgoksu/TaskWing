@@ -59,62 +59,122 @@ The bootstrap command analyzes:
 		// Initialize Service
 		svc := bootstrap.NewService(cwd, llmCfg)
 
-		// Check if .taskwing exists - if not, initialize first
+		// Determine project state - check three independent concerns:
+		// 1. Project memory (.taskwing/) - stores knowledge base
+		// 2. AI configs (.claude/, .codex/, .gemini/) - slash commands, hooks
+		// 3. Global MCP registration (via AI CLIs) - tool availability
 		taskwingDir := filepath.Join(cwd, ".taskwing")
-		if _, err := os.Stat(taskwingDir); os.IsNotExist(err) && !skipInit {
-			fmt.Println("🚀 First time setup detected!")
-			fmt.Println()
+		taskwingExists := true
+		if _, err := os.Stat(taskwingDir); os.IsNotExist(err) {
+			taskwingExists = false
+		}
 
+		// Check for existing global MCP configurations
+		existingGlobalAIs := detectExistingMCPConfigs()
+		hasGlobalMCP := len(existingGlobalAIs) > 0
+
+		// Determine which AI configs exist locally (check against global AIs if any, else all known AIs)
+		var checkAIs []string
+		if hasGlobalMCP {
+			checkAIs = existingGlobalAIs
+		} else {
+			checkAIs = []string{"claude", "codex", "gemini", "cursor", "copilot"}
+		}
+		missingLocalAIs := findMissingAIConfigs(cwd, checkAIs)
+		existingLocalAIs := findExistingAIConfigs(cwd)
+		hasAnyLocalAI := len(existingLocalAIs) > 0
+		needsAISetup := len(missingLocalAIs) > 0 && hasGlobalMCP // Only auto-detect if global MCP exists
+
+		// Determine if we need to run initialization
+		needsInit := !taskwingExists || needsAISetup || (taskwingExists && !hasAnyLocalAI && !hasGlobalMCP)
+
+		if !skipInit && needsInit {
 			var selectedAIs []string
-			usingExisting := false
+			skipMCPRegistration := false
 
-			// Check for existing global MCP configurations
-			existingAIs := detectExistingMCPConfigs()
-			if len(existingAIs) > 0 {
-				fmt.Printf("🔍 Found TaskWing MCP in global CLI config for: %s\n", strings.Join(existingAIs, ", "))
-				fmt.Println("   (Registered via CLI, e.g., 'codex mcp add' - not project-local)")
-				fmt.Print("   Reuse this configuration? [Y/n]: ")
+			// Scenario 1: Nothing exists - true first time setup
+			if !taskwingExists && !hasGlobalMCP {
+				fmt.Println("🚀 First time setup - no existing configuration found")
+				fmt.Println()
+				fmt.Println("🤖 Which AI assistant(s) do you use?")
+				fmt.Println()
+				selectedAIs = promptAISelection()
+
+			// Scenario 2: Global MCP exists but no local project
+			} else if !taskwingExists && hasGlobalMCP {
+				fmt.Println("📋 Setting up local project (global MCP config found)")
+				fmt.Println()
+				fmt.Printf("🔍 Found TaskWing registered globally for: %s\n", strings.Join(existingGlobalAIs, ", "))
+				fmt.Print("   Use these AI assistants for this project? [Y/n]: ")
 				var input string
 				fmt.Scanln(&input)
 				input = strings.TrimSpace(strings.ToLower(input))
 				if input == "" || input == "y" || input == "yes" {
-					selectedAIs = existingAIs
-					usingExisting = true
-					fmt.Println("   ✓ Reusing global MCP config, will create local project files")
+					selectedAIs = existingGlobalAIs
+					skipMCPRegistration = true // Already registered globally
+					fmt.Println("   ✓ Will create local project files for detected AIs")
 					fmt.Println()
 				} else {
-					// User wants to reconfigure - pre-select existing ones
 					fmt.Println()
 					fmt.Println("🤖 Which AI assistant(s) do you use?")
-					fmt.Printf("   (Detected %s pre-selected, modify as needed)\n", strings.Join(existingAIs, ", "))
+					fmt.Printf("   (Detected %s pre-selected, modify as needed)\n", strings.Join(existingGlobalAIs, ", "))
 					fmt.Println()
-					selectedAIs = promptAISelection(existingAIs...)
+					selectedAIs = promptAISelection(existingGlobalAIs...)
 				}
-			} else {
-				// No existing config, prompt normally
+
+			// Scenario 3: .taskwing exists but some AI configs missing (recovery with global MCP)
+			} else if taskwingExists && needsAISetup {
+				fmt.Println("🔧 Restoring missing AI configurations")
+				fmt.Println()
+				fmt.Printf("   Missing local configs for: %s\n", strings.Join(missingLocalAIs, ", "))
+				fmt.Printf("   Global MCP registered for: %s\n", strings.Join(existingGlobalAIs, ", "))
+				fmt.Print("   Restore missing configs? [Y/n]: ")
+				var input string
+				fmt.Scanln(&input)
+				input = strings.TrimSpace(strings.ToLower(input))
+				if input == "" || input == "y" || input == "yes" {
+					selectedAIs = missingLocalAIs // Only restore MISSING, not all
+					skipMCPRegistration = true    // Already registered globally
+					fmt.Println("   ✓ Will restore missing configs only")
+					fmt.Println()
+				} else {
+					fmt.Println()
+					fmt.Println("🤖 Which AI assistant(s) do you want to set up?")
+					fmt.Println()
+					selectedAIs = promptAISelection(existingGlobalAIs...)
+				}
+
+			// Scenario 4: .taskwing exists but NO AI configs and NO global MCP (reconfigure)
+			} else if taskwingExists && !hasAnyLocalAI && !hasGlobalMCP {
+				fmt.Println("🔧 No AI configurations found - let's set them up")
+				fmt.Println()
 				fmt.Println("🤖 Which AI assistant(s) do you use?")
 				fmt.Println()
 				selectedAIs = promptAISelection()
 			}
 
-			if err := svc.InitializeProject(viper.GetBool("verbose"), selectedAIs); err != nil {
-				return fmt.Errorf("initialization failed: %w", err)
-			}
+			// Only proceed if user selected something
+			if len(selectedAIs) > 0 {
+				// Initialize/update project
+				if err := svc.InitializeProject(viper.GetBool("verbose"), selectedAIs); err != nil {
+					return fmt.Errorf("initialization failed: %w", err)
+				}
 
-			// Only run CLI registration if not using existing global config
-			// (installMCPServers runs 'claude mcp add', 'codex mcp add', etc.)
-			// Note: Local project files (.claude/settings.json, slash commands) are
-			// created above by InitializeProject regardless of usingExisting
-			if !usingExisting {
-				installMCPServers(cwd, selectedAIs)
-			}
+				// Only run CLI registration if needed
+				if !skipMCPRegistration {
+					installMCPServers(cwd, selectedAIs)
+				}
 
-			fmt.Println("\n✓ TaskWing initialized!")
-			fmt.Println()
+				fmt.Println("\n✓ TaskWing initialized!")
+				fmt.Println()
 
-			// Step 2: Prompt for additional model configuration
-			if err := promptAdditionalModels(); err != nil {
-				fmt.Printf("⚠️  Additional model config skipped: %v\n", err)
+				// Prompt for additional model configuration
+				if err := promptAdditionalModels(); err != nil {
+					fmt.Printf("⚠️  Additional model config skipped: %v\n", err)
+				}
+			} else {
+				fmt.Println("\n⚠️  No AI assistants selected - skipping initialization")
+				fmt.Println()
 			}
 		}
 

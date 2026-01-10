@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -95,4 +96,44 @@ func detectCodexMCP() bool {
 		return false
 	}
 	return strings.Contains(string(output), "taskwing-mcp")
+}
+
+// aiConfigDirs maps AI names to their local config directory names
+var aiConfigDirs = map[string]string{
+	"claude":  ".claude",
+	"codex":   ".codex",
+	"gemini":  ".gemini",
+	"cursor":  ".cursor",
+	"copilot": ".github", // Copilot uses .github/copilot-instructions
+}
+
+// findMissingAIConfigs checks which AI assistants are missing local config directories.
+// It compares against the provided list of AIs (typically from global MCP detection).
+// Returns a list of AI names that have global MCP but missing local configs.
+func findMissingAIConfigs(basePath string, aiList []string) []string {
+	var missing []string
+	for _, ai := range aiList {
+		dir, ok := aiConfigDirs[ai]
+		if !ok {
+			continue
+		}
+		configPath := basePath + "/" + dir
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			missing = append(missing, ai)
+		}
+	}
+	return missing
+}
+
+// findExistingAIConfigs checks which AI config directories exist locally.
+// Returns a list of AI names that have local config directories present.
+func findExistingAIConfigs(basePath string) []string {
+	var existing []string
+	for ai, dir := range aiConfigDirs {
+		configPath := basePath + "/" + dir
+		if _, err := os.Stat(configPath); err == nil {
+			existing = append(existing, ai)
+		}
+	}
+	return existing
 }
