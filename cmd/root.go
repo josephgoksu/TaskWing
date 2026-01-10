@@ -14,7 +14,7 @@ import (
 
 var (
 	// version is the application version.
-	version = "1.8.1"
+	version = "1.9.0"
 )
 
 // rootCmd represents the base command when called without any subcommands
