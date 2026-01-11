@@ -193,4 +193,3 @@ func getLLMConfigForRole(cmd *cobra.Command, role llm.ModelRole) (llm.Config, er
 	// Fall back to default config (handles interactive prompts and flags)
 	return getLLMConfig(cmd)
 }
-

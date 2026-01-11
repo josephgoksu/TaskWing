@@ -38,9 +38,9 @@ Examples:
 }
 
 var (
-	indexClear       bool
-	indexIncremental bool
-	indexWorkers     int
+	indexClear        bool
+	indexIncremental  bool
+	indexWorkers      int
 	indexIncludeTests bool
 )
 

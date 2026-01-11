@@ -144,14 +144,14 @@ func renderContextInternal(query string, scored []knowledge.ScoredNode, answer s
 func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNode, symbols []app.SymbolResponse, answer string, verbose bool) {
 	// Styles
 	var (
-		cardStyle    = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).Padding(0, 2).MarginTop(1).BorderForeground(lipgloss.Color("63"))
-		titleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		sectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
-		sourceTitle  = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-		metaStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		cardStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).Padding(0, 2).MarginTop(1).BorderForeground(lipgloss.Color("63"))
+		titleStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+		sectionStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
+		sourceTitle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+		metaStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 		locationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
-		barFull      = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-		barEmpty     = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+		barFull       = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+		barEmpty      = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
 	)
 
 	// Render Answer Summary

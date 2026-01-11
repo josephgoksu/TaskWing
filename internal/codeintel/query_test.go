@@ -244,12 +244,12 @@ func TestQueryService_FindSymbol(t *testing.T) {
 	repo := NewRepository(store.DB())
 
 	sym := Symbol{
-		Name:      "TestFunction",
-		Kind:      SymbolFunction,
-		FilePath:  "test.go",
-		StartLine: 1,
-		EndLine:   10,
-		Language:  "go",
+		Name:       "TestFunction",
+		Kind:       SymbolFunction,
+		FilePath:   "test.go",
+		StartLine:  1,
+		EndLine:    10,
+		Language:   "go",
 		Visibility: "public",
 	}
 

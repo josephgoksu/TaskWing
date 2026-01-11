@@ -172,10 +172,10 @@ func TestTypeScriptParser_ParseDirectory(t *testing.T) {
 
 	// Create TypeScript files
 	files := map[string]string{
-		"index.ts":   "export function main() {}",
-		"utils.ts":   "export function helper() {}",
-		"types.ts":   "export interface Config {}",
-		"test.ts":    "export function testFunc() {}", // Should be included (not test_)
+		"index.ts": "export function main() {}",
+		"utils.ts": "export function helper() {}",
+		"types.ts": "export interface Config {}",
+		"test.ts":  "export function testFunc() {}", // Should be included (not test_)
 	}
 
 	for name, content := range files {

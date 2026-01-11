@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +17,6 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/mcp/presenter"
 	"github.com/josephgoksu/TaskWing/internal/memory"
-	"github.com/josephgoksu/TaskWing/internal/task"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -106,28 +104,6 @@ type PlanGenerateParams struct {
 	Save         bool   `json:"save"`          // If true (default), save plan to database
 }
 
-// PlanClarifyResponse is the response from the plan_clarify tool
-type PlanClarifyResponse struct {
-	Success       bool     `json:"success"`
-	Questions     []string `json:"questions,omitempty"`
-	GoalSummary   string   `json:"goal_summary,omitempty"`
-	EnrichedGoal  string   `json:"enriched_goal,omitempty"`
-	IsReadyToPlan bool     `json:"is_ready_to_plan"`
-	ContextUsed   string   `json:"context_used,omitempty"` // Summary of KG context retrieved
-	Message       string   `json:"message,omitempty"`
-}
-
-// PlanGenerateResponse is the response from the plan_generate tool
-type PlanGenerateResponse struct {
-	Success      bool        `json:"success"`
-	PlanID       string      `json:"plan_id,omitempty"`
-	Goal         string      `json:"goal,omitempty"`
-	EnrichedGoal string      `json:"enriched_goal,omitempty"`
-	Tasks        []task.Task `json:"tasks,omitempty"`
-	Message      string      `json:"message,omitempty"`
-	Hint         string      `json:"hint,omitempty"`
-}
-
 // RememberParams defines the parameters for the remember tool
 type RememberParams struct {
 	Content string `json:"content"`        // Required: knowledge to store
@@ -138,31 +114,6 @@ type RememberParams struct {
 type AuditPlanParams struct {
 	PlanID  string `json:"plan_id,omitempty"`  // Optional: specific plan ID (defaults to active plan)
 	AutoFix bool   `json:"auto_fix,omitempty"` // If true, attempt to fix failures automatically (default: true)
-}
-
-// RememberResponse is the response from the remember tool
-type RememberResponse struct {
-	Success      bool   `json:"success"`
-	ID           string `json:"id,omitempty"`
-	Type         string `json:"type,omitempty"`
-	Summary      string `json:"summary,omitempty"`
-	HasEmbedding bool   `json:"has_embedding"`
-	Message      string `json:"message,omitempty"`
-}
-
-// AuditPlanResponse is the response from the audit_plan tool
-type AuditPlanResponse struct {
-	Success        bool            `json:"success"`
-	PlanID         string          `json:"plan_id,omitempty"`
-	Status         string          `json:"status,omitempty"`      // "verified", "needs_revision", "failed"
-	PlanStatus     task.PlanStatus `json:"plan_status,omitempty"` // Updated plan status
-	BuildPassed    bool            `json:"build_passed,omitempty"`
-	TestsPassed    bool            `json:"tests_passed,omitempty"`
-	SemanticIssues []string        `json:"semantic_issues,omitempty"`
-	FixesApplied   []string        `json:"fixes_applied,omitempty"`
-	RetryCount     int             `json:"retry_count,omitempty"`
-	Message        string          `json:"message,omitempty"`
-	Hint           string          `json:"hint,omitempty"`
 }
 
 // === Code Intelligence Tool Parameters ===
@@ -177,9 +128,9 @@ type FindSymbolParams struct {
 
 // SemanticSearchCodeParams defines the parameters for the semantic_search_code tool
 type SemanticSearchCodeParams struct {
-	Query    string `json:"query"`              // Required: search query
-	Limit    int    `json:"limit,omitempty"`    // Max results (default 20)
-	Kind     string `json:"kind,omitempty"`     // Filter by symbol kind (function, struct, etc.)
+	Query    string `json:"query"`               // Required: search query
+	Limit    int    `json:"limit,omitempty"`     // Max results (default 20)
+	Kind     string `json:"kind,omitempty"`      // Filter by symbol kind (function, struct, etc.)
 	FilePath string `json:"file_path,omitempty"` // Filter by file path
 }
 
@@ -195,22 +146,6 @@ type AnalyzeImpactParams struct {
 	SymbolID   uint32 `json:"symbol_id,omitempty"`   // Symbol ID to analyze
 	SymbolName string `json:"symbol_name,omitempty"` // Symbol name (if ID not provided)
 	MaxDepth   int    `json:"max_depth,omitempty"`   // Max recursion depth (default 5)
-}
-
-// Response DTOs are defined in internal/knowledge/response.go for DRY.
-// TypeSummary is MCP-specific (overview mode only).
-
-// TypeSummary is now defined in internal/knowledge/response.go
-
-// mcpJSONResponse wraps data in an MCP tool result with JSON content
-func mcpJSONResponse(data any) (*mcpsdk.CallToolResultFor[any], error) {
-	jsonBytes, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("marshal response: %w", err)
-	}
-	return &mcpsdk.CallToolResultFor[any]{
-		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: string(jsonBytes)}},
-	}, nil
 }
 
 // mcpMarkdownResponse wraps Markdown content in an MCP tool result.
@@ -457,9 +392,10 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params Proj
 	if query == "" {
 		summary, err := recallApp.Summary(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("get summary: %w", err)
+			return mcpMarkdownResponse(presenter.FormatError(fmt.Sprintf("get summary: %v", err)))
 		}
-		return mcpJSONResponse(summary)
+		// Return token-efficient Markdown instead of verbose JSON
+		return mcpMarkdownResponse(presenter.FormatSummary(summary))
 	}
 
 	// Execute query via app layer (ALL business logic delegated)
@@ -479,28 +415,6 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params Proj
 }
 
 // === Task Lifecycle Handlers ===
-
-// TaskResponse is the standardized response for task operations
-type TaskResponse struct {
-	Success bool       `json:"success"`
-	Message string     `json:"message,omitempty"`
-	Task    *task.Task `json:"task,omitempty"`
-	Plan    *task.Plan `json:"plan,omitempty"`
-	Hint    string     `json:"hint,omitempty"`    // Suggestions for next actions
-	Context string     `json:"context,omitempty"` // Rich Markdown context for task execution
-	// Git workflow fields
-	GitBranch          string `json:"git_branch,omitempty"`           // Feature branch for this plan
-	GitWorkflowApplied bool   `json:"git_workflow_applied,omitempty"` // True if git workflow was executed
-	GitUnpushedCommits bool   `json:"git_unpushed_commits,omitempty"` // True if blocked by unpushed commits
-	GitUnpushedBranch  string `json:"git_unpushed_branch,omitempty"`  // Branch with unpushed commits
-	// PR fields (populated when plan is complete)
-	PRURL     string `json:"pr_url,omitempty"`     // URL of created PR
-	PRCreated bool   `json:"pr_created,omitempty"` // True if PR was created
-	// Audit fields (populated when all tasks complete)
-	AuditTriggered  bool            `json:"audit_triggered,omitempty"`   // True if audit was started
-	AuditStatus     string          `json:"audit_status,omitempty"`      // "verified", "needs_revision", or "running"
-	AuditPlanStatus task.PlanStatus `json:"audit_plan_status,omitempty"` // Updated plan status after audit
-}
 
 // handleTaskNext returns the next pending task from a plan.
 // Uses app.TaskApp for all business logic - single source of truth.
@@ -595,18 +509,11 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 		AutoAnswer: params.AutoAnswer,
 	})
 	if err != nil {
-		return nil, err
+		return mcpMarkdownResponse(presenter.FormatError(err.Error()))
 	}
 
-	return mcpJSONResponse(PlanClarifyResponse{
-		Success:       result.Success,
-		Questions:     result.Questions,
-		GoalSummary:   result.GoalSummary,
-		EnrichedGoal:  result.EnrichedGoal,
-		IsReadyToPlan: result.IsReadyToPlan,
-		ContextUsed:   result.ContextUsed,
-		Message:       result.Message,
-	})
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatClarifyResult(result))
 }
 
 // handlePlanGenerate runs the PlanningAgent to create tasks.
@@ -622,18 +529,11 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 		Save:         params.Save,
 	})
 	if err != nil {
-		return nil, err
+		return mcpMarkdownResponse(presenter.FormatError(err.Error()))
 	}
 
-	return mcpJSONResponse(PlanGenerateResponse{
-		Success:      result.Success,
-		PlanID:       result.PlanID,
-		Goal:         result.Goal,
-		EnrichedGoal: result.EnrichedGoal,
-		Tasks:        result.Tasks,
-		Message:      result.Message,
-		Hint:         result.Hint,
-	})
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatGenerateResult(result))
 }
 
 // handleRemember adds knowledge to project memory.
@@ -641,10 +541,7 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 func handleRemember(ctx context.Context, repo *memory.Repository, params RememberParams) (*mcpsdk.CallToolResultFor[any], error) {
 	content := strings.TrimSpace(params.Content)
 	if content == "" {
-		return mcpJSONResponse(RememberResponse{
-			Success: false,
-			Message: "content is required",
-		})
+		return mcpMarkdownResponse(presenter.FormatValidationError("content", "content is required"))
 	}
 
 	// Use MemoryApp for add (same as CLI `tw add`)
@@ -656,20 +553,11 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params Remembe
 		Type: params.Type,
 	})
 	if err != nil {
-		return mcpJSONResponse(RememberResponse{
-			Success: false,
-			Message: fmt.Sprintf("failed to add knowledge: %v", err),
-		})
+		return mcpMarkdownResponse(presenter.FormatError(fmt.Sprintf("failed to add knowledge: %v", err)))
 	}
 
-	return mcpJSONResponse(RememberResponse{
-		Success:      true,
-		ID:           result.ID,
-		Type:         result.Type,
-		Summary:      result.Summary,
-		HasEmbedding: result.HasEmbedding,
-		Message:      fmt.Sprintf("Knowledge stored as [%s]", result.Type),
-	})
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatRemember(result))
 }
 
 // handleAuditPlan runs the audit service on a plan.
@@ -684,22 +572,11 @@ func handleAuditPlan(ctx context.Context, repo *memory.Repository, params AuditP
 		AutoFix: params.AutoFix,
 	})
 	if err != nil {
-		return nil, err
+		return mcpMarkdownResponse(presenter.FormatError(err.Error()))
 	}
 
-	return mcpJSONResponse(AuditPlanResponse{
-		Success:        result.Success,
-		PlanID:         result.PlanID,
-		Status:         result.Status,
-		PlanStatus:     result.PlanStatus,
-		BuildPassed:    result.BuildPassed,
-		TestsPassed:    result.TestsPassed,
-		SemanticIssues: result.SemanticIssues,
-		FixesApplied:   result.FixesApplied,
-		RetryCount:     result.RetryCount,
-		Message:        result.Message,
-		Hint:           result.Hint,
-	})
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatAuditResult(result))
 }
 
 // === Code Intelligence Handlers ===
@@ -731,10 +608,7 @@ func handleSemanticSearchCode(ctx context.Context, repo *memory.Repository, para
 	// H4 FIX: Input validation
 	query := strings.TrimSpace(params.Query)
 	if query == "" {
-		return mcpJSONResponse(app.SearchCodeResult{
-			Success: false,
-			Message: "query is required",
-		})
+		return mcpMarkdownResponse(presenter.FormatValidationError("query", "query is required"))
 	}
 	// Limit query length to prevent abuse (1000 chars is generous for a code search)
 	const maxQueryLength = 1000
@@ -795,10 +669,7 @@ func handleAnalyzeImpact(ctx context.Context, repo *memory.Repository, params An
 	// H4 FIX: Input validation - at least one identifier required
 	symbolName := strings.TrimSpace(params.SymbolName)
 	if params.SymbolID == 0 && symbolName == "" {
-		return mcpJSONResponse(app.AnalyzeImpactResult{
-			Success: false,
-			Message: "symbol_id or symbol_name is required",
-		})
+		return mcpMarkdownResponse(presenter.FormatValidationError("symbol_id/symbol_name", "symbol_id or symbol_name is required"))
 	}
 
 	// H4 FIX: Clamp max_depth to prevent deep recursion (reasonable max is 10)

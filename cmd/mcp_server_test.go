@@ -281,7 +281,7 @@ func TestMCPToolsList(t *testing.T) {
 }
 
 // TestMCPRecallSummary tests recall tool summary mode (empty query)
-// This verifies the TypeSummary response structure with counts and examples.
+// This verifies the Markdown summary response structure.
 func TestMCPRecallSummary(t *testing.T) {
 	// This test requires a project with actual nodes
 	// Skip if running in isolation without bootstrap
@@ -298,7 +298,7 @@ func TestMCPRecallSummary(t *testing.T) {
 	resp, err := h.SendAndReceive(MCPRequest{
 		JSONRPC: "2.0",
 		Method:  "tools/call",
-		Params: map[string]interface{}{
+		Params: map[string]any{
 			"name":      "recall",
 			"arguments": map[string]string{}, // Empty = summary mode
 		},
@@ -313,18 +313,18 @@ func TestMCPRecallSummary(t *testing.T) {
 	}
 
 	// Parse outer response
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(resp.Result, &result); err != nil {
 		t.Fatalf("Failed to parse result: %v", err)
 	}
 
-	content, ok := result["content"].([]interface{})
+	content, ok := result["content"].([]any)
 	if !ok || len(content) == 0 {
 		t.Fatal("Expected content array in response")
 	}
 
-	// Parse the text content (should be JSON)
-	firstContent := content[0].(map[string]interface{})
+	// Parse the text content (should be Markdown)
+	firstContent := content[0].(map[string]any)
 	text, _ := firstContent["text"].(string)
 
 	// If empty, that's fine (handled by TestMCPProjectContextEmpty)
@@ -332,39 +332,25 @@ func TestMCPRecallSummary(t *testing.T) {
 		t.Skip("Project is empty, summary mode test skipped")
 	}
 
-	// Parse the summary JSON
-	var summary struct {
-		Total int                    `json:"total"`
-		Types map[string]interface{} `json:"types"`
-	}
-	if err := json.Unmarshal([]byte(text), &summary); err != nil {
-		t.Fatalf("Failed to parse summary JSON: %v\nText: %s", err, text)
+	// Verify Markdown structure instead of JSON
+	// Should contain "## Knowledge Base:" or "## Project Overview"
+	if !strings.Contains(text, "## Knowledge Base:") && !strings.Contains(text, "## Project Overview") && !strings.Contains(text, "No project summary") {
+		t.Errorf("Expected Markdown summary with '## Knowledge Base:' or '## Project Overview', got: %s", text[:min(len(text), 200)])
 	}
 
-	// Verify structure
-	if summary.Total < 0 {
-		t.Error("Total should be non-negative")
-	}
-	if summary.Types == nil {
-		t.Error("Types map should exist")
-	}
-
-	// Verify each type has count and examples
-	for typeName, typeData := range summary.Types {
-		td, ok := typeData.(map[string]interface{})
-		if !ok {
-			t.Errorf("Type %s should be an object", typeName)
-			continue
-		}
-		if _, hasCount := td["count"]; !hasCount {
-			t.Errorf("Type %s missing 'count' field", typeName)
-		}
-		if _, hasExamples := td["examples"]; !hasExamples {
-			t.Errorf("Type %s missing 'examples' field", typeName)
+	// Verify type sections are present if we have nodes
+	if strings.Contains(text, "## Knowledge Base:") {
+		// Check for type icons in headers (e.g., "### 📋 Decisions")
+		hasTypeSection := strings.Contains(text, "###") ||
+			strings.Contains(text, "Decisions") ||
+			strings.Contains(text, "Patterns") ||
+			strings.Contains(text, "nodes")
+		if !hasTypeSection {
+			t.Log("Warning: Summary doesn't contain expected type sections")
 		}
 	}
 
-	t.Logf("✅ Summary mode returned %d nodes across %d types", summary.Total, len(summary.Types))
+	t.Log("✅ Summary mode returned valid Markdown response")
 }
 
 // TestMCPRecallEmpty tests recall tool with empty memory

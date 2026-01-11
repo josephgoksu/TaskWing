@@ -128,11 +128,11 @@ func extractPackageName(path string) string {
 
 // packageLockJSON represents the structure of package-lock.json.
 type packageLockJSON struct {
-	Name            string                        `json:"name"`
-	Version         string                        `json:"version"`
-	LockfileVersion int                           `json:"lockfileVersion"`
-	Packages        map[string]packageLockV2Pkg   `json:"packages"`    // v2/v3 format
-	Dependencies    map[string]packageLockV1Dep   `json:"dependencies"` // v1 format
+	Name            string                      `json:"name"`
+	Version         string                      `json:"version"`
+	LockfileVersion int                         `json:"lockfileVersion"`
+	Packages        map[string]packageLockV2Pkg `json:"packages"`     // v2/v3 format
+	Dependencies    map[string]packageLockV1Dep `json:"dependencies"` // v1 format
 }
 
 // packageLockV2Pkg represents a package in v2/v3 format.
@@ -147,10 +147,10 @@ type packageLockV2Pkg struct {
 
 // packageLockV1Dep represents a dependency in v1 format.
 type packageLockV1Dep struct {
-	Version      string                       `json:"version"`
-	Resolved     string                       `json:"resolved"`
-	Integrity    string                       `json:"integrity"`
-	Dev          bool                         `json:"dev"`
-	Optional     bool                         `json:"optional"`
-	Dependencies map[string]packageLockV1Dep  `json:"dependencies"` // Nested deps
+	Version      string                      `json:"version"`
+	Resolved     string                      `json:"resolved"`
+	Integrity    string                      `json:"integrity"`
+	Dev          bool                        `json:"dev"`
+	Optional     bool                        `json:"optional"`
+	Dependencies map[string]packageLockV1Dep `json:"dependencies"` // Nested deps
 }

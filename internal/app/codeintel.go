@@ -23,41 +23,41 @@ func NewCodeIntelApp(ctx *Context) *CodeIntelApp {
 
 // FindSymbolResult is the result of a find_symbol operation.
 type FindSymbolResult struct {
-	Success bool              `json:"success"`
+	Success bool               `json:"success"`
 	Symbols []codeintel.Symbol `json:"symbols,omitempty"`
-	Count   int               `json:"count"`
-	Message string            `json:"message,omitempty"`
+	Count   int                `json:"count"`
+	Message string             `json:"message,omitempty"`
 }
 
 // SearchCodeResult is the result of a semantic_search_code operation.
 type SearchCodeResult struct {
-	Success bool                          `json:"success"`
+	Success bool                           `json:"success"`
 	Results []codeintel.SymbolSearchResult `json:"results,omitempty"`
-	Count   int                           `json:"count"`
-	Query   string                        `json:"query"`
-	Message string                        `json:"message,omitempty"`
+	Count   int                            `json:"count"`
+	Query   string                         `json:"query"`
+	Message string                         `json:"message,omitempty"`
 }
 
 // GetCallersResult is the result of a get_callers operation.
 type GetCallersResult struct {
-	Success  bool               `json:"success"`
-	Symbol   *codeintel.Symbol  `json:"symbol,omitempty"`   // The target symbol
-	Callers  []codeintel.Symbol `json:"callers,omitempty"`  // Who calls this symbol
-	Callees  []codeintel.Symbol `json:"callees,omitempty"`  // Who this symbol calls
-	Count    int                `json:"count"`
-	Message  string             `json:"message,omitempty"`
+	Success bool               `json:"success"`
+	Symbol  *codeintel.Symbol  `json:"symbol,omitempty"`  // The target symbol
+	Callers []codeintel.Symbol `json:"callers,omitempty"` // Who calls this symbol
+	Callees []codeintel.Symbol `json:"callees,omitempty"` // Who this symbol calls
+	Count   int                `json:"count"`
+	Message string             `json:"message,omitempty"`
 }
 
 // AnalyzeImpactResult is the result of an analyze_impact operation.
 type AnalyzeImpactResult struct {
-	Success       bool                      `json:"success"`
-	Source        *codeintel.Symbol         `json:"source,omitempty"`    // The symbol being analyzed
-	Affected      []codeintel.ImpactNode    `json:"affected,omitempty"`  // All affected symbols
-	AffectedCount int                       `json:"affected_count"`
-	AffectedFiles int                       `json:"affected_files"`
-	MaxDepth      int                       `json:"max_depth"`
+	Success       bool                       `json:"success"`
+	Source        *codeintel.Symbol          `json:"source,omitempty"`   // The symbol being analyzed
+	Affected      []codeintel.ImpactNode     `json:"affected,omitempty"` // All affected symbols
+	AffectedCount int                        `json:"affected_count"`
+	AffectedFiles int                        `json:"affected_files"`
+	MaxDepth      int                        `json:"max_depth"`
 	ByDepth       map[int][]codeintel.Symbol `json:"by_depth,omitempty"` // Grouped by depth
-	Message       string                    `json:"message,omitempty"`
+	Message       string                     `json:"message,omitempty"`
 }
 
 // IndexStatsResult is the result of getting index statistics.
@@ -73,17 +73,17 @@ type IndexStatsResult struct {
 
 // FindSymbolOptions configures the find_symbol operation.
 type FindSymbolOptions struct {
-	Name     string `json:"name,omitempty"`     // Symbol name to find (exact match)
-	ID       uint32 `json:"id,omitempty"`       // Symbol ID for direct lookup
+	Name     string `json:"name,omitempty"`      // Symbol name to find (exact match)
+	ID       uint32 `json:"id,omitempty"`        // Symbol ID for direct lookup
 	FilePath string `json:"file_path,omitempty"` // File path to search in
-	Language string `json:"language,omitempty"` // Language filter (e.g., "go")
+	Language string `json:"language,omitempty"`  // Language filter (e.g., "go")
 }
 
 // SearchCodeOptions configures the semantic_search_code operation.
 type SearchCodeOptions struct {
-	Query    string               `json:"query"`              // Required: search query
-	Limit    int                  `json:"limit,omitempty"`    // Max results (default 20)
-	Kind     codeintel.SymbolKind `json:"kind,omitempty"`     // Filter by symbol kind
+	Query    string               `json:"query"`               // Required: search query
+	Limit    int                  `json:"limit,omitempty"`     // Max results (default 20)
+	Kind     codeintel.SymbolKind `json:"kind,omitempty"`      // Filter by symbol kind
 	FilePath string               `json:"file_path,omitempty"` // Filter by file path
 }
 

@@ -165,9 +165,9 @@ func TestPythonParser_ParseDirectory(t *testing.T) {
 
 	// Create Python files
 	files := map[string]string{
-		"main.py":    "def main(): pass",
-		"utils.py":   "def helper(): pass",
-		"models.py":  "class User: pass",
+		"main.py":   "def main(): pass",
+		"utils.py":  "def helper(): pass",
+		"models.py": "class User: pass",
 	}
 
 	for name, content := range files {

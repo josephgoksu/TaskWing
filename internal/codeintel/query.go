@@ -267,12 +267,12 @@ func (qs *QueryService) AnalyzeImpact(ctx context.Context, symbolID uint32, maxD
 
 // ImpactAnalysis holds the result of an impact analysis.
 type ImpactAnalysis struct {
-	Source        Symbol            `json:"source"`        // The symbol being analyzed
-	Affected      []ImpactNode      `json:"affected"`      // All affected symbols with depth
-	AffectedCount int               `json:"affectedCount"` // Total count of affected symbols
-	AffectedFiles int               `json:"affectedFiles"` // Number of files affected
-	MaxDepth      int               `json:"maxDepth"`      // Maximum traversal depth used
-	ByDepth       map[int][]Symbol  `json:"byDepth"`       // Symbols grouped by distance
+	Source        Symbol           `json:"source"`        // The symbol being analyzed
+	Affected      []ImpactNode     `json:"affected"`      // All affected symbols with depth
+	AffectedCount int              `json:"affectedCount"` // Total count of affected symbols
+	AffectedFiles int              `json:"affectedFiles"` // Number of files affected
+	MaxDepth      int              `json:"maxDepth"`      // Maximum traversal depth used
+	ByDepth       map[int][]Symbol `json:"byDepth"`       // Symbols grouped by distance
 }
 
 // FindSymbol looks up a symbol by ID.

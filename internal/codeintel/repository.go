@@ -880,13 +880,13 @@ type Dependency struct {
 	ID           uint32    `json:"id"`
 	Name         string    `json:"name"`
 	Version      string    `json:"version"`
-	Ecosystem    string    `json:"ecosystem"`    // npm, pypi, crates.io
-	LockfileRef  string    `json:"lockfileRef"`  // Path to lockfile
-	Resolved     string    `json:"resolved"`     // URL/path
-	Integrity    string    `json:"integrity"`    // Hash
-	IsDev        bool      `json:"isDev"`        // Dev dependency
-	Source       string    `json:"source"`       // registry, git, path
-	Extras       string    `json:"extras"`       // JSON metadata
+	Ecosystem    string    `json:"ecosystem"`   // npm, pypi, crates.io
+	LockfileRef  string    `json:"lockfileRef"` // Path to lockfile
+	Resolved     string    `json:"resolved"`    // URL/path
+	Integrity    string    `json:"integrity"`   // Hash
+	IsDev        bool      `json:"isDev"`       // Dev dependency
+	Source       string    `json:"source"`      // registry, git, path
+	Extras       string    `json:"extras"`      // JSON metadata
 	LastModified time.Time `json:"lastModified"`
 }
 

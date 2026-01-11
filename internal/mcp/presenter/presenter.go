@@ -11,6 +11,8 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/task"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // FormatRecall converts a RecallResult into token-efficient Markdown.
@@ -301,17 +303,254 @@ func FormatImpact(result *app.AnalyzeImpactResult) string {
 // FormatRemember formats a remember operation result.
 func FormatRemember(result *app.AddResult) string {
 	if result == nil {
-		return "Failed to add knowledge."
+		return FormatError("Failed to add knowledge.")
 	}
 
 	if result.ID == "" {
-		return "Failed to add knowledge."
+		return FormatError("Failed to add knowledge.")
 	}
 
-	return fmt.Sprintf("Added knowledge `%s` (%s): %s", result.ID, result.Type, result.Summary)
+	var sb strings.Builder
+	sb.WriteString("## ✅ Knowledge Saved\n\n")
+	sb.WriteString(fmt.Sprintf("**ID**: `%s`\n", result.ID))
+	sb.WriteString(fmt.Sprintf("**Type**: %s\n", result.Type))
+	sb.WriteString(fmt.Sprintf("**Summary**: %s\n", result.Summary))
+	if result.HasEmbedding {
+		sb.WriteString("\n*Embedding generated for semantic search.*\n")
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+// === Error Formatters ===
+
+// FormatError returns a standardized Markdown error message.
+// Use this for all MCP tool error responses to ensure consistency.
+func FormatError(message string) string {
+	return fmt.Sprintf("## ❌ Error\n\n**Details**: %s", message)
+}
+
+// FormatValidationError returns a Markdown error for validation failures.
+func FormatValidationError(field, message string) string {
+	return fmt.Sprintf("## ❌ Validation Error\n\n**Field**: `%s`\n**Details**: %s", field, message)
+}
+
+// === Summary Formatter ===
+
+// FormatSummary converts a ProjectSummary into token-efficient Markdown.
+func FormatSummary(summary *knowledge.ProjectSummary) string {
+	if summary == nil {
+		return "No project summary available."
+	}
+
+	var sb strings.Builder
+
+	// Project overview
+	if summary.Overview != nil && summary.Overview.ShortDescription != "" {
+		sb.WriteString("## Project Overview\n")
+		sb.WriteString(summary.Overview.ShortDescription)
+		sb.WriteString("\n\n")
+	}
+
+	// Knowledge summary
+	sb.WriteString(fmt.Sprintf("## Knowledge Base: %d nodes\n\n", summary.Total))
+
+	if len(summary.Types) > 0 {
+		// Sort types for consistent output
+		typeOrder := []string{"decision", "pattern", "constraint", "feature", "plan", "note"}
+		for _, typeName := range typeOrder {
+			if ts, ok := summary.Types[typeName]; ok && ts.Count > 0 {
+				icon := typeIcon(typeName)
+				sb.WriteString(fmt.Sprintf("### %s %s (%d)\n", icon, cases.Title(language.English).String(typeName)+"s", ts.Count))
+				for _, example := range ts.Examples {
+					sb.WriteString(fmt.Sprintf("- %s\n", example))
+				}
+				sb.WriteString("\n")
+			}
+		}
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// === Plan Formatters ===
+
+// FormatClarifyResult formats plan clarification output.
+func FormatClarifyResult(result *app.ClarifyResult) string {
+	if result == nil {
+		return FormatError("No clarification result.")
+	}
+
+	if !result.Success {
+		return FormatError(result.Message)
+	}
+
+	var sb strings.Builder
+
+	// Ready status
+	if result.IsReadyToPlan {
+		sb.WriteString("## ✅ Ready to Generate Plan\n\n")
+	} else {
+		sb.WriteString("## 🔍 Clarification Needed\n\n")
+	}
+
+	// Goal summary
+	if result.GoalSummary != "" {
+		sb.WriteString(fmt.Sprintf("**Goal**: %s\n\n", result.GoalSummary))
+	}
+
+	// Questions (if not ready)
+	if len(result.Questions) > 0 && !result.IsReadyToPlan {
+		sb.WriteString("### Questions\n")
+		for i, q := range result.Questions {
+			sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, q))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Enriched goal (if ready)
+	if result.EnrichedGoal != "" && result.IsReadyToPlan {
+		sb.WriteString("### Enriched Specification\n")
+		sb.WriteString(result.EnrichedGoal)
+		sb.WriteString("\n\n")
+		sb.WriteString("> **Next**: Call `plan_generate` with this `enriched_goal` to create tasks.\n")
+	}
+
+	// Context used
+	if result.ContextUsed != "" {
+		sb.WriteString(fmt.Sprintf("\n*%s*\n", result.ContextUsed))
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatGenerateResult formats plan generation output.
+func FormatGenerateResult(result *app.GenerateResult) string {
+	if result == nil {
+		return FormatError("No generation result.")
+	}
+
+	if !result.Success {
+		return FormatError(result.Message)
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("## ✅ Plan Generated\n\n")
+	sb.WriteString(fmt.Sprintf("**Plan ID**: `%s`\n", result.PlanID))
+	sb.WriteString(fmt.Sprintf("**Goal**: %s\n\n", result.Goal))
+
+	// Tasks
+	if len(result.Tasks) > 0 {
+		sb.WriteString("### Tasks\n")
+		for i, t := range result.Tasks {
+			sb.WriteString(fmt.Sprintf("%d. **%s** (P%d)\n", i+1, t.Title, t.Priority))
+			if t.Description != "" {
+				desc := truncate(t.Description, 100)
+				sb.WriteString(fmt.Sprintf("   %s\n", desc))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Hint
+	if result.Hint != "" {
+		sb.WriteString(fmt.Sprintf("> **Hint**: %s\n", result.Hint))
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatAuditResult formats plan audit output.
+func FormatAuditResult(result *app.AuditResult) string {
+	if result == nil {
+		return FormatError("No audit result.")
+	}
+
+	if !result.Success {
+		return FormatError(result.Message)
+	}
+
+	var sb strings.Builder
+
+	// Status header
+	statusIcon := "🔍"
+	switch result.Status {
+	case "verified":
+		statusIcon = "✅"
+	case "needs_revision":
+		statusIcon = "⚠️"
+	case "failed":
+		statusIcon = "❌"
+	}
+
+	sb.WriteString(fmt.Sprintf("## %s Audit: %s\n\n", statusIcon, cases.Title(language.English).String(result.Status)))
+	sb.WriteString(fmt.Sprintf("**Plan ID**: `%s`\n", result.PlanID))
+	sb.WriteString(fmt.Sprintf("**Attempts**: %d\n\n", result.RetryCount))
+
+	// Check results
+	sb.WriteString("### Checks\n")
+	buildIcon := "❌"
+	if result.BuildPassed {
+		buildIcon = "✅"
+	}
+	testIcon := "❌"
+	if result.TestsPassed {
+		testIcon = "✅"
+	}
+	sb.WriteString(fmt.Sprintf("- %s Build\n", buildIcon))
+	sb.WriteString(fmt.Sprintf("- %s Tests\n", testIcon))
+	sb.WriteString("\n")
+
+	// Semantic issues
+	if len(result.SemanticIssues) > 0 {
+		sb.WriteString("### Semantic Issues\n")
+		for _, issue := range result.SemanticIssues {
+			sb.WriteString(fmt.Sprintf("- %s\n", issue))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Fixes applied
+	if len(result.FixesApplied) > 0 {
+		sb.WriteString("### Fixes Applied\n")
+		for _, fix := range result.FixesApplied {
+			sb.WriteString(fmt.Sprintf("- %s\n", fix))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Message and hint
+	if result.Message != "" {
+		sb.WriteString(fmt.Sprintf("%s\n\n", result.Message))
+	}
+	if result.Hint != "" {
+		sb.WriteString(fmt.Sprintf("> **Hint**: %s\n", result.Hint))
+	}
+
+	return strings.TrimSpace(sb.String())
 }
 
 // === Helper Functions ===
+
+// typeIcon returns an emoji for knowledge node type
+func typeIcon(typeName string) string {
+	switch typeName {
+	case "decision":
+		return "📋"
+	case "pattern":
+		return "🧩"
+	case "constraint":
+		return "⚠️"
+	case "feature":
+		return "✨"
+	case "plan":
+		return "📝"
+	case "note":
+		return "📌"
+	default:
+		return "📄"
+	}
+}
 
 // statusIcon returns an emoji for task status
 func statusIcon(status task.TaskStatus) string {

@@ -38,9 +38,9 @@ Examples:
 }
 
 var (
-	findKind   string
-	findFile   string
-	findLimit  int
+	findKind  string
+	findFile  string
+	findLimit int
 )
 
 func init() {

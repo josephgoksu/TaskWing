@@ -12,13 +12,13 @@ import (
 type Dependency struct {
 	Name        string            `json:"name"`
 	Version     string            `json:"version"`
-	Resolved    string            `json:"resolved,omitempty"`    // URL or path where package was resolved from
-	Integrity   string            `json:"integrity,omitempty"`   // Hash for verification (npm uses this)
-	Dev         bool              `json:"dev,omitempty"`         // Whether this is a dev dependency
-	Source      string            `json:"source,omitempty"`      // Source type (registry, git, path, etc.)
-	Ecosystem   string            `json:"ecosystem"`             // npm, pypi, crates.io
-	LockfileRef string            `json:"lockfile_ref"`          // Path to the lockfile this came from
-	Extras      map[string]string `json:"extras,omitempty"`      // Additional metadata
+	Resolved    string            `json:"resolved,omitempty"`  // URL or path where package was resolved from
+	Integrity   string            `json:"integrity,omitempty"` // Hash for verification (npm uses this)
+	Dev         bool              `json:"dev,omitempty"`       // Whether this is a dev dependency
+	Source      string            `json:"source,omitempty"`    // Source type (registry, git, path, etc.)
+	Ecosystem   string            `json:"ecosystem"`           // npm, pypi, crates.io
+	LockfileRef string            `json:"lockfile_ref"`        // Path to the lockfile this came from
+	Extras      map[string]string `json:"extras,omitempty"`    // Additional metadata
 }
 
 // ScanResult contains all dependencies extracted from a lockfile.

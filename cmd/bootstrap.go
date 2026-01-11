@@ -103,7 +103,7 @@ The bootstrap command analyzes:
 				fmt.Println()
 				selectedAIs = promptAISelection()
 
-			// Scenario 2: Global MCP exists but no local project
+				// Scenario 2: Global MCP exists but no local project
 			} else if !taskwingExists && hasGlobalMCP {
 				fmt.Println("📋 Setting up local project (global MCP config found)")
 				fmt.Println()
@@ -115,7 +115,7 @@ The bootstrap command analyzes:
 				selectedAIs = promptAISelection(existingGlobalAIs...)
 				// Note: MCP registration will be handled below - only for AIs not already registered
 
-			// Scenario 3: .taskwing exists but some AI configs missing (recovery with global MCP)
+				// Scenario 3: .taskwing exists but some AI configs missing (recovery with global MCP)
 			} else if taskwingExists && needsAISetup {
 				fmt.Println("🔧 Restoring missing AI configurations")
 				fmt.Println()
@@ -137,7 +137,7 @@ The bootstrap command analyzes:
 					selectedAIs = promptAISelection(existingGlobalAIs...)
 				}
 
-			// Scenario 4: .taskwing exists but NO AI configs and NO global MCP (reconfigure)
+				// Scenario 4: .taskwing exists but NO AI configs and NO global MCP (reconfigure)
 			} else if taskwingExists && !hasAnyLocalAI && !hasGlobalMCP {
 				fmt.Println("🔧 No AI configurations found - let's set them up")
 				fmt.Println()

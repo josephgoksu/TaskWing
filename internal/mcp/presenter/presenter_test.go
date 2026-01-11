@@ -152,9 +152,9 @@ func TestFormatPlan_WithTasks(t *testing.T) {
 	assert.Contains(t, result, "## Plan: Implement MCP optimization")
 	assert.Contains(t, result, "`plan-abc`")
 	assert.Contains(t, result, "### Tasks")
-	assert.Contains(t, result, "- [x] Task 1")   // Completed
-	assert.Contains(t, result, "- [~] Task 2")   // In progress
-	assert.Contains(t, result, "- [ ] Task 3")   // Pending
+	assert.Contains(t, result, "- [x] Task 1") // Completed
+	assert.Contains(t, result, "- [~] Task 2") // In progress
+	assert.Contains(t, result, "- [ ] Task 3") // Pending
 	assert.Contains(t, result, "**Progress**: 1/3 tasks completed")
 }
 
@@ -292,20 +292,24 @@ func TestFormatImpact_WithResults(t *testing.T) {
 
 func TestFormatRemember_Nil(t *testing.T) {
 	result := FormatRemember(nil)
-	assert.Equal(t, "Failed to add knowledge.", result)
+	assert.Contains(t, result, "## ❌ Error")
+	assert.Contains(t, result, "Failed to add knowledge")
 }
 
 func TestFormatRemember_Success(t *testing.T) {
 	input := &app.AddResult{
-		ID:      "n-abc123",
-		Type:    "decision",
-		Summary: "Use SQLite for storage",
+		ID:           "n-abc123",
+		Type:         "decision",
+		Summary:      "Use SQLite for storage",
+		HasEmbedding: true,
 	}
 	result := FormatRemember(input)
 
-	assert.Contains(t, result, "`n-abc123`")
-	assert.Contains(t, result, "(decision)")
-	assert.Contains(t, result, "Use SQLite for storage")
+	assert.Contains(t, result, "## ✅ Knowledge Saved")
+	assert.Contains(t, result, "**ID**: `n-abc123`")
+	assert.Contains(t, result, "**Type**: decision")
+	assert.Contains(t, result, "**Summary**: Use SQLite for storage")
+	assert.Contains(t, result, "Embedding generated")
 }
 
 func TestFormatRemember_EmptyID(t *testing.T) {
@@ -313,7 +317,156 @@ func TestFormatRemember_EmptyID(t *testing.T) {
 		ID: "",
 	}
 	result := FormatRemember(input)
-	assert.Equal(t, "Failed to add knowledge.", result)
+	assert.Contains(t, result, "## ❌ Error")
+}
+
+// === FormatError Tests ===
+
+func TestFormatError(t *testing.T) {
+	result := FormatError("Something went wrong")
+	assert.Contains(t, result, "## ❌ Error")
+	assert.Contains(t, result, "**Details**: Something went wrong")
+}
+
+func TestFormatValidationError(t *testing.T) {
+	result := FormatValidationError("query", "query is required")
+	assert.Contains(t, result, "## ❌ Validation Error")
+	assert.Contains(t, result, "**Field**: `query`")
+	assert.Contains(t, result, "**Details**: query is required")
+}
+
+// === FormatSummary Tests ===
+
+func TestFormatSummary_Nil(t *testing.T) {
+	result := FormatSummary(nil)
+	assert.Equal(t, "No project summary available.", result)
+}
+
+func TestFormatSummary_WithTypes(t *testing.T) {
+	input := &knowledge.ProjectSummary{
+		Total: 10,
+		Types: map[string]knowledge.TypeSummary{
+			"decision": {Count: 3, Examples: []string{"Use SQLite", "API Design"}},
+			"pattern":  {Count: 2, Examples: []string{"Repository Pattern"}},
+		},
+	}
+	result := FormatSummary(input)
+
+	assert.Contains(t, result, "## Knowledge Base: 10 nodes")
+	assert.Contains(t, result, "### 📋 Decisions (3)")
+	assert.Contains(t, result, "### 🧩 Patterns (2)")
+	assert.Contains(t, result, "- Use SQLite")
+}
+
+// === FormatClarifyResult Tests ===
+
+func TestFormatClarifyResult_Nil(t *testing.T) {
+	result := FormatClarifyResult(nil)
+	assert.Contains(t, result, "## ❌ Error")
+}
+
+func TestFormatClarifyResult_NotReady(t *testing.T) {
+	input := &app.ClarifyResult{
+		Success:       true,
+		GoalSummary:   "Implement authentication",
+		Questions:     []string{"OAuth or JWT?", "Session storage?"},
+		IsReadyToPlan: false,
+	}
+	result := FormatClarifyResult(input)
+
+	assert.Contains(t, result, "## 🔍 Clarification Needed")
+	assert.Contains(t, result, "**Goal**: Implement authentication")
+	assert.Contains(t, result, "### Questions")
+	assert.Contains(t, result, "1. OAuth or JWT?")
+	assert.Contains(t, result, "2. Session storage?")
+}
+
+func TestFormatClarifyResult_Ready(t *testing.T) {
+	input := &app.ClarifyResult{
+		Success:       true,
+		GoalSummary:   "Implement JWT auth",
+		EnrichedGoal:  "Implement JWT authentication with refresh tokens...",
+		IsReadyToPlan: true,
+	}
+	result := FormatClarifyResult(input)
+
+	assert.Contains(t, result, "## ✅ Ready to Generate Plan")
+	assert.Contains(t, result, "### Enriched Specification")
+	assert.Contains(t, result, "JWT authentication with refresh tokens")
+	assert.Contains(t, result, "Call `plan_generate`")
+}
+
+// === FormatGenerateResult Tests ===
+
+func TestFormatGenerateResult_Nil(t *testing.T) {
+	result := FormatGenerateResult(nil)
+	assert.Contains(t, result, "## ❌ Error")
+}
+
+func TestFormatGenerateResult_Success(t *testing.T) {
+	input := &app.GenerateResult{
+		Success: true,
+		PlanID:  "plan-123",
+		Goal:    "Add user authentication",
+		Tasks: []task.Task{
+			{Title: "Create user model", Priority: 90},
+			{Title: "Add login endpoint", Priority: 80},
+		},
+		Hint: "Use task_next to begin.",
+	}
+	result := FormatGenerateResult(input)
+
+	assert.Contains(t, result, "## ✅ Plan Generated")
+	assert.Contains(t, result, "**Plan ID**: `plan-123`")
+	assert.Contains(t, result, "1. **Create user model** (P90)")
+	assert.Contains(t, result, "2. **Add login endpoint** (P80)")
+	assert.Contains(t, result, "> **Hint**: Use task_next to begin.")
+}
+
+// === FormatAuditResult Tests ===
+
+func TestFormatAuditResult_Nil(t *testing.T) {
+	result := FormatAuditResult(nil)
+	assert.Contains(t, result, "## ❌ Error")
+}
+
+func TestFormatAuditResult_Verified(t *testing.T) {
+	input := &app.AuditResult{
+		Success:     true,
+		PlanID:      "plan-456",
+		Status:      "verified",
+		BuildPassed: true,
+		TestsPassed: true,
+		RetryCount:  1,
+		Message:     "All checks passed.",
+		Hint:        "Create a PR.",
+	}
+	result := FormatAuditResult(input)
+
+	assert.Contains(t, result, "## ✅ Audit: Verified")
+	assert.Contains(t, result, "**Plan ID**: `plan-456`")
+	assert.Contains(t, result, "- ✅ Build")
+	assert.Contains(t, result, "- ✅ Tests")
+	assert.Contains(t, result, "> **Hint**: Create a PR.")
+}
+
+func TestFormatAuditResult_NeedsRevision(t *testing.T) {
+	input := &app.AuditResult{
+		Success:        true,
+		PlanID:         "plan-789",
+		Status:         "needs_revision",
+		BuildPassed:    true,
+		TestsPassed:    false,
+		SemanticIssues: []string{"Missing error handling", "Unused variable"},
+		RetryCount:     3,
+	}
+	result := FormatAuditResult(input)
+
+	assert.Contains(t, result, "## ⚠️ Audit: Needs_revision")
+	assert.Contains(t, result, "- ✅ Build")
+	assert.Contains(t, result, "- ❌ Tests")
+	assert.Contains(t, result, "### Semantic Issues")
+	assert.Contains(t, result, "- Missing error handling")
 }
 
 // === Helper Function Tests ===
