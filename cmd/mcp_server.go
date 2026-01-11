@@ -520,18 +520,8 @@ func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.Cal
 		return nil, err
 	}
 
-	// Convert to MCP response format
-	return mcpJSONResponse(TaskResponse{
-		Success:            result.Success,
-		Message:            result.Message,
-		Task:               result.Task,
-		Hint:               result.Hint,
-		Context:            result.Context,
-		GitBranch:          result.GitBranch,
-		GitWorkflowApplied: result.GitWorkflowApplied,
-		GitUnpushedCommits: result.GitUnpushedCommits,
-		GitUnpushedBranch:  result.GitUnpushedBranch,
-	})
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatTask(result))
 }
 
 // handleTaskCurrent returns the current in-progress task.
@@ -546,13 +536,8 @@ func handleTaskCurrent(repo *memory.Repository, params TaskCurrentParams) (*mcps
 		return nil, err
 	}
 
-	return mcpJSONResponse(TaskResponse{
-		Success: result.Success,
-		Message: result.Message,
-		Task:    result.Task,
-		Hint:    result.Hint,
-		Context: result.Context,
-	})
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatTask(result))
 }
 
 // handleTaskStart claims a specific task for a session.
@@ -570,13 +555,8 @@ func handleTaskStart(repo *memory.Repository, params TaskStartParams) (*mcpsdk.C
 		return nil, err
 	}
 
-	return mcpJSONResponse(TaskResponse{
-		Success: result.Success,
-		Message: result.Message,
-		Task:    result.Task,
-		Hint:    result.Hint,
-		Context: result.Context,
-	})
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatTask(result))
 }
 
 // handleTaskComplete marks a task as completed.
@@ -596,20 +576,8 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 		return nil, err
 	}
 
-	return mcpJSONResponse(TaskResponse{
-		Success:            result.Success,
-		Message:            result.Message,
-		Task:               result.Task,
-		Plan:               result.Plan,
-		Hint:               result.Hint,
-		GitBranch:          result.GitBranch,
-		GitWorkflowApplied: result.GitWorkflowApplied,
-		PRURL:              result.PRURL,
-		PRCreated:          result.PRCreated,
-		AuditTriggered:     result.AuditTriggered,
-		AuditStatus:        result.AuditStatus,
-		AuditPlanStatus:    result.AuditPlanStatus,
-	})
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatTask(result))
 }
 
 // === Plan Creation Handlers ===
