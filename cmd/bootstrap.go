@@ -190,6 +190,17 @@ The bootstrap command analyzes:
 			return fmt.Errorf("detect workspace: %w", err)
 		}
 
+		// Run code indexing FIRST (enables symbol-based context for agents)
+		// This is fast (~5-10s) and doesn't require LLM calls
+		if !skipIndex && !preview {
+			if err := runCodeIndexing(cmd.Context(), cwd, forceIndex, viper.GetBool("quiet")); err != nil {
+				// Non-fatal: continue with fallback context gathering
+				if !viper.GetBool("quiet") {
+					fmt.Fprintf(os.Stderr, "⚠️  Pre-indexing failed, agents will use fallback context: %v\n", err)
+				}
+			}
+		}
+
 		// Handle multi-repo workspaces
 		if ws.IsMultiRepo() {
 			if err := runMultiRepoBootstrap(cmd.Context(), svc, ws, preview); err != nil {
@@ -202,10 +213,6 @@ The bootstrap command analyzes:
 			}
 		}
 
-		// Run code indexing (after knowledge extraction)
-		if !skipIndex && !preview {
-			return runCodeIndexing(cmd.Context(), cwd, forceIndex, viper.GetBool("quiet"))
-		}
 		return nil
 	},
 }

@@ -69,24 +69,49 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 		basePath = a.basePath
 	}
 
-	// Gather context upfront (no tool calls needed)
-	limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
-	// Reserve 90% for context, leaving 10% for system prompt and output
-	budget := tools.NewContextBudget(int(float64(limit) * 0.9))
-
-	gatherer := tools.NewContextGatherer(basePath)
-	gatherer.SetBudget(budget)
-	dirTree := gatherer.ListDirectoryTree(5)
-
+	// Gather context - prefer symbol index, fallback to raw files
 	var sourceCode string
+	var dirTree string
+	var gatherer *tools.ContextGatherer // Track for coverage stats
 	isIncremental := input.Mode == core.ModeWatch && len(input.ChangedFiles) > 0
 
 	if isIncremental {
-		// INCR ANALYSIS: Only read changed files
+		// INCR ANALYSIS: Always use raw files for changed files
+		gatherer = tools.NewContextGatherer(basePath)
+		limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
+		budget := tools.NewContextBudget(int(float64(limit) * 0.7))
+		gatherer.SetBudget(budget)
+		dirTree = gatherer.ListDirectoryTree(5)
 		sourceCode = gatherer.GatherSpecificFiles(input.ChangedFiles)
 	} else {
-		// FULL ANALYSIS: Read key files heuristic
-		sourceCode = gatherer.GatherSourceCode()
+		// FULL ANALYSIS: Try symbol index first
+		symbolCtx, err := tools.NewSymbolContext(basePath, a.LLMConfig())
+		if err == nil {
+			// Use symbol index (compact, scalable)
+			defer symbolCtx.Close()
+			symbolCtx.SetConfig(tools.SymbolContextConfig{
+				MaxTokens:    50000, // ~50k tokens for symbols
+				PreferPublic: true,
+			})
+			sourceCode, err = symbolCtx.GatherArchitecturalContext(ctx)
+			if err != nil {
+				sourceCode = "" // Fall through to raw files
+			}
+		}
+
+		// Fallback to raw files if index not available or failed
+		if sourceCode == "" {
+			gatherer = tools.NewContextGatherer(basePath)
+			limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
+			budget := tools.NewContextBudget(int(float64(limit) * 0.5)) // Stricter for raw files
+			gatherer.SetBudget(budget)
+			dirTree = gatherer.ListDirectoryTree(5)
+			sourceCode = gatherer.GatherSourceCode()
+		} else {
+			// Still need dir tree for context
+			gatherer = tools.NewContextGatherer(basePath)
+			dirTree = gatherer.ListDirectoryTree(5)
+		}
 	}
 
 	if sourceCode == "" || sourceCode == "No source code files found." {

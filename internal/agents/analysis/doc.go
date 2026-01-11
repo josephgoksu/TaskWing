@@ -61,7 +61,7 @@ func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 	}
 
 	limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
-	budget := tools.NewContextBudget(int(float64(limit) * 0.9))
+	budget := tools.NewContextBudget(int(float64(limit) * 0.7))
 
 	gatherer := tools.NewContextGatherer(input.BasePath)
 	gatherer.SetBudget(budget)
