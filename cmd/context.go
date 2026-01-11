@@ -98,9 +98,10 @@ func runContext(cmd *cobra.Command, args []string) error {
 	}
 
 	// 7. Handle empty results
-	if len(result.Results) == 0 {
-		fmt.Println("No matching knowledge found.")
+	if len(result.Results) == 0 && len(result.Symbols) == 0 {
+		fmt.Println("No matching knowledge or code symbols found.")
 		fmt.Println("Try adding more context with: taskwing add \"...\"")
+		fmt.Println("Or run: taskwing bootstrap to index your codebase")
 		return nil
 	}
 
@@ -112,10 +113,11 @@ func runContext(cmd *cobra.Command, args []string) error {
 	// TUI Output - convert back to ScoredNodes for UI rendering
 	// (UI layer expects ScoredNode for detailed rendering)
 	scored := nodeResponsesToScoredNodes(result.Results)
+	symbols := result.Symbols
 	if isVerbose() {
-		ui.RenderContextResultsVerbose(query, scored, result.Answer)
+		ui.RenderContextResultsWithSymbolsVerbose(query, scored, symbols, result.Answer)
 	} else {
-		ui.RenderContextResults(query, scored, result.Answer)
+		ui.RenderContextResultsWithSymbols(query, scored, symbols, result.Answer)
 	}
 
 	return nil
