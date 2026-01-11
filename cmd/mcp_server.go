@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/app"
+	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -161,6 +162,38 @@ type AuditPlanResponse struct {
 	RetryCount     int             `json:"retry_count,omitempty"`
 	Message        string          `json:"message,omitempty"`
 	Hint           string          `json:"hint,omitempty"`
+}
+
+// === Code Intelligence Tool Parameters ===
+
+// FindSymbolParams defines the parameters for the find_symbol tool
+type FindSymbolParams struct {
+	Name     string `json:"name,omitempty"`      // Symbol name to find (exact match)
+	ID       uint32 `json:"id,omitempty"`        // Symbol ID for direct lookup
+	FilePath string `json:"file_path,omitempty"` // File path to search in
+	Language string `json:"language,omitempty"`  // Language filter (e.g., "go")
+}
+
+// SemanticSearchCodeParams defines the parameters for the semantic_search_code tool
+type SemanticSearchCodeParams struct {
+	Query    string `json:"query"`              // Required: search query
+	Limit    int    `json:"limit,omitempty"`    // Max results (default 20)
+	Kind     string `json:"kind,omitempty"`     // Filter by symbol kind (function, struct, etc.)
+	FilePath string `json:"file_path,omitempty"` // Filter by file path
+}
+
+// GetCallersParams defines the parameters for the get_callers tool
+type GetCallersParams struct {
+	SymbolID   uint32 `json:"symbol_id,omitempty"`   // Symbol ID to get callers for
+	SymbolName string `json:"symbol_name,omitempty"` // Symbol name (if ID not provided)
+	Direction  string `json:"direction,omitempty"`   // "callers", "callees", or "both" (default: "both")
+}
+
+// AnalyzeImpactParams defines the parameters for the analyze_impact tool
+type AnalyzeImpactParams struct {
+	SymbolID   uint32 `json:"symbol_id,omitempty"`   // Symbol ID to analyze
+	SymbolName string `json:"symbol_name,omitempty"` // Symbol name (if ID not provided)
+	MaxDepth   int    `json:"max_depth,omitempty"`   // Max recursion depth (default 5)
 }
 
 // Response DTOs are defined in internal/knowledge/response.go for DRY.
@@ -352,6 +385,44 @@ func runMCPServer(ctx context.Context) error {
 	}
 	mcpsdk.AddTool(server, auditPlanTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[AuditPlanParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		return handleAuditPlan(ctx, repo, params.Arguments)
+	})
+
+	// === Code Intelligence Tools ===
+
+	// Register find_symbol tool - locate symbols by name, ID, or file
+	findSymbolTool := &mcpsdk.Tool{
+		Name:        "find_symbol",
+		Description: "Find code symbols (functions, structs, interfaces) by name, ID, or file path. Returns symbol metadata including location, signature, and documentation. Use this to locate specific code elements in the indexed codebase.",
+	}
+	mcpsdk.AddTool(server, findSymbolTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[FindSymbolParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handleFindSymbol(ctx, repo, params.Arguments)
+	})
+
+	// Register semantic_search_code tool - hybrid semantic + lexical search
+	semanticSearchTool := &mcpsdk.Tool{
+		Name:        "semantic_search_code",
+		Description: "Search code using hybrid semantic (embedding) and lexical (FTS5) matching. Finds symbols by meaning, not just exact text. Supports filtering by symbol kind (function, struct, interface) or file path. Returns ranked results with relevance scores.",
+	}
+	mcpsdk.AddTool(server, semanticSearchTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[SemanticSearchCodeParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handleSemanticSearchCode(ctx, repo, params.Arguments)
+	})
+
+	// Register get_callers tool - get call graph relationships
+	getCallersTool := &mcpsdk.Tool{
+		Name:        "get_callers",
+		Description: "Get the callers and/or callees of a symbol. Shows who calls this function and what it calls. Use direction='callers' for just callers, 'callees' for just callees, or 'both' (default) for both directions.",
+	}
+	mcpsdk.AddTool(server, getCallersTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[GetCallersParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handleGetCallers(ctx, repo, params.Arguments)
+	})
+
+	// Register analyze_impact tool - impact analysis via recursive CTEs
+	analyzeImpactTool := &mcpsdk.Tool{
+		Name:        "analyze_impact",
+		Description: "Analyze the impact of changing a symbol. Uses recursive call graph traversal to find all downstream consumers that would be affected by a change. Returns affected symbols grouped by depth (distance from the changed symbol). Critical for understanding the 'blast radius' of code changes.",
+	}
+	mcpsdk.AddTool(server, analyzeImpactTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[AnalyzeImpactParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handleAnalyzeImpact(ctx, repo, params.Arguments)
 	})
 
 	// Run the server (stdio transport only)
@@ -647,4 +718,125 @@ func handleAuditPlan(ctx context.Context, repo *memory.Repository, params AuditP
 		Message:        result.Message,
 		Hint:           result.Hint,
 	})
+}
+
+// === Code Intelligence Handlers ===
+
+// handleFindSymbol finds symbols by name, ID, or file.
+// Uses app.CodeIntelApp for all business logic - single source of truth.
+func handleFindSymbol(ctx context.Context, repo *memory.Repository, params FindSymbolParams) (*mcpsdk.CallToolResultFor[any], error) {
+	appCtx := app.NewContext(repo)
+	codeIntelApp := app.NewCodeIntelApp(appCtx)
+
+	result, err := codeIntelApp.FindSymbol(ctx, app.FindSymbolOptions{
+		Name:     params.Name,
+		ID:       params.ID,
+		FilePath: params.FilePath,
+		Language: params.Language,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return mcpJSONResponse(result)
+}
+
+// handleSemanticSearchCode performs hybrid semantic + lexical search.
+// Uses app.CodeIntelApp for all business logic - single source of truth.
+// H4 FIX: Added input validation for query length and limit bounds.
+func handleSemanticSearchCode(ctx context.Context, repo *memory.Repository, params SemanticSearchCodeParams) (*mcpsdk.CallToolResultFor[any], error) {
+	// H4 FIX: Input validation
+	query := strings.TrimSpace(params.Query)
+	if query == "" {
+		return mcpJSONResponse(app.SearchCodeResult{
+			Success: false,
+			Message: "query is required",
+		})
+	}
+	// Limit query length to prevent abuse (1000 chars is generous for a code search)
+	const maxQueryLength = 1000
+	if len(query) > maxQueryLength {
+		query = query[:maxQueryLength]
+	}
+
+	// Clamp limit to reasonable bounds
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	const maxLimit = 100
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
+	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
+	codeIntelApp := app.NewCodeIntelApp(appCtx)
+
+	result, err := codeIntelApp.SearchCode(ctx, app.SearchCodeOptions{
+		Query:    query,
+		Limit:    limit,
+		Kind:     codeintel.SymbolKind(params.Kind),
+		FilePath: params.FilePath,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return mcpJSONResponse(result)
+}
+
+// handleGetCallers returns the callers and/or callees of a symbol.
+// Uses app.CodeIntelApp for all business logic - single source of truth.
+func handleGetCallers(ctx context.Context, repo *memory.Repository, params GetCallersParams) (*mcpsdk.CallToolResultFor[any], error) {
+	appCtx := app.NewContext(repo)
+	codeIntelApp := app.NewCodeIntelApp(appCtx)
+
+	result, err := codeIntelApp.GetCallers(ctx, app.GetCallersOptions{
+		SymbolID:   params.SymbolID,
+		SymbolName: params.SymbolName,
+		Direction:  params.Direction,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return mcpJSONResponse(result)
+}
+
+// handleAnalyzeImpact finds all symbols affected by changing a given symbol.
+// Uses app.CodeIntelApp for all business logic - single source of truth.
+// H4 FIX: Added input validation for max_depth to prevent deep recursion.
+func handleAnalyzeImpact(ctx context.Context, repo *memory.Repository, params AnalyzeImpactParams) (*mcpsdk.CallToolResultFor[any], error) {
+	// H4 FIX: Input validation - at least one identifier required
+	symbolName := strings.TrimSpace(params.SymbolName)
+	if params.SymbolID == 0 && symbolName == "" {
+		return mcpJSONResponse(app.AnalyzeImpactResult{
+			Success: false,
+			Message: "symbol_id or symbol_name is required",
+		})
+	}
+
+	// H4 FIX: Clamp max_depth to prevent deep recursion (reasonable max is 10)
+	maxDepth := params.MaxDepth
+	if maxDepth <= 0 {
+		maxDepth = 5 // default
+	}
+	const maxAllowedDepth = 10
+	if maxDepth > maxAllowedDepth {
+		maxDepth = maxAllowedDepth
+	}
+
+	appCtx := app.NewContext(repo)
+	codeIntelApp := app.NewCodeIntelApp(appCtx)
+
+	result, err := codeIntelApp.AnalyzeImpact(ctx, app.AnalyzeImpactOptions{
+		SymbolID:   params.SymbolID,
+		SymbolName: symbolName,
+		MaxDepth:   maxDepth,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return mcpJSONResponse(result)
 }

@@ -211,6 +211,87 @@ func (s *SQLiteStore) initSchema() error {
 		content='nodes',
 		content_rowid='rowid'
 	);
+
+	-- === Code Intelligence Tables ===
+	-- These tables store symbol-level code intelligence data.
+	-- Unlike architectural knowledge (nodes), symbol data is NOT mirrored to Markdown.
+
+	-- Symbols table (code-level entities: functions, types, etc.)
+	CREATE TABLE IF NOT EXISTS symbols (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		kind TEXT NOT NULL,              -- function, method, struct, interface, type, variable, constant, field, package
+		file_path TEXT NOT NULL,
+		start_line INTEGER NOT NULL,
+		end_line INTEGER NOT NULL,
+		signature TEXT,                  -- e.g., "func(ctx context.Context) error"
+		doc_comment TEXT,
+		module_path TEXT,                -- e.g., "internal/memory"
+		visibility TEXT DEFAULT 'public', -- public, private
+		language TEXT NOT NULL,          -- go, typescript, python, etc.
+		file_hash TEXT,                  -- SHA256 for incremental updates
+		embedding BLOB,                  -- Vector for semantic search
+		last_modified TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
+	CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_path);
+	CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind);
+	CREATE INDEX IF NOT EXISTS idx_symbols_language ON symbols(language);
+	CREATE INDEX IF NOT EXISTS idx_symbols_module ON symbols(module_path);
+	CREATE INDEX IF NOT EXISTS idx_symbols_file_hash ON symbols(file_hash);
+
+	-- Symbol relationships (call graphs, inheritance, etc.)
+	-- Enables recursive queries for impact analysis
+	CREATE TABLE IF NOT EXISTS symbol_relations (
+		from_symbol_id INTEGER NOT NULL,
+		to_symbol_id INTEGER NOT NULL,
+		relation_type TEXT NOT NULL,     -- calls, implements, extends, uses, defines, references
+		call_site_line INTEGER,          -- For calls: line where the call occurs
+		metadata TEXT,                   -- JSON for additional context
+		PRIMARY KEY (from_symbol_id, to_symbol_id, relation_type),
+		FOREIGN KEY (from_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
+		FOREIGN KEY (to_symbol_id) REFERENCES symbols(id) ON DELETE CASCADE
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_symbol_relations_from ON symbol_relations(from_symbol_id);
+	CREATE INDEX IF NOT EXISTS idx_symbol_relations_to ON symbol_relations(to_symbol_id);
+	CREATE INDEX IF NOT EXISTS idx_symbol_relations_type ON symbol_relations(relation_type);
+
+	-- Dependencies from lockfiles (package.json, Cargo.lock, poetry.lock, etc.)
+	-- Enables dependency analysis, security scanning, and upgrade planning
+	CREATE TABLE IF NOT EXISTS dependencies (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,              -- Package name
+		version TEXT NOT NULL,           -- Installed version
+		ecosystem TEXT NOT NULL,         -- npm, pypi, crates.io
+		lockfile_ref TEXT NOT NULL,      -- Path to the lockfile
+		resolved TEXT,                   -- URL/path where package was resolved from
+		integrity TEXT,                  -- Hash for verification
+		is_dev INTEGER DEFAULT 0,        -- Whether this is a dev dependency
+		source TEXT,                     -- Source type (registry, git, path, etc.)
+		extras TEXT,                     -- JSON for additional metadata
+		last_modified TEXT NOT NULL,
+		UNIQUE(name, version, lockfile_ref)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_dependencies_name ON dependencies(name);
+	CREATE INDEX IF NOT EXISTS idx_dependencies_ecosystem ON dependencies(ecosystem);
+	CREATE INDEX IF NOT EXISTS idx_dependencies_lockfile ON dependencies(lockfile_ref);
+
+	-- FTS5 for dependency search (name only for now)
+	CREATE VIRTUAL TABLE IF NOT EXISTS dependencies_fts USING fts5(
+		name, ecosystem,
+		content='dependencies',
+		content_rowid='id'
+	);
+
+	-- FTS5 for symbol search (name, signature, doc_comment)
+	CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
+		name, signature, doc_comment, module_path,
+		content='symbols',
+		content_rowid='id'
+	);
 	`
 
 	// Execute main schema
@@ -245,6 +326,54 @@ func (s *SQLiteStore) initSchema() error {
 				VALUES('delete', OLD.rowid, OLD.id, COALESCE(OLD.summary, ''), OLD.content);
 				INSERT INTO nodes_fts(rowid, id, summary, content)
 				VALUES (NEW.rowid, NEW.id, COALESCE(NEW.summary, ''), NEW.content);
+			END`,
+		},
+		// Symbols FTS triggers for code intelligence
+		{
+			name: "symbols_fts_ai",
+			sql: `CREATE TRIGGER symbols_fts_ai AFTER INSERT ON symbols BEGIN
+				INSERT INTO symbols_fts(rowid, name, signature, doc_comment, module_path)
+				VALUES (NEW.id, NEW.name, COALESCE(NEW.signature, ''), COALESCE(NEW.doc_comment, ''), COALESCE(NEW.module_path, ''));
+			END`,
+		},
+		{
+			name: "symbols_fts_ad",
+			sql: `CREATE TRIGGER symbols_fts_ad AFTER DELETE ON symbols BEGIN
+				INSERT INTO symbols_fts(symbols_fts, rowid, name, signature, doc_comment, module_path)
+				VALUES('delete', OLD.id, OLD.name, COALESCE(OLD.signature, ''), COALESCE(OLD.doc_comment, ''), COALESCE(OLD.module_path, ''));
+			END`,
+		},
+		{
+			name: "symbols_fts_au",
+			sql: `CREATE TRIGGER symbols_fts_au AFTER UPDATE ON symbols BEGIN
+				INSERT INTO symbols_fts(symbols_fts, rowid, name, signature, doc_comment, module_path)
+				VALUES('delete', OLD.id, OLD.name, COALESCE(OLD.signature, ''), COALESCE(OLD.doc_comment, ''), COALESCE(OLD.module_path, ''));
+				INSERT INTO symbols_fts(rowid, name, signature, doc_comment, module_path)
+				VALUES (NEW.id, NEW.name, COALESCE(NEW.signature, ''), COALESCE(NEW.doc_comment, ''), COALESCE(NEW.module_path, ''));
+			END`,
+		},
+		// Dependencies FTS triggers
+		{
+			name: "dependencies_fts_ai",
+			sql: `CREATE TRIGGER dependencies_fts_ai AFTER INSERT ON dependencies BEGIN
+				INSERT INTO dependencies_fts(rowid, name, ecosystem)
+				VALUES (NEW.id, NEW.name, NEW.ecosystem);
+			END`,
+		},
+		{
+			name: "dependencies_fts_ad",
+			sql: `CREATE TRIGGER dependencies_fts_ad AFTER DELETE ON dependencies BEGIN
+				INSERT INTO dependencies_fts(dependencies_fts, rowid, name, ecosystem)
+				VALUES('delete', OLD.id, OLD.name, OLD.ecosystem);
+			END`,
+		},
+		{
+			name: "dependencies_fts_au",
+			sql: `CREATE TRIGGER dependencies_fts_au AFTER UPDATE ON dependencies BEGIN
+				INSERT INTO dependencies_fts(dependencies_fts, rowid, name, ecosystem)
+				VALUES('delete', OLD.id, OLD.name, OLD.ecosystem);
+				INSERT INTO dependencies_fts(rowid, name, ecosystem)
+				VALUES (NEW.id, NEW.name, NEW.ecosystem);
 			END`,
 		},
 	}
@@ -854,6 +983,12 @@ func (s *SQLiteStore) Repair() error {
 
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()
+}
+
+// DB returns the underlying database handle.
+// This allows other packages (like codeintel) to share the same database connection.
+func (s *SQLiteStore) DB() *sql.DB {
+	return s.db
 }
 
 // === Helpers ===
