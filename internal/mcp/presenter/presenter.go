@@ -381,7 +381,11 @@ func FormatClarifyResult(result *app.ClarifyResult) string {
 	}
 
 	if !result.Success {
-		return FormatError(result.Message)
+		msg := result.Message
+		if msg == "" {
+			msg = "Clarification failed with no details"
+		}
+		return FormatError(msg)
 	}
 
 	var sb strings.Builder
@@ -430,7 +434,11 @@ func FormatGenerateResult(result *app.GenerateResult) string {
 	}
 
 	if !result.Success {
-		return FormatError(result.Message)
+		msg := result.Message
+		if msg == "" {
+			msg = "Plan generation failed with no details"
+		}
+		return FormatError(msg)
 	}
 
 	var sb strings.Builder
@@ -467,7 +475,11 @@ func FormatAuditResult(result *app.AuditResult) string {
 	}
 
 	if !result.Success {
-		return FormatError(result.Message)
+		msg := result.Message
+		if msg == "" {
+			msg = "Audit failed with no details"
+		}
+		return FormatError(msg)
 	}
 
 	var sb strings.Builder

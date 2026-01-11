@@ -157,6 +157,34 @@ func mcpMarkdownResponse(markdown string) (*mcpsdk.CallToolResultFor[any], error
 	}, nil
 }
 
+// mcpErrorResponse wraps an error in an MCP tool result with IsError=true.
+// Per MCP spec: tool errors should be returned in the result (not as protocol errors)
+// so the LLM can see them and self-correct. Use presenter.FormatError for formatting.
+func mcpErrorResponse(err error) (*mcpsdk.CallToolResultFor[any], error) {
+	return &mcpsdk.CallToolResultFor[any]{
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: presenter.FormatError(err.Error())}},
+		IsError: true,
+	}, nil
+}
+
+// mcpValidationErrorResponse wraps a validation error with IsError=true.
+// Use for input validation failures (missing required fields, invalid values).
+func mcpValidationErrorResponse(field, message string) (*mcpsdk.CallToolResultFor[any], error) {
+	return &mcpsdk.CallToolResultFor[any]{
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: presenter.FormatValidationError(field, message)}},
+		IsError: true,
+	}, nil
+}
+
+// mcpFormattedErrorResponse wraps pre-formatted error text with IsError=true.
+// Use when error message is already formatted (e.g., from presenter functions).
+func mcpFormattedErrorResponse(formattedError string) (*mcpsdk.CallToolResultFor[any], error) {
+	return &mcpsdk.CallToolResultFor[any]{
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: formattedError}},
+		IsError: true,
+	}, nil
+}
+
 // initMCPRepository initializes the memory repository with fallback paths.
 // It tries: 1) local .taskwing/memory, 2) global ~/.taskwing/memory
 // This handles cases where MCP runs from read-only directories (e.g., sandboxed environments).
@@ -248,7 +276,7 @@ func runMCPServer(ctx context.Context) error {
 		// Node-based system only
 		nodes, err := repo.ListNodes("")
 		if err != nil {
-			return nil, fmt.Errorf("list nodes: %w", err)
+			return mcpErrorResponse(fmt.Errorf("list nodes: %w", err))
 		}
 		if len(nodes) == 0 {
 			return &mcpsdk.CallToolResultFor[any]{
@@ -392,7 +420,7 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params Proj
 	if query == "" {
 		summary, err := recallApp.Summary(ctx)
 		if err != nil {
-			return mcpMarkdownResponse(presenter.FormatError(fmt.Sprintf("get summary: %v", err)))
+			return mcpErrorResponse(fmt.Errorf("get summary: %w", err))
 		}
 		// Return token-efficient Markdown instead of verbose JSON
 		return mcpMarkdownResponse(presenter.FormatSummary(summary))
@@ -407,7 +435,7 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params Proj
 		IncludeSymbols: true,                         // Include code symbols alongside knowledge
 	})
 	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+		return mcpErrorResponse(fmt.Errorf("search failed: %w", err))
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -431,7 +459,7 @@ func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.Cal
 		SkipUnpushedCheck: params.SkipUnpushedCheck,
 	})
 	if err != nil {
-		return nil, err
+		return mcpErrorResponse(err)
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -447,7 +475,7 @@ func handleTaskCurrent(repo *memory.Repository, params TaskCurrentParams) (*mcps
 	ctx := context.Background()
 	result, err := taskApp.Current(ctx, params.SessionID, params.PlanID)
 	if err != nil {
-		return nil, err
+		return mcpErrorResponse(err)
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -466,7 +494,7 @@ func handleTaskStart(repo *memory.Repository, params TaskStartParams) (*mcpsdk.C
 		SessionID: params.SessionID,
 	})
 	if err != nil {
-		return nil, err
+		return mcpErrorResponse(err)
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -487,7 +515,7 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 		FilesModified: params.FilesModified,
 	})
 	if err != nil {
-		return nil, err
+		return mcpErrorResponse(err)
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -509,7 +537,7 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 		AutoAnswer: params.AutoAnswer,
 	})
 	if err != nil {
-		return mcpMarkdownResponse(presenter.FormatError(err.Error()))
+		return mcpFormattedErrorResponse(presenter.FormatError(err.Error()))
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -529,7 +557,7 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 		Save:         params.Save,
 	})
 	if err != nil {
-		return mcpMarkdownResponse(presenter.FormatError(err.Error()))
+		return mcpFormattedErrorResponse(presenter.FormatError(err.Error()))
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -541,7 +569,7 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 func handleRemember(ctx context.Context, repo *memory.Repository, params RememberParams) (*mcpsdk.CallToolResultFor[any], error) {
 	content := strings.TrimSpace(params.Content)
 	if content == "" {
-		return mcpMarkdownResponse(presenter.FormatValidationError("content", "content is required"))
+		return mcpValidationErrorResponse("content", "content is required")
 	}
 
 	// Use MemoryApp for add (same as CLI `tw add`)
@@ -553,7 +581,7 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params Remembe
 		Type: params.Type,
 	})
 	if err != nil {
-		return mcpMarkdownResponse(presenter.FormatError(fmt.Sprintf("failed to add knowledge: %v", err)))
+		return mcpErrorResponse(fmt.Errorf("failed to add knowledge: %w", err))
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -572,7 +600,7 @@ func handleAuditPlan(ctx context.Context, repo *memory.Repository, params AuditP
 		AutoFix: params.AutoFix,
 	})
 	if err != nil {
-		return mcpMarkdownResponse(presenter.FormatError(err.Error()))
+		return mcpFormattedErrorResponse(presenter.FormatError(err.Error()))
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -594,7 +622,7 @@ func handleFindSymbol(ctx context.Context, repo *memory.Repository, params FindS
 		Language: params.Language,
 	})
 	if err != nil {
-		return nil, err
+		return mcpErrorResponse(err)
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -608,7 +636,7 @@ func handleSemanticSearchCode(ctx context.Context, repo *memory.Repository, para
 	// H4 FIX: Input validation
 	query := strings.TrimSpace(params.Query)
 	if query == "" {
-		return mcpMarkdownResponse(presenter.FormatValidationError("query", "query is required"))
+		return mcpValidationErrorResponse("query", "query is required")
 	}
 	// Limit query length to prevent abuse (1000 chars is generous for a code search)
 	const maxQueryLength = 1000
@@ -636,7 +664,7 @@ func handleSemanticSearchCode(ctx context.Context, repo *memory.Repository, para
 		FilePath: params.FilePath,
 	})
 	if err != nil {
-		return nil, err
+		return mcpErrorResponse(err)
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -655,7 +683,7 @@ func handleGetCallers(ctx context.Context, repo *memory.Repository, params GetCa
 		Direction:  params.Direction,
 	})
 	if err != nil {
-		return nil, err
+		return mcpErrorResponse(err)
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
@@ -669,7 +697,7 @@ func handleAnalyzeImpact(ctx context.Context, repo *memory.Repository, params An
 	// H4 FIX: Input validation - at least one identifier required
 	symbolName := strings.TrimSpace(params.SymbolName)
 	if params.SymbolID == 0 && symbolName == "" {
-		return mcpMarkdownResponse(presenter.FormatValidationError("symbol_id/symbol_name", "symbol_id or symbol_name is required"))
+		return mcpValidationErrorResponse("symbol_id/symbol_name", "symbol_id or symbol_name is required")
 	}
 
 	// H4 FIX: Clamp max_depth to prevent deep recursion (reasonable max is 10)
@@ -691,7 +719,7 @@ func handleAnalyzeImpact(ctx context.Context, repo *memory.Repository, params An
 		MaxDepth:   maxDepth,
 	})
 	if err != nil {
-		return nil, err
+		return mcpErrorResponse(err)
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
