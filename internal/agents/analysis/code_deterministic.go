@@ -70,7 +70,12 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 	}
 
 	// Gather context upfront (no tool calls needed)
+	limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
+	// Reserve 90% for context, leaving 10% for system prompt and output
+	budget := tools.NewContextBudget(int(float64(limit) * 0.9))
+
 	gatherer := tools.NewContextGatherer(basePath)
+	gatherer.SetBudget(budget)
 	dirTree := gatherer.ListDirectoryTree(5)
 
 	var sourceCode string

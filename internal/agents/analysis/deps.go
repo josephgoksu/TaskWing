@@ -12,8 +12,10 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
+	"github.com/josephgoksu/TaskWing/internal/agents/tools"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/llm/tokens"
 )
 
 // DepsAgent analyzes dependencies to understand technology choices.
@@ -60,7 +62,11 @@ func (a *DepsAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 		a.chain = chain
 	}
 
-	depsInfo, filesRead := gatherDepsWithTracking(input.BasePath)
+	// Initialize budget
+	limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
+	budget := tools.NewContextBudget(int(float64(limit) * 0.9))
+
+	depsInfo, filesRead := gatherDepsWithTracking(input.BasePath, budget)
 	if depsInfo == "" {
 		return core.Output{AgentName: a.Name(), Error: fmt.Errorf("no dependency files found")}, nil
 	}
@@ -129,7 +135,7 @@ func (a *DepsAgent) parseFindings(parsed depsTechDecisionsResponse) []core.Findi
 
 // gatherDepsWithTracking collects dependency file contents and tracks which files were read.
 // Uses os.ReadFile instead of shelling out to cat for better portability and error handling.
-func gatherDepsWithTracking(basePath string) (string, []core.FileRead) {
+func gatherDepsWithTracking(basePath string, budget *tools.ContextBudget) (string, []core.FileRead) {
 	var sb strings.Builder
 	var filesRead []core.FileRead
 
@@ -144,6 +150,9 @@ func gatherDepsWithTracking(basePath string) (string, []core.FileRead) {
 			if file == "" {
 				continue
 			}
+			if budget.IsExhausted() {
+				break
+			}
 			// Use os.ReadFile for better error handling and portability
 			fullPath := file
 			if !strings.HasPrefix(file, "/") {
@@ -154,7 +163,13 @@ func gatherDepsWithTracking(basePath string) (string, []core.FileRead) {
 				continue // Skip files we can't read
 			}
 			truncated := len(content) == 3000
-			sb.WriteString(fmt.Sprintf("## %s\n```json\n%s\n```\n\n", file, string(content)))
+
+			formatted := fmt.Sprintf("## %s\n```json\n%s\n```\n\n", file, string(content))
+			if !budget.TryReserve(tokens.EstimateTokens(formatted)) {
+				break
+			}
+			sb.WriteString(formatted)
+
 			filesRead = append(filesRead, core.FileRead{
 				Path:       file,
 				Characters: len(content),
@@ -174,6 +189,9 @@ func gatherDepsWithTracking(basePath string) (string, []core.FileRead) {
 			if file == "" {
 				continue
 			}
+			if budget.IsExhausted() {
+				break
+			}
 			fullPath := file
 			if !strings.HasPrefix(file, "/") {
 				fullPath = basePath + "/" + strings.TrimPrefix(file, "./")
@@ -183,7 +201,13 @@ func gatherDepsWithTracking(basePath string) (string, []core.FileRead) {
 				continue // Skip files we can't read
 			}
 			truncated := len(content) == 2000
-			sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", file, string(content)))
+
+			formatted := fmt.Sprintf("## %s\n```\n%s\n```\n\n", file, string(content))
+			if !budget.TryReserve(tokens.EstimateTokens(formatted)) {
+				break
+			}
+			sb.WriteString(formatted)
+
 			filesRead = append(filesRead, core.FileRead{
 				Path:       file,
 				Characters: len(content),

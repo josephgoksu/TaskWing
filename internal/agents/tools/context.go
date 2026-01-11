@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/llm/tokens"
 	"github.com/josephgoksu/TaskWing/internal/patterns"
 )
 
@@ -71,6 +72,7 @@ type CoverageStats struct {
 type ContextGatherer struct {
 	BasePath string
 	coverage CoverageStats
+	budget   *ContextBudget
 }
 
 // NewContextGatherer creates a new helper for gathering context.
@@ -82,6 +84,23 @@ func NewContextGatherer(basePath string) *ContextGatherer {
 			FilesSkipped: make([]SkipRecord, 0),
 		},
 	}
+}
+
+// SetBudget assigns a context budget to the gatherer.
+// If set, gathering will stop when the budget is exceeded.
+func (g *ContextGatherer) SetBudget(b *ContextBudget) {
+	g.budget = b
+}
+
+// checkBudget checks if we have enough budget for the given text.
+// Returns true if we can proceed, false if budget is exhausted.
+// If budget is nil, always returns true (unlimited).
+func (g *ContextGatherer) checkBudget(text string) bool {
+	if g.budget == nil {
+		return true
+	}
+	tokenCount := tokens.EstimateTokens(text)
+	return g.budget.TryReserve(tokenCount)
 }
 
 // GetCoverage returns the accumulated coverage stats.
@@ -119,6 +138,9 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			return
 		}
 		for _, entry := range entries {
+			if g.budget != nil && g.budget.IsExhausted() {
+				return
+			}
 			if entry.IsDir() {
 				continue
 			}
@@ -143,11 +165,19 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			if truncated {
 				content = content[:maxLen]
 			}
-			// Track this file read for coverage reporting
-			g.recordRead(relPath, content, truncated)
+
 			// Add line numbers to content for accurate evidence extraction
 			numberedContent := addLineNumbers(string(content))
-			sb.WriteString(fmt.Sprintf("## FILE: %s\n```\n%s\n```\n\n", relPath, numberedContent))
+			formatted := fmt.Sprintf("## FILE: %s\n```\n%s\n```\n\n", relPath, numberedContent)
+
+			if !g.checkBudget(formatted) {
+				g.recordSkip(relPath, "token budget exhausted")
+				return
+			}
+
+			// Track this file read for coverage reporting
+			g.recordRead(relPath, content, truncated)
+			sb.WriteString(formatted)
 			seen[key] = true
 		}
 	}
@@ -188,11 +218,21 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 	}
 
 	for _, pkgDir := range packageDirs {
+		if g.budget != nil && g.budget.IsExhausted() {
+			break
+		}
 		searchDir := filepath.Join(g.BasePath, pkgDir)
 		_ = filepath.WalkDir(searchDir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
+			if g.budget != nil && g.budget.IsExhausted() {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
 			if d.IsDir() {
 				if patterns.ShouldIgnoreDir(d.Name()) {
 					return filepath.SkipDir
@@ -221,10 +261,18 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			if truncated {
 				content = append(content[:maxLen], []byte("\n...[truncated]")...)
 			}
+
+			numberedContent := addLineNumbers(string(content))
+			formatted := fmt.Sprintf("## PACKAGE DOC: %s\n```\n%s\n```\n\n", relPath, numberedContent)
+
+			if !g.checkBudget(formatted) {
+				g.recordSkip(relPath, "token budget exhausted")
+				return filepath.SkipDir // Skip siblings to save time
+			}
+
 			// Track this file read for coverage reporting
 			g.recordRead(relPath, content, truncated)
-			numberedContent := addLineNumbers(string(content))
-			sb.WriteString(fmt.Sprintf("## PACKAGE DOC: %s\n```\n%s\n```\n\n", relPath, numberedContent))
+			sb.WriteString(formatted)
 			return nil
 		})
 	}
@@ -257,6 +305,9 @@ func (g *ContextGatherer) GatherKeyFiles() string {
 		if seen[keyLower] {
 			continue
 		}
+		if g.budget != nil && g.budget.IsExhausted() {
+			break
+		}
 		seen[keyLower] = true
 
 		content, err := os.ReadFile(filepath.Join(g.BasePath, relPath))
@@ -267,9 +318,16 @@ func (g *ContextGatherer) GatherKeyFiles() string {
 		if truncated {
 			content = append(content[:3000], []byte("\n...[truncated]")...)
 		}
+
+		formatted := fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, string(content))
+		if !g.checkBudget(formatted) {
+			g.recordSkip(relPath, "token budget exhausted")
+			break
+		}
+
 		// Track this file read for coverage reporting
 		g.recordRead(relPath, content, truncated)
-		sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, string(content)))
+		sb.WriteString(formatted)
 	}
 	return sb.String()
 }
@@ -290,6 +348,9 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 			if !strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml") {
 				continue
 			}
+			if g.budget != nil && g.budget.IsExhausted() {
+				break
+			}
 			content, err := os.ReadFile(filepath.Join(ghWorkflows, name))
 			if err != nil {
 				continue
@@ -299,34 +360,59 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 				content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
 			}
 			relPath := filepath.Join(".github", "workflows", name)
+
+			formatted := fmt.Sprintf("## %s\n```yaml\n%s\n```\n\n", relPath, string(content))
+			if !g.checkBudget(formatted) {
+				g.recordSkip(relPath, "token budget exhausted")
+				break
+			}
+
 			// Track this file read for coverage reporting
 			g.recordRead(relPath, content, truncated)
-			sb.WriteString(fmt.Sprintf("## %s\n```yaml\n%s\n```\n\n", relPath, string(content)))
+			sb.WriteString(formatted)
 		}
 	}
 
 	// GitLab CI
 	gitlabCI := filepath.Join(g.BasePath, ".gitlab-ci.yml")
 	if content, err := os.ReadFile(gitlabCI); err == nil {
-		truncated := len(content) > maxPerFile
-		if truncated {
-			content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
+		if g.budget != nil && g.budget.IsExhausted() {
+			g.recordSkip(".gitlab-ci.yml", "token budget exhausted (prio)")
+		} else {
+			truncated := len(content) > maxPerFile
+			if truncated {
+				content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
+			}
+			formatted := fmt.Sprintf("## .gitlab-ci.yml\n```yaml\n%s\n```\n\n", string(content))
+			if g.checkBudget(formatted) {
+				// Track this file read for coverage reporting
+				g.recordRead(".gitlab-ci.yml", content, truncated)
+				sb.WriteString(formatted)
+			} else {
+				g.recordSkip(".gitlab-ci.yml", "token budget exhausted")
+			}
 		}
-		// Track this file read for coverage reporting
-		g.recordRead(".gitlab-ci.yml", content, truncated)
-		sb.WriteString(fmt.Sprintf("## .gitlab-ci.yml\n```yaml\n%s\n```\n\n", string(content)))
 	}
 
 	// CircleCI
 	circleCI := filepath.Join(g.BasePath, ".circleci", "config.yml")
 	if content, err := os.ReadFile(circleCI); err == nil {
-		truncated := len(content) > maxPerFile
-		if truncated {
-			content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
+		if g.budget != nil && g.budget.IsExhausted() {
+			g.recordSkip(".circleci/config.yml", "token budget exhausted (prio)")
+		} else {
+			truncated := len(content) > maxPerFile
+			if truncated {
+				content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
+			}
+			formatted := fmt.Sprintf("## .circleci/config.yml\n```yaml\n%s\n```\n\n", string(content))
+			if g.checkBudget(formatted) {
+				// Track this file read for coverage reporting
+				g.recordRead(".circleci/config.yml", content, truncated)
+				sb.WriteString(formatted)
+			} else {
+				g.recordSkip(".circleci/config.yml", "token budget exhausted")
+			}
 		}
-		// Track this file read for coverage reporting
-		g.recordRead(".circleci/config.yml", content, truncated)
-		sb.WriteString(fmt.Sprintf("## .circleci/config.yml\n```yaml\n%s\n```\n\n", string(content)))
 	}
 
 	return sb.String()
@@ -364,6 +450,10 @@ func (g *ContextGatherer) GatherSourceCode() string {
 
 	// Helper to add a file - returns false if budget exhausted
 	addFile := func(relPath string, maxLines int) bool {
+		if g.budget != nil && g.budget.IsExhausted() {
+			g.recordSkip(relPath, "token budget exhausted (pre-check)")
+			return false
+		}
 		if gathered >= maxFiles {
 			g.recordSkip(relPath, "max files limit reached")
 			return false
@@ -412,12 +502,13 @@ func (g *ContextGatherer) GatherSourceCode() string {
 		}
 
 		// Check budget before adding
-		if totalChars+len(output) > maxTotalChars {
-			g.recordSkip(relPath, "would exceed character budget")
+		formatted := fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, output)
+		if !g.checkBudget(formatted) {
+			g.recordSkip(relPath, "token budget exhausted")
 			return false
 		}
 
-		sb.WriteString(fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, output))
+		sb.WriteString(formatted)
 		gathered++
 		totalChars += len(output)
 		g.recordRead(relPath, content, truncated)
@@ -655,6 +746,11 @@ func (g *ContextGatherer) GatherSourceCode() string {
 
 	// Phase 3: Add files in priority order until budget exhausted
 	for _, c := range candidates {
+		// Stop if budget exhausted
+		if g.budget != nil && g.budget.IsExhausted() {
+			g.recordSkip(c.path, "token budget exhausted (loop)")
+			break
+		}
 		// Try to add the file
 		if gathered >= maxFiles {
 			g.recordSkip(c.path, "max files limit reached")
@@ -665,7 +761,12 @@ func (g *ContextGatherer) GatherSourceCode() string {
 			continue
 		}
 
-		addFile(c.path, 300)
+		if !addFile(c.path, 300) {
+			// If addFile returned false because of budget, we should break
+			if g.budget != nil && g.budget.IsExhausted() {
+				break
+			}
+		}
 	}
 
 	if gathered == 0 {

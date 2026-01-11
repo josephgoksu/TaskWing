@@ -60,7 +60,11 @@ func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 		a.chain = chain
 	}
 
+	limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
+	budget := tools.NewContextBudget(int(float64(limit) * 0.9))
+
 	gatherer := tools.NewContextGatherer(input.BasePath)
+	gatherer.SetBudget(budget)
 
 	// Split work into parallel tracks if not in watch mode
 	// Watch mode usually only has small changes, so we keep it simple
