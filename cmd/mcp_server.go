@@ -16,6 +16,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/mcp/presenter"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -473,7 +474,8 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params Proj
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
-	return mcpJSONResponse(result)
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatRecall(result))
 }
 
 // === Task Lifecycle Handlers ===
