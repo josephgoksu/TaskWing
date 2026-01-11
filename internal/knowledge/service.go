@@ -276,9 +276,14 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 
 		// Convert BM25 rank to score (BM25 is negative, more negative = better)
 		// Normalize to 0-1 range where 1 is best match
-		ftsScore := float32(1.0 / (1.0 - r.Rank)) // Convert negative rank to positive score
+		// BM25 typical range: -1 (weak) to -15 (very strong match)
+		// Formula: clamp(-rank / 10, 0, 1) - scales -10 rank to 1.0
+		ftsScore := float32(-r.Rank / 10.0)
 		if ftsScore > 1.0 {
 			ftsScore = 1.0
+		}
+		if ftsScore < 0.1 {
+			ftsScore = 0.1 // Minimum score for any FTS match
 		}
 		node := r.Node // Copy to avoid pointer issues
 		nodeByID[r.Node.ID] = &node

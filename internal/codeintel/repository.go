@@ -661,17 +661,48 @@ func (r *SQLiteRepository) ClearAllSymbols(ctx context.Context) error {
 
 // === Helper Functions ===
 
-// sanitizeFTSQuery sanitizes a query string for FTS5 to prevent syntax errors and injection.
-// C3 FIX: FTS5 has special syntax that can cause parse errors or unexpected behavior.
-// Preserves trailing * for prefix matching (e.g., "Create*" finds "CreateUser").
+// sanitizeFTSQuery sanitizes a query for FTS5 symbol search.
+// Uses OR logic for multi-word queries to improve recall for natural language queries.
+// Stop words are filtered to focus on content words.
+// Preserves trailing * for prefix matching.
 func sanitizeFTSQuery(query string) string {
 	if query == "" {
 		return ""
 	}
 
-	// Replace most FTS5 special characters with spaces
-	// But preserve * which is used for prefix matching
-	// These characters have special meaning in FTS5: " ^ : ( ) { } [ ]
+	// Common stop words that rarely help code search
+	stopWords := map[string]bool{
+		"a": true, "an": true, "the": true, "is": true, "are": true,
+		"was": true, "were": true, "be": true, "been": true, "being": true,
+		"have": true, "has": true, "had": true, "do": true, "does": true,
+		"did": true, "will": true, "would": true, "could": true, "should": true,
+		"may": true, "might": true, "must": true, "shall": true, "am": true,
+		"i": true, "you": true, "he": true, "she": true, "it": true,
+		"we": true, "they": true, "what": true, "which": true, "who": true,
+		"whom": true, "this": true, "that": true, "these": true, "those": true,
+		"of": true, "at": true, "by": true, "for": true, "with": true,
+		"about": true, "against": true, "between": true, "into": true,
+		"through": true, "during": true, "before": true, "after": true,
+		"above": true, "below": true, "to": true, "from": true, "up": true,
+		"down": true, "in": true, "out": true, "on": true, "off": true,
+		"over": true, "under": true, "again": true, "further": true,
+		"then": true, "once": true, "here": true, "there": true, "when": true,
+		"where": true, "why": true, "how": true, "all": true, "each": true,
+		"few": true, "more": true, "most": true, "other": true, "some": true,
+		"such": true, "no": true, "nor": true, "not": true, "only": true,
+		"own": true, "same": true, "so": true, "than": true, "too": true,
+		"very": true, "s": true, "t": true, "can": true, "just": true,
+		"don": true, "now": true, "d": true, "ll": true, "m": true,
+		"o": true, "re": true, "ve": true, "y": true, "ain": true,
+		"aren": true, "couldn": true, "didn": true, "doesn": true,
+		"hadn": true, "hasn": true, "haven": true, "isn": true,
+		"ma": true, "mightn": true, "mustn": true, "needn": true,
+		"shan": true, "shouldn": true, "wasn": true, "weren": true,
+		"won": true, "wouldn": true,
+	}
+
+	// Replace FTS5 special characters with spaces
+	// Preserve * which is used for prefix matching
 	replacer := strings.NewReplacer(
 		`"`, " ",
 		`^`, " ",
@@ -682,26 +713,30 @@ func sanitizeFTSQuery(query string) string {
 		`}`, " ",
 		`[`, " ",
 		`]`, " ",
-		`-`, " ", // Prefix negation
-		`+`, " ", // Prefix requirement
+		`-`, " ",
+		`+`, " ",
+		`.`, " ",
+		`,`, " ",
+		`'`, " ",
+		`?`, " ",
+		`!`, " ",
 	)
-	sanitized := replacer.Replace(query)
+	sanitized := replacer.Replace(strings.ToLower(query))
 
-	// Split into words and filter out FTS5 boolean operators
+	// Split into words and filter
 	words := strings.Fields(sanitized)
 	var filtered []string
+	seen := make(map[string]bool)
+
 	for _, word := range words {
-		// Remove any * that's not at the end (invalid position)
-		// Keep trailing * for prefix matching
-		cleanWord := word
+		// Handle prefix wildcard
 		hasPrefixWildcard := false
+		cleanWord := word
 		if strings.HasSuffix(word, "*") {
 			hasPrefixWildcard = true
 			cleanWord = strings.TrimSuffix(word, "*")
-			// Remove any remaining * characters from the middle
 			cleanWord = strings.ReplaceAll(cleanWord, "*", "")
 		} else {
-			// No trailing *, remove all * characters
 			cleanWord = strings.ReplaceAll(cleanWord, "*", "")
 		}
 
@@ -709,13 +744,29 @@ func sanitizeFTSQuery(query string) string {
 			continue
 		}
 
+		// Skip very short words (likely noise)
+		if len(cleanWord) < 2 {
+			continue
+		}
+
+		// Skip stop words
+		if stopWords[cleanWord] {
+			continue
+		}
+
+		// Skip FTS5 operators
 		upper := strings.ToUpper(cleanWord)
-		// Skip FTS5 operators: OR, AND, NOT, NEAR
 		if upper == "OR" || upper == "AND" || upper == "NOT" || upper == "NEAR" {
 			continue
 		}
 
-		// Restore the prefix wildcard if it was there
+		// Skip duplicates
+		if seen[cleanWord] {
+			continue
+		}
+		seen[cleanWord] = true
+
+		// Restore wildcard if present
 		if hasPrefixWildcard {
 			filtered = append(filtered, cleanWord+"*")
 		} else {
@@ -727,20 +778,19 @@ func sanitizeFTSQuery(query string) string {
 		return ""
 	}
 
-	// For simple queries without wildcards, quote each word for safety
-	// For prefix queries (ending in *), use them directly
+	// Build query with OR logic for natural language queries
+	// For prefix queries, use them directly (FTS5 requires unquoted)
 	var result []string
 	for _, word := range filtered {
 		if strings.HasSuffix(word, "*") {
-			// Prefix query - use directly (FTS5 requires unquoted prefix)
 			result = append(result, word)
 		} else {
-			// Regular word - quote for safety
 			result = append(result, `"`+word+`"`)
 		}
 	}
 
-	return strings.Join(result, " ")
+	// Use OR to improve recall for natural language queries
+	return strings.Join(result, " OR ")
 }
 
 // scanSymbols scans rows into a slice of Symbol (without embeddings).

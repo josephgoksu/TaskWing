@@ -3,7 +3,6 @@ package knowledge
 import (
 	"context"
 	"log/slog"
-	"sort"
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/llm/providers/tei"
@@ -74,6 +73,7 @@ func (a *teiRerankerAdapter) Close() error {
 
 // rerankResults applies reranking to scored nodes with timeout and fallback.
 // If reranking fails or times out, returns the original results unchanged.
+// Preserves reranker ordering and normalizes scores to meaningful display range.
 func rerankResults(ctx context.Context, reranker Reranker, query string, scored []ScoredNode, timeout time.Duration) []ScoredNode {
 	if reranker == nil || len(scored) == 0 {
 		return scored
@@ -85,9 +85,11 @@ func rerankResults(ctx context.Context, reranker Reranker, query string, scored 
 
 	// Extract document contents for reranking
 	documents := make([]string, len(scored))
+	originalScores := make([]float32, len(scored))
 	for i, sn := range scored {
 		// Use content + summary for better reranking
 		documents[i] = sn.Node.Summary + "\n" + sn.Node.Content
+		originalScores[i] = sn.Score
 	}
 
 	// Attempt reranking
@@ -101,25 +103,64 @@ func rerankResults(ctx context.Context, reranker Reranker, query string, scored 
 		return scored
 	}
 
-	// Create reranked results
+	if len(results) == 0 {
+		return scored
+	}
+
+	// Find min/max reranker scores for normalization
+	minRerankScore := results[0].Score
+	maxRerankScore := results[0].Score
+	for _, r := range results {
+		if r.Score < minRerankScore {
+			minRerankScore = r.Score
+		}
+		if r.Score > maxRerankScore {
+			maxRerankScore = r.Score
+		}
+	}
+	rerankRange := maxRerankScore - minRerankScore
+
+	// Find max original score as the ceiling for normalized scores
+	var maxOrigScore float32
+	for _, s := range originalScores {
+		if s > maxOrigScore {
+			maxOrigScore = s
+		}
+	}
+	if maxOrigScore < 0.3 {
+		maxOrigScore = 0.3 // Minimum ceiling
+	}
+
+	// Create reranked results with normalized scores
+	// Normalize reranker scores to [0.15, maxOrigScore] range
+	// This preserves relative differences while ensuring meaningful display
 	reranked := make([]ScoredNode, 0, len(results))
 	for _, r := range results {
 		if r.Index < len(scored) {
 			node := scored[r.Index]
-			// Replace score with reranker score (normalized to 0-1 range if needed)
-			node.Score = float32(r.Score)
+
+			// Normalize reranker score to 0-1 range, then scale to display range
+			var normalizedScore float32
+			if rerankRange > 0.0001 { // Avoid division by near-zero
+				normalizedScore = float32((r.Score - minRerankScore) / rerankRange)
+			} else {
+				normalizedScore = 1.0 // All scores equal, treat as max
+			}
+
+			// Scale to [0.15, maxOrigScore] range
+			// This preserves relative differences from the reranker
+			displayScore := 0.15 + normalizedScore*(maxOrigScore-0.15)
+
+			node.Score = displayScore
 			reranked = append(reranked, node)
 		}
 	}
 
-	// Sort by reranker score (should already be sorted, but ensure consistency)
-	sort.Slice(reranked, func(i, j int) bool {
-		return reranked[i].Score > reranked[j].Score
-	})
-
 	slog.Debug("reranking complete",
 		"input_count", len(scored),
-		"output_count", len(reranked))
+		"output_count", len(reranked),
+		"rerank_range", rerankRange,
+		"max_orig_score", maxOrigScore)
 
 	return reranked
 }

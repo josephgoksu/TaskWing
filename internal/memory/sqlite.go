@@ -1653,11 +1653,87 @@ func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 	return nodes, nil
 }
 
+// sanitizeFTSQueryForNodes sanitizes a query for FTS5 knowledge node search.
+// It uses OR logic for multi-word queries to improve recall when exact matches fail.
+// Stop words are filtered to focus on content words.
+func sanitizeFTSQueryForNodes(query string) string {
+	if query == "" {
+		return ""
+	}
+
+	// Common stop words that rarely help search
+	stopWords := map[string]bool{
+		"a": true, "an": true, "the": true, "is": true, "are": true,
+		"was": true, "were": true, "be": true, "been": true, "being": true,
+		"have": true, "has": true, "had": true, "do": true, "does": true,
+		"did": true, "will": true, "would": true, "could": true, "should": true,
+		"what": true, "which": true, "who": true, "whom": true, "this": true,
+		"that": true, "these": true, "those": true, "it": true, "its": true,
+		"of": true, "for": true, "with": true, "about": true, "against": true,
+		"between": true, "into": true, "through": true, "during": true,
+		"before": true, "after": true, "above": true, "below": true, "to": true,
+		"from": true, "up": true, "down": true, "in": true, "out": true,
+		"on": true, "off": true, "over": true, "under": true, "again": true,
+		"how": true, "why": true, "when": true, "where": true, "use": true,
+		"using": true, "used": true, "type": true, "types": true,
+	}
+
+	// FTS5 special characters to replace
+	replacer := strings.NewReplacer(
+		`"`, " ", `^`, " ", `:`, " ", `(`, " ", `)`, " ",
+		`{`, " ", `}`, " ", `[`, " ", `]`, " ", `-`, " ", `+`, " ",
+		`?`, " ", `!`, " ", `.`, " ", `,`, " ", `;`, " ",
+	)
+	sanitized := replacer.Replace(strings.ToLower(query))
+
+	// Split into words and filter
+	words := strings.Fields(sanitized)
+	var filtered []string
+	for _, word := range words {
+		word = strings.TrimSpace(word)
+		if len(word) < 2 {
+			continue
+		}
+		// Skip stop words
+		if stopWords[word] {
+			continue
+		}
+		// Skip FTS5 operators
+		upper := strings.ToUpper(word)
+		if upper == "OR" || upper == "AND" || upper == "NOT" || upper == "NEAR" {
+			continue
+		}
+		// Remove any remaining * characters
+		word = strings.ReplaceAll(word, "*", "")
+		if word != "" {
+			filtered = append(filtered, word)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return ""
+	}
+
+	// Use OR logic for better recall - finding any matching term is better than nothing
+	// Quote each word for safety, join with OR
+	var quoted []string
+	for _, w := range filtered {
+		quoted = append(quoted, `"`+w+`"`)
+	}
+	return strings.Join(quoted, " OR ")
+}
+
 // SearchFTS performs full-text search using FTS5 with BM25 ranking.
 // Returns nodes matching the query, ordered by relevance.
 func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 	if limit <= 0 {
 		limit = 10
+	}
+
+	// Sanitize query for FTS5 to prevent syntax errors and improve matching
+	sanitizedQuery := sanitizeFTSQueryForNodes(query)
+	if sanitizedQuery == "" {
+		return nil, nil // Empty query returns no results
 	}
 
 	rows, err := s.db.Query(`
@@ -1668,7 +1744,7 @@ func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 		WHERE nodes_fts MATCH ?
 		ORDER BY rank
 		LIMIT ?
-	`, query, limit)
+	`, sanitizedQuery, limit)
 	if err != nil {
 		// Return empty results with error so caller can decide how to handle
 		// Common case: FTS table doesn't exist yet (returns "no such table")

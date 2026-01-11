@@ -44,22 +44,35 @@ func TestRerankResults_Success(t *testing.T) {
 		{Node: &memory.Node{ID: "3", Summary: "Third", Content: "Third content"}, Score: 0.7},
 	}
 
-	// Reranker reverses the order
+	// Reranker reverses the order with varying scores
 	reranker := &mockReranker{
 		results: []RerankResult{
-			{Index: 2, Score: 0.95}, // Third is now best
+			{Index: 2, Score: 0.95}, // Third is now best (highest rerank score)
 			{Index: 0, Score: 0.85}, // First is second
-			{Index: 1, Score: 0.75}, // Second is third
+			{Index: 1, Score: 0.75}, // Second is third (lowest rerank score)
 		},
 	}
 
 	result := rerankResults(context.Background(), reranker, "test query", nodes, 5*time.Second)
 
 	require.Len(t, result, 3)
+	// Order should match reranker results
 	assert.Equal(t, "3", result[0].Node.ID) // Third is now first
-	assert.Equal(t, float32(0.95), result[0].Score)
-	assert.Equal(t, "1", result[1].Node.ID)
-	assert.Equal(t, "2", result[2].Node.ID)
+	assert.Equal(t, "1", result[1].Node.ID) // First is second
+	assert.Equal(t, "2", result[2].Node.ID) // Second is third
+
+	// Scores normalized to [0.15, 0.9] range preserving relative differences
+	// Rerank range: 0.95 - 0.75 = 0.20
+	// Score 0.95 -> normalized 1.0 -> 0.15 + 1.0*(0.9-0.15) = 0.9
+	// Score 0.85 -> normalized 0.5 -> 0.15 + 0.5*(0.9-0.15) = 0.525
+	// Score 0.75 -> normalized 0.0 -> 0.15 + 0.0*(0.9-0.15) = 0.15
+	assert.InDelta(t, 0.9, result[0].Score, 0.01)
+	assert.InDelta(t, 0.525, result[1].Score, 0.01)
+	assert.InDelta(t, 0.15, result[2].Score, 0.01)
+
+	// Verify scores maintain relative order (higher rerank = higher display)
+	assert.Greater(t, result[0].Score, result[1].Score)
+	assert.Greater(t, result[1].Score, result[2].Score)
 }
 
 func TestRerankResults_NilReranker(t *testing.T) {
@@ -129,8 +142,8 @@ func TestRerankResults_PartialResults(t *testing.T) {
 	// Reranker only returns top 2
 	reranker := &mockReranker{
 		results: []RerankResult{
-			{Index: 2, Score: 0.95},
-			{Index: 0, Score: 0.85},
+			{Index: 2, Score: 0.95}, // Best
+			{Index: 0, Score: 0.85}, // Second best
 		},
 	}
 
@@ -138,8 +151,14 @@ func TestRerankResults_PartialResults(t *testing.T) {
 
 	// Should only have 2 results (what reranker returned)
 	assert.Len(t, result, 2)
-	assert.Equal(t, "3", result[0].Node.ID)
-	assert.Equal(t, "1", result[1].Node.ID)
+	assert.Equal(t, "3", result[0].Node.ID) // Third is first
+	assert.Equal(t, "1", result[1].Node.ID) // First is second
+
+	// Scores normalized: range = 0.95-0.85 = 0.10
+	// Score 0.95 -> normalized 1.0 -> 0.9
+	// Score 0.85 -> normalized 0.0 -> 0.15
+	assert.InDelta(t, 0.9, result[0].Score, 0.01)
+	assert.InDelta(t, 0.15, result[1].Score, 0.01)
 }
 
 // TestRetrievalPipeline_WithReranking tests the full two-stage retrieval pipeline
@@ -157,10 +176,11 @@ func TestRetrievalPipeline_WithReranking(t *testing.T) {
 	}
 
 	// Reranker should reorder based on query relevance
+	// Wide score range to test normalization
 	reranker := &mockReranker{
 		results: []RerankResult{
-			{Index: 1, Score: 0.98}, // Paris capital - most relevant to "capital of France"
-			{Index: 0, Score: 0.70}, // France info
+			{Index: 1, Score: 0.98}, // Paris capital - most relevant
+			{Index: 0, Score: 0.70}, // France info - somewhat relevant
 			{Index: 2, Score: 0.20}, // Berlin info - not relevant
 		},
 	}
@@ -168,9 +188,23 @@ func TestRetrievalPipeline_WithReranking(t *testing.T) {
 	result := rerankResults(context.Background(), reranker, "What is the capital of France?", stage1Results, 5*time.Second)
 
 	require.Len(t, result, 3)
-	// "Paris capital" should now be first
+	// "Paris capital" should now be first (reranker order preserved)
 	assert.Equal(t, "doc2", result[0].Node.ID)
-	assert.Equal(t, float32(0.98), result[0].Score)
+	assert.Equal(t, "doc1", result[1].Node.ID)
+	assert.Equal(t, "doc3", result[2].Node.ID)
+
+	// Scores normalized to [0.15, 0.85] preserving relative differences
+	// Rerank range: 0.98 - 0.20 = 0.78
+	// Score 0.98 -> normalized 1.0 -> 0.15 + 1.0*(0.85-0.15) = 0.85
+	// Score 0.70 -> normalized 0.641 -> 0.15 + 0.641*(0.85-0.15) ≈ 0.60
+	// Score 0.20 -> normalized 0.0 -> 0.15 + 0.0*(0.85-0.15) = 0.15
+	assert.InDelta(t, 0.85, result[0].Score, 0.01)
+	assert.InDelta(t, 0.60, result[1].Score, 0.05) // Allow wider delta for middle value
+	assert.InDelta(t, 0.15, result[2].Score, 0.01)
+
+	// Verify relative ordering matches reranker confidence
+	assert.Greater(t, result[0].Score, result[1].Score, "Paris should score higher than France")
+	assert.Greater(t, result[1].Score, result[2].Score, "France should score higher than Berlin")
 }
 
 // TestRetrievalPipeline_FallbackOnTimeout simulates the fallback scenario

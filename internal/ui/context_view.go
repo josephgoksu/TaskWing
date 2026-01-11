@@ -9,6 +9,14 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 )
 
+const (
+	// contentDisplayRelativeThreshold is the minimum relative score (vs max) to show content
+	contentDisplayRelativeThreshold float32 = 0.7
+	// contentDisplayAbsoluteThreshold is the minimum absolute score to show content
+	// This prevents showing content for low-relevance results even if they're "best" in set
+	contentDisplayAbsoluteThreshold float32 = 0.25
+)
+
 // RenderContextResults displays search results and optional answer in compact mode.
 // For verbose output with full metadata, use RenderContextResultsVerbose.
 func RenderContextResults(query string, scored []knowledge.ScoredNode, answer string) {
@@ -101,6 +109,13 @@ func renderContextInternal(query string, scored []knowledge.ScoredNode, answer s
 			expandedIndicator = " 🔗" // Indicates this came from graph expansion
 		}
 
+		// Show content for high-scoring results (>70% of max AND >0.25 absolute)
+		// Get content without the summary prefix to avoid redundancy
+		cleanContent := getContentWithoutSummary(s.Node.Content, summary)
+		showContent := relativeScore > contentDisplayRelativeThreshold &&
+			s.Score > contentDisplayAbsoluteThreshold &&
+			cleanContent != ""
+
 		if verbose {
 			// Verbose: show full metadata
 			fmt.Printf(" %d. %s %s\n", i+1, icon, sourceTitle.Render(summary))
@@ -108,9 +123,19 @@ func renderContextInternal(query string, scored []knowledge.ScoredNode, answer s
 			if s.Node.SourceAgent != "" {
 				fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("Agent: %s", s.Node.SourceAgent)))
 			}
+			if showContent {
+				// Show truncated content for high-scoring results
+				content := truncateContent(cleanContent, 200)
+				fmt.Printf("    %s\n", metaStyle.Render(content))
+			}
 		} else {
 			// Compact: single line with score bar
 			fmt.Printf(" %d. %s %s %s%s\n", i+1, icon, sourceTitle.Render(summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)), expandedIndicator)
+			if showContent {
+				// Show truncated content for high-scoring results
+				content := truncateContent(cleanContent, 150)
+				fmt.Printf("    %s\n", metaStyle.Render(content))
+			}
 		}
 	}
 }
@@ -187,14 +212,29 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 				expandedIndicator = " 🔗"
 			}
 
+			// Show content for high-scoring results (>70% of max AND >0.25 absolute)
+			// Get content without the summary prefix to avoid redundancy
+			cleanContent := getContentWithoutSummary(s.Node.Content, summary)
+			showContent := relativeScore > contentDisplayRelativeThreshold &&
+				s.Score > contentDisplayAbsoluteThreshold &&
+				cleanContent != ""
+
 			if verbose {
 				fmt.Printf(" %d. %s %s\n", i+1, icon, sourceTitle.Render(summary))
 				fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("ID: %s | Type: %s | Score: %.2f%s", id, s.Node.Type, s.Score, expandedIndicator)))
 				if s.Node.SourceAgent != "" {
 					fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("Agent: %s", s.Node.SourceAgent)))
 				}
+				if showContent {
+					content := truncateContent(cleanContent, 200)
+					fmt.Printf("    %s\n", metaStyle.Render(content))
+				}
 			} else {
 				fmt.Printf(" %d. %s %s %s%s\n", i+1, icon, sourceTitle.Render(summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)), expandedIndicator)
+				if showContent {
+					content := truncateContent(cleanContent, 150)
+					fmt.Printf("    %s\n", metaStyle.Render(content))
+				}
 			}
 		}
 	}
@@ -213,12 +253,8 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 
 			name := sym.Name
 			if sym.Signature != "" && !verbose {
-				// Show short signature in compact mode
-				if len(sym.Signature) > 40 {
-					name = sym.Name + sym.Signature[:40] + "..."
-				} else {
-					name = sym.Name + sym.Signature
-				}
+				// Show short signature in compact mode (use runes for UTF-8 safety)
+				name = sym.Name + truncateContent(sym.Signature, 40)
 			}
 
 			location := locationStyle.Render(sym.Location)
@@ -231,14 +267,12 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 				fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("Kind: %s | Language: %s", sym.Kind, sym.Language)))
 				fmt.Printf("    %s\n", location)
 				if sym.DocComment != "" {
-					// Show first line of doc comment
+					// Show first line of doc comment (use runes for UTF-8 safety)
 					doc := sym.DocComment
 					if idx := strings.Index(doc, "\n"); idx > 0 {
 						doc = doc[:idx]
 					}
-					if len(doc) > 80 {
-						doc = doc[:80] + "..."
-					}
+					doc = truncateContent(doc, 80)
 					fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("Doc: %s", doc)))
 				}
 			} else {
@@ -246,6 +280,31 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 			}
 		}
 	}
+}
+
+// truncateContent truncates content to maxLen runes and adds ellipsis if needed.
+func truncateContent(content string, maxLen int) string {
+	runes := []rune(content)
+	if len(runes) <= maxLen {
+		return content
+	}
+	return string(runes[:maxLen]) + "..."
+}
+
+// getContentWithoutSummary returns content with the summary prefix removed.
+// Many knowledge nodes have Content that starts with Summary text - this avoids redundancy.
+func getContentWithoutSummary(content, summary string) string {
+	// Guard: if summary is empty or too short, return content as-is
+	// This prevents CutPrefix("anything", "") always matching
+	if len(summary) < 3 {
+		return content
+	}
+	// Check if content starts with summary and remove it
+	if remainder, found := strings.CutPrefix(content, summary); found {
+		// Remove leading newlines/whitespace
+		return strings.TrimLeft(remainder, "\n\r\t ")
+	}
+	return content
 }
 
 // symbolKindIcon returns an icon for a symbol kind.
