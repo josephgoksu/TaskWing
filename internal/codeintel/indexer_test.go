@@ -451,6 +451,69 @@ func TestIndexer_DefaultConfig(t *testing.T) {
 	}
 }
 
+// TestIndexer_CountSupportedFiles tests file counting for safety checks.
+func TestIndexer_CountSupportedFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create test files
+	files := map[string]string{
+		"main.go":      "package main\nfunc main() {}\n",
+		"util.go":      "package main\nfunc helper() {}\n",
+		"app.ts":       "export class App {}\n",
+		"service.py":   "class Service: pass\n",
+		"lib.rs":       "fn main() {}\n",
+		"README.md":    "# Test\n",       // Should not be counted
+		"data.json":    "{}",             // Should not be counted
+		"main_test.go": "package main\n", // Test file, excluded by default
+	}
+
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to write %s: %v", name, err)
+		}
+	}
+
+	// Create repository
+	store, err := memory.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	repo := NewRepository(store.DB())
+
+	// Create indexer with default config (excludes test files)
+	config := DefaultIndexerConfig()
+	indexer := NewIndexer(repo, config)
+
+	// Count files
+	count, err := indexer.CountSupportedFiles(tmpDir)
+	if err != nil {
+		t.Fatalf("CountSupportedFiles failed: %v", err)
+	}
+
+	// Should count: main.go, util.go, app.ts, service.py, lib.rs = 5
+	// Should NOT count: README.md, data.json, main_test.go
+	expectedCount := 5
+	if count != expectedCount {
+		t.Errorf("Expected %d files, got %d", expectedCount, count)
+	}
+
+	// Test with IncludeTests=true
+	config.IncludeTests = true
+	indexer = NewIndexer(repo, config)
+	count, err = indexer.CountSupportedFiles(tmpDir)
+	if err != nil {
+		t.Fatalf("CountSupportedFiles with IncludeTests failed: %v", err)
+	}
+
+	// Now should include main_test.go = 6
+	expectedWithTests := 6
+	if count != expectedWithTests {
+		t.Errorf("Expected %d files with tests, got %d", expectedWithTests, count)
+	}
+}
+
 // TestIndexer_MultiLanguageSupport tests indexing of TypeScript, Python, and Rust files.
 func TestIndexer_MultiLanguageSupport(t *testing.T) {
 	tmpDir := t.TempDir()

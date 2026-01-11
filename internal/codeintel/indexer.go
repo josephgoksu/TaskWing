@@ -558,6 +558,18 @@ func (idx *Indexer) ClearIndex(ctx context.Context) error {
 	return idx.repo.ClearAllSymbols(ctx)
 }
 
+// CountSupportedFiles returns the number of files that would be indexed.
+// This is useful for safety checks before starting a potentially long index operation.
+func (idx *Indexer) CountSupportedFiles(rootPath string) (int, error) {
+	// Create parser registry to determine which files can be parsed
+	idx.registry = parser.NewDefaultRegistry(rootPath)
+	files, err := idx.findSupportedFiles(rootPath)
+	if err != nil {
+		return 0, err
+	}
+	return len(files), nil
+}
+
 // GetStats returns current index statistics.
 func (idx *Indexer) GetStats(ctx context.Context) (*IndexStats, error) {
 	symbolCount, err := idx.repo.GetSymbolCount(ctx)

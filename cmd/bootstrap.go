@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
+	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/josephgoksu/TaskWing/internal/workspace"
@@ -41,6 +42,8 @@ The bootstrap command analyzes:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		preview, _ := cmd.Flags().GetBool("preview")
 		skipInit, _ := cmd.Flags().GetBool("skip-init")
+		skipIndex, _ := cmd.Flags().GetBool("skip-index")
+		forceIndex, _ := cmd.Flags().GetBool("force")
 		trace, _ := cmd.Flags().GetBool("trace")
 		traceFile, _ := cmd.Flags().GetString("trace-file")
 		traceStdout, _ := cmd.Flags().GetBool("trace-stdout")
@@ -189,17 +192,29 @@ The bootstrap command analyzes:
 
 		// Handle multi-repo workspaces
 		if ws.IsMultiRepo() {
-			return runMultiRepoBootstrap(cmd.Context(), svc, ws, preview)
+			if err := runMultiRepoBootstrap(cmd.Context(), svc, ws, preview); err != nil {
+				return err
+			}
+		} else {
+			// Default: run agent TUI flow
+			if err := runAgentTUI(cmd.Context(), svc, cwd, llmCfg, trace, traceFile, traceStdout, preview); err != nil {
+				return err
+			}
 		}
 
-		// Default: run agent TUI flow
-		return runAgentTUI(cmd.Context(), svc, cwd, llmCfg, trace, traceFile, traceStdout, preview)
+		// Run code indexing (after knowledge extraction)
+		if !skipIndex && !preview {
+			return runCodeIndexing(cmd.Context(), cwd, forceIndex, viper.GetBool("quiet"))
+		}
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(bootstrapCmd)
 	bootstrapCmd.Flags().Bool("skip-init", false, "Skip initialization prompt")
+	bootstrapCmd.Flags().Bool("skip-index", false, "Skip code indexing (symbol extraction)")
+	bootstrapCmd.Flags().Bool("force", false, "Force indexing even for large codebases (>5000 files)")
 	bootstrapCmd.Flags().Bool("trace", false, "Emit JSON event stream to stderr")
 	bootstrapCmd.Flags().String("trace-file", "", "Write JSON event stream to file (default: .taskwing/logs/bootstrap.trace.jsonl)")
 	bootstrapCmd.Flags().Bool("trace-stdout", false, "Emit JSON event stream to stderr (overrides trace file)")
@@ -452,6 +467,104 @@ func promptAdditionalModels() error {
 			}
 			fmt.Println()
 		}
+	}
+
+	return nil
+}
+
+// runCodeIndexing runs the code intelligence indexer on the codebase.
+// This extracts symbols (functions, types, etc.) for enhanced search and MCP recall.
+func runCodeIndexing(ctx context.Context, basePath string, forceIndex, isQuiet bool) error {
+	// Open repository to get database handle
+	repo, err := openRepo()
+	if err != nil {
+		return fmt.Errorf("open memory repo: %w", err)
+	}
+	defer func() { _ = repo.Close() }()
+
+	// Get database handle
+	store := repo.GetDB()
+	if store == nil {
+		return fmt.Errorf("database store not available")
+	}
+	db := store.DB()
+	if db == nil {
+		return fmt.Errorf("database not available")
+	}
+
+	// Create code intelligence repository and indexer
+	codeRepo := codeintel.NewRepository(db)
+	config := codeintel.DefaultIndexerConfig()
+	indexer := codeintel.NewIndexer(codeRepo, config)
+
+	// Count files first for safety check
+	fileCount, err := indexer.CountSupportedFiles(basePath)
+	if err != nil {
+		if !isQuiet {
+			fmt.Fprintf(os.Stderr, "⚠️  Could not count files for indexing: %v\n", err)
+		}
+		return nil // Non-fatal - skip indexing if we can't count
+	}
+
+	// Large codebase safety check
+	const maxFilesWithoutForce = 5000
+	if fileCount > maxFilesWithoutForce && !forceIndex {
+		fmt.Println()
+		fmt.Printf("⚠️  Large codebase detected: %d files to index\n", fileCount)
+		fmt.Printf("   This may take a while and consume resources.\n")
+		fmt.Printf("   Run with --force to proceed, or use --skip-index to bypass.\n")
+		return nil // Not an error, just skip
+	}
+
+	// Print header
+	if !isQuiet {
+		fmt.Println()
+		fmt.Println("📇 Code Intelligence Indexing")
+		fmt.Println("────────────────────────────")
+		fmt.Printf("   Files to index: %d\n", fileCount)
+	}
+
+	// Configure progress callback
+	if !isQuiet {
+		config.OnProgress = func(stats codeintel.IndexStats) {
+			fmt.Fprintf(os.Stderr, "\r   📊 Indexed %d files, %d symbols...", stats.FilesIndexed, stats.SymbolsFound)
+		}
+	}
+
+	// Re-create indexer with updated config (for progress callback)
+	indexer = codeintel.NewIndexer(codeRepo, config)
+
+	// Run indexing
+	start := time.Now()
+	stats, err := indexer.IndexDirectory(ctx, basePath)
+	if err != nil {
+		if !isQuiet {
+			fmt.Fprintf(os.Stderr, "\r                                                  \n")
+			fmt.Fprintf(os.Stderr, "⚠️  Indexing failed: %v\n", err)
+		}
+		return nil // Non-fatal - bootstrap succeeded even if indexing fails
+	}
+
+	// Clear progress line
+	if !isQuiet {
+		fmt.Fprintf(os.Stderr, "\r                                                  \n")
+	}
+
+	// Print summary
+	if !isQuiet {
+		duration := time.Since(start)
+		fmt.Printf("   ✓ Indexed in %v\n", duration.Round(time.Millisecond))
+		fmt.Printf("   📁 Files indexed:  %d\n", stats.FilesIndexed)
+		fmt.Printf("   🔤 Symbols found:  %d\n", stats.SymbolsFound)
+		fmt.Printf("   🔗 Relations:      %d\n", stats.RelationsFound)
+
+		if len(stats.Errors) > 0 {
+			fmt.Printf("   ⚠️  Errors: %d\n", len(stats.Errors))
+		}
+
+		fmt.Println()
+		fmt.Println("   Use 'tw find <query>' to search symbols")
+		fmt.Println("   Use 'tw impact <symbol>' to analyze impact")
 	}
 
 	return nil
