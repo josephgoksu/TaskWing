@@ -453,9 +453,12 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params Proj
 	}
 
 	// Execute query via app layer (ALL business logic delegated)
+	// Include symbols in MCP recall for enhanced context
 	result, err := recallApp.Query(ctx, query, app.RecallOptions{
 		Limit:          5,
+		SymbolLimit:    5,
 		GenerateAnswer: params.Answer || query != "", // Default to answering if query present
+		IncludeSymbols: true,                         // Include code symbols alongside knowledge
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)

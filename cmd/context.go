@@ -78,7 +78,9 @@ func runContext(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	result, err := recallApp.Query(ctx, query, app.RecallOptions{
 		Limit:          contextLimit,
+		SymbolLimit:    contextLimit, // Use same limit for symbols
 		GenerateAnswer: contextAnswer,
+		IncludeSymbols: true, // Include code symbols in search
 	})
 	if err != nil {
 		if !isQuiet() {
