@@ -87,6 +87,18 @@ type ImpactNode struct {
 	Relation string `json:"relation"` // How it's related (calls, implements, etc.)
 }
 
+// SymbolStats holds symbol index statistics for health checks.
+type SymbolStats struct {
+	TotalSymbols    int            `json:"totalSymbols"`
+	TotalFiles      int            `json:"totalFiles"`
+	TotalRelations  int            `json:"totalRelations"`
+	TotalDeps       int            `json:"totalDeps"`
+	ByLanguage      map[string]int `json:"byLanguage"`
+	ByKind          map[string]int `json:"byKind"`
+	WithEmbeddings  int            `json:"withEmbeddings"`
+	StaleFiles      int            `json:"staleFiles"` // Files that no longer exist
+}
+
 // IsExported returns true if the symbol is publicly visible.
 func (s *Symbol) IsExported() bool {
 	return s.Visibility == "public"

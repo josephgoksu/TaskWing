@@ -552,3 +552,120 @@ func TestNewRepository_ImplementsInterface(t *testing.T) {
 
 	var _ Repository = repo
 }
+
+func TestRepository_GetSymbolStats(t *testing.T) {
+	_, repo, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Empty stats initially
+	stats, err := repo.GetSymbolStats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 0, stats.TotalSymbols)
+	assert.Equal(t, 0, stats.TotalFiles)
+
+	// Add symbols
+	_, err = repo.UpsertSymbol(ctx, &Symbol{
+		Name:       "Func1",
+		Kind:       SymbolFunction,
+		FilePath:   "file1.go",
+		StartLine:  1,
+		EndLine:    10,
+		Language:   "go",
+		Visibility: "public",
+	})
+	require.NoError(t, err)
+
+	_, err = repo.UpsertSymbol(ctx, &Symbol{
+		Name:       "Func2",
+		Kind:       SymbolMethod,
+		FilePath:   "file1.go",
+		StartLine:  15,
+		EndLine:    25,
+		Language:   "go",
+		Visibility: "private",
+	})
+	require.NoError(t, err)
+
+	_, err = repo.UpsertSymbol(ctx, &Symbol{
+		Name:       "Handler",
+		Kind:       SymbolFunction,
+		FilePath:   "handler.ts",
+		StartLine:  1,
+		EndLine:    50,
+		Language:   "typescript",
+		Visibility: "public",
+	})
+	require.NoError(t, err)
+
+	// Get stats
+	stats, err = repo.GetSymbolStats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 3, stats.TotalSymbols)
+	assert.Equal(t, 2, stats.TotalFiles) // file1.go, handler.ts
+
+	// Check language breakdown
+	assert.Equal(t, 2, stats.ByLanguage["go"])
+	assert.Equal(t, 1, stats.ByLanguage["typescript"])
+
+	// Check kind breakdown
+	assert.Equal(t, 2, stats.ByKind["function"])
+	assert.Equal(t, 1, stats.ByKind["method"])
+}
+
+func TestRepository_GetStaleSymbolFiles(t *testing.T) {
+	_, repo, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Add symbols for files that "exist" and files that don't
+	_, err := repo.UpsertSymbol(ctx, &Symbol{
+		Name:       "Exists",
+		Kind:       SymbolFunction,
+		FilePath:   "existing.go",
+		StartLine:  1,
+		EndLine:    10,
+		Language:   "go",
+		Visibility: "public",
+	})
+	require.NoError(t, err)
+
+	_, err = repo.UpsertSymbol(ctx, &Symbol{
+		Name:       "DoesNotExist",
+		Kind:       SymbolFunction,
+		FilePath:   "deleted.go",
+		StartLine:  1,
+		EndLine:    10,
+		Language:   "go",
+		Visibility: "public",
+	})
+	require.NoError(t, err)
+
+	_, err = repo.UpsertSymbol(ctx, &Symbol{
+		Name:       "AlsoGone",
+		Kind:       SymbolFunction,
+		FilePath:   "removed.go",
+		StartLine:  1,
+		EndLine:    10,
+		Language:   "go",
+		Visibility: "public",
+	})
+	require.NoError(t, err)
+
+	// Mock file existence check
+	existingFiles := map[string]bool{
+		"existing.go": true,
+		"deleted.go":  false,
+		"removed.go":  false,
+	}
+
+	staleFiles, err := repo.GetStaleSymbolFiles(ctx, func(path string) bool {
+		return existingFiles[path]
+	})
+	require.NoError(t, err)
+
+	// Should have 2 stale files
+	assert.Len(t, staleFiles, 2)
+	assert.Contains(t, staleFiles, "deleted.go")
+	assert.Contains(t, staleFiles, "removed.go")
+}

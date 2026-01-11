@@ -41,6 +41,8 @@ type Repository interface {
 	GetSymbolCount(ctx context.Context) (int, error)
 	GetRelationCount(ctx context.Context) (int, error)
 	GetFileCount(ctx context.Context) (int, error)
+	GetSymbolStats(ctx context.Context) (*SymbolStats, error)
+	GetStaleSymbolFiles(ctx context.Context, checkPath func(string) bool) ([]string, error)
 
 	// Embedding operations
 	UpdateSymbolEmbedding(ctx context.Context, id uint32, embedding []float32) error
@@ -487,6 +489,89 @@ func (r *SQLiteRepository) GetFileCount(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("count files: %w", err)
 	}
 	return count, nil
+}
+
+// GetSymbolStats returns comprehensive statistics about the symbol index.
+func (r *SQLiteRepository) GetSymbolStats(ctx context.Context) (*SymbolStats, error) {
+	stats := &SymbolStats{
+		ByLanguage: make(map[string]int),
+		ByKind:     make(map[string]int),
+	}
+
+	// Get total counts
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM symbols").Scan(&stats.TotalSymbols); err != nil {
+		return nil, fmt.Errorf("count symbols: %w", err)
+	}
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT file_path) FROM symbols").Scan(&stats.TotalFiles); err != nil {
+		return nil, fmt.Errorf("count files: %w", err)
+	}
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM symbol_relations").Scan(&stats.TotalRelations); err != nil {
+		return nil, fmt.Errorf("count relations: %w", err)
+	}
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM dependencies").Scan(&stats.TotalDeps); err != nil {
+		// Dependencies table might not exist in older DBs - ignore error
+		stats.TotalDeps = 0
+	}
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM symbols WHERE embedding IS NOT NULL AND length(embedding) > 0").Scan(&stats.WithEmbeddings); err != nil {
+		return nil, fmt.Errorf("count embeddings: %w", err)
+	}
+
+	// Get language breakdown
+	rows, err := r.db.QueryContext(ctx, "SELECT language, COUNT(*) FROM symbols GROUP BY language ORDER BY COUNT(*) DESC")
+	if err != nil {
+		return nil, fmt.Errorf("query languages: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var lang string
+		var count int
+		if err := rows.Scan(&lang, &count); err != nil {
+			continue
+		}
+		stats.ByLanguage[lang] = count
+	}
+
+	// Get kind breakdown
+	rows, err = r.db.QueryContext(ctx, "SELECT kind, COUNT(*) FROM symbols GROUP BY kind ORDER BY COUNT(*) DESC")
+	if err != nil {
+		return nil, fmt.Errorf("query kinds: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var kind string
+		var count int
+		if err := rows.Scan(&kind, &count); err != nil {
+			continue
+		}
+		stats.ByKind[kind] = count
+	}
+
+	return stats, nil
+}
+
+// GetStaleSymbolFiles returns file paths that have symbols indexed but no longer exist.
+// The checkPath function should return true if the file exists.
+func (r *SQLiteRepository) GetStaleSymbolFiles(ctx context.Context, checkPath func(string) bool) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT DISTINCT file_path FROM symbols ORDER BY file_path")
+	if err != nil {
+		return nil, fmt.Errorf("query files: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var staleFiles []string
+	for rows.Next() {
+		var filePath string
+		if err := rows.Scan(&filePath); err != nil {
+			continue
+		}
+		if !checkPath(filePath) {
+			staleFiles = append(staleFiles, filePath)
+		}
+	}
+
+	return staleFiles, nil
 }
 
 // === Embedding Operations ===

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -84,7 +85,8 @@ Checks for:
   • Missing markdown files
   • Orphan edges (relationships to non-existent features)
   • Index cache staleness
-  • Embedding dimension consistency`,
+  • Embedding dimension consistency
+  • Symbol index health (language breakdown, stale files)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
 		if err != nil {
@@ -100,11 +102,37 @@ Checks for:
 		// Check embedding stats
 		embStats, embErr := repo.GetEmbeddingStats()
 
+		// Check symbol index stats
+		ctx := context.Background()
+		var symbolStats *codeintel.SymbolStats
+		var staleFiles []string
+		if db := repo.GetDB(); db != nil {
+			if sqlDB := db.DB(); sqlDB != nil {
+				codeRepo := codeintel.NewRepository(sqlDB)
+				symbolStats, _ = codeRepo.GetSymbolStats(ctx)
+
+				// Check for stale files (files that no longer exist)
+				if symbolStats != nil && symbolStats.TotalFiles > 0 {
+					cwd, _ := os.Getwd()
+					staleFiles, _ = codeRepo.GetStaleSymbolFiles(ctx, func(path string) bool {
+						fullPath := filepath.Join(cwd, path)
+						_, err := os.Stat(fullPath)
+						return err == nil
+					})
+					if symbolStats != nil {
+						symbolStats.StaleFiles = len(staleFiles)
+					}
+				}
+			}
+		}
+
 		if viper.GetBool("json") {
 			output, _ := json.MarshalIndent(map[string]any{
 				"issues":          issues,
 				"count":           len(issues),
 				"embedding_stats": embStats,
+				"symbol_stats":    symbolStats,
+				"stale_files":     staleFiles,
 			}, "", "  ")
 			fmt.Println(string(output))
 			return nil
@@ -112,7 +140,7 @@ Checks for:
 
 		// Show embedding stats first
 		if embErr == nil && embStats != nil {
-			fmt.Println("Embedding Statistics:")
+			fmt.Println("📊 Knowledge Embeddings:")
 			fmt.Printf("  Total nodes:     %d\n", embStats.TotalNodes)
 			fmt.Printf("  With embeddings: %d\n", embStats.NodesWithEmbeddings)
 			fmt.Printf("  Missing:         %d\n", embStats.NodesWithoutEmbeddings)
@@ -135,6 +163,49 @@ Checks for:
 				fmt.Println("   Run 'tw memory rebuild-embeddings' to regenerate all embeddings.")
 				fmt.Println()
 			}
+		}
+
+		// Show symbol index stats
+		if symbolStats != nil && symbolStats.TotalSymbols > 0 {
+			fmt.Println("💻 Code Symbol Index:")
+			fmt.Printf("  Total symbols:   %d\n", symbolStats.TotalSymbols)
+			fmt.Printf("  Indexed files:   %d\n", symbolStats.TotalFiles)
+			fmt.Printf("  Relations:       %d\n", symbolStats.TotalRelations)
+			if symbolStats.TotalDeps > 0 {
+				fmt.Printf("  Dependencies:    %d\n", symbolStats.TotalDeps)
+			}
+			if symbolStats.WithEmbeddings > 0 {
+				fmt.Printf("  With embeddings: %d\n", symbolStats.WithEmbeddings)
+			}
+			fmt.Println()
+
+			// Show language breakdown
+			if len(symbolStats.ByLanguage) > 0 {
+				fmt.Println("  Languages:")
+				for lang, count := range symbolStats.ByLanguage {
+					fmt.Printf("    %-12s %d symbols\n", lang+":", count)
+				}
+				fmt.Println()
+			}
+
+			// Warn about stale files
+			if len(staleFiles) > 0 {
+				fmt.Printf("⚠  %d indexed files no longer exist:\n", len(staleFiles))
+				maxShow := 5
+				for i, f := range staleFiles {
+					if i >= maxShow {
+						fmt.Printf("     ... and %d more\n", len(staleFiles)-maxShow)
+						break
+					}
+					fmt.Printf("     %s\n", f)
+				}
+				fmt.Println("   Run 'tw bootstrap --force' to re-index the codebase.")
+				fmt.Println()
+			}
+		} else if symbolStats != nil {
+			fmt.Println("💻 Code Symbol Index: (empty)")
+			fmt.Println("   Run 'tw bootstrap' to index your codebase.")
+			fmt.Println()
 		}
 
 		if len(issues) == 0 {
