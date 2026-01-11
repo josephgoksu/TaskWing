@@ -6,7 +6,6 @@ package analysis
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/callbacks"
@@ -64,10 +63,7 @@ func (a *ReactAgent) Run(ctx context.Context, input core.Input) (core.Output, er
 	baseChatModel := closeableChatModel.BaseChatModel
 	toolCallingModel, ok := baseChatModel.(model.ToolCallingChatModel)
 	if !ok {
-		if a.verbose {
-			fmt.Printf("  [ReAct] Model doesn't support tool calling, using fallback\n")
-		}
-		return a.runSimpleFallback(ctx, baseChatModel, input)
+		return output, fmt.Errorf("model %q does not support tool calling, which is required for code analysis", a.LLMConfig().Model)
 	}
 
 	basePath := input.BasePath
@@ -90,10 +86,7 @@ func (a *ReactAgent) Run(ctx context.Context, input core.Input) (core.Output, er
 		},
 	})
 	if err != nil {
-		if a.verbose {
-			fmt.Printf("  [ReAct] Agent creation failed, falling back: %v\n", err)
-		}
-		return a.runSimpleFallback(ctx, baseChatModel, input)
+		return output, fmt.Errorf("create ReAct agent: %w", err)
 	}
 
 	if a.verbose {
@@ -111,10 +104,7 @@ func (a *ReactAgent) Run(ctx context.Context, input core.Input) (core.Output, er
 
 	resp, err := agent.Generate(ctx, userMsg)
 	if err != nil {
-		if a.verbose {
-			fmt.Printf("  [ReAct] Generate failed, using fallback: %v\n", err)
-		}
-		return a.runSimpleFallback(ctx, baseChatModel, input)
+		return output, fmt.Errorf("agent generate failed: %w", err)
 	}
 
 	output.RawOutput = resp.Content
@@ -179,56 +169,6 @@ func (a *ReactAgent) parseFindings(response string) ([]core.Finding, error) {
 	return findings, nil
 }
 
-func (a *ReactAgent) runSimpleFallback(ctx context.Context, chatModel model.BaseChatModel, input core.Input) (core.Output, error) {
-	var output core.Output
-	output.AgentName = a.Name()
-	start := time.Now()
-
-	basePath := input.BasePath
-	if basePath == "" {
-		basePath = a.basePath
-	}
-
-	gatherer := agenttools.NewContextGatherer(basePath)
-	var contextBuilder strings.Builder
-	contextBuilder.WriteString("## Directory Structure\n")
-	contextBuilder.WriteString(gatherer.ListDirectoryTree(5))
-	contextBuilder.WriteString("\n\n")
-	contextBuilder.WriteString(gatherer.GatherKeyFiles())
-
-	simplePrompt := fmt.Sprintf(`You are an expert software architect. Analyze this codebase context and extract architectural patterns and decisions.
-
-PROJECT: %s
-
-CONTEXT:
-%s
-
-CRITICAL: Every finding MUST include evidence with file_path, line numbers, and snippet.
-Confidence must be a NUMBER between 0.0 and 1.0.
-
-Respond with JSON only:
-`+"```json"+`
-{
-  "decisions": [{"title": "...", "component": "...", "what": "...", "why": "...", "tradeoffs": "...", "confidence": 0.85, "evidence": [{"file_path": "...", "start_line": 10, "end_line": 20, "snippet": "..."}]}],
-  "patterns": [{"name": "...", "context": "...", "solution": "...", "consequences": "...", "confidence": 0.75, "evidence": [...]}]
-}
-`+"```", input.ProjectName, contextBuilder.String())
-
-	resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(simplePrompt)})
-	if err != nil {
-		return output, fmt.Errorf("simple fallback generate: %w", err)
-	}
-
-	output.RawOutput = resp.Content
-	output.Duration = time.Since(start)
-
-	if output.RawOutput != "" {
-		findings, _ := a.parseFindings(output.RawOutput)
-		output.Findings = findings
-	}
-
-	return output, nil
-}
 
 func init() {
 	core.RegisterAgent("react", func(cfg llm.Config, basePath string) core.Agent {

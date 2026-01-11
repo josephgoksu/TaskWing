@@ -292,7 +292,7 @@ pytest>=7.0.0
 
 	numpy := findDep(result.Dependencies, "numpy")
 	if numpy == nil {
-		t.Error("numpy not found")
+		t.Fatal("numpy not found")
 	}
 	if numpy.Version != "" {
 		t.Errorf("numpy should have no version, got %q", numpy.Version)

@@ -797,7 +797,7 @@ func (p *RustParser) extractMacros(content []byte, filePath, fileHash, modulePat
 // findRsMacroEnd finds the end line of a macro_rules! definition by matching braces.
 func findRsMacroEnd(content []byte, startOffset int, lineStarts []int) int {
 	// Find opening brace/paren/bracket
-	bracePos := -1
+	var bracePos int
 	var openChar, closeChar byte
 	for i := startOffset; i < len(content); i++ {
 		switch content[i] {

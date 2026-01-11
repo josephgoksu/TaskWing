@@ -79,8 +79,7 @@ var (
 	// JSDoc comment pattern
 	tsJSDocPattern = regexp.MustCompile(`(?s)/\*\*(.+?)\*/`)
 
-	// Decorator pattern: @DecoratorName or @DecoratorName(...) - captures decorator name and args
-	tsDecoratorPattern = regexp.MustCompile(`(?m)^\s*@(\w+)(?:\s*\(([^)]*)\))?`)
+
 
 	// React hook patterns - both built-in and custom hooks (use* convention)
 	// Matches: const [x, setX] = useState(...) OR const x = useMemo(...) OR useEffect(...)
@@ -594,7 +593,7 @@ func extractDecoratorsForPosition(content []byte, position int) (string, int) {
 	// Stop when we hit: }, ;, or { that's not inside a decorator's parens.
 
 	var decorators []string
-	var decoratorStartPos int = -1 // Track where the first decorator starts
+	var decoratorStartPos = -1 // Track where the first decorator starts
 	i := position - 1
 
 	// Skip whitespace at the end
@@ -643,7 +642,6 @@ func extractDecoratorsForPosition(content []byte, position int) (string, int) {
 			for i >= 0 && (isAlphanumeric(content[i]) || content[i] == '_') {
 				i--
 			}
-			identStart := i + 1
 
 			// Check for @
 			if i >= 0 && content[i] == '@' {
@@ -653,8 +651,7 @@ func extractDecoratorsForPosition(content []byte, position int) (string, int) {
 				decorators = append([]string{decoratorText}, decorators...)
 				i-- // Move past @
 			} else {
-				// Not a decorator - put back position and stop
-				i = identStart - 1
+				// Not a decorator - stop
 				break
 			}
 		} else if isAlphanumeric(content[i]) || content[i] == '_' {

@@ -38,7 +38,12 @@ type Model struct {
 	IsDefault        bool          // Whether this is the default model for its provider
 	SupportsThinking bool          // Whether the model supports extended thinking mode
 	Category         ModelCategory // Capability category: reasoning, balanced, fast
+	MaxInputTokens   int           // Maximum input context window in tokens (0 = use DefaultMaxInputTokens)
 }
+
+// DefaultMaxInputTokens is used when a model doesn't specify MaxInputTokens.
+// Set conservatively to avoid context overflow on unknown models.
+const DefaultMaxInputTokens = 8192
 
 // ModelRegistry is the single source of truth for all supported models.
 // Add new models here - everything else derives from this registry.
@@ -56,6 +61,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      1.60,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
+		MaxInputTokens:   200_000,
 	},
 	{
 		ID:               "o4-mini",
@@ -65,55 +71,62 @@ var ModelRegistry = []Model{
 		OutputPer1M:      4.40,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
+		MaxInputTokens:   200_000,
 	},
 	{
-		ID:          "gpt-5",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		InputPer1M:  1.25,
-		OutputPer1M: 10.00,
-		Category:    CategoryReasoning,
+		ID:             "gpt-5",
+		Provider:       "OpenAI",
+		ProviderID:     ProviderOpenAI,
+		InputPer1M:     1.25,
+		OutputPer1M:    10.00,
+		Category:       CategoryReasoning,
+		MaxInputTokens: 128_000,
 	},
 	{
-		ID:          "gpt-5-mini",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		InputPer1M:  0.25,
-		OutputPer1M: 2.00,
-		IsDefault:   true,
-		Category:    CategoryBalanced,
+		ID:             "gpt-5-mini",
+		Provider:       "OpenAI",
+		ProviderID:     ProviderOpenAI,
+		InputPer1M:     0.25,
+		OutputPer1M:    2.00,
+		IsDefault:      true,
+		Category:       CategoryBalanced,
+		MaxInputTokens: 128_000,
 	},
 	{
-		ID:          "gpt-5-nano",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		InputPer1M:  0.05,
-		OutputPer1M: 0.40,
-		Category:    CategoryFast,
+		ID:             "gpt-5-nano",
+		Provider:       "OpenAI",
+		ProviderID:     ProviderOpenAI,
+		InputPer1M:     0.05,
+		OutputPer1M:    0.40,
+		Category:       CategoryFast,
+		MaxInputTokens: 128_000,
 	},
 	{
-		ID:          "gpt-4.1",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		InputPer1M:  2.00,
-		OutputPer1M: 8.00,
-		Category:    CategoryReasoning,
+		ID:             "gpt-4.1",
+		Provider:       "OpenAI",
+		ProviderID:     ProviderOpenAI,
+		InputPer1M:     2.00,
+		OutputPer1M:    8.00,
+		Category:       CategoryReasoning,
+		MaxInputTokens: 1_000_000,
 	},
 	{
-		ID:          "gpt-4.1-mini",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		InputPer1M:  0.40,
-		OutputPer1M: 1.60,
-		Category:    CategoryBalanced,
+		ID:             "gpt-4.1-mini",
+		Provider:       "OpenAI",
+		ProviderID:     ProviderOpenAI,
+		InputPer1M:     0.40,
+		OutputPer1M:    1.60,
+		Category:       CategoryBalanced,
+		MaxInputTokens: 1_000_000,
 	},
 	{
-		ID:          "gpt-4.1-nano",
-		Provider:    "OpenAI",
-		ProviderID:  ProviderOpenAI,
-		InputPer1M:  0.10,
-		OutputPer1M: 0.40,
-		Category:    CategoryFast,
+		ID:             "gpt-4.1-nano",
+		Provider:       "OpenAI",
+		ProviderID:     ProviderOpenAI,
+		InputPer1M:     0.10,
+		OutputPer1M:    0.40,
+		Category:       CategoryFast,
+		MaxInputTokens: 1_000_000,
 	},
 
 	// ============================================
@@ -130,6 +143,7 @@ var ModelRegistry = []Model{
 		IsDefault:        true,
 		SupportsThinking: true,
 		Category:         CategoryBalanced,
+		MaxInputTokens:   200_000,
 	},
 	{
 		ID:               "claude-opus-4-5",
@@ -140,6 +154,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      25.00,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
+		MaxInputTokens:   200_000,
 	},
 	{
 		ID:               "claude-haiku-4-5",
@@ -150,6 +165,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      5.00,
 		SupportsThinking: true,
 		Category:         CategoryFast,
+		MaxInputTokens:   200_000,
 	},
 	{
 		ID:               "claude-sonnet-4",
@@ -160,6 +176,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      15.00,
 		SupportsThinking: true,
 		Category:         CategoryBalanced,
+		MaxInputTokens:   200_000,
 	},
 	{
 		ID:               "claude-opus-4-1",
@@ -170,15 +187,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      75.00,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
-	},
-	// Legacy model for compatibility
-	{
-		ID:          "claude-3-haiku-20240307",
-		Provider:    "Anthropic",
-		ProviderID:  ProviderAnthropic,
-		InputPer1M:  0.25,
-		OutputPer1M: 1.25,
-		Category:    CategoryFast,
+		MaxInputTokens:   200_000,
 	},
 
 	// ============================================
@@ -194,6 +203,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      12.00,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
+		MaxInputTokens:   1_000_000,
 	},
 	{
 		ID:               "gemini-3-flash-preview",
@@ -203,6 +213,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      3.00,
 		SupportsThinking: true,
 		Category:         CategoryBalanced,
+		MaxInputTokens:   1_000_000,
 	},
 	{
 		ID:               "gemini-2.5-pro",
@@ -212,6 +223,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      10.00,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
+		MaxInputTokens:   1_000_000,
 	},
 	{
 		ID:               "gemini-2.5-flash",
@@ -221,6 +233,7 @@ var ModelRegistry = []Model{
 		OutputPer1M:      2.50,
 		SupportsThinking: true,
 		Category:         CategoryBalanced,
+		MaxInputTokens:   1_000_000,
 	},
 	{
 		ID:               "gemini-2.5-flash-lite",
@@ -230,34 +243,38 @@ var ModelRegistry = []Model{
 		OutputPer1M:      0.40,
 		SupportsThinking: true,
 		Category:         CategoryFast,
+		MaxInputTokens:   1_000_000,
 	},
 	{
-		ID:          "gemini-2.0-flash",
-		Provider:    "Google",
-		ProviderID:  ProviderGemini,
-		InputPer1M:  0.10,
-		OutputPer1M: 0.40,
-		IsDefault:   true,
-		Category:    CategoryBalanced,
+		ID:             "gemini-2.0-flash",
+		Provider:       "Google",
+		ProviderID:     ProviderGemini,
+		InputPer1M:     0.10,
+		OutputPer1M:    0.40,
+		IsDefault:      true,
+		Category:       CategoryBalanced,
+		MaxInputTokens: 1_000_000,
 	},
 	{
-		ID:          "gemini-2.0-flash-lite",
-		Provider:    "Google",
-		ProviderID:  ProviderGemini,
-		InputPer1M:  0.075,
-		OutputPer1M: 0.30,
-		Category:    CategoryFast,
+		ID:             "gemini-2.0-flash-lite",
+		Provider:       "Google",
+		ProviderID:     ProviderGemini,
+		InputPer1M:     0.075,
+		OutputPer1M:    0.30,
+		Category:       CategoryFast,
+		MaxInputTokens: 1_000_000,
 	},
 
 	// ============================================
 	// Ollama Models (local, no pricing)
 	// ============================================
 	{
-		ID:         "llama3.2",
-		Provider:   "Ollama",
-		ProviderID: ProviderOllama,
-		IsDefault:  true,
-		Category:   CategoryBalanced,
+		ID:             "llama3.2",
+		Provider:       "Ollama",
+		ProviderID:     ProviderOllama,
+		IsDefault:      true,
+		Category:       CategoryBalanced,
+		MaxInputTokens: 128_000,
 	},
 }
 
@@ -296,6 +313,17 @@ func GetDefaultModel(providerID string) *Model {
 		}
 	}
 	return nil
+}
+
+// GetMaxInputTokens returns the maximum input token limit for a model.
+// Returns DefaultMaxInputTokens if the model is not found or has no explicit limit.
+// This is the primary API for agents to determine context budget.
+func GetMaxInputTokens(modelID string) int {
+	m := GetModel(modelID)
+	if m == nil || m.MaxInputTokens == 0 {
+		return DefaultMaxInputTokens
+	}
+	return m.MaxInputTokens
 }
 
 // GetDefaultModelID returns the default model ID for a provider.
