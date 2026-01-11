@@ -212,6 +212,15 @@ func mcpJSONResponse(data any) (*mcpsdk.CallToolResultFor[any], error) {
 	}, nil
 }
 
+// mcpMarkdownResponse wraps Markdown content in an MCP tool result.
+// Use this instead of mcpJSONResponse for token-efficient LLM responses.
+// The presenter package provides formatting functions for common response types.
+func mcpMarkdownResponse(markdown string) (*mcpsdk.CallToolResultFor[any], error) {
+	return &mcpsdk.CallToolResultFor[any]{
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: markdown}},
+	}, nil
+}
+
 // initMCPRepository initializes the memory repository with fallback paths.
 // It tries: 1) local .taskwing/memory, 2) global ~/.taskwing/memory
 // This handles cases where MCP runs from read-only directories (e.g., sandboxed environments).
