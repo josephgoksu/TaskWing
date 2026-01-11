@@ -720,7 +720,8 @@ func handleFindSymbol(ctx context.Context, repo *memory.Repository, params FindS
 		return nil, err
 	}
 
-	return mcpJSONResponse(result)
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatSymbolList(result.Symbols))
 }
 
 // handleSemanticSearchCode performs hybrid semantic + lexical search.
@@ -764,7 +765,8 @@ func handleSemanticSearchCode(ctx context.Context, repo *memory.Repository, para
 		return nil, err
 	}
 
-	return mcpJSONResponse(result)
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatSearchResults(result.Results))
 }
 
 // handleGetCallers returns the callers and/or callees of a symbol.
@@ -782,7 +784,8 @@ func handleGetCallers(ctx context.Context, repo *memory.Repository, params GetCa
 		return nil, err
 	}
 
-	return mcpJSONResponse(result)
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatCallers(result))
 }
 
 // handleAnalyzeImpact finds all symbols affected by changing a given symbol.
@@ -820,5 +823,6 @@ func handleAnalyzeImpact(ctx context.Context, repo *memory.Repository, params An
 		return nil, err
 	}
 
-	return mcpJSONResponse(result)
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(presenter.FormatImpact(result))
 }
