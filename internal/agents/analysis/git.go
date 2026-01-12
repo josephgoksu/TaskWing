@@ -14,6 +14,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/project"
 )
 
 const (
@@ -205,10 +206,22 @@ func (a *GitAgent) parseFindings(parsed gitMilestonesResponse) []core.Finding {
 }
 
 // gatherGitChunks returns commit chunks (newest first) and project metadata.
+// When running in a monorepo (ProjectRoot != GitRoot), it scopes git analysis
+// to only include commits affecting the project subdirectory.
 func gatherGitChunks(basePath string) ([]string, string) {
-	// Fetch commits with hash, date, and message
-	cmd := exec.Command("git", "log", "--format=%h %ad %s", "--date=short", fmt.Sprintf("-%d", gitMaxCommits))
-	cmd.Dir = basePath
+	// Detect project context for monorepo scoping
+	projectCtx, _ := project.Detect(basePath)
+	scopePath := getGitScopePath(projectCtx, basePath)
+
+	// Build git log command with optional path scoping
+	args := []string{"log", "--format=%h %ad %s", "--date=short", fmt.Sprintf("-%d", gitMaxCommits)}
+	if scopePath != "" {
+		// Scope to project subdirectory: git log ... -- <path>
+		args = append(args, "--", scopePath)
+	}
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = getGitWorkDir(projectCtx, basePath)
 	out, err := cmd.Output()
 	if err != nil || len(out) == 0 {
 		return nil, ""
@@ -232,13 +245,40 @@ func gatherGitChunks(basePath string) ([]string, string) {
 	}
 
 	// Gather project metadata (once, not per-chunk)
-	meta := gatherProjectMeta(basePath, lines)
+	meta := gatherProjectMeta(basePath, lines, projectCtx)
 
 	return chunks, meta
 }
 
+// getGitScopePath returns the relative path to scope git operations to,
+// or empty string if no scoping is needed.
+func getGitScopePath(ctx *project.Context, basePath string) string {
+	if ctx == nil {
+		return ""
+	}
+	// If GitRoot differs from RootPath, we're in a monorepo
+	if ctx.IsMonorepo && ctx.GitRoot != "" && ctx.RootPath != ctx.GitRoot {
+		// Use the relative path from git root to project root
+		rel := ctx.RelativeGitPath()
+		if rel != "." && rel != "" {
+			return rel
+		}
+	}
+	return ""
+}
+
+// getGitWorkDir returns the directory where git commands should be executed.
+// For monorepos, this is the GitRoot; otherwise, it's the basePath.
+func getGitWorkDir(ctx *project.Context, basePath string) string {
+	if ctx != nil && ctx.GitRoot != "" {
+		return ctx.GitRoot
+	}
+	return basePath
+}
+
 // gatherProjectMeta collects project-level git statistics.
-func gatherProjectMeta(basePath string, allCommits []string) string {
+// When in a monorepo, scopes contributor and age stats to the project subdirectory.
+func gatherProjectMeta(basePath string, allCommits []string, projectCtx *project.Context) string {
 	var sb strings.Builder
 
 	// Commit type distribution
@@ -278,6 +318,12 @@ func gatherProjectMeta(basePath string, allCommits []string) string {
 		}
 	}
 
+	// Add monorepo context note if applicable
+	scopePath := getGitScopePath(projectCtx, basePath)
+	if scopePath != "" {
+		sb.WriteString(fmt.Sprintf("Scoped to: %s (monorepo subdirectory)\n\n", scopePath))
+	}
+
 	sb.WriteString(fmt.Sprintf("Total commits analyzed: %d\n\n", len(allCommits)))
 
 	if len(typeCounts) > 0 {
@@ -298,9 +344,14 @@ func gatherProjectMeta(basePath string, allCommits []string) string {
 		sb.WriteString("\n")
 	}
 
-	// Top contributors
-	cmd := exec.Command("git", "shortlog", "-sn", "--all", "-5")
-	cmd.Dir = basePath
+	// Top contributors - scope to project subdirectory if in monorepo
+	gitDir := getGitWorkDir(projectCtx, basePath)
+	shortlogArgs := []string{"shortlog", "-sn", "--all", "-5"}
+	if scopePath != "" {
+		shortlogArgs = append(shortlogArgs, "--", scopePath)
+	}
+	cmd := exec.Command("git", shortlogArgs...)
+	cmd.Dir = gitDir
 	out, _ := cmd.Output()
 	if len(out) > 0 {
 		sb.WriteString("Top Contributors:\n")
@@ -308,9 +359,13 @@ func gatherProjectMeta(basePath string, allCommits []string) string {
 		sb.WriteString("\n\n")
 	}
 
-	// Project age
-	cmd = exec.Command("git", "log", "--reverse", "--format=%ai", "-1")
-	cmd.Dir = basePath
+	// Project age - scope to project subdirectory if in monorepo
+	logArgs := []string{"log", "--reverse", "--format=%ai", "-1"}
+	if scopePath != "" {
+		logArgs = append(logArgs, "--", scopePath)
+	}
+	cmd = exec.Command("git", logArgs...)
+	cmd.Dir = gitDir
 	out, _ = cmd.Output()
 	if len(out) > 0 {
 		sb.WriteString(fmt.Sprintf("Project Started: %s\n", strings.TrimSpace(string(out))))
