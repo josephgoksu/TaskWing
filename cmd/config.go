@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/project"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,10 +30,22 @@ func initConfig() {
 	home, err := os.UserHomeDir()
 	cobra.CheckErr(err)
 
+	// Detect project root using zero-config detection
+	// This finds the nearest .taskwing, go.mod, package.json, etc.
+	projectCtx := detectProjectRoot()
+
 	// ALWAYS add global config path first (highest priority for user settings)
 	viper.AddConfigPath(filepath.Join(home, ".taskwing"))
 
-	// Also check local .taskwing directory for project-specific overrides
+	// Add detected project root's .taskwing directory for project-specific config
+	if projectCtx != nil && projectCtx.RootPath != "" {
+		projectConfigPath := filepath.Join(projectCtx.RootPath, ".taskwing")
+		if info, err := os.Stat(projectConfigPath); err == nil && info.IsDir() {
+			viper.AddConfigPath(projectConfigPath)
+		}
+	}
+
+	// Legacy: Also check CWD's .taskwing directory (for backwards compatibility)
 	if _, err := os.Stat(".taskwing"); !os.IsNotExist(err) {
 		viper.AddConfigPath(".taskwing")
 	}
@@ -55,8 +69,9 @@ func initConfig() {
 	// Memory store path: do NOT set a default here.
 	// The fallback logic in config.GetMemoryBasePath() handles defaults properly:
 	// 1. If user sets memory.path in config → use that
-	// 2. If XDG_DATA_HOME is set → use $XDG_DATA_HOME/taskwing/memory
-	// 3. Otherwise → use ~/.taskwing/memory (global)
+	// 2. Detected project root → use {project_root}/.taskwing/memory
+	// 3. If XDG_DATA_HOME is set → use $XDG_DATA_HOME/taskwing/memory
+	// 4. Otherwise → use ~/.taskwing/memory (global)
 	// Setting a default here would bypass that fallback chain.
 
 	// LLM defaults (for bootstrap scanner)
@@ -65,4 +80,28 @@ func initConfig() {
 	viper.SetDefault("llm.baseURL", llm.DefaultOllamaURL)
 	viper.SetDefault("llm.maxOutputTokens", 0)
 	viper.SetDefault("llm.temperature", 0.7)
+}
+
+// detectProjectRoot uses the project package to detect the project boundary.
+// It stores the result in the config package for downstream consumption.
+func detectProjectRoot() *project.Context {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+
+	ctx, err := project.Detect(cwd)
+	if err != nil {
+		return nil
+	}
+
+	// Store in config package for GetMemoryBasePath and other consumers
+	config.SetProjectContext(ctx)
+
+	// Log in verbose mode
+	if viper.GetBool("verbose") && ctx.RootPath != cwd {
+		fmt.Fprintf(os.Stderr, "Detected project root: %s (via %s)\n", ctx.RootPath, ctx.MarkerType)
+	}
+
+	return ctx
 }
