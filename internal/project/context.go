@@ -178,3 +178,9 @@ func NewDetector(fs afero.Fs) Detector {
 func NewOsDetector() Detector {
 	return NewDetector(afero.NewOsFs())
 }
+
+// Detect is a convenience function that detects the project root from the given path
+// using the real operating system filesystem.
+func Detect(startPath string) (*Context, error) {
+	return NewOsDetector().Detect(startPath)
+}
