@@ -41,9 +41,15 @@ var markerFiles = []struct {
 //
 // Constraint: Read-only detection using stat calls only. No files are created.
 func (d *detector) Detect(startPath string) (*Context, error) {
-	absPath, err := filepath.Abs(startPath)
-	if err != nil {
-		return nil, err
+	// Clean the path (handles . and .. but doesn't resolve symlinks)
+	// For real filesystem, also convert to absolute path
+	absPath := filepath.Clean(startPath)
+	if !filepath.IsAbs(absPath) {
+		var err error
+		absPath, err = filepath.Abs(startPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Track the best candidate found during traversal
@@ -58,6 +64,10 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 
 		// If .taskwing found, return immediately (highest priority)
 		if marker == MarkerTaskWing {
+			// Before returning, check if there's a .git at current or above
+			if gitRoot == "" {
+				gitRoot = d.findGitRoot(current)
+			}
 			return &Context{
 				RootPath:   current,
 				MarkerType: MarkerTaskWing,
@@ -66,8 +76,8 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 			}, nil
 		}
 
-		// Track git root for monorepo detection
-		if marker == MarkerGit && gitRoot == "" {
+		// Always check for .git to track git root (even if another marker was found first)
+		if gitRoot == "" && d.hasGit(current) {
 			gitRoot = current
 		}
 
@@ -142,4 +152,29 @@ func (d *detector) exists(path string) (bool, error) {
 	// Check for actual errors vs "not exists"
 	// afero wraps os errors, so we check for the common patterns
 	return false, nil
+}
+
+// hasGit checks if a .git directory exists at the given path.
+func (d *detector) hasGit(dir string) bool {
+	path := filepath.Join(dir, ".git")
+	exists, _ := d.exists(path)
+	return exists
+}
+
+// findGitRoot walks up from the given path to find the nearest .git directory.
+// Returns the path containing .git, or empty string if not found.
+func (d *detector) findGitRoot(startPath string) string {
+	current := startPath
+	for {
+		if d.hasGit(current) {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached filesystem root
+			break
+		}
+		current = parent
+	}
+	return ""
 }
