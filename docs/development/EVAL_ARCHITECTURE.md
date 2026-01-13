@@ -228,4 +228,87 @@ After a run, the output directory contains:
 3. **Single-turn only**: Internal runner doesn't support multi-turn or tool use
 4. **Prompt template contamination**: Baseline prompts may still reference TaskWing
 
-See [EVALUATION.md](EVALUATION.md) for usage and [EVAL_RUNNERS.md](EVAL_RUNNERS.md) for external agent runners.
+See [EVALUATION.md](EVALUATION.md) for usage quickstart.
+
+---
+
+## External Runners
+
+Use external AI coding agents (Claude Code, Codex, Gemini CLI) as runners for TaskWing benchmarks.
+
+### Prerequisites
+
+Ensure the external tool is installed and authenticated:
+
+- **Claude Code**: `claude` CLI
+- **OpenAI Codex**: `codex` CLI
+- **Gemini CLI**: `gemini` CLI
+
+### Runner Command Template
+
+The `--runner` flag accepts a command template. Use `{prompt_file}` as a placeholder for the prompt path.
+
+```bash
+tw eval --model <model> run \
+  --runner "<command> < {prompt_file}" \
+  --label <label>
+```
+
+### Examples
+
+#### Claude Code
+
+```bash
+# Native (Claude's own context)
+tw eval --model claude-sonnet run \
+  --runner "claude -p < {prompt_file}" \
+  --no-context \
+  --label claude-native
+
+# Combined (TaskWing + Claude)
+tw eval --model claude-sonnet run \
+  --runner "claude -p < {prompt_file}" \
+  --label tw+claude
+```
+
+#### OpenAI Codex
+
+```bash
+# Native (Codex's own context, no TaskWing)
+tw eval run \
+  --runner "codex exec --full-auto < {prompt_file}" \
+  --no-context \
+  --label codex-native
+
+# Combined (TaskWing context + Codex)
+tw eval run \
+  --runner "codex exec --full-auto < {prompt_file}" \
+  --label codex-taskwing
+
+# With specific model label
+tw eval --model o4-mini run \
+  --runner "codex exec -m o4-mini --full-auto < {prompt_file}" \
+  --label codex-o4
+```
+
+> **Note**: `--model` is optional for external runners. If omitted, defaults to `<runner>-default`.
+
+> **For agentic runners**: Use `--sandbox read-only` to prevent file modifications, or `--reset-repo` to reset git state between tasks.
+
+#### Gemini CLI
+
+```bash
+tw eval --model gemini-2.0-flash run \
+  --runner "gemini -p < {prompt_file}" \
+  --no-context \
+  --label gemini-native
+```
+
+### Runner Flags Reference
+
+| Flag | Description | Required |
+|------|-------------|----------|
+| `--runner` | Command template with `{prompt_file}` placeholder | Yes |
+| `--label` | Run identifier for grouping in reports | **Yes** |
+| `--no-context` | Skip TaskWing context injection (baseline mode) | No |
+| `--timeout` | Max execution time per task (default: `10m`) | No |
