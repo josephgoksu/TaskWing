@@ -11,7 +11,11 @@
 //  4. CWD: Lowest priority, used if unanchored.
 package project
 
-import "github.com/spf13/afero"
+import (
+	"path/filepath"
+
+	"github.com/spf13/afero"
+)
 
 // MarkerType represents the type of project marker that was detected.
 type MarkerType int
@@ -129,19 +133,11 @@ func (c *Context) RelativeGitPath() string {
 }
 
 // relativePath returns the relative path from base to target.
-// This is a simple implementation that doesn't rely on os.
+// Uses filepath.Rel for cross-platform compatibility.
 func relativePath(base, target string) (string, error) {
-	// For now, we use a simple string operation
-	// The full implementation will use filepath.Rel
-	if len(target) <= len(base) {
-		return ".", nil
-	}
-	if target[:len(base)] != base {
-		return ".", nil
-	}
-	rel := target[len(base):]
-	if len(rel) > 0 && rel[0] == '/' {
-		rel = rel[1:]
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		return ".", err
 	}
 	if rel == "" {
 		return ".", nil

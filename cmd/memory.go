@@ -58,7 +58,10 @@ and decisions from the current project's memory store.`,
 			}
 		}
 
-		basePath := config.GetMemoryBasePath()
+		basePath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
 		fmt.Printf("Wiping memory in %s...\n", basePath)
 
 		// Close any open connections by not creating a store, or we can just delete files
@@ -88,7 +91,11 @@ Checks for:
   • Embedding dimension consistency
   • Symbol index health (language breakdown, stale files)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		repo, err := memory.NewDefaultRepository(memoryPath)
 		if err != nil {
 			return fmt.Errorf("open memory repo: %w", err)
 		}
@@ -237,7 +244,11 @@ Actions:
   • Remove orphan edges
   • Rebuild the index cache`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		repo, err := memory.NewDefaultRepository(memoryPath)
 		if err != nil {
 			return fmt.Errorf("open memory repo: %w", err)
 		}
@@ -276,7 +287,11 @@ var memoryRebuildCmd = &cobra.Command{
 
 This is useful if the cache is out of sync with the database.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		repo, err := memory.NewDefaultRepository(memoryPath)
 		if err != nil {
 			return fmt.Errorf("open memory repo: %w", err)
 		}
@@ -319,7 +334,11 @@ Requires an API key for the configured provider (OpenAI/Gemini) or a local Ollam
 			return fmt.Errorf("API key required for embedding generation with provider %q", llmCfg.Provider)
 		}
 
-		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		repo, err := memory.NewDefaultRepository(memoryPath)
 		if err != nil {
 			return fmt.Errorf("open memory repo: %w", err)
 		}
@@ -393,7 +412,11 @@ Examples:
   taskwing memory export                    # Generate with project name from cwd
   taskwing memory export --name "My App"    # Generate with custom project name`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		repo, err := memory.NewDefaultRepository(memoryPath)
 		if err != nil {
 			return fmt.Errorf("open memory repo: %w", err)
 		}
@@ -410,7 +433,7 @@ Examples:
 			return fmt.Errorf("generate architecture.md: %w", err)
 		}
 
-		archPath := filepath.Join(config.GetMemoryBasePath(), "ARCHITECTURE.md")
+		archPath := filepath.Join(memoryPath, "ARCHITECTURE.md")
 		fmt.Printf("✓ Generated %s\n", archPath)
 		return nil
 	},
@@ -456,7 +479,11 @@ WARNING: This can be expensive if you have many nodes and are using a paid API.`
 			return fmt.Errorf("API key required for embedding generation with provider %q", llmCfg.Provider)
 		}
 
-		repo, err := memory.NewDefaultRepository(config.GetMemoryBasePath())
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		repo, err := memory.NewDefaultRepository(memoryPath)
 		if err != nil {
 			return fmt.Errorf("open memory repo: %w", err)
 		}

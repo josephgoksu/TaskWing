@@ -22,7 +22,7 @@ type Repository interface {
 	GetNode(id string) (*memory.Node, error)
 
 	// Write operations
-	CreateNode(n memory.Node) error
+	CreateNode(n *memory.Node) error
 	UpsertNodeBySummary(n memory.Node) error
 	DeleteNodesByAgent(agent string) error
 	DeleteNodesByFiles(agent string, filePaths []string) error
@@ -592,7 +592,7 @@ func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, e
 	}
 
 	// 3. Save to Repo
-	if err := s.repo.CreateNode(*node); err != nil {
+	if err := s.repo.CreateNode(node); err != nil {
 		return nil, fmt.Errorf("save node: %w", err)
 	}
 

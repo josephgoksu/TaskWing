@@ -34,7 +34,11 @@ func printJSON(v any) error {
 }
 
 func openRepo() (*memory.Repository, error) {
-	return memory.NewDefaultRepository(config.GetMemoryBasePath())
+	memoryPath, err := config.GetMemoryBasePath()
+	if err != nil {
+		return nil, fmt.Errorf("get memory path: %w", err)
+	}
+	return memory.NewDefaultRepository(memoryPath)
 }
 
 func confirmOrAbort(prompt string) bool {

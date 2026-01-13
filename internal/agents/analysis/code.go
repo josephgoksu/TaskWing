@@ -169,7 +169,6 @@ func (a *ReactAgent) parseFindings(response string) ([]core.Finding, error) {
 	return findings, nil
 }
 
-
 func init() {
 	core.RegisterAgent("react", func(cfg llm.Config, basePath string) core.Agent {
 		return NewReactAgent(cfg, basePath)

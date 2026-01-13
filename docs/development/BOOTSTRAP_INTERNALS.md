@@ -16,27 +16,48 @@ Empty memory = useless AI context. Manual entry = too much friction.
 ## CLI Command
 
 ```bash
-taskwing bootstrap                   # Execute (LLM-powered if provider API key set)
-taskwing bootstrap --preview         # Preview without saving
-taskwing bootstrap --preview --json  # Machine-readable output
+# Fast mode (DEFAULT) - No LLM required, ~5 seconds, 100% success rate
+taskwing bootstrap                   # Deterministic: code indexing + git stats + docs
+taskwing bootstrap --skip-init       # Skip first-time AI assistant prompt
+
+# Deep analysis mode - Requires LLM API key, slower but richer insights
+taskwing bootstrap --analyze         # Run LLM-powered analysis agents
+taskwing bootstrap --analyze --preview  # Preview LLM analysis without saving
+
+# Debugging
 taskwing bootstrap --trace           # JSON event stream to file (.taskwing/logs/...)
 taskwing bootstrap --trace --trace-stdout  # JSON event stream to stderr
-taskwing bootstrap --skip-init       # Skip first-time AI assistant prompt
 ```
 
-Runs LLM-powered analysis when an API key is available (set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` or configure `llm.apiKeys.<provider>`).
+**Two Modes:**
+
+| Mode | Flag | LLM Required | Time | Use Case |
+|------|------|--------------|------|----------|
+| Fast (default) | none | ❌ No | ~5s | Quick setup, always works |
+| Deep analysis | `--analyze` | ✅ Yes | 30-60s | Rich architectural insights |
+
 Writes to `.taskwing/memory/`.
 
 ---
 
-## Data Sources (Currently Implemented)
+## Data Sources
+
+### Fast Mode (Default - No LLM)
+
+| Source | Component | What We Extract |
+|--------|-----------|-----------------|
+| Code files | `codeintel.Indexer` | Functions, types, methods, constants (3000+ symbols) |
+| Code structure | `codeintel.Repository` | Call graphs, dependencies, relations |
+| Git history | `GitStatParser` | Commit counts, contributors, activity, commit types |
+| Documentation | `DocLoader` | README.md, ARCHITECTURE.md, docs/*.md (raw text) |
+
+### Deep Analysis Mode (`--analyze` - Requires LLM)
 
 | Source | What We Extract |
 |--------|-----------------|
 | Directory structure | Feature candidates from common module folders |
 | Git conventional commits | Decision candidates from recent conventional commits |
-| LLM inference (default) | Feature descriptions + decision reasoning + trade-offs + **relationships** |
-| Documentation files | AGENTS.md, ARCHITECTURE.md, docs/*.md content |
+| LLM inference | Feature descriptions + decision reasoning + trade-offs + **relationships** |
 | Deployment config | Dockerfile, docker-compose.yaml (service topology) |
 | Entry points | main.go, index.ts, cmd/* (initialization patterns) |
 | Config files | .env.example, vite.config.ts, Makefile, tsconfig.json |
@@ -72,7 +93,7 @@ taskwing bootstrap --preview
 |---------------------|---------|-------------|
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | — | Provider API key |
 | `TASKWING_LLM_PROVIDER` | `openai` | Provider: `openai` or `ollama` |
-| `TASKWING_LLM_MODEL` | `gpt-5-mini-2025-08-07` | Model name |
+| `TASKWING_LLM_MODEL` | `gpt-4o-mini` | Model name |
 | `TASKWING_LLM_BASEURL` | `http://localhost:11434` | Base URL (for Ollama) |
 
 ---

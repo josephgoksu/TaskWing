@@ -15,7 +15,6 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/model"
-	"github.com/josephgoksu/TaskWing/internal/llm/providers/tei"
 	"google.golang.org/genai"
 )
 
@@ -284,7 +283,7 @@ func NewCloseableEmbedder(ctx context.Context, cfg Config) (*CloseableEmbedder, 
 		modelName := cfg.EmbeddingModel
 		// TEI doesn't require a model name - it uses whatever model the server was started with
 
-		e, err := tei.NewEmbedder(ctx, &tei.Config{
+		e, err := NewTeiEmbedder(ctx, &TeiConfig{
 			BaseURL: teiBaseURL,
 			Model:   modelName,
 		})

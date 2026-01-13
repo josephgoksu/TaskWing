@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/app"
@@ -15,7 +14,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/mcp/presenter"
+	mcppresenter "github.com/josephgoksu/TaskWing/internal/mcp"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -148,6 +147,19 @@ type AnalyzeImpactParams struct {
 	MaxDepth   int    `json:"max_depth,omitempty"`   // Max recursion depth (default 5)
 }
 
+// ExplainSymbolParams defines the parameters for the explain_symbol tool
+type ExplainSymbolParams struct {
+	Query    string `json:"query,omitempty"`     // Symbol name or search query
+	SymbolID uint32 `json:"symbol_id,omitempty"` // Direct symbol ID (optional)
+	Depth    int    `json:"depth,omitempty"`     // Call graph depth (1-5, default: 2)
+}
+
+// DetectDriftParams defines the parameters for the detect_drift tool
+type DetectDriftParams struct {
+	Constraint string `json:"constraint,omitempty"` // Specific constraint name to check
+	Path       string `json:"path,omitempty"`       // Limit to files matching this pattern
+}
+
 // mcpMarkdownResponse wraps Markdown content in an MCP tool result.
 // Use this instead of mcpJSONResponse for token-efficient LLM responses.
 // The presenter package provides formatting functions for common response types.
@@ -159,10 +171,10 @@ func mcpMarkdownResponse(markdown string) (*mcpsdk.CallToolResultFor[any], error
 
 // mcpErrorResponse wraps an error in an MCP tool result with IsError=true.
 // Per MCP spec: tool errors should be returned in the result (not as protocol errors)
-// so the LLM can see them and self-correct. Use presenter.FormatError for formatting.
+// so the LLM can see them and self-correct. Use mcppresenter.FormatError for formatting.
 func mcpErrorResponse(err error) (*mcpsdk.CallToolResultFor[any], error) {
 	return &mcpsdk.CallToolResultFor[any]{
-		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: presenter.FormatError(err.Error())}},
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: mcppresenter.FormatError(err.Error())}},
 		IsError: true,
 	}, nil
 }
@@ -171,7 +183,7 @@ func mcpErrorResponse(err error) (*mcpsdk.CallToolResultFor[any], error) {
 // Use for input validation failures (missing required fields, invalid values).
 func mcpValidationErrorResponse(field, message string) (*mcpsdk.CallToolResultFor[any], error) {
 	return &mcpsdk.CallToolResultFor[any]{
-		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: presenter.FormatValidationError(field, message)}},
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: mcppresenter.FormatValidationError(field, message)}},
 		IsError: true,
 	}, nil
 }
@@ -185,43 +197,23 @@ func mcpFormattedErrorResponse(formattedError string) (*mcpsdk.CallToolResultFor
 	}, nil
 }
 
-// initMCPRepository initializes the memory repository with fallback paths.
-// It tries: 1) local .taskwing/memory, 2) global ~/.taskwing/memory
-// This handles cases where MCP runs from read-only directories (e.g., sandboxed environments).
+// initMCPRepository initializes the memory repository.
+// For MCP server, we use GetMemoryBasePathOrGlobal which allows fallback to global
+// config for sandboxed environments where project detection may fail.
 func initMCPRepository() (*memory.Repository, error) {
-	// Build list of paths to try
-	var pathsToTry []string
+	// MCP server is a special case - it may run in sandboxed environments
+	// where project context isn't available. Use the fallback-enabled path.
+	memoryPath := config.GetMemoryBasePathOrGlobal()
 
-	// 1. Try configured path first (from viper)
-	configuredPath := config.GetMemoryBasePath()
-	pathsToTry = append(pathsToTry, configuredPath)
-
-	// 2. Try global ~/.taskwing/memory as fallback
-	if home, err := os.UserHomeDir(); err == nil {
-		globalPath := filepath.Join(home, ".taskwing", "memory")
-		// Only add if different from configured path
-		if globalPath != configuredPath {
-			pathsToTry = append(pathsToTry, globalPath)
-		}
+	repo, err := memory.NewDefaultRepository(memoryPath)
+	if err != nil {
+		return nil, fmt.Errorf("open memory at %s: %w", memoryPath, err)
 	}
 
-	// Try each path in order
-	var lastErr error
-	for _, path := range pathsToTry {
-		repo, err := memory.NewDefaultRepository(path)
-		if err == nil {
-			if viper.GetBool("verbose") {
-				fmt.Fprintf(os.Stderr, "[DEBUG] Using memory path: %s\n", path)
-			}
-			return repo, nil
-		}
-		lastErr = err
-		if viper.GetBool("verbose") {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Failed to use path %s: %v\n", path, err)
-		}
+	if viper.GetBool("verbose") {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Using memory path: %s\n", memoryPath)
 	}
-
-	return nil, fmt.Errorf("no writable memory path found (tried %v): %w", pathsToTry, lastErr)
+	return repo, nil
 }
 
 func runMCPServer(ctx context.Context) error {
@@ -398,6 +390,24 @@ func runMCPServer(ctx context.Context) error {
 		return handleAnalyzeImpact(ctx, repo, params.Arguments)
 	})
 
+	// Register explain_symbol tool - deep dive into a symbol with call graph and AI explanation
+	explainSymbolTool := &mcpsdk.Tool{
+		Name:        "explain_symbol",
+		Description: "Deep dive into a code symbol: shows call graph (who calls it, what it calls), impact analysis, related architectural decisions, and generates an AI explanation of the symbol's purpose and system role. Use this when you need to understand how a function/type fits into the codebase.",
+	}
+	mcpsdk.AddTool(server, explainSymbolTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ExplainSymbolParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handleExplainSymbol(ctx, repo, params.Arguments)
+	})
+
+	// Register detect_drift tool - architecture drift detection
+	detectDriftTool := &mcpsdk.Tool{
+		Name:        "detect_drift",
+		Description: "Detect architectural drift between documented rules and code. Extracts rules from constraints, patterns, and decisions in the knowledge base, then checks the code against these rules. Returns violations, warnings, and passed rules.",
+	}
+	mcpsdk.AddTool(server, detectDriftTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[DetectDriftParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		return handleDetectDrift(ctx, repo, params.Arguments)
+	})
+
 	// Run the server (stdio transport only)
 	if err := server.Run(ctx, mcpsdk.NewStdioTransport()); err != nil {
 		return fmt.Errorf("MCP server failed: %w", err)
@@ -423,23 +433,25 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params Proj
 			return mcpErrorResponse(fmt.Errorf("get summary: %w", err))
 		}
 		// Return token-efficient Markdown instead of verbose JSON
-		return mcpMarkdownResponse(presenter.FormatSummary(summary))
+		return mcpMarkdownResponse(mcppresenter.FormatSummary(summary))
 	}
 
 	// Execute query via app layer (ALL business logic delegated)
 	// Include symbols in MCP recall for enhanced context
+	// Note: Only generate answer if explicitly requested (params.Answer=true)
+	// to avoid expensive LLM calls on every search
 	result, err := recallApp.Query(ctx, query, app.RecallOptions{
 		Limit:          5,
 		SymbolLimit:    5,
-		GenerateAnswer: params.Answer || query != "", // Default to answering if query present
-		IncludeSymbols: true,                         // Include code symbols alongside knowledge
+		GenerateAnswer: params.Answer, // Only when explicitly requested
+		IncludeSymbols: true,          // Include code symbols alongside knowledge
 	})
 	if err != nil {
 		return mcpErrorResponse(fmt.Errorf("search failed: %w", err))
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatRecall(result))
+	return mcpMarkdownResponse(mcppresenter.FormatRecall(result))
 }
 
 // === Task Lifecycle Handlers ===
@@ -463,7 +475,7 @@ func handleTaskNext(repo *memory.Repository, params TaskNextParams) (*mcpsdk.Cal
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatTask(result))
+	return mcpMarkdownResponse(mcppresenter.FormatTask(result))
 }
 
 // handleTaskCurrent returns the current in-progress task.
@@ -479,7 +491,7 @@ func handleTaskCurrent(repo *memory.Repository, params TaskCurrentParams) (*mcps
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatTask(result))
+	return mcpMarkdownResponse(mcppresenter.FormatTask(result))
 }
 
 // handleTaskStart claims a specific task for a session.
@@ -498,7 +510,7 @@ func handleTaskStart(repo *memory.Repository, params TaskStartParams) (*mcpsdk.C
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatTask(result))
+	return mcpMarkdownResponse(mcppresenter.FormatTask(result))
 }
 
 // handleTaskComplete marks a task as completed.
@@ -519,7 +531,7 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatTask(result))
+	return mcpMarkdownResponse(mcppresenter.FormatTask(result))
 }
 
 // === Plan Creation Handlers ===
@@ -537,11 +549,11 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 		AutoAnswer: params.AutoAnswer,
 	})
 	if err != nil {
-		return mcpFormattedErrorResponse(presenter.FormatError(err.Error()))
+		return mcpFormattedErrorResponse(mcppresenter.FormatError(err.Error()))
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatClarifyResult(result))
+	return mcpMarkdownResponse(mcppresenter.FormatClarifyResult(result))
 }
 
 // handlePlanGenerate runs the PlanningAgent to create tasks.
@@ -557,11 +569,11 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 		Save:         params.Save,
 	})
 	if err != nil {
-		return mcpFormattedErrorResponse(presenter.FormatError(err.Error()))
+		return mcpFormattedErrorResponse(mcppresenter.FormatError(err.Error()))
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatGenerateResult(result))
+	return mcpMarkdownResponse(mcppresenter.FormatGenerateResult(result))
 }
 
 // handleRemember adds knowledge to project memory.
@@ -585,7 +597,7 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params Remembe
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatRemember(result))
+	return mcpMarkdownResponse(mcppresenter.FormatRemember(result))
 }
 
 // handleAuditPlan runs the audit service on a plan.
@@ -600,11 +612,11 @@ func handleAuditPlan(ctx context.Context, repo *memory.Repository, params AuditP
 		AutoFix: params.AutoFix,
 	})
 	if err != nil {
-		return mcpFormattedErrorResponse(presenter.FormatError(err.Error()))
+		return mcpFormattedErrorResponse(mcppresenter.FormatError(err.Error()))
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatAuditResult(result))
+	return mcpMarkdownResponse(mcppresenter.FormatAuditResult(result))
 }
 
 // === Code Intelligence Handlers ===
@@ -626,7 +638,7 @@ func handleFindSymbol(ctx context.Context, repo *memory.Repository, params FindS
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatSymbolList(result.Symbols))
+	return mcpMarkdownResponse(mcppresenter.FormatSymbolList(result.Symbols))
 }
 
 // handleSemanticSearchCode performs hybrid semantic + lexical search.
@@ -668,7 +680,7 @@ func handleSemanticSearchCode(ctx context.Context, repo *memory.Repository, para
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatSearchResults(result.Results))
+	return mcpMarkdownResponse(mcppresenter.FormatSearchResults(result.Results))
 }
 
 // handleGetCallers returns the callers and/or callees of a symbol.
@@ -687,7 +699,7 @@ func handleGetCallers(ctx context.Context, repo *memory.Repository, params GetCa
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatCallers(result))
+	return mcpMarkdownResponse(mcppresenter.FormatCallers(result))
 }
 
 // handleAnalyzeImpact finds all symbols affected by changing a given symbol.
@@ -723,5 +735,69 @@ func handleAnalyzeImpact(ctx context.Context, repo *memory.Repository, params An
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(presenter.FormatImpact(result))
+	return mcpMarkdownResponse(mcppresenter.FormatImpact(result))
+}
+
+// handleExplainSymbol provides a deep dive into a code symbol.
+// Uses app.ExplainApp for all business logic - single source of truth.
+func handleExplainSymbol(ctx context.Context, repo *memory.Repository, params ExplainSymbolParams) (*mcpsdk.CallToolResultFor[any], error) {
+	// Input validation
+	query := strings.TrimSpace(params.Query)
+	if params.SymbolID == 0 && query == "" {
+		return mcpValidationErrorResponse("query/symbol_id", "query or symbol_id is required")
+	}
+
+	// Clamp depth to valid range
+	depth := params.Depth
+	if depth <= 0 {
+		depth = 2 // default
+	}
+	const maxDepth = 5
+	if depth > maxDepth {
+		depth = maxDepth
+	}
+
+	// Get base path for source code fetching
+	basePath, _ := config.GetProjectRoot()
+
+	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
+	appCtx.BasePath = basePath
+	explainApp := app.NewExplainApp(appCtx)
+
+	result, err := explainApp.Explain(ctx, app.ExplainRequest{
+		Query:       query,
+		SymbolID:    params.SymbolID,
+		Depth:       depth,
+		IncludeCode: true, // Always include for MCP context
+	})
+	if err != nil {
+		return mcpErrorResponse(err)
+	}
+
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(mcppresenter.FormatExplainResult(result))
+}
+
+// handleDetectDrift runs architecture drift detection.
+// Uses app.DriftApp for all business logic - single source of truth.
+func handleDetectDrift(ctx context.Context, repo *memory.Repository, params DetectDriftParams) (*mcpsdk.CallToolResultFor[any], error) {
+	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
+	driftApp := app.NewDriftApp(appCtx)
+
+	// Build request
+	req := app.DriftRequest{
+		Constraint: strings.TrimSpace(params.Constraint),
+	}
+	if params.Path != "" {
+		req.Paths = []string{params.Path}
+	}
+
+	// Run analysis
+	report, err := driftApp.Analyze(ctx, req)
+	if err != nil {
+		return mcpErrorResponse(err)
+	}
+
+	// Return token-efficient Markdown instead of verbose JSON
+	return mcpMarkdownResponse(mcppresenter.FormatDriftReport(report))
 }

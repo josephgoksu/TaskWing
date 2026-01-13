@@ -140,7 +140,13 @@ func (idx *Indexer) IndexDirectory(ctx context.Context, rootPath string) (*Index
 
 	// Collect results and build symbol map for relation resolution
 	allSymbols := make([]Symbol, 0)
-	allRelations := make([]SymbolRelation, 0)
+	// Track relations with their file context for correct index mapping
+	type relationWithContext struct {
+		relation    SymbolRelation
+		filePath    string
+		symbolStart int // Starting index in allSymbols for this file's symbols
+	}
+	allRelations := make([]relationWithContext, 0)
 	symbolMap := make(map[string]uint32) // key -> symbol ID
 
 	var filesIndexed, filesSkipped int32
@@ -154,8 +160,17 @@ func (idx *Indexer) IndexDirectory(ctx context.Context, rootPath string) (*Index
 		}
 
 		atomic.AddInt32(&filesIndexed, 1)
+		// Track the starting index before appending this file's symbols
+		symbolStart := len(allSymbols)
 		allSymbols = append(allSymbols, result.symbols...)
-		allRelations = append(allRelations, result.relations...)
+		// Wrap relations with context for correct index mapping
+		for _, rel := range result.relations {
+			allRelations = append(allRelations, relationWithContext{
+				relation:    rel,
+				filePath:    result.path,
+				symbolStart: symbolStart,
+			})
+		}
 	}
 
 	stats.FilesIndexed = int(filesIndexed)
@@ -178,13 +193,19 @@ func (idx *Indexer) IndexDirectory(ctx context.Context, rootPath string) (*Index
 	}
 
 	// Resolve and insert relations
-	for _, rel := range allRelations {
+	for _, relCtx := range allRelations {
+		rel := &relCtx.relation
+
 		// Try to resolve target symbol from metadata
 		if meta := rel.Metadata; meta != nil {
 			if calleeName, ok := meta["calleeName"].(string); ok {
-				// Look for target in any module
+				// Only match callable symbols (functions and methods)
+				// This prevents linking to fields, variables, or structs with the same name
 				for symKey, symID := range symbolMap {
-					if strings.HasSuffix(symKey, ":"+calleeName) {
+					// Key format is "modulePath:name:kind"
+					// Only match function or method kinds for call relations
+					if strings.HasSuffix(symKey, ":"+calleeName+":function") ||
+						strings.HasSuffix(symKey, ":"+calleeName+":method") {
 						rel.ToSymbolID = symID
 						break
 					}
@@ -192,12 +213,14 @@ func (idx *Indexer) IndexDirectory(ctx context.Context, rootPath string) (*Index
 			}
 		}
 
-		// Only insert if we have valid source (from parser index) and resolved target
+		// Only insert if we have valid source and resolved target
 		if rel.ToSymbolID > 0 {
-			// FromSymbolID from parser is an index, need to map to actual ID
-			if int(rel.FromSymbolID) < len(allSymbols) {
-				rel.FromSymbolID = allSymbols[rel.FromSymbolID].ID
-				if err := idx.repo.UpsertRelation(ctx, &rel); err != nil {
+			// FromSymbolID from parser is a FILE-LOCAL index
+			// We need to add the file's starting offset to get the global index
+			globalIdx := relCtx.symbolStart + int(rel.FromSymbolID)
+			if globalIdx < len(allSymbols) {
+				rel.FromSymbolID = allSymbols[globalIdx].ID
+				if err := idx.repo.UpsertRelation(ctx, rel); err != nil {
 					stats.Errors = append(stats.Errors, fmt.Sprintf("insert relation: %v", err))
 					continue
 				}

@@ -241,6 +241,9 @@ func (s *SQLiteStore) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_symbols_module ON symbols(module_path);
 	CREATE INDEX IF NOT EXISTS idx_symbols_file_hash ON symbols(file_hash);
 
+	-- Unique constraint to prevent duplicate symbols during concurrent indexing
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_unique ON symbols(name, file_path, start_line);
+
 	-- Symbol relationships (call graphs, inheritance, etc.)
 	-- Enables recursive queries for impact analysis
 	CREATE TABLE IF NOT EXISTS symbol_relations (
@@ -1010,7 +1013,8 @@ func populateNodeFromScan(n *Node, nodeType, summary, sourceAgent sql.NullString
 // === Node CRUD (v2 Knowledge Graph) ===
 
 // CreateNode stores a new node in the knowledge graph.
-func (s *SQLiteStore) CreateNode(n Node) error {
+// Takes a pointer so the generated ID is returned to the caller.
+func (s *SQLiteStore) CreateNode(n *Node) error {
 	if n.ID == "" {
 		n.ID = "n-" + uuid.New().String()[:8]
 	}

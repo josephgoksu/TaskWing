@@ -27,23 +27,26 @@ import (
 // bootstrapCmd represents the bootstrap command
 var bootstrapCmd = &cobra.Command{
 	Use:   "bootstrap",
-	Short: "Auto-generate project memory from existing repo",
-	Long: `Scan your repository and automatically generate features and decisions.
+	Short: "Initialize project memory (fast, deterministic)",
+	Long: `Initialize TaskWing for your repository.
 
-If this is the first run, TaskWing will initialize the project:
-  • Create .taskwing/ directory structure
-  • Set up AI assistant integration (Claude, Cursor, etc.)
-  • Configure LLM settings
+By default, bootstrap runs in FAST MODE (no LLM required):
+  • Creates .taskwing/ directory structure
+  • Sets up AI assistant integration (Claude, Cursor, etc.)
+  • Indexes code symbols (functions, types, etc.)
+  • Extracts git statistics and documentation
+  • Completes in ~5 seconds, always succeeds
 
-The bootstrap command analyzes:
-  • Directory structure → Detects features
-  • Git history → Extracts decisions from conventional commits
-  • LLM inference → Understands WHY decisions were made`,
+Use --analyze for deep LLM-powered analysis (slower, requires API key):
+  • Analyzes code patterns and architecture
+  • Extracts decisions from git history
+  • Understands WHY decisions were made`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		preview, _ := cmd.Flags().GetBool("preview")
 		skipInit, _ := cmd.Flags().GetBool("skip-init")
 		skipIndex, _ := cmd.Flags().GetBool("skip-index")
 		forceIndex, _ := cmd.Flags().GetBool("force")
+		analyze, _ := cmd.Flags().GetBool("analyze")
 		trace, _ := cmd.Flags().GetBool("trace")
 		traceFile, _ := cmd.Flags().GetString("trace-file")
 		traceStdout, _ := cmd.Flags().GetBool("trace-stdout")
@@ -53,10 +56,13 @@ The bootstrap command analyzes:
 			return fmt.Errorf("get current directory: %w", err)
 		}
 
-		// Load LLM config
-		llmCfg, err := getLLMConfigForRole(cmd, llm.RoleBootstrap)
-		if err != nil {
-			return err
+		// Load LLM config - only required for --analyze mode
+		var llmCfg llm.Config
+		if analyze {
+			llmCfg, err = getLLMConfigForRole(cmd, llm.RoleBootstrap)
+			if err != nil {
+				return err
+			}
 		}
 
 		// Initialize Service
@@ -190,27 +196,45 @@ The bootstrap command analyzes:
 			return fmt.Errorf("detect workspace: %w", err)
 		}
 
-		// Run code indexing FIRST (enables symbol-based context for agents)
-		// This is fast (~5-10s) and doesn't require LLM calls
+		// Run code indexing FIRST (enables symbol-based context)
+		// This is fast (~2-5s) and doesn't require LLM calls
 		if !skipIndex && !preview {
 			if err := runCodeIndexing(cmd.Context(), cwd, forceIndex, viper.GetBool("quiet")); err != nil {
 				// Non-fatal: continue with fallback context gathering
 				if !viper.GetBool("quiet") {
-					fmt.Fprintf(os.Stderr, "⚠️  Pre-indexing failed, agents will use fallback context: %v\n", err)
+					fmt.Fprintf(os.Stderr, "⚠️  Code indexing failed: %v\n", err)
 				}
 			}
 		}
 
-		// Handle multi-repo workspaces
-		if ws.IsMultiRepo() {
-			if err := runMultiRepoBootstrap(cmd.Context(), svc, ws, preview); err != nil {
-				return err
+		// Run deterministic metadata extraction (git stats, docs)
+		// This is fast and always succeeds
+		if !preview {
+			if err := svc.RunDeterministicBootstrap(cmd.Context(), viper.GetBool("quiet")); err != nil {
+				if !viper.GetBool("quiet") {
+					fmt.Fprintf(os.Stderr, "⚠️  Metadata extraction failed: %v\n", err)
+				}
 			}
-		} else {
-			// Default: run agent TUI flow
-			if err := runAgentTUI(cmd.Context(), svc, cwd, llmCfg, trace, traceFile, traceStdout, preview); err != nil {
-				return err
+		}
+
+		// Only run LLM analysis if --analyze flag is set
+		if analyze {
+			// Handle multi-repo workspaces
+			if ws.IsMultiRepo() {
+				if err := runMultiRepoBootstrap(cmd.Context(), svc, ws, preview); err != nil {
+					return err
+				}
+			} else {
+				// Run agent TUI flow with LLM analysis
+				if err := runAgentTUI(cmd.Context(), svc, cwd, llmCfg, trace, traceFile, traceStdout, preview); err != nil {
+					return err
+				}
 			}
+		} else if !viper.GetBool("quiet") {
+			fmt.Println()
+			fmt.Println("✅ Bootstrap complete!")
+			fmt.Println()
+			fmt.Println("💡 Tip: Use 'tw bootstrap --analyze' for deep LLM-powered analysis (slower, requires API key)")
 		}
 
 		return nil
@@ -222,6 +246,7 @@ func init() {
 	bootstrapCmd.Flags().Bool("skip-init", false, "Skip initialization prompt")
 	bootstrapCmd.Flags().Bool("skip-index", false, "Skip code indexing (symbol extraction)")
 	bootstrapCmd.Flags().Bool("force", false, "Force indexing even for large codebases (>5000 files)")
+	bootstrapCmd.Flags().Bool("analyze", false, "Run LLM-powered deep analysis (slower, requires API key)")
 	bootstrapCmd.Flags().Bool("trace", false, "Emit JSON event stream to stderr")
 	bootstrapCmd.Flags().String("trace-file", "", "Write JSON event stream to file (default: .taskwing/logs/bootstrap.trace.jsonl)")
 	bootstrapCmd.Flags().Bool("trace-stdout", false, "Emit JSON event stream to stderr (overrides trace file)")
@@ -528,13 +553,23 @@ func runCodeIndexing(ctx context.Context, basePath string, forceIndex, isQuiet b
 		fmt.Println()
 		fmt.Println("📇 Code Intelligence Indexing")
 		fmt.Println("────────────────────────────")
-		fmt.Printf("   Files to index: %d\n", fileCount)
+		fmt.Printf("   🔍 Scanning %d source files...\n", fileCount)
 	}
 
-	// Configure progress callback
+	// Configure progress callback with more detail
+	var lastUpdate time.Time
 	if !isQuiet {
 		config.OnProgress = func(stats codeintel.IndexStats) {
-			fmt.Fprintf(os.Stderr, "\r   📊 Indexed %d files, %d symbols...", stats.FilesIndexed, stats.SymbolsFound)
+			// Throttle updates to avoid flickering
+			if time.Since(lastUpdate) < 100*time.Millisecond {
+				return
+			}
+			lastUpdate = time.Now()
+			pct := 0
+			if stats.FilesScanned > 0 {
+				pct = (stats.FilesIndexed * 100) / stats.FilesScanned
+			}
+			fmt.Fprintf(os.Stderr, "\r   ⚡ Progress: %d%% (%d files, %d symbols)    ", pct, stats.FilesIndexed, stats.SymbolsFound)
 		}
 	}
 
@@ -546,32 +581,24 @@ func runCodeIndexing(ctx context.Context, basePath string, forceIndex, isQuiet b
 	stats, err := indexer.IndexDirectory(ctx, basePath)
 	if err != nil {
 		if !isQuiet {
-			fmt.Fprintf(os.Stderr, "\r                                                  \n")
-			fmt.Fprintf(os.Stderr, "⚠️  Indexing failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "\r                                                        \n")
+			fmt.Fprintf(os.Stderr, "   ⚠️  Indexing failed: %v\n", err)
 		}
 		return nil // Non-fatal - bootstrap succeeded even if indexing fails
 	}
 
-	// Clear progress line
+	// Clear progress line and print summary
 	if !isQuiet {
-		fmt.Fprintf(os.Stderr, "\r                                                  \n")
-	}
-
-	// Print summary
-	if !isQuiet {
+		fmt.Fprintf(os.Stderr, "\r                                                        \n")
 		duration := time.Since(start)
-		fmt.Printf("   ✓ Indexed in %v\n", duration.Round(time.Millisecond))
-		fmt.Printf("   📁 Files indexed:  %d\n", stats.FilesIndexed)
-		fmt.Printf("   🔤 Symbols found:  %d\n", stats.SymbolsFound)
-		fmt.Printf("   🔗 Relations:      %d\n", stats.RelationsFound)
-
-		if len(stats.Errors) > 0 {
-			fmt.Printf("   ⚠️  Errors: %d\n", len(stats.Errors))
+		fmt.Printf("   ✅ Indexed %d files → %d symbols in %v\n",
+			stats.FilesIndexed, stats.SymbolsFound, duration.Round(time.Millisecond))
+		if stats.RelationsFound > 0 {
+			fmt.Printf("   🔗 Discovered %d call relationships\n", stats.RelationsFound)
 		}
-
-		fmt.Println()
-		fmt.Println("   Use 'tw find <query>' to search symbols")
-		fmt.Println("   Use 'tw impact <symbol>' to analyze impact")
+		if len(stats.Errors) > 0 {
+			fmt.Printf("   ⚠️  %d files skipped (parse errors)\n", len(stats.Errors))
+		}
 	}
 
 	return nil

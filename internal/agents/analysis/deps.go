@@ -15,7 +15,6 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/tools"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/llm/tokens"
 )
 
 // DepsAgent analyzes dependencies to understand technology choices.
@@ -165,7 +164,7 @@ func gatherDepsWithTracking(basePath string, budget *tools.ContextBudget) (strin
 			truncated := len(content) == 3000
 
 			formatted := fmt.Sprintf("## %s\n```json\n%s\n```\n\n", file, string(content))
-			if !budget.TryReserve(tokens.EstimateTokens(formatted)) {
+			if !budget.TryReserve(llm.EstimateTokens(formatted)) {
 				break
 			}
 			sb.WriteString(formatted)
@@ -203,7 +202,7 @@ func gatherDepsWithTracking(basePath string, budget *tools.ContextBudget) (strin
 			truncated := len(content) == 2000
 
 			formatted := fmt.Sprintf("## %s\n```\n%s\n```\n\n", file, string(content))
-			if !budget.TryReserve(tokens.EstimateTokens(formatted)) {
+			if !budget.TryReserve(llm.EstimateTokens(formatted)) {
 				break
 			}
 			sb.WriteString(formatted)

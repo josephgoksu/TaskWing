@@ -3,10 +3,14 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
+	"strings"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 )
 
 // SymbolResponse represents a code symbol in search results.
@@ -41,10 +45,12 @@ type RecallResult struct {
 
 // RecallOptions configures the behavior of a recall query.
 type RecallOptions struct {
-	Limit          int  // Maximum number of knowledge results (default: 5)
-	SymbolLimit    int  // Maximum number of symbol results (default: 5)
-	GenerateAnswer bool // Whether to generate a RAG answer
-	IncludeSymbols bool // Whether to include code symbols in search (default: true)
+	Limit          int       // Maximum number of knowledge results (default: 5)
+	SymbolLimit    int       // Maximum number of symbol results (default: 5)
+	GenerateAnswer bool      // Whether to generate a RAG answer
+	IncludeSymbols bool      // Whether to include code symbols in search (default: true)
+	NoRewrite      bool      // Disable LLM query rewriting (faster, no API call)
+	StreamWriter   io.Writer // If set, stream RAG answer tokens to this writer
 }
 
 // DefaultRecallOptions returns sensible defaults for recall queries.
@@ -54,6 +60,8 @@ func DefaultRecallOptions() RecallOptions {
 		SymbolLimit:    5,
 		GenerateAnswer: false,
 		IncludeSymbols: true,
+		NoRewrite:      false,
+		StreamWriter:   nil,
 	}
 }
 
@@ -87,10 +95,10 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 	ks := knowledge.NewService(a.ctx.Repo, a.ctx.LLMCfg)
 	cfg := ks.GetRetrievalConfig()
 
-	// 1. Query rewriting
+	// 1. Query rewriting (skip if NoRewrite option is set)
 	searchQuery := query
 	rewrittenQuery := ""
-	if cfg.QueryRewriteEnabled {
+	if cfg.QueryRewriteEnabled && !opts.NoRewrite {
 		if rewritten, err := ks.RewriteQuery(ctx, query); err == nil && rewritten != query {
 			searchQuery = rewritten
 			rewrittenQuery = rewritten
@@ -99,6 +107,9 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 
 	// 2. Build pipeline description for transparency
 	pipeline := "FTS + Vector"
+	if cfg.QueryRewriteEnabled && !opts.NoRewrite {
+		pipeline += " + Rewrite"
+	}
 	if cfg.RerankingEnabled {
 		pipeline += " + Rerank"
 	}
@@ -127,11 +138,24 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 		symbols = a.searchSymbols(ctx, searchQuery, opts.SymbolLimit)
 	}
 
-	// 6. Generate RAG answer if requested
+	// 6. Generate RAG answer if requested (Code-Based RAG)
 	var answer, warning string
-	if opts.GenerateAnswer && len(scored) > 0 {
-		// Use original query for answer generation (more natural)
-		ans, err := ks.Ask(ctx, query, scored)
+	if opts.GenerateAnswer {
+		// Fetch actual source code for symbols to ground the answer
+		// Use same search as UI symbols to ensure consistency (what you see = what RAG uses)
+		var codeSnippets []CodeSnippet
+		if a.ctx.BasePath != "" && len(symbols) > 0 {
+			// Convert SymbolResponse back to raw symbols for source fetching
+			// This ensures RAG uses the SAME symbols shown in the UI
+			rawSymbols := a.getRawSymbols(ctx, searchQuery, len(symbols))
+			if len(rawSymbols) > 0 {
+				fetcher := NewSourceFetcher(a.ctx.BasePath)
+				codeSnippets = fetcher.FetchContext(rawSymbols)
+			}
+		}
+
+		// Generate answer with both knowledge nodes and code snippets
+		ans, err := a.generateRAGAnswer(ctx, query, scored, codeSnippets, opts.StreamWriter)
 		if err != nil {
 			warning = fmt.Sprintf("Answer unavailable: %v", err)
 		} else {
@@ -217,4 +241,118 @@ func (a *RecallApp) Summary(ctx context.Context) (*knowledge.ProjectSummary, err
 		return nil, fmt.Errorf("get project summary: %w", err)
 	}
 	return &summary, nil
+}
+
+// getRawSymbols retrieves raw codeintel.Symbol objects for source code fetching.
+// This is the core symbol retrieval - searchSymbols wraps it with response conversion.
+func (a *RecallApp) getRawSymbols(ctx context.Context, query string, limit int) []codeintel.Symbol {
+	store := a.ctx.Repo.GetDB()
+	if store == nil {
+		return nil
+	}
+	db := store.DB()
+	if db == nil {
+		return nil
+	}
+
+	codeRepo := codeintel.NewRepository(db)
+	symbols, err := codeRepo.SearchSymbolsFTS(ctx, query, limit)
+	if err != nil {
+		return nil
+	}
+	return symbols
+}
+
+// generateRAGAnswer creates an answer using both knowledge nodes and code snippets.
+// This is the core of Code-Based RAG: answers are grounded in actual source code.
+// If streamWriter is provided, tokens are streamed as they arrive.
+func (a *RecallApp) generateRAGAnswer(ctx context.Context, query string, nodes []knowledge.ScoredNode, snippets []CodeSnippet, streamWriter io.Writer) (string, error) {
+	// Build context from both sources
+	var contextParts []string
+
+	// Add knowledge nodes (docs, decisions, patterns)
+	if len(nodes) > 0 {
+		contextParts = append(contextParts, "## Project Knowledge\n")
+		for _, sn := range nodes {
+			nodeContext := fmt.Sprintf("### [%s] %s\n%s", sn.Node.Type, sn.Node.Summary, sn.Node.Content)
+			contextParts = append(contextParts, nodeContext)
+		}
+	}
+
+	// Add actual source code snippets
+	if len(snippets) > 0 {
+		contextParts = append(contextParts, "\n## Relevant Source Code\n")
+		for _, snippet := range snippets {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("### %s `%s` (%s)\n", snippet.Kind, snippet.SymbolName, snippet.FilePath))
+			if snippet.DocComment != "" {
+				sb.WriteString(fmt.Sprintf("> %s\n", strings.ReplaceAll(snippet.DocComment, "\n", "\n> ")))
+			}
+			sb.WriteString("```\n")
+			sb.WriteString(snippet.Content)
+			sb.WriteString("```\n")
+			contextParts = append(contextParts, sb.String())
+		}
+	}
+
+	if len(contextParts) == 0 {
+		return "I found no relevant information to answer your question.", nil
+	}
+
+	retrievedContext := strings.Join(contextParts, "\n\n")
+
+	prompt := fmt.Sprintf(`You are an expert on this codebase. Answer the user's question using ONLY the context below.
+The context includes both project documentation/decisions AND actual source code.
+When referencing code, cite the file and line numbers.
+Be concise and direct.
+
+%s
+
+## Question:
+%s
+
+## Answer:`, retrievedContext, query)
+
+	chatModel, err := llm.NewCloseableChatModel(ctx, a.ctx.LLMCfg)
+	if err != nil {
+		return "", fmt.Errorf("create chat model: %w", err)
+	}
+	defer func() { _ = chatModel.Close() }()
+
+	messages := []*schema.Message{
+		schema.UserMessage(prompt),
+	}
+
+	// Use streaming if a writer is provided
+	if streamWriter != nil {
+		stream, err := chatModel.Stream(ctx, messages)
+		if err != nil {
+			return "", fmt.Errorf("stream answer: %w", err)
+		}
+		defer stream.Close()
+
+		var fullAnswer strings.Builder
+		for {
+			chunk, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return "", fmt.Errorf("recv stream: %w", err)
+			}
+			// Write to stream writer (CLI output)
+			_, _ = streamWriter.Write([]byte(chunk.Content))
+			// Also accumulate for return value
+			fullAnswer.WriteString(chunk.Content)
+		}
+		return fullAnswer.String(), nil
+	}
+
+	// Non-streaming fallback
+	resp, err := chatModel.Generate(ctx, messages)
+	if err != nil {
+		return "", fmt.Errorf("generate answer: %w", err)
+	}
+
+	return resp.Content, nil
 }

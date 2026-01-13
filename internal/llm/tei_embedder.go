@@ -1,7 +1,7 @@
-// Package tei provides a client for Text Embeddings Inference (TEI) servers.
+// TEI (Text Embeddings Inference) embedder client.
 // TEI is a high-performance embedding server that supports OpenAI-compatible APIs.
 // See: https://github.com/huggingface/text-embeddings-inference
-package tei
+package llm
 
 import (
 	"bytes"
@@ -15,8 +15,8 @@ import (
 	"github.com/cloudwego/eino/components/embedding"
 )
 
-// Config holds configuration for the TEI embedder.
-type Config struct {
+// TeiConfig holds configuration for the TEI embedder.
+type TeiConfig struct {
 	// BaseURL is the TEI server URL (e.g., "http://localhost:8080")
 	BaseURL string
 
@@ -27,22 +27,22 @@ type Config struct {
 	Timeout time.Duration
 }
 
-// Embedder implements the eino embedding.Embedder interface for TEI servers.
+// TeiEmbedder implements the eino embedding.Embedder interface for TEI servers.
 // It uses the OpenAI-compatible /v1/embeddings endpoint.
-type Embedder struct {
+type TeiEmbedder struct {
 	baseURL string
 	model   string
 	client  *http.Client
 }
 
-// embeddingRequest is the request payload for /v1/embeddings
-type embeddingRequest struct {
+// teiEmbeddingRequest is the request payload for /v1/embeddings
+type teiEmbeddingRequest struct {
 	Input []string `json:"input"`
 	Model string   `json:"model,omitempty"`
 }
 
-// embeddingResponse is the response from /v1/embeddings
-type embeddingResponse struct {
+// teiEmbeddingResponse is the response from /v1/embeddings
+type teiEmbeddingResponse struct {
 	Object string `json:"object"`
 	Data   []struct {
 		Object    string    `json:"object"`
@@ -56,14 +56,14 @@ type embeddingResponse struct {
 	} `json:"usage"`
 }
 
-// teiEmbedRequest is the native TEI /embed request format
-type teiEmbedRequest struct {
+// teiNativeEmbedRequest is the native TEI /embed request format
+type teiNativeEmbedRequest struct {
 	Inputs   []string `json:"inputs"`
 	Truncate bool     `json:"truncate,omitempty"`
 }
 
-// NewEmbedder creates a new TEI embedder.
-func NewEmbedder(ctx context.Context, cfg *Config) (*Embedder, error) {
+// NewTeiEmbedder creates a new TEI embedder.
+func NewTeiEmbedder(ctx context.Context, cfg *TeiConfig) (*TeiEmbedder, error) {
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("TEI base URL is required")
 	}
@@ -73,7 +73,7 @@ func NewEmbedder(ctx context.Context, cfg *Config) (*Embedder, error) {
 		timeout = 30 * time.Second
 	}
 
-	return &Embedder{
+	return &TeiEmbedder{
 		baseURL: cfg.BaseURL,
 		model:   cfg.Model,
 		client: &http.Client{
@@ -84,7 +84,7 @@ func NewEmbedder(ctx context.Context, cfg *Config) (*Embedder, error) {
 
 // EmbedStrings implements the embedding.Embedder interface.
 // It sends texts to TEI and returns embeddings as [][]float64.
-func (e *Embedder) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) ([][]float64, error) {
+func (e *TeiEmbedder) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) ([][]float64, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
@@ -103,8 +103,8 @@ func (e *Embedder) EmbedStrings(ctx context.Context, texts []string, opts ...emb
 }
 
 // embedViaOpenAI uses the OpenAI-compatible /v1/embeddings endpoint.
-func (e *Embedder) embedViaOpenAI(ctx context.Context, texts []string) ([][]float64, error) {
-	reqBody := embeddingRequest{
+func (e *TeiEmbedder) embedViaOpenAI(ctx context.Context, texts []string) ([][]float64, error) {
+	reqBody := teiEmbeddingRequest{
 		Input: texts,
 		Model: e.model,
 	}
@@ -132,7 +132,7 @@ func (e *Embedder) embedViaOpenAI(ctx context.Context, texts []string) ([][]floa
 		return nil, fmt.Errorf("TEI returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	var embResp embeddingResponse
+	var embResp teiEmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
@@ -149,8 +149,8 @@ func (e *Embedder) embedViaOpenAI(ctx context.Context, texts []string) ([][]floa
 }
 
 // embedViaNative uses the native TEI /embed endpoint.
-func (e *Embedder) embedViaNative(ctx context.Context, texts []string) ([][]float64, error) {
-	reqBody := teiEmbedRequest{
+func (e *TeiEmbedder) embedViaNative(ctx context.Context, texts []string) ([][]float64, error) {
+	reqBody := teiNativeEmbedRequest{
 		Inputs:   texts,
 		Truncate: true,
 	}
@@ -189,7 +189,7 @@ func (e *Embedder) embedViaNative(ctx context.Context, texts []string) ([][]floa
 
 // GetDimensions returns the embedding dimension by making a test request.
 // This is useful for validating compatibility with stored embeddings.
-func (e *Embedder) GetDimensions(ctx context.Context) (int, error) {
+func (e *TeiEmbedder) GetDimensions(ctx context.Context) (int, error) {
 	embeddings, err := e.EmbedStrings(ctx, []string{"test"})
 	if err != nil {
 		return 0, fmt.Errorf("test embedding: %w", err)
@@ -201,10 +201,10 @@ func (e *Embedder) GetDimensions(ctx context.Context) (int, error) {
 }
 
 // Close releases any resources held by the embedder.
-func (e *Embedder) Close() error {
+func (e *TeiEmbedder) Close() error {
 	// HTTP client doesn't need explicit cleanup
 	return nil
 }
 
 // Verify interface compliance at compile time
-var _ embedding.Embedder = (*Embedder)(nil)
+var _ embedding.Embedder = (*TeiEmbedder)(nil)

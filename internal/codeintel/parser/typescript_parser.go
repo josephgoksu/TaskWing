@@ -79,8 +79,6 @@ var (
 	// JSDoc comment pattern
 	tsJSDocPattern = regexp.MustCompile(`(?s)/\*\*(.+?)\*/`)
 
-
-
 	// React hook patterns - both built-in and custom hooks (use* convention)
 	// Matches: const [x, setX] = useState(...) OR const x = useMemo(...) OR useEffect(...)
 	tsReactHookCallWithVarPattern = regexp.MustCompile(`(?m)^\s*(?:const|let)\s+(\[[^\]]+\]|\w+)\s*=\s*(use\w+)\s*[(<]`)

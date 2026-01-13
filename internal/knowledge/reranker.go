@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/llm/providers/tei"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 )
 
 // Reranker defines the interface for reranking search results.
@@ -32,7 +32,7 @@ var DefaultRerankerFactory RerankerFactory = func(ctx context.Context, cfg Retri
 		return nil, nil
 	}
 
-	reranker, err := tei.NewReranker(ctx, &tei.RerankerConfig{
+	reranker, err := llm.NewTeiReranker(ctx, &llm.TeiRerankerConfig{
 		BaseURL: cfg.RerankBaseURL,
 		Model:   cfg.RerankModelName,
 		TopK:    cfg.RerankTopK,
@@ -45,9 +45,9 @@ var DefaultRerankerFactory RerankerFactory = func(ctx context.Context, cfg Retri
 	return &teiRerankerAdapter{reranker: reranker}, nil
 }
 
-// teiRerankerAdapter adapts tei.Reranker to knowledge.Reranker interface.
+// teiRerankerAdapter adapts llm.TeiReranker to knowledge.Reranker interface.
 type teiRerankerAdapter struct {
-	reranker *tei.Reranker
+	reranker *llm.TeiReranker
 }
 
 func (a *teiRerankerAdapter) Rerank(ctx context.Context, query string, documents []string) ([]RerankResult, error) {

@@ -27,7 +27,7 @@ func (r *Repository) GetNode(id string) (*Node, error) {
 	return r.db.GetNode(id)
 }
 
-func (r *Repository) CreateNode(n Node) error {
+func (r *Repository) CreateNode(n *Node) error {
 	return r.db.CreateNode(n)
 }
 

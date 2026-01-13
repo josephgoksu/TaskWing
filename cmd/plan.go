@@ -55,7 +55,11 @@ func runWithService(runFunc func(svc *task.Service, cmd *cobra.Command, args []s
 		}
 		defer func() { _ = repo.Close() }()
 
-		svc := task.NewService(repo, config.GetMemoryBasePath())
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		svc := task.NewService(repo, memoryPath)
 		return runFunc(svc, cmd, args)
 	}
 }
@@ -91,7 +95,11 @@ var planNewCmd = &cobra.Command{
 		}
 		defer func() { _ = repo.Close() }()
 
-		svc := task.NewService(repo, config.GetMemoryBasePath())
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		svc := task.NewService(repo, memoryPath)
 
 		// Initialize Agents
 		clarifyingAgent := planning.NewClarifyingAgent(cfg)
@@ -111,7 +119,7 @@ var planNewCmd = &cobra.Command{
 			ks,
 			repo,
 			stream,
-			config.GetMemoryBasePath(),
+			memoryPath,
 		)
 
 		p := tea.NewProgram(model)

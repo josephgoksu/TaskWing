@@ -67,12 +67,11 @@ func initConfig() {
 	viper.SetDefault("preview", false)
 
 	// Memory store path: do NOT set a default here.
-	// The fallback logic in config.GetMemoryBasePath() handles defaults properly:
+	// GetMemoryBasePath() has FAIL-FAST semantics:
 	// 1. If user sets memory.path in config → use that
 	// 2. Detected project root → use {project_root}/.taskwing/memory
-	// 3. If XDG_DATA_HOME is set → use $XDG_DATA_HOME/taskwing/memory
-	// 4. Otherwise → use ~/.taskwing/memory (global)
-	// Setting a default here would bypass that fallback chain.
+	// 3. Otherwise → return error (no silent fallbacks)
+	// For non-project commands (help, version), GetMemoryBasePathOrGlobal() provides ~/.taskwing fallback.
 
 	// LLM defaults (for bootstrap scanner)
 	// Do NOT set defaults for llm.provider, llm.apiKey, or llm.model
@@ -84,14 +83,23 @@ func initConfig() {
 
 // detectProjectRoot uses the project package to detect the project boundary.
 // It stores the result in the config package for downstream consumption.
+// FAIL-FAST: Errors are logged to stderr for debugging but nil is returned
+// to allow non-project commands (help, version) to proceed.
 func detectProjectRoot() *project.Context {
 	cwd, err := os.Getwd()
 	if err != nil {
+		// Log error for debugging - this is a system-level failure
+		fmt.Fprintf(os.Stderr, "Warning: cannot get working directory: %v\n", err)
 		return nil
 	}
 
 	ctx, err := project.Detect(cwd)
 	if err != nil {
+		// Log detection failure for debugging
+		// This is expected for non-project directories (e.g., running `tw help` from home)
+		if viper.GetBool("verbose") {
+			fmt.Fprintf(os.Stderr, "Project detection: %v (using global fallback for non-project commands)\n", err)
+		}
 		return nil
 	}
 

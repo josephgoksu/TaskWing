@@ -643,3 +643,13 @@ func init() {
 	// Task start flags
 	taskStartCmd.Flags().StringVar(&taskStartSessionID, "session", "", "Session ID (required)")
 }
+
+// isValidTaskStatus validates task status values
+func isValidTaskStatus(status task.TaskStatus) bool {
+	switch status {
+	case task.StatusDraft, task.StatusPending, task.StatusInProgress, task.StatusVerifying, task.StatusCompleted, task.StatusFailed:
+		return true
+	default:
+		return false
+	}
+}

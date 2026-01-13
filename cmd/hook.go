@@ -374,7 +374,9 @@ Tasks Completed: %d
 // Session persistence helpers
 
 func getHookSessionPath() string {
-	return filepath.Join(config.GetMemoryBasePath(), "hook_session.json")
+	// Hook commands use GetMemoryBasePathOrGlobal since they may run
+	// before project context is fully established (e.g., SessionStart)
+	return filepath.Join(config.GetMemoryBasePathOrGlobal(), "hook_session.json")
 }
 
 func loadHookSession() (*HookSession, error) {

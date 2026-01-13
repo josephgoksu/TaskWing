@@ -11,7 +11,6 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/llm/tokens"
 	"github.com/spf13/viper"
 
 	_ "modernc.org/sqlite" // SQLite driver
@@ -19,10 +18,10 @@ import (
 
 // SymbolContextConfig configures symbol-based context gathering.
 type SymbolContextConfig struct {
-	MaxTokens       int  // Maximum tokens to use for symbol context
-	IncludeCallees  bool // Include functions called by each symbol
-	IncludeCallers  bool // Include functions that call each symbol
-	PreferPublic    bool // Prioritize exported/public symbols
+	MaxTokens      int  // Maximum tokens to use for symbol context
+	IncludeCallees bool // Include functions called by each symbol
+	IncludeCallers bool // Include functions that call each symbol
+	PreferPublic   bool // Prioritize exported/public symbols
 }
 
 // DefaultSymbolContextConfig returns sensible defaults.
@@ -127,7 +126,7 @@ func (sc *SymbolContext) GatherArchitecturalContext(ctx context.Context) (string
 		}
 
 		section := sc.formatSection(q.label, results, sc.config.MaxTokens-usedTokens)
-		sectionTokens := tokens.EstimateTokens(section)
+		sectionTokens := llm.EstimateTokens(section)
 
 		if usedTokens+sectionTokens > sc.config.MaxTokens {
 			// Truncate section to fit
@@ -140,7 +139,7 @@ func (sc *SymbolContext) GatherArchitecturalContext(ctx context.Context) (string
 		}
 
 		sb.WriteString(section)
-		usedTokens += tokens.EstimateTokens(section)
+		usedTokens += llm.EstimateTokens(section)
 	}
 
 	if sb.Len() == 0 {
@@ -155,7 +154,7 @@ func (sc *SymbolContext) formatSection(label string, results []codeintel.SymbolS
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("## %s\n\n", label))
 
-	usedTokens := tokens.EstimateTokens(sb.String())
+	usedTokens := llm.EstimateTokens(sb.String())
 
 	for _, r := range results {
 		sym := r.Symbol
@@ -166,7 +165,7 @@ func (sc *SymbolContext) formatSection(label string, results []codeintel.SymbolS
 		}
 
 		entry := sc.formatSymbol(sym)
-		entryTokens := tokens.EstimateTokens(entry)
+		entryTokens := llm.EstimateTokens(entry)
 
 		if usedTokens+entryTokens > maxTokens {
 			break

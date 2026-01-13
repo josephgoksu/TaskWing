@@ -99,9 +99,14 @@ func (a *PlanApp) Clarify(ctx context.Context, opts ClarifyOptions) (*ClarifyRes
 	llmCfg := a.ctx.LLMCfg
 
 	// Fetch context from knowledge graph using canonical shared function
+	// Context retrieval is optional enhancement - log errors but don't fail
 	ks := knowledge.NewService(repo, llmCfg)
-	result, _ := planning.RetrieveContext(ctx, ks, opts.Goal, config.GetMemoryBasePath())
-	contextStr := result.Context
+	var contextStr string
+	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
+		if result, err := planning.RetrieveContext(ctx, ks, opts.Goal, memoryPath); err == nil {
+			contextStr = result.Context
+		}
+	}
 
 	// Create and run ClarifyingAgent
 	clarifyingAgent := planning.NewClarifyingAgent(llmCfg)
@@ -162,7 +167,7 @@ func (a *PlanApp) Clarify(ctx context.Context, opts ClarifyOptions) (*ClarifyRes
 	}
 
 	contextSummary := ""
-	if result.Context != "" {
+	if contextStr != "" {
 		contextSummary = "Retrieved relevant nodes and constraints from knowledge graph"
 	}
 
@@ -196,9 +201,14 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 	llmCfg := a.ctx.LLMCfg
 
 	// Fetch context from knowledge graph using canonical shared function
+	// Context retrieval is optional enhancement - log errors but don't fail
 	ks := knowledge.NewService(repo, llmCfg)
-	result, _ := planning.RetrieveContext(ctx, ks, opts.EnrichedGoal, config.GetMemoryBasePath())
-	contextStr := result.Context
+	var contextStr string
+	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
+		if result, err := planning.RetrieveContext(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
+			contextStr = result.Context
+		}
+	}
 
 	// Create and run PlanningAgent
 	planningAgent := planning.NewPlanningAgent(llmCfg)
@@ -262,9 +272,12 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 		}
 		planID = plan.ID
 
-		// Set as active plan (silently ignore error - plan was created successfully)
-		svc := task.NewService(repo, config.GetMemoryBasePath())
-		_ = svc.SetActivePlan(planID)
+		// Set as active plan (best effort - plan was created successfully)
+		// If memory path is unavailable, skip active plan setting
+		if memoryPathSvc, err := config.GetMemoryBasePath(); err == nil {
+			svc := task.NewService(repo, memoryPathSvc)
+			_ = svc.SetActivePlan(planID)
+		}
 	}
 
 	return &GenerateResult{

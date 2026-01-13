@@ -208,10 +208,13 @@ func (a *GitAgent) parseFindings(parsed gitMilestonesResponse) []core.Finding {
 // gatherGitChunks returns commit chunks (newest first) and project metadata.
 // When running in a monorepo (ProjectRoot != GitRoot), it scopes git analysis
 // to only include commits affecting the project subdirectory.
+// Requires project context to be set via config.SetProjectContext() - no fallbacks.
 func gatherGitChunks(basePath string) ([]string, string) {
-	// Detect project context for monorepo scoping
-	projectCtx, _ := project.Detect(basePath)
-	scopePath := getGitScopePath(projectCtx, basePath)
+	// DETERMINISTIC: Use project context from CLI init - no fallback detection
+	projectCtx := config.GetProjectContext()
+	// Note: projectCtx may be nil if running outside CLI context (e.g., tests)
+	// In that case, git commands run without path scoping (full repo analysis)
+	scopePath := getGitScopePath(projectCtx)
 
 	// Build git log command with optional path scoping
 	args := []string{"log", "--format=%h %ad %s", "--date=short", fmt.Sprintf("-%d", gitMaxCommits)}
@@ -252,7 +255,7 @@ func gatherGitChunks(basePath string) ([]string, string) {
 
 // getGitScopePath returns the relative path to scope git operations to,
 // or empty string if no scoping is needed.
-func getGitScopePath(ctx *project.Context, basePath string) string {
+func getGitScopePath(ctx *project.Context) string {
 	if ctx == nil {
 		return ""
 	}
@@ -319,7 +322,7 @@ func gatherProjectMeta(basePath string, allCommits []string, projectCtx *project
 	}
 
 	// Add monorepo context note if applicable
-	scopePath := getGitScopePath(projectCtx, basePath)
+	scopePath := getGitScopePath(projectCtx)
 	if scopePath != "" {
 		sb.WriteString(fmt.Sprintf("Scoped to: %s (monorepo subdirectory)\n\n", scopePath))
 	}

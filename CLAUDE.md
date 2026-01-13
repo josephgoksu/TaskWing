@@ -9,6 +9,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Use `tw` during development, `taskwing` for testing production behavior.
 
+## MCP Server Testing
+
+Two MCP servers are available for testing:
+
+| MCP Server | Binary | Use Case |
+|------------|--------|----------|
+| `taskwing-mcp` | Production (`taskwing`) | Stable features, production testing |
+| `taskwing-local-dev-mcp` | Development (`./tmp/tw`) | Testing new/changed features |
+
+### Testing New Features
+
+When developing new MCP tools or modifying existing ones:
+
+1. **Use local dev MCP**: Claude Code has access to `taskwing-local-dev-mcp` which uses the hot-reloaded binary from `air`
+2. **Test via MCP tools**: Use tools like `mcp__taskwing-local-dev-mcp__explain_symbol` instead of CLI commands
+3. **Verify with CLI**: After MCP testing, verify with `go run . <command>` (NOT the installed `taskwing` binary)
+
+### Important: MCP Server Caching
+
+The production MCP server (`taskwing-mcp`) uses the installed Homebrew binary. Changes to code are **NOT reflected** until:
+- You rebuild: `make build && brew reinstall taskwing` (if using Homebrew)
+- Or test with: `go run . mcp` directly
+
+**Always use `taskwing-local-dev-mcp` tools when testing development changes.**
+
+### Example Testing Workflow
+
+```bash
+# 1. Make code changes
+# 2. Air auto-rebuilds ./tmp/tw
+
+# 3. Test via local dev MCP (in Claude Code)
+# Use: mcp__taskwing-local-dev-mcp__explain_symbol, detect_drift, etc.
+
+# 4. Verify CLI works
+go run . explain NewRecallApp
+go run . drift
+
+# 5. Run tests
+make test-quick
+```
+
 ## Build & Test Commands
 
 ```bash

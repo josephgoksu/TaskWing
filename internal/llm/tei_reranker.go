@@ -1,4 +1,5 @@
-package tei
+// TEI (Text Embeddings Inference) reranker client.
+package llm
 
 import (
 	"bytes"
@@ -11,8 +12,8 @@ import (
 	"time"
 )
 
-// RerankerConfig holds configuration for the TEI reranker.
-type RerankerConfig struct {
+// TeiRerankerConfig holds configuration for the TEI reranker.
+type TeiRerankerConfig struct {
 	// BaseURL is the TEI server URL (e.g., "http://localhost:8081")
 	BaseURL string
 
@@ -26,38 +27,38 @@ type RerankerConfig struct {
 	TopK int
 }
 
-// Reranker provides reranking functionality using TEI's /rerank endpoint.
-type Reranker struct {
+// TeiReranker provides reranking functionality using TEI's /rerank endpoint.
+type TeiReranker struct {
 	baseURL string
 	model   string
 	topK    int
 	client  *http.Client
 }
 
-// RerankRequest is the request payload for TEI /rerank endpoint.
-type RerankRequest struct {
+// TeiRerankRequest is the request payload for TEI /rerank endpoint.
+type TeiRerankRequest struct {
 	Query     string   `json:"query"`
 	Texts     []string `json:"texts"`
 	RawScores bool     `json:"raw_scores,omitempty"`
 	Truncate  bool     `json:"truncate,omitempty"`
 }
 
-// RerankResponse is a single rerank result from TEI.
-type RerankResponse struct {
+// TeiRerankResponse is a single rerank result from TEI.
+type TeiRerankResponse struct {
 	Index int     `json:"index"`
 	Score float64 `json:"score"`
 	Text  string  `json:"text,omitempty"` // Only if return_text=true
 }
 
-// RerankResult represents a document with its reranked score.
-type RerankResult struct {
+// TeiRerankResult represents a document with its reranked score.
+type TeiRerankResult struct {
 	Index        int     // Original index in the input slice
 	Score        float64 // Relevance score from reranker
 	OriginalText string  // The original text (for reference)
 }
 
-// NewReranker creates a new TEI reranker client.
-func NewReranker(ctx context.Context, cfg *RerankerConfig) (*Reranker, error) {
+// NewTeiReranker creates a new TEI reranker client.
+func NewTeiReranker(ctx context.Context, cfg *TeiRerankerConfig) (*TeiReranker, error) {
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("TEI base URL is required")
 	}
@@ -72,7 +73,7 @@ func NewReranker(ctx context.Context, cfg *RerankerConfig) (*Reranker, error) {
 		topK = 5 // Default to top 5
 	}
 
-	return &Reranker{
+	return &TeiReranker{
 		baseURL: cfg.BaseURL,
 		model:   cfg.Model,
 		topK:    topK,
@@ -84,12 +85,12 @@ func NewReranker(ctx context.Context, cfg *RerankerConfig) (*Reranker, error) {
 
 // Rerank reorders documents by relevance to the query.
 // Returns results sorted by score (highest first), limited to TopK.
-func (r *Reranker) Rerank(ctx context.Context, query string, documents []string) ([]RerankResult, error) {
+func (r *TeiReranker) Rerank(ctx context.Context, query string, documents []string) ([]TeiRerankResult, error) {
 	if len(documents) == 0 {
 		return nil, nil
 	}
 
-	reqBody := RerankRequest{
+	reqBody := TeiRerankRequest{
 		Query:     query,
 		Texts:     documents,
 		RawScores: false,
@@ -119,19 +120,19 @@ func (r *Reranker) Rerank(ctx context.Context, query string, documents []string)
 		return nil, fmt.Errorf("TEI rerank returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	var rerankResp []RerankResponse
+	var rerankResp []TeiRerankResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rerankResp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
 	// Convert to results with original text reference
-	results := make([]RerankResult, len(rerankResp))
+	results := make([]TeiRerankResult, len(rerankResp))
 	for i, rr := range rerankResp {
 		originalText := ""
 		if rr.Index < len(documents) {
 			originalText = documents[rr.Index]
 		}
-		results[i] = RerankResult{
+		results[i] = TeiRerankResult{
 			Index:        rr.Index,
 			Score:        rr.Score,
 			OriginalText: originalText,
@@ -153,7 +154,7 @@ func (r *Reranker) Rerank(ctx context.Context, query string, documents []string)
 
 // RerankWithScores returns just the scores aligned with input document indices.
 // Useful when you need to merge scores with existing data structures.
-func (r *Reranker) RerankWithScores(ctx context.Context, query string, documents []string) ([]float64, error) {
+func (r *TeiReranker) RerankWithScores(ctx context.Context, query string, documents []string) ([]float64, error) {
 	results, err := r.Rerank(ctx, query, documents)
 	if err != nil {
 		return nil, err
@@ -171,7 +172,7 @@ func (r *Reranker) RerankWithScores(ctx context.Context, query string, documents
 }
 
 // Close releases any resources held by the reranker.
-func (r *Reranker) Close() error {
+func (r *TeiReranker) Close() error {
 	// HTTP client doesn't need explicit cleanup
 	return nil
 }

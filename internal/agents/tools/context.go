@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/llm/tokens"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/patterns"
 )
 
@@ -99,7 +99,7 @@ func (g *ContextGatherer) checkBudget(text string) bool {
 	if g.budget == nil {
 		return true
 	}
-	tokenCount := tokens.EstimateTokens(text)
+	tokenCount := llm.EstimateTokens(text)
 	return g.budget.TryReserve(tokenCount)
 }
 

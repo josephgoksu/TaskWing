@@ -78,6 +78,7 @@ func NewRepository(db *sql.DB) *SQLiteRepository {
 // === Symbol CRUD Operations ===
 
 // UpsertSymbol creates or updates a symbol, returning its ID.
+// Uses atomic INSERT ... ON CONFLICT for thread-safety during concurrent indexing.
 func (r *SQLiteRepository) UpsertSymbol(ctx context.Context, s *Symbol) (uint32, error) {
 	if s.LastModified.IsZero() {
 		s.LastModified = time.Now().UTC()
@@ -88,53 +89,40 @@ func (r *SQLiteRepository) UpsertSymbol(ctx context.Context, s *Symbol) (uint32,
 		embeddingBytes = float32SliceToBytes(s.Embedding)
 	}
 
-	// Try to find existing symbol by name + file + start_line (unique identifier)
-	var existingID uint32
-	err := r.db.QueryRowContext(ctx, `
-		SELECT id FROM symbols
-		WHERE name = ? AND file_path = ? AND start_line = ?
-	`, s.Name, s.FilePath, s.StartLine).Scan(&existingID)
-
-	if err == nil {
-		// Update existing
-		_, err = r.db.ExecContext(ctx, `
-			UPDATE symbols SET
-				kind = ?, end_line = ?, signature = ?, doc_comment = ?,
-				module_path = ?, visibility = ?, language = ?, file_hash = ?,
-				embedding = ?, last_modified = ?
-			WHERE id = ?
-		`, s.Kind, s.EndLine, s.Signature, s.DocComment,
-			s.ModulePath, s.Visibility, s.Language, s.FileHash,
-			embeddingBytes, s.LastModified.Format(time.RFC3339), existingID)
-		if err != nil {
-			return 0, fmt.Errorf("update symbol: %w", err)
-		}
-		return existingID, nil
-	}
-
-	if err != sql.ErrNoRows {
-		return 0, fmt.Errorf("check existing symbol: %w", err)
-	}
-
-	// Insert new symbol
-	result, err := r.db.ExecContext(ctx, `
+	// Atomic upsert using ON CONFLICT with the unique index on (name, file_path, start_line)
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO symbols (
 			name, kind, file_path, start_line, end_line, signature, doc_comment,
 			module_path, visibility, language, file_hash, embedding, last_modified
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(name, file_path, start_line) DO UPDATE SET
+			kind = excluded.kind,
+			end_line = excluded.end_line,
+			signature = excluded.signature,
+			doc_comment = excluded.doc_comment,
+			module_path = excluded.module_path,
+			visibility = excluded.visibility,
+			language = excluded.language,
+			file_hash = excluded.file_hash,
+			embedding = excluded.embedding,
+			last_modified = excluded.last_modified
 	`, s.Name, s.Kind, s.FilePath, s.StartLine, s.EndLine, s.Signature, s.DocComment,
 		s.ModulePath, s.Visibility, s.Language, s.FileHash, embeddingBytes,
 		s.LastModified.Format(time.RFC3339))
 	if err != nil {
-		return 0, fmt.Errorf("insert symbol: %w", err)
+		return 0, fmt.Errorf("upsert symbol: %w", err)
 	}
 
-	id, err := result.LastInsertId()
+	// Query for the ID since LastInsertId doesn't work reliably with ON CONFLICT
+	var id uint32
+	err = r.db.QueryRowContext(ctx, `
+		SELECT id FROM symbols WHERE name = ? AND file_path = ? AND start_line = ?
+	`, s.Name, s.FilePath, s.StartLine).Scan(&id)
 	if err != nil {
-		return 0, fmt.Errorf("get last insert id: %w", err)
+		return 0, fmt.Errorf("get symbol id: %w", err)
 	}
 
-	return uint32(id), nil
+	return id, nil
 }
 
 // GetSymbol retrieves a symbol by ID.

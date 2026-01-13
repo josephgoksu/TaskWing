@@ -106,7 +106,10 @@ func (s *Service) IngestDirectly(ctx context.Context, findings []core.Finding, r
 }
 
 func (s *Service) ingestToMemory(ctx context.Context, findings []core.Finding, relationships []core.Relationship, isQuiet bool) error {
-	memoryPath := config.GetMemoryBasePath()
+	memoryPath, err := config.GetMemoryBasePath()
+	if err != nil {
+		return fmt.Errorf("get memory path: %w", err)
+	}
 
 	// Create Repo
 	// Note: We're creating a new connection here. Ideally, connection pooling or shared instances would be better.
@@ -174,6 +177,154 @@ func (s *Service) generateOverviewIfNeeded(ctx context.Context, repo *memory.Rep
 		fmt.Printf("   \"%s\"\n", overview.ShortDescription)
 	}
 	return nil
+}
+
+// RunDeterministicBootstrap collects project metadata without LLM calls.
+// This is the default bootstrap mode - fast, reliable, and always succeeds.
+// It extracts: git statistics, documentation files, and stores them for RAG.
+func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) error {
+	memoryPath, err := config.GetMemoryBasePath()
+	if err != nil {
+		return fmt.Errorf("get memory path: %w", err)
+	}
+
+	repo, err := memory.NewDefaultRepository(memoryPath)
+	if err != nil {
+		return fmt.Errorf("open memory repo: %w", err)
+	}
+	defer func() { _ = repo.Close() }()
+
+	if !isQuiet {
+		fmt.Println()
+		fmt.Println("📊 Extracting Project Metadata")
+		fmt.Println("──────────────────────────────")
+	}
+
+	var findings []core.Finding
+	startTime := time.Now()
+
+	// 1. Extract Git Statistics (deterministic)
+	if !isQuiet {
+		fmt.Print("   📈 Analyzing git history...")
+	}
+	gitParser := NewGitStatParser(s.basePath)
+	gitStats, err := gitParser.Parse()
+	if err != nil {
+		if !isQuiet {
+			fmt.Printf(" skipped (%v)\n", err)
+		}
+	} else {
+		if !isQuiet {
+			fmt.Printf(" %d commits, %d contributors\n", gitStats.TotalCommits, len(gitStats.Contributors))
+		}
+		// Convert to finding for storage (use "metadata" type for non-LLM data)
+		findings = append(findings, core.Finding{
+			Type:        "metadata",
+			Title:       "Git Repository Statistics",
+			Description: gitStats.ToMarkdown(),
+			SourceAgent: "git-stats",
+			Metadata: map[string]any{
+				"total_commits":      gitStats.TotalCommits,
+				"contributors":       len(gitStats.Contributors),
+				"project_age_months": gitStats.ProjectAgeMonths,
+			},
+		})
+	}
+
+	// 2. Load Documentation Files (deterministic)
+	if !isQuiet {
+		fmt.Print("   📄 Loading documentation...")
+	}
+	docLoader := NewDocLoader(s.basePath)
+	docs, err := docLoader.Load()
+	if err != nil {
+		if !isQuiet {
+			fmt.Printf(" failed (%v)\n", err)
+		}
+	} else {
+		if !isQuiet {
+			// Show category breakdown for better visibility
+			categories := make(map[string]int)
+			for _, doc := range docs {
+				categories[doc.Category]++
+			}
+			fmt.Printf(" %d files", len(docs))
+			if len(categories) > 0 {
+				var parts []string
+				for cat, count := range categories {
+					parts = append(parts, fmt.Sprintf("%d %s", count, cat))
+				}
+				fmt.Printf(" (%s)", joinMax(parts, 3))
+			}
+			fmt.Println()
+		}
+		// Convert each doc to a finding for storage and RAG retrieval
+		for _, doc := range docs {
+			findings = append(findings, core.Finding{
+				Type:        "documentation",
+				Title:       fmt.Sprintf("Documentation: %s", doc.Name),
+				Description: doc.Content,
+				SourceAgent: "doc-loader",
+				Metadata: map[string]any{
+					"path":     doc.Path,
+					"category": doc.Category,
+					"size":     doc.Size,
+				},
+			})
+		}
+	}
+
+	if len(findings) == 0 {
+		if !isQuiet {
+			fmt.Println("   ⚠️  No metadata extracted (not a git repo or no docs)")
+		}
+		return nil
+	}
+
+	// 3. Ingest findings to knowledge graph
+	ks := knowledge.NewService(repo, s.llmCfg)
+	ks.SetBasePath(s.basePath)
+
+	if !isQuiet {
+		fmt.Print("   💾 Storing to memory...")
+	}
+
+	if err := ks.IngestFindings(ctx, findings, nil, false); err != nil {
+		if !isQuiet {
+			fmt.Println(" failed")
+		}
+		return fmt.Errorf("ingest metadata: %w", err)
+	}
+
+	elapsed := time.Since(startTime).Round(time.Millisecond)
+	if !isQuiet {
+		fmt.Printf(" done (%v)\n", elapsed)
+		fmt.Printf("\n   ✅ Extracted %d items in %v\n", len(findings), elapsed)
+	}
+
+	return nil
+}
+
+// joinMax joins up to n strings with commas.
+func joinMax(parts []string, n int) string {
+	if len(parts) <= n {
+		result := ""
+		for i, p := range parts {
+			if i > 0 {
+				result += ", "
+			}
+			result += p
+		}
+		return result
+	}
+	result := ""
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			result += ", "
+		}
+		result += parts[i]
+	}
+	return result + ", ..."
 }
 
 // --- Internal Helper Functions ---

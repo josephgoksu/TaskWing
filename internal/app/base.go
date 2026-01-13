@@ -13,8 +13,9 @@ import (
 // It provides a consistent way to access repository and configuration
 // across all application operations.
 type Context struct {
-	Repo   *memory.Repository
-	LLMCfg llm.Config
+	Repo     *memory.Repository
+	LLMCfg   llm.Config
+	BasePath string // Project root path for source code access
 }
 
 // NewContext creates an app context with standard initialization.
@@ -27,7 +28,8 @@ func NewContext(repo *memory.Repository) *Context {
 		// Non-fatal: continue with empty config
 		llmCfg = llm.Config{}
 	}
-	return &Context{Repo: repo, LLMCfg: llmCfg}
+	basePath, _ := config.GetProjectRoot() // Best-effort: may be empty
+	return &Context{Repo: repo, LLMCfg: llmCfg, BasePath: basePath}
 }
 
 // NewContextForRole creates an app context with role-aware LLM config.
@@ -39,11 +41,13 @@ func NewContextForRole(repo *memory.Repository, role llm.ModelRole) *Context {
 		// Non-fatal: continue with empty config
 		llmCfg = llm.Config{}
 	}
-	return &Context{Repo: repo, LLMCfg: llmCfg}
+	basePath, _ := config.GetProjectRoot() // Best-effort: may be empty
+	return &Context{Repo: repo, LLMCfg: llmCfg, BasePath: basePath}
 }
 
 // NewContextWithConfig creates an app context with explicit LLM config.
 // Use this when you already have the config (e.g., from CLI flags).
 func NewContextWithConfig(repo *memory.Repository, llmCfg llm.Config) *Context {
-	return &Context{Repo: repo, LLMCfg: llmCfg}
+	basePath, _ := config.GetProjectRoot() // Best-effort: may be empty
+	return &Context{Repo: repo, LLMCfg: llmCfg, BasePath: basePath}
 }

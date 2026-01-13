@@ -6,9 +6,11 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/josephgoksu/TaskWing/internal/app"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -36,18 +38,29 @@ Examples:
 }
 
 var (
-	contextLimit  int
-	contextAnswer bool
+	contextLimit     int
+	contextAnswer    bool
+	contextNoRewrite bool
+	contextDeep      bool
+	contextDepth     int
 )
 
 func init() {
 	rootCmd.AddCommand(contextCmd)
 	contextCmd.Flags().IntVar(&contextLimit, "limit", 5, "Maximum number of nodes to return")
 	contextCmd.Flags().BoolVar(&contextAnswer, "answer", false, "Generate an LLM answer from retrieved context (RAG)")
+	contextCmd.Flags().BoolVar(&contextNoRewrite, "no-rewrite", false, "Disable LLM query rewriting (faster, no API call)")
+	contextCmd.Flags().BoolVar(&contextDeep, "deep", false, "Deep dive: show call graph, impact analysis, and related architecture")
+	contextCmd.Flags().IntVar(&contextDepth, "depth", 2, "Call graph traversal depth for --deep mode (1-5)")
 }
 
 func runContext(cmd *cobra.Command, args []string) error {
 	query := args[0]
+
+	// Handle --deep mode: route to ExplainApp for symbol deep dive
+	if contextDeep {
+		return runDeepDive(cmd, query)
+	}
 
 	// 1. Render header (CLI-specific)
 	if !isJSON() && !isQuiet() {
@@ -69,28 +82,44 @@ func runContext(cmd *cobra.Command, args []string) error {
 	appCtx := app.NewContextWithConfig(repo, llmCfg)
 	recallApp := app.NewRecallApp(appCtx)
 
-	// 4. Show progress (CLI-specific)
+	// 4. Determine if we'll be streaming the answer
+	ctx := context.Background()
+	var streamWriter io.Writer
+	willStream := contextAnswer && !isJSON()
+
+	// 5. Show progress (CLI-specific)
+	// For streaming mode, use a different message since answer will appear inline
 	if !isQuiet() {
-		fmt.Fprint(os.Stderr, "🔍 Searching...")
+		if willStream {
+			fmt.Fprintln(os.Stderr, "🔍 Searching and generating answer...")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Println("💬 Answer:")
+			streamWriter = os.Stdout
+		} else {
+			fmt.Fprint(os.Stderr, "🔍 Searching...")
+		}
+	} else if willStream {
+		streamWriter = os.Stdout
 	}
 
-	// 5. Execute query via app layer (ALL business logic here)
-	ctx := context.Background()
+	// 6. Execute query via app layer (ALL business logic here)
 	result, err := recallApp.Query(ctx, query, app.RecallOptions{
 		Limit:          contextLimit,
 		SymbolLimit:    contextLimit, // Use same limit for symbols
 		GenerateAnswer: contextAnswer,
 		IncludeSymbols: true, // Include code symbols in search
+		NoRewrite:      contextNoRewrite,
+		StreamWriter:   streamWriter,
 	})
 	if err != nil {
-		if !isQuiet() {
+		if !isQuiet() && !willStream {
 			fmt.Fprintln(os.Stderr, " failed")
 		}
 		return fmt.Errorf("search failed: %w", err)
 	}
 
-	// 6. Show completion (CLI-specific)
-	if !isQuiet() {
+	// 7. Show completion (CLI-specific)
+	if !isQuiet() && !willStream {
 		fmt.Fprintln(os.Stderr, " done")
 		// Show query rewriting info if it happened
 		if result.RewrittenQuery != "" {
@@ -112,14 +141,27 @@ func runContext(cmd *cobra.Command, args []string) error {
 		return printJSON(result)
 	}
 
+	// When streaming was used, answer was already printed - just add a newline
+	if willStream && result.Answer != "" {
+		fmt.Println() // End the streamed answer with a newline
+		fmt.Println() // Blank line before results
+	}
+
 	// TUI Output - convert back to ScoredNodes for UI rendering
 	// (UI layer expects ScoredNode for detailed rendering)
 	scored := nodeResponsesToScoredNodes(result.Results)
 	symbols := result.Symbols
+
+	// If we streamed the answer, pass empty string to avoid re-printing
+	answerToRender := result.Answer
+	if willStream {
+		answerToRender = "" // Already printed during streaming
+	}
+
 	if isVerbose() {
-		ui.RenderContextResultsWithSymbolsVerbose(query, scored, symbols, result.Answer)
+		ui.RenderContextResultsWithSymbolsVerbose(query, scored, symbols, answerToRender)
 	} else {
-		ui.RenderContextResultsWithSymbols(query, scored, symbols, result.Answer)
+		ui.RenderContextResultsWithSymbols(query, scored, symbols, answerToRender)
 	}
 
 	return nil
@@ -143,4 +185,63 @@ func nodeResponsesToScoredNodes(responses []knowledge.NodeResponse) []knowledge.
 		}
 	}
 	return result
+}
+
+// runDeepDive handles the --deep flag for symbol explanation.
+func runDeepDive(cmd *cobra.Command, query string) error {
+	// 1. Initialize repository
+	repo, err := openRepo()
+	if err != nil {
+		return fmt.Errorf("open memory repo: %w", err)
+	}
+	defer func() { _ = repo.Close() }()
+
+	// 2. Create app context with LLM config
+	llmCfg, err := getLLMConfigForRole(cmd, llm.RoleQuery)
+	if err != nil {
+		return err
+	}
+
+	// Get base path for source code fetching
+	basePath, _ := config.GetProjectRoot()
+
+	appCtx := app.NewContextWithConfig(repo, llmCfg)
+	appCtx.BasePath = basePath
+	explainApp := app.NewExplainApp(appCtx)
+
+	// 3. Show progress
+	ctx := context.Background()
+	var streamWriter io.Writer
+	if !isQuiet() {
+		ui.RenderExplainHeader(query)
+		if !isJSON() {
+			streamWriter = os.Stdout
+		}
+	}
+
+	// 4. Execute deep dive
+	result, err := explainApp.Explain(ctx, app.ExplainRequest{
+		Query:        query,
+		Depth:        contextDepth,
+		IncludeCode:  isVerbose(),
+		StreamWriter: streamWriter,
+	})
+	if err != nil {
+		return fmt.Errorf("explain failed: %w", err)
+	}
+
+	// 5. Output
+	if isJSON() {
+		return printJSON(result)
+	}
+
+	// Render streamed explanation newline
+	if streamWriter != nil && result.Explanation != "" {
+		fmt.Println()
+	}
+
+	// Render full results
+	ui.RenderExplainResult(result, isVerbose())
+
+	return nil
 }

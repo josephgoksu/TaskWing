@@ -1,7 +1,7 @@
 // Package presenter provides Markdown formatting for MCP tool responses.
 // This package converts app layer response types into token-efficient Markdown
 // suitable for LLM consumption, while the internal/ui package handles CLI output.
-package presenter
+package mcp
 
 import (
 	"fmt"
@@ -296,6 +296,189 @@ func FormatImpact(result *app.AnalyzeImpactResult) string {
 			}
 		}
 	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatExplainResult converts an ExplainResult into Markdown for MCP.
+func FormatExplainResult(result *app.ExplainResult) string {
+	if result == nil {
+		return "No explanation available."
+	}
+
+	var sb strings.Builder
+
+	// Symbol header
+	sb.WriteString(fmt.Sprintf("## `%s` (%s)\n", result.Symbol.Name, result.Symbol.Kind))
+	sb.WriteString(fmt.Sprintf("%s\n\n", result.Symbol.Location))
+
+	if result.Symbol.Signature != "" {
+		sb.WriteString(fmt.Sprintf("```\n%s\n```\n\n", result.Symbol.Signature))
+	}
+
+	if result.Symbol.DocComment != "" {
+		sb.WriteString(fmt.Sprintf("> %s\n\n", truncate(result.Symbol.DocComment, 200)))
+	}
+
+	// Call graph context
+	sb.WriteString("### System Context\n\n")
+
+	// Callers
+	sb.WriteString(fmt.Sprintf("**Called By** (%d):\n", len(result.Callers)))
+	if len(result.Callers) == 0 {
+		sb.WriteString("- *(none - may be entry point)*\n")
+	} else {
+		for i, c := range result.Callers {
+			if i >= 5 {
+				sb.WriteString(fmt.Sprintf("- *...and %d more*\n", len(result.Callers)-5))
+				break
+			}
+			sb.WriteString(fmt.Sprintf("- `%s` — %s\n", c.Symbol.Name, c.Symbol.Location))
+		}
+	}
+
+	// Callees
+	sb.WriteString(fmt.Sprintf("\n**Calls** (%d):\n", len(result.Callees)))
+	if len(result.Callees) == 0 {
+		sb.WriteString("- *(none - may be leaf function)*\n")
+	} else {
+		for i, c := range result.Callees {
+			if i >= 5 {
+				sb.WriteString(fmt.Sprintf("- *...and %d more*\n", len(result.Callees)-5))
+				break
+			}
+			sb.WriteString(fmt.Sprintf("- `%s` — %s\n", c.Symbol.Name, c.Symbol.Location))
+		}
+	}
+
+	// Impact summary
+	sb.WriteString("\n### Impact Analysis\n")
+	sb.WriteString(fmt.Sprintf("- Direct callers: %d\n", result.ImpactStats.DirectCallers))
+	sb.WriteString(fmt.Sprintf("- Direct callees: %d\n", result.ImpactStats.DirectCallees))
+	if result.ImpactStats.TransitiveDependents > 0 {
+		sb.WriteString(fmt.Sprintf("- Transitive dependents: %d (depth %d)\n",
+			result.ImpactStats.TransitiveDependents, result.ImpactStats.MaxDepthReached))
+	}
+	if result.ImpactStats.AffectedFiles > 0 {
+		sb.WriteString(fmt.Sprintf("- Files affected: %d\n", result.ImpactStats.AffectedFiles))
+	}
+
+	// Related decisions
+	if len(result.Decisions) > 0 {
+		sb.WriteString("\n### Related Decisions\n")
+		for _, d := range result.Decisions {
+			sb.WriteString(fmt.Sprintf("- %s\n", d.Summary))
+		}
+	}
+
+	// Related patterns
+	if len(result.Patterns) > 0 {
+		sb.WriteString("\n### Related Patterns\n")
+		for _, p := range result.Patterns {
+			sb.WriteString(fmt.Sprintf("- %s\n", p.Summary))
+		}
+	}
+
+	// Source code snippets (condensed for tokens)
+	if len(result.SourceCode) > 0 {
+		sb.WriteString("\n### Source Context\n")
+		for _, snippet := range result.SourceCode {
+			sb.WriteString(fmt.Sprintf("\n**%s `%s`** (%s):\n", snippet.Kind, snippet.SymbolName, snippet.FilePath))
+			// Limit to first 20 lines for tokens
+			lines := strings.Split(snippet.Content, "\n")
+			if len(lines) > 20 {
+				sb.WriteString("```\n")
+				sb.WriteString(strings.Join(lines[:20], "\n"))
+				sb.WriteString(fmt.Sprintf("\n// ...%d more lines\n", len(lines)-20))
+				sb.WriteString("```\n")
+			} else {
+				sb.WriteString("```\n")
+				sb.WriteString(snippet.Content)
+				sb.WriteString("\n```\n")
+			}
+		}
+	}
+
+	// AI Explanation
+	if result.Explanation != "" {
+		sb.WriteString("\n### Explanation\n")
+		sb.WriteString(result.Explanation)
+		sb.WriteString("\n")
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatDriftReport converts a DriftReport into Markdown for MCP.
+func FormatDriftReport(report *app.DriftReport) string {
+	if report == nil {
+		return "No drift report available."
+	}
+
+	var sb strings.Builder
+
+	// Header
+	sb.WriteString("## Architecture Drift Analysis\n\n")
+	sb.WriteString(fmt.Sprintf("**Rules checked**: %d\n", report.RulesChecked))
+	sb.WriteString(fmt.Sprintf("**Timestamp**: %s\n\n", report.Timestamp.Format("2006-01-02 15:04:05")))
+
+	// No rules
+	if report.RulesChecked == 0 {
+		sb.WriteString("No architectural rules found in knowledge base.\n")
+		sb.WriteString("Run `tw bootstrap --deep` to extract rules, or add rules with `tw add`.\n")
+		return sb.String()
+	}
+
+	// Violations
+	if len(report.Violations) > 0 {
+		sb.WriteString(fmt.Sprintf("### ❌ Violations (%d)\n", len(report.Violations)))
+		for i, v := range report.Violations {
+			if i >= 10 {
+				sb.WriteString(fmt.Sprintf("\n*...and %d more violations*\n", len(report.Violations)-10))
+				break
+			}
+			sb.WriteString(fmt.Sprintf("\n**%d. %s**\n", i+1, v.Location))
+			if v.Rule != nil {
+				sb.WriteString(fmt.Sprintf("- Rule: %s\n", v.Rule.Name))
+			}
+			sb.WriteString(fmt.Sprintf("- Issue: %s\n", v.Message))
+			if v.Evidence != "" {
+				sb.WriteString(fmt.Sprintf("- Evidence: `%s`\n", v.Evidence))
+			}
+			if v.Suggestion != "" {
+				sb.WriteString(fmt.Sprintf("- Fix: %s\n", v.Suggestion))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Warnings
+	if len(report.Warnings) > 0 {
+		sb.WriteString(fmt.Sprintf("### ⚠️ Warnings (%d)\n", len(report.Warnings)))
+		for i, w := range report.Warnings {
+			if i >= 5 {
+				sb.WriteString(fmt.Sprintf("\n*...and %d more warnings*\n", len(report.Warnings)-5))
+				break
+			}
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", w.Location, w.Message))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Passed
+	if len(report.Passed) > 0 {
+		sb.WriteString(fmt.Sprintf("### ✅ Passed (%d)\n", len(report.Passed)))
+		for _, name := range report.Passed {
+			sb.WriteString(fmt.Sprintf("- %s\n", name))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Summary
+	sb.WriteString("### Summary\n")
+	sb.WriteString(fmt.Sprintf("- Violations: %d\n", report.Summary.Violations))
+	sb.WriteString(fmt.Sprintf("- Warnings: %d\n", report.Summary.Warnings))
+	sb.WriteString(fmt.Sprintf("- Passed: %d\n", report.Summary.Passed))
 
 	return strings.TrimSpace(sb.String())
 }

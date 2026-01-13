@@ -99,7 +99,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start HTTP API server
-	memoryPath := config.GetMemoryBasePath()
+	memoryPath, err := config.GetMemoryBasePath()
+	if err != nil {
+		return fmt.Errorf("get memory path: %w", err)
+	}
 	srv, err := server.New(startPort, cwd, memoryPath, GetVersion(), llmConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create API server: %w", err)
@@ -170,7 +173,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 // startWatchMode starts the watch agent in a goroutine
 func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sync.WaitGroup, errChan chan<- error) (*watch.WatchAgent, error) {
 	// Initialize knowledge service first (needed for context injection)
-	memoryPath := config.GetMemoryBasePath()
+	memoryPath, err := config.GetMemoryBasePath()
+	if err != nil {
+		return nil, fmt.Errorf("get memory path: %w", err)
+	}
 	repo, err := memory.NewDefaultRepository(memoryPath)
 	if err != nil {
 		return nil, fmt.Errorf("create memory repository: %w", err)

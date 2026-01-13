@@ -1,5 +1,5 @@
-// Package tokens provides token estimation utilities for LLM context management.
-package tokens
+// Token estimation utilities for LLM context management.
+package llm
 
 // EstimateTokens provides a heuristic-based token count estimate for text.
 // Uses the industry standard approximation of ~4 characters per token.
