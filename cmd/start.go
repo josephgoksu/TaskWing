@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
-	"github.com/josephgoksu/TaskWing/internal/agents/watch"
+	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -110,7 +110,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	srv.Start(&wg, errChan)
 
 	// Start watch mode if enabled
-	var watchAgent *watch.WatchAgent
+	var watchAgent *impl.WatchAgent
 	if !noWatch {
 		watchAgent, err = startWatchMode(cwd, verbose, llmConfig, &wg, errChan)
 		if err != nil {
@@ -171,7 +171,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 }
 
 // startWatchMode starts the watch agent in a goroutine
-func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sync.WaitGroup, errChan chan<- error) (*watch.WatchAgent, error) {
+func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sync.WaitGroup, errChan chan<- error) (*impl.WatchAgent, error) {
 	// Initialize knowledge service first (needed for context injection)
 	memoryPath, err := config.GetMemoryBasePath()
 	if err != nil {
@@ -185,7 +185,7 @@ func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sy
 	ks := knowledge.NewService(repo, llmConfig)
 
 	// Create watch agent with knowledge service
-	watchAgent, err := watch.NewWatchAgent(watch.WatchConfig{
+	watchAgent, err := impl.NewWatchAgent(impl.WatchConfig{
 		BasePath:  watchPath,
 		LLMConfig: llmConfig,
 		Verbose:   verbose,

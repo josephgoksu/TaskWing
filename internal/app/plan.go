@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/josephgoksu/TaskWing/internal/agents/audit"
+	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
-	"github.com/josephgoksu/TaskWing/internal/agents/planning"
+	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/task"
@@ -103,13 +103,13 @@ func (a *PlanApp) Clarify(ctx context.Context, opts ClarifyOptions) (*ClarifyRes
 	ks := knowledge.NewService(repo, llmCfg)
 	var contextStr string
 	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
-		if result, err := planning.RetrieveContext(ctx, ks, opts.Goal, memoryPath); err == nil {
+		if result, err := impl.RetrieveContext(ctx, ks, opts.Goal, memoryPath); err == nil {
 			contextStr = result.Context
 		}
 	}
 
 	// Create and run ClarifyingAgent
-	clarifyingAgent := planning.NewClarifyingAgent(llmCfg)
+	clarifyingAgent := impl.NewClarifyingAgent(llmCfg)
 	defer func() { _ = clarifyingAgent.Close() }()
 
 	input := core.Input{
@@ -205,13 +205,13 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 	ks := knowledge.NewService(repo, llmCfg)
 	var contextStr string
 	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
-		if result, err := planning.RetrieveContext(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
+		if result, err := impl.RetrieveContext(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
 			contextStr = result.Context
 		}
 	}
 
 	// Create and run PlanningAgent
-	planningAgent := planning.NewPlanningAgent(llmCfg)
+	planningAgent := impl.NewPlanningAgent(llmCfg)
 	defer func() { _ = planningAgent.Close() }()
 
 	input := core.Input{
@@ -337,7 +337,7 @@ func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, e
 		return &AuditResult{
 			Success: false,
 			PlanID:  plan.ID,
-			Message: "No completed tasks to audit. Complete tasks first.",
+			Message: "No completed tasks to impl. Complete tasks first.",
 			Hint:    "Use task_next to get the next pending task.",
 		}, nil
 	}
@@ -346,7 +346,7 @@ func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, e
 	workDir, _ := os.Getwd()
 
 	// Create audit service
-	auditService := audit.NewService(workDir, llmCfg)
+	auditService := impl.NewService(workDir, llmCfg)
 
 	// Run audit with auto-fix
 	auditResult, err := auditService.AuditWithAutoFix(ctx, plan)
@@ -416,12 +416,12 @@ func parseQuestionsFromMetadata(metadata map[string]any) []string {
 }
 
 // parseTasksFromMetadata extracts tasks from agent metadata,
-// handling both []planning.PlanningTask and []any (from JSON unmarshaling).
+// handling both []impl.PlanningTask and []any (from JSON unmarshaling).
 func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 	var tasks []task.Task
 
 	// Try typed slice first
-	if tasksRaw, ok := metadata["tasks"].([]planning.PlanningTask); ok {
+	if tasksRaw, ok := metadata["tasks"].([]impl.PlanningTask); ok {
 		for _, pt := range tasksRaw {
 			t := task.Task{
 				Title:              pt.Title,

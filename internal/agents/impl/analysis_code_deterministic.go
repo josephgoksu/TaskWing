@@ -1,7 +1,7 @@
 /*
 Package analysis provides the deterministic code agent for bootstrap.
 */
-package analysis
+package impl
 
 import (
 	"context"

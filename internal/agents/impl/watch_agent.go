@@ -4,7 +4,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 Package watch provides the WatchAgent for continuous codebase monitoring.
 It watches for file changes and triggers appropriate agents for incremental analysis.
 */
-package watch
+package impl
 
 import (
 	"context"
@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/josephgoksu/TaskWing/internal/agents/analysis"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -439,11 +438,11 @@ func (d *AgentDispatcher) Dispatch(ctx context.Context, category FileCategory, c
 	switch category {
 	case FileCategoryCode:
 		// Use deterministic CodeAgent for code analysis
-		agent = analysis.NewCodeAgent(d.llmConfig, d.basePath)
+		agent = NewCodeAgent(d.llmConfig, d.basePath)
 	case FileCategoryDocs:
-		agent = analysis.NewDocAgent(d.llmConfig)
+		agent = NewDocAgent(d.llmConfig)
 	case FileCategoryDeps:
-		agent = analysis.NewDepsAgent(d.llmConfig)
+		agent = NewDepsAgent(d.llmConfig)
 	default:
 		return
 	}

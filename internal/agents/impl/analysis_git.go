@@ -1,7 +1,7 @@
 /*
 Package analysis provides agents for analyzing git history.
 */
-package analysis
+package impl
 
 import (
 	"context"

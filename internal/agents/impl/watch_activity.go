@@ -3,7 +3,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 
 Package watch provides activity logging for watch mode.
 */
-package watch
+package impl
 
 import (
 	"encoding/json"

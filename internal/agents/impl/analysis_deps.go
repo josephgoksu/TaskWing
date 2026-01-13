@@ -1,7 +1,7 @@
 /*
 Package analysis provides agents for analyzing dependencies.
 */
-package analysis
+package impl
 
 import (
 	"context"

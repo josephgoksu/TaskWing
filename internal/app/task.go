@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/agents/audit"
+	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/git"
 	"github.com/josephgoksu/TaskWing/internal/task"
 )
@@ -409,7 +409,7 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		hint += " Running audit verification..."
 
 		// Create audit service and run with auto-fix
-		auditService := audit.NewService(workDir, a.ctx.LLMCfg)
+		auditService := impl.NewService(workDir, a.ctx.LLMCfg)
 		auditCtx, auditCancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer auditCancel()
 

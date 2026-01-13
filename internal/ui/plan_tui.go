@@ -12,7 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
-	"github.com/josephgoksu/TaskWing/internal/agents/planning"
+	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/task"
@@ -91,8 +91,8 @@ type PlanModel struct {
 
 	// Dependencies
 	Ctx              context.Context
-	ClarifyingAgent  *planning.ClarifyingAgent
-	PlanningAgent    *planning.PlanningAgent
+	ClarifyingAgent  *impl.ClarifyingAgent
+	PlanningAgent    *impl.PlanningAgent
 	KnowledgeService *knowledge.Service
 	Repo             *memory.Repository
 }
@@ -149,8 +149,8 @@ type MsgCheckTimeout struct{}
 func NewPlanModel(
 	ctx context.Context,
 	goal string,
-	clarifyingAgent *planning.ClarifyingAgent,
-	planningAgent *planning.PlanningAgent,
+	clarifyingAgent *impl.ClarifyingAgent,
+	planningAgent *impl.PlanningAgent,
 	ks *knowledge.Service,
 	repo *memory.Repository,
 	stream *core.StreamingOutput,
@@ -203,7 +203,7 @@ func (m PlanModel) Init() tea.Cmd {
 func (m PlanModel) searchContext() tea.Msg {
 	// Use shared logic for consistency with Eval system
 	// Pass MemoryBasePath to enable ARCHITECTURE.md injection
-	result, err := planning.RetrieveContext(m.Ctx, m.KnowledgeService, m.InitialGoal, m.MemoryBasePath)
+	result, err := impl.RetrieveContext(m.Ctx, m.KnowledgeService, m.InitialGoal, m.MemoryBasePath)
 	if err != nil {
 		// Even if error (unlikely as RetrieveContext handles fallbacks internally), return it
 		return MsgContextFound{Context: "", Strategy: "", Err: err}
@@ -213,7 +213,7 @@ func (m PlanModel) searchContext() tea.Msg {
 }
 
 // RunClarification runs the agent in a goroutine
-func runClarification(ctx context.Context, agent *planning.ClarifyingAgent, goal, history string, kgContext string) tea.Cmd {
+func runClarification(ctx context.Context, agent *impl.ClarifyingAgent, goal, history string, kgContext string) tea.Cmd {
 	return func() tea.Msg {
 		out, err := agent.Run(ctx, core.Input{
 			ExistingContext: map[string]any{
@@ -228,7 +228,7 @@ func runClarification(ctx context.Context, agent *planning.ClarifyingAgent, goal
 }
 
 // RunPlanning runs the planning agent with streaming
-func runPlanning(ctx context.Context, agent *planning.PlanningAgent, goal, enrichedGoal, kgContext string, stream *core.StreamingOutput) tea.Cmd {
+func runPlanning(ctx context.Context, agent *impl.PlanningAgent, goal, enrichedGoal, kgContext string, stream *core.StreamingOutput) tea.Cmd {
 	return func() tea.Msg {
 		// Callback Handler
 		handler := core.CreateStreamingCallbackHandler(agent.Name(), stream)
@@ -271,7 +271,7 @@ func savePlan(repo *memory.Repository, goalSummary, enrichedGoal string, output 
 		}
 
 		finding := output.Findings[0]
-		rawTasks, ok := finding.Metadata["tasks"].([]planning.PlanningTask)
+		rawTasks, ok := finding.Metadata["tasks"].([]impl.PlanningTask)
 		if !ok {
 			return MsgSavedPlan{Err: fmt.Errorf("invalid tasks format")}
 		}
@@ -312,7 +312,7 @@ func savePlan(repo *memory.Repository, goalSummary, enrichedGoal string, output 
 }
 
 // runAutoAnswer triggers the agent to refine the spec with timeout
-func runAutoAnswer(ctx context.Context, agent *planning.ClarifyingAgent, currentSpec string, questions []string, kgContext string) tea.Cmd {
+func runAutoAnswer(ctx context.Context, agent *impl.ClarifyingAgent, currentSpec string, questions []string, kgContext string) tea.Cmd {
 	return func() tea.Msg {
 		timeoutCtx, cancel := context.WithTimeout(ctx, LLMTimeoutSeconds*time.Second)
 		defer cancel()
@@ -328,7 +328,7 @@ func runAutoAnswer(ctx context.Context, agent *planning.ClarifyingAgent, current
 }
 
 // runSingleAutoAnswer auto-answers a single question using the LLM with timeout
-func runSingleAutoAnswer(ctx context.Context, agent *planning.ClarifyingAgent, question string, kgContext string, qIdx int) tea.Cmd {
+func runSingleAutoAnswer(ctx context.Context, agent *impl.ClarifyingAgent, question string, kgContext string, qIdx int) tea.Cmd {
 	return func() tea.Msg {
 		timeoutCtx, cancel := context.WithTimeout(ctx, LLMTimeoutSeconds*time.Second)
 		defer cancel()
@@ -808,7 +808,7 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.TextInput.SetHeight(newHeight)
 
-				m.addMsg("SYSTEM", "Please review the final specification below. Hit [Ctrl+S] to approve and start planning.")
+				m.addMsg("SYSTEM", "Please review the final specification below. Hit [Ctrl+S] to approve and start impl.")
 			}
 		}
 

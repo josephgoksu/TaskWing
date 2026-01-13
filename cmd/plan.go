@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
-	"github.com/josephgoksu/TaskWing/internal/agents/planning"
+	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -102,9 +102,9 @@ var planNewCmd = &cobra.Command{
 		svc := task.NewService(repo, memoryPath)
 
 		// Initialize Agents
-		clarifyingAgent := planning.NewClarifyingAgent(cfg)
+		clarifyingAgent := impl.NewClarifyingAgent(cfg)
 		defer func() { _ = clarifyingAgent.Close() }()
-		planningAgent := planning.NewPlanningAgent(cfg)
+		planningAgent := impl.NewPlanningAgent(cfg)
 		defer func() { _ = planningAgent.Close() }()
 		ks := knowledge.NewService(repo, cfg)
 

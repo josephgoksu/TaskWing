@@ -2,7 +2,7 @@
 Package audit provides the AuditService for validating completed plans against their implementation.
 It performs both programmatic checks (build/test) and semantic verification (LLM analysis).
 */
-package audit
+package impl
 
 import (
 	"bytes"

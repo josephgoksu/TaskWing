@@ -1,7 +1,7 @@
 /*
 Package planning provides agents for goal refinement and task decomposition.
 */
-package planning
+package impl
 
 import (
 	"context"

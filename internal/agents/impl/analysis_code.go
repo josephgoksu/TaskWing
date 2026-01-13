@@ -1,7 +1,7 @@
 /*
 Package analysis provides the ReAct code agent for dynamic codebase exploration.
 */
-package analysis
+package impl
 
 import (
 	"context"
