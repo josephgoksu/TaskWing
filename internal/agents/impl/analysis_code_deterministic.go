@@ -88,7 +88,7 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 		symbolCtx, err := tools.NewSymbolContext(basePath, a.LLMConfig())
 		if err == nil {
 			// Use symbol index (compact, scalable)
-			defer symbolCtx.Close()
+			defer func() { _ = symbolCtx.Close() }()
 			symbolCtx.SetConfig(tools.SymbolContextConfig{
 				MaxTokens:    50000, // ~50k tokens for symbols
 				PreferPublic: true,
