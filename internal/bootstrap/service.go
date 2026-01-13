@@ -13,7 +13,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
-	"github.com/josephgoksu/TaskWing/internal/workspace"
+	"github.com/josephgoksu/TaskWing/internal/project"
 )
 
 // Service handles the bootstrapping process of extracting architectural knowledge.
@@ -39,7 +39,7 @@ func (s *Service) InitializeProject(verbose bool, selectedAIs []string) error {
 }
 
 // RunMultiRepoAnalysis executes analysis for all services in a workspace.
-func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *workspace.Info) ([]core.Finding, []core.Relationship, []string, error) {
+func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.WorkspaceInfo) ([]core.Finding, []core.Relationship, []string, error) {
 	var allFindings []core.Finding
 	var allRelationships []core.Relationship
 	var serviceErrors []string

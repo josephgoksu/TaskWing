@@ -1,12 +1,12 @@
 /*
-Package workspace provides detection and handling of multi-repo workspaces.
+Workspace detection and handling for multi-repo workspaces.
 
 A workspace can be:
 - Single: Normal git repository with unified codebase
 - Monorepo: Single git root with multiple packages (nx, turborepo, lerna)
 - MultiRepo: Directory containing multiple independent git repositories
 */
-package workspace
+package project
 
 import (
 	"os"
@@ -14,48 +14,48 @@ import (
 	"strings"
 )
 
-// Type represents the workspace structure type
-type Type int
+// WorkspaceType represents the workspace structure type
+type WorkspaceType int
 
 const (
-	// TypeSingle is a normal single-project repository
-	TypeSingle Type = iota
-	// TypeMonorepo is a single git root with multiple packages
-	TypeMonorepo
-	// TypeMultiRepo is a directory containing multiple independent git repos
-	TypeMultiRepo
+	// WorkspaceTypeSingle is a normal single-project repository
+	WorkspaceTypeSingle WorkspaceType = iota
+	// WorkspaceTypeMonorepo is a single git root with multiple packages
+	WorkspaceTypeMonorepo
+	// WorkspaceTypeMultiRepo is a directory containing multiple independent git repos
+	WorkspaceTypeMultiRepo
 )
 
-func (t Type) String() string {
+func (t WorkspaceType) String() string {
 	switch t {
-	case TypeSingle:
+	case WorkspaceTypeSingle:
 		return "single"
-	case TypeMonorepo:
+	case WorkspaceTypeMonorepo:
 		return "monorepo"
-	case TypeMultiRepo:
+	case WorkspaceTypeMultiRepo:
 		return "multi-repo"
 	default:
 		return "unknown"
 	}
 }
 
-// Info contains information about the detected workspace
-type Info struct {
-	Type     Type     // The workspace type
-	RootPath string   // The root path of the workspace
-	Services []string // List of service/repo paths (relative to root)
-	Name     string   // Name of the project (from root directory or config)
+// WorkspaceInfo contains information about the detected workspace
+type WorkspaceInfo struct {
+	Type     WorkspaceType // The workspace type
+	RootPath string        // The root path of the workspace
+	Services []string      // List of service/repo paths (relative to root)
+	Name     string        // Name of the project (from root directory or config)
 }
 
-// Detect analyzes a directory and returns workspace information.
+// DetectWorkspace analyzes a directory and returns workspace information.
 // It checks for git repositories, monorepo markers, and workspace configs.
-func Detect(basePath string) (*Info, error) {
+func DetectWorkspace(basePath string) (*WorkspaceInfo, error) {
 	absPath, err := filepath.Abs(basePath)
 	if err != nil {
 		return nil, err
 	}
 
-	info := &Info{
+	info := &WorkspaceInfo{
 		RootPath: absPath,
 		Name:     filepath.Base(absPath),
 	}
@@ -71,15 +71,15 @@ func Detect(basePath string) (*Info, error) {
 		// Monorepo or Multi-repo
 		// If root has git, it's a Monorepo. If not, it's Multi-repo (conceptually, or just a non-git monorepo)
 		if hasRootGit {
-			info.Type = TypeMonorepo
+			info.Type = WorkspaceTypeMonorepo
 		} else {
-			info.Type = TypeMultiRepo
+			info.Type = WorkspaceTypeMultiRepo
 		}
 		info.Services = nestedRepos
 
 	default:
 		// Normal single repo
-		info.Type = TypeSingle
+		info.Type = WorkspaceTypeSingle
 		info.Services = []string{"."}
 	}
 
@@ -168,16 +168,16 @@ func isSkippableDir(name string) bool {
 }
 
 // IsMultiRepo returns true if this is a multi-repo workspace
-func (w *Info) IsMultiRepo() bool {
-	return w.Type == TypeMultiRepo
+func (w *WorkspaceInfo) IsMultiRepo() bool {
+	return w.Type == WorkspaceTypeMultiRepo
 }
 
 // ServiceCount returns the number of services in the workspace
-func (w *Info) ServiceCount() int {
+func (w *WorkspaceInfo) ServiceCount() int {
 	return len(w.Services)
 }
 
 // GetServicePath returns the absolute path for a service
-func (w *Info) GetServicePath(serviceName string) string {
+func (w *WorkspaceInfo) GetServicePath(serviceName string) string {
 	return filepath.Join(w.RootPath, serviceName)
 }

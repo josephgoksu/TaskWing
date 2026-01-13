@@ -18,8 +18,8 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/project"
 	"github.com/josephgoksu/TaskWing/internal/ui"
-	"github.com/josephgoksu/TaskWing/internal/workspace"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -191,7 +191,7 @@ Use --analyze for deep LLM-powered analysis (slower, requires API key):
 		}
 
 		// Detect workspace type
-		ws, err := workspace.Detect(cwd)
+		ws, err := project.DetectWorkspace(cwd)
 		if err != nil {
 			return fmt.Errorf("detect workspace: %w", err)
 		}
@@ -300,7 +300,7 @@ func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg
 }
 
 // runMultiRepoBootstrap uses the service to analyze multiple repos
-func runMultiRepoBootstrap(ctx context.Context, svc *bootstrap.Service, ws *workspace.Info, preview bool) error {
+func runMultiRepoBootstrap(ctx context.Context, svc *bootstrap.Service, ws *project.WorkspaceInfo, preview bool) error {
 	fmt.Println("")
 	ui.RenderPageHeader("TaskWing Multi-Repo Bootstrap", fmt.Sprintf("Workspace: %s | Services: %d", ws.Name, ws.ServiceCount()))
 
