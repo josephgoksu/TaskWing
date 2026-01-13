@@ -823,9 +823,10 @@ func findRsMacroEnd(content []byte, startOffset int, lineStarts []int) int {
 foundBrace:
 	depth := 1
 	for i := bracePos + 1; i < len(content); i++ {
-		if content[i] == openChar {
+		switch content[i] {
+		case openChar:
 			depth++
-		} else if content[i] == closeChar {
+		case closeChar:
 			depth--
 			if depth == 0 {
 				return findLineNumber(i, lineStarts)
@@ -1082,9 +1083,10 @@ func findRsMatchingBrace(content []byte, openBracePos int) int {
 			}
 		}
 
-		if c == '{' {
+		switch c {
+		case '{':
 			depth++
-		} else if c == '}' {
+		case '}':
 			depth--
 			if depth == 0 {
 				return i

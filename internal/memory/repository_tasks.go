@@ -18,6 +18,11 @@ func (r *Repository) ListPlans() ([]task.Plan, error) {
 	return r.db.ListPlans()
 }
 
+// SearchPlans returns plans matching query and status.
+func (r *Repository) SearchPlans(query string, status task.PlanStatus) ([]task.Plan, error) {
+	return r.db.SearchPlans(query, status)
+}
+
 func (r *Repository) UpdatePlan(id string, goal, enrichedGoal string, status task.PlanStatus) error {
 	return r.db.UpdatePlan(id, goal, enrichedGoal, status)
 }
@@ -76,6 +81,11 @@ func (r *Repository) CompleteTask(taskID, summary string, filesModified []string
 // GetActivePlan returns the currently active plan.
 func (r *Repository) GetActivePlan() (*task.Plan, error) {
 	return r.db.GetActivePlan()
+}
+
+// SetActivePlan sets the active plan.
+func (r *Repository) SetActivePlan(id string) error {
+	return r.db.SetActivePlan(id)
 }
 
 // UpdatePlanAuditReport updates the audit report and status for a plan.

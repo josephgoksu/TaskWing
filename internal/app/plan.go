@@ -13,6 +13,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
@@ -29,27 +30,27 @@ type ClarifyResult struct {
 
 // ClarifyOptions configures the behavior of plan clarification.
 type ClarifyOptions struct {
-	Goal       string // Required: the user's goal
-	History    string // Optional: JSON array of previous Q&A [{q, a}, ...]
-	AutoAnswer bool   // If true, use KG to auto-answer questions
+	Goal       string // Initial user goal
+	History    string // History of Q&A
+	AutoAnswer bool   // Whether to autonomously refine context
 }
 
 // GenerateResult contains the result of plan generation.
 type GenerateResult struct {
 	Success      bool        `json:"success"`
+	Tasks        []task.Task `json:"tasks,omitempty"`
 	PlanID       string      `json:"plan_id,omitempty"`
 	Goal         string      `json:"goal,omitempty"`
 	EnrichedGoal string      `json:"enriched_goal,omitempty"`
-	Tasks        []task.Task `json:"tasks,omitempty"`
 	Message      string      `json:"message,omitempty"`
 	Hint         string      `json:"hint,omitempty"`
 }
 
 // GenerateOptions configures the behavior of plan generation.
 type GenerateOptions struct {
-	Goal         string // Required: user's original goal
-	EnrichedGoal string // Required: full technical spec from clarify
-	Save         bool   // If true (default), save plan to database
+	Goal         string // Original user goal
+	EnrichedGoal string // Fully clarified specification
+	Save         bool   // Whether to persist plan/tasks to DB
 }
 
 // AuditResult contains the result of plan auditing.
@@ -73,15 +74,42 @@ type AuditOptions struct {
 	AutoFix bool   // If true, attempt to fix failures automatically
 }
 
+// GoalsClarifier defines the interface for the clarifying agent.
+type GoalsClarifier interface {
+	Run(ctx context.Context, input core.Input) (core.Output, error)
+	AutoAnswer(ctx context.Context, currentSpec string, questions []string, kgContext string) (string, error)
+	Close() error
+}
+
+// TaskPlanner defines the interface for the planning agent.
+type TaskPlanner interface {
+	Run(ctx context.Context, input core.Input) (core.Output, error)
+	Close() error
+}
+
 // PlanApp provides plan lifecycle operations.
 // This is THE implementation - CLI and MCP both call these methods.
 type PlanApp struct {
-	ctx *Context
+	ctx              *Context
+	Repo             task.Repository
+	ClarifierFactory func(llm.Config) GoalsClarifier
+	PlannerFactory   func(llm.Config) TaskPlanner
+	ContextRetriever func(ctx context.Context, ks *knowledge.Service, goal, memoryPath string) (impl.SearchStrategyResult, error)
 }
 
 // NewPlanApp creates a new plan application service.
 func NewPlanApp(ctx *Context) *PlanApp {
-	return &PlanApp{ctx: ctx}
+	return &PlanApp{
+		ctx:  ctx,
+		Repo: ctx.Repo,
+		ClarifierFactory: func(cfg llm.Config) GoalsClarifier {
+			return impl.NewClarifyingAgent(cfg)
+		},
+		PlannerFactory: func(cfg llm.Config) TaskPlanner {
+			return impl.NewPlanningAgent(cfg)
+		},
+		ContextRetriever: impl.RetrieveContext,
+	}
 }
 
 // Clarify refines a development goal by asking clarifying questions.
@@ -94,21 +122,22 @@ func (a *PlanApp) Clarify(ctx context.Context, opts ClarifyOptions) (*ClarifyRes
 		}, nil
 	}
 
-	repo := a.ctx.Repo
 	llmCfg := a.ctx.LLMCfg
 
 	// Fetch context from knowledge graph using canonical shared function
 	// Context retrieval is optional enhancement - log errors but don't fail
-	ks := knowledge.NewService(repo, llmCfg)
+	ks := knowledge.NewService(a.ctx.Repo, llmCfg) // Still needs concrete repo for now?
+	// ks := knowledge.NewService(repo, llmCfg) // Error: repo is interface, NewService takes *memory.Repository
+	// We handle this by keeping a.ctx.Repo for NewService, but using a.ContextRetriever which can be mocked to ignore ks.
 	var contextStr string
 	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
-		if result, err := impl.RetrieveContext(ctx, ks, opts.Goal, memoryPath); err == nil {
+		if result, err := a.ContextRetriever(ctx, ks, opts.Goal, memoryPath); err == nil {
 			contextStr = result.Context
 		}
 	}
 
 	// Create and run ClarifyingAgent
-	clarifyingAgent := impl.NewClarifyingAgent(llmCfg)
+	clarifyingAgent := a.ClarifierFactory(llmCfg)
 	defer func() { _ = clarifyingAgent.Close() }()
 
 	input := core.Input{
@@ -149,19 +178,30 @@ func (a *PlanApp) Clarify(ctx context.Context, opts ClarifyOptions) (*ClarifyRes
 
 	// If auto_answer and we have questions, try to answer them
 	if opts.AutoAnswer && len(questions) > 0 && !isReady {
-		answer, err := clarifyingAgent.AutoAnswer(ctx, enrichedGoal, questions, contextStr)
-		if err == nil && answer != "" {
+		const maxAutoAnswerAttempts = 3
+		attempts := 0
+
+		for len(questions) > 0 && !isReady && attempts < maxAutoAnswerAttempts {
+			attempts++
+			answer, err := clarifyingAgent.AutoAnswer(ctx, enrichedGoal, questions, contextStr)
+			if err != nil || answer == "" {
+				break // Stop if LLM fails or returns empty
+			}
+
 			enrichedGoal = answer
 			// Re-run to check if now ready
-			input.ExistingContext["history"] = fmt.Sprintf("%s\n\nAuto-answered questions with:\n%s", opts.History, answer)
+			input.ExistingContext["history"] = fmt.Sprintf("%s\n\nAuto-answered questions (Attempt %d):\n%s", opts.History, attempts, answer)
+
 			output2, err := clarifyingAgent.Run(ctx, input)
-			if err == nil && len(output2.Findings) > 0 {
-				finding2 := output2.Findings[0]
-				questions = parseQuestionsFromMetadata(finding2.Metadata)
-				goalSummary, _ = finding2.Metadata["goal_summary"].(string)
-				enrichedGoal, _ = finding2.Metadata["enriched_goal"].(string)
-				isReady, _ = finding2.Metadata["is_ready_to_plan"].(bool)
+			if err != nil || len(output2.Findings) == 0 {
+				break
 			}
+
+			finding2 := output2.Findings[0]
+			questions = parseQuestionsFromMetadata(finding2.Metadata)
+			goalSummary, _ = finding2.Metadata["goal_summary"].(string)
+			enrichedGoal, _ = finding2.Metadata["enriched_goal"].(string)
+			isReady, _ = finding2.Metadata["is_ready_to_plan"].(bool)
 		}
 	}
 
@@ -196,21 +236,21 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 		}, nil
 	}
 
-	repo := a.ctx.Repo
+	repo := a.Repo
 	llmCfg := a.ctx.LLMCfg
 
 	// Fetch context from knowledge graph using canonical shared function
 	// Context retrieval is optional enhancement - log errors but don't fail
-	ks := knowledge.NewService(repo, llmCfg)
+	ks := knowledge.NewService(a.ctx.Repo, llmCfg)
 	var contextStr string
 	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
-		if result, err := impl.RetrieveContext(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
+		if result, err := a.ContextRetriever(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
 			contextStr = result.Context
 		}
 	}
 
 	// Create and run PlanningAgent
-	planningAgent := impl.NewPlanningAgent(llmCfg)
+	planningAgent := a.PlannerFactory(llmCfg)
 	defer func() { _ = planningAgent.Close() }()
 
 	input := core.Input{
@@ -253,6 +293,16 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 		}, nil
 	}
 
+	// Validate tasks
+	for i, t := range tasks {
+		if err := t.Validate(); err != nil {
+			return &GenerateResult{
+				Success: false,
+				Message: fmt.Sprintf("Task %d validation failed: %v", i+1, err),
+			}, nil
+		}
+	}
+
 	// Save the plan
 	var planID string
 	{
@@ -263,35 +313,55 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 			Tasks:        tasks,
 		}
 
-		if err := repo.CreatePlan(plan); err != nil {
-			return &GenerateResult{
-				Success: false,
-				Message: fmt.Sprintf("Failed to save plan: %v", err),
-			}, nil
-		}
-		planID = plan.ID
+		if opts.Save {
+			// Transactional creation logic is handled by repo.CreatePlan
+			if err := repo.CreatePlan(plan); err != nil {
+				return &GenerateResult{
+					Success: false,
+					Message: fmt.Sprintf("Failed to save plan: %v", err),
+				}, nil
+			}
+			planID = plan.ID
 
-		// Set as active plan (best effort - plan was created successfully)
-		// If memory path is unavailable, skip active plan setting
-		if memoryPathSvc, err := config.GetMemoryBasePath(); err == nil {
-			svc := task.NewService(repo, memoryPathSvc)
-			_ = svc.SetActivePlan(planID)
+			// Set as active plan (fail if we can't set it active)
+			if memoryPathSvc, err := config.GetMemoryBasePath(); err == nil {
+				svc := task.NewService(repo, memoryPathSvc)
+				if err := svc.SetActivePlan(planID); err != nil {
+					return &GenerateResult{
+						Success: false,
+						Message: fmt.Sprintf("Plan created but failed to set active: %v", err),
+						PlanID:  planID,
+					}, nil
+				}
+			} else {
+				if err := repo.SetActivePlan(planID); err != nil {
+					return &GenerateResult{
+						Success: false,
+						Message: fmt.Sprintf("Plan created but failed to set active: %v", err),
+						PlanID:  planID,
+					}, nil
+				}
+			}
+		} else {
+			// Even if not saving to DB, generate a temporary ID or leave empty
+			planID = plan.ID // will be empty or 0 if not saved
 		}
 	}
 
 	return &GenerateResult{
 		Success:      true,
+		Tasks:        tasks,
 		PlanID:       planID,
 		Goal:         opts.Goal,
 		EnrichedGoal: opts.EnrichedGoal,
-		Tasks:        tasks,
+		Message:      "Plan generated successfully",
 		Hint:         "Use task_next to begin working on the first task.",
 	}, nil
 }
 
 // Audit runs verification on a completed plan.
 func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, error) {
-	repo := a.ctx.Repo
+	repo := a.Repo
 	llmCfg := a.ctx.LLMCfg
 
 	// Determine which plan to audit

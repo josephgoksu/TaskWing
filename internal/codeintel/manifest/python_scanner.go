@@ -140,7 +140,7 @@ func (s *PythonScanner) scanRequirementsTxt(path string) (*ScanResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	result := &ScanResult{
 		Lockfile:  path,

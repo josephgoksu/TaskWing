@@ -1,6 +1,7 @@
 package task
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -64,6 +65,23 @@ type Task struct {
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// Validate checks if the task has all required fields and valid data.
+func (t *Task) Validate() error {
+	if strings.TrimSpace(t.Title) == "" {
+		return fmt.Errorf("title required")
+	}
+	if len(t.Title) > 200 {
+		return fmt.Errorf("title too long (max 200 chars)")
+	}
+	if strings.TrimSpace(t.Description) == "" {
+		return fmt.Errorf("description required")
+	}
+	if t.Priority < 0 || t.Priority > 100 {
+		return fmt.Errorf("priority must be between 0 and 100")
+	}
+	return nil
 }
 
 // AuditReport contains the results of an audit run

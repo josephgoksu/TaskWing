@@ -13,9 +13,9 @@ import (
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/impl"
+	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/memory"
-	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
 type PlanState int
@@ -79,10 +79,9 @@ type PlanModel struct {
 	LLMStartTime    time.Time          // Track LLM operation start for timeout
 
 	// Input/Output
-	Input            core.Input
-	ClarifyingResult *core.Output // Last result
-	PlanningResult   *core.Output
-	Stream           *core.StreamingOutput // Channel for streaming events
+	Input          core.Input
+	GenerateResult *app.GenerateResult
+	Stream         *core.StreamingOutput // Channel for streaming events
 
 	// Components
 	Spinner   spinner.Model
@@ -91,17 +90,21 @@ type PlanModel struct {
 
 	// Dependencies
 	Ctx              context.Context
-	ClarifyingAgent  *impl.ClarifyingAgent
-	PlanningAgent    *impl.PlanningAgent
+	PlanApp          *app.PlanApp
 	KnowledgeService *knowledge.Service
 	Repo             *memory.Repository
 }
 
-// Messages
 type MsgClarificationResult struct {
 	Output      *core.Output
 	ContextUsed string
 	Err         error
+}
+
+// MsgClarifyResult wraps app.ClarifyResult for unified flow
+type MsgClarifyResult struct {
+	Result *app.ClarifyResult
+	Err    error
 }
 
 type MsgContextFound struct {
@@ -122,15 +125,9 @@ type MsgSingleAutoAnswerResult struct {
 	Err         error
 }
 
-type MsgPlanResult struct {
-	Output *core.Output
+type MsgGenerateResult struct {
+	Result *app.GenerateResult
 	Err    error
-}
-
-type MsgSavedPlan struct {
-	ID      string
-	Summary string
-	Err     error
 }
 
 // MsgLLMTimeout signals LLM operation timed out
@@ -149,8 +146,7 @@ type MsgCheckTimeout struct{}
 func NewPlanModel(
 	ctx context.Context,
 	goal string,
-	clarifyingAgent *impl.ClarifyingAgent,
-	planningAgent *impl.PlanningAgent,
+	planApp *app.PlanApp,
 	ks *knowledge.Service,
 	repo *memory.Repository,
 	stream *core.StreamingOutput,
@@ -178,8 +174,7 @@ func NewPlanModel(
 		InitialGoal:      goal,
 		EnrichedGoal:     goal, // Start same
 		ThinkingStatus:   "Strategizing research & analyzing memory...",
-		ClarifyingAgent:  clarifyingAgent,
-		PlanningAgent:    planningAgent,
+		PlanApp:          planApp,
 		KnowledgeService: ks,
 		Repo:             repo,
 		Stream:           stream,
@@ -212,40 +207,37 @@ func (m PlanModel) searchContext() tea.Msg {
 	return MsgContextFound{Context: result.Context, Strategy: result.Strategy}
 }
 
-// RunClarification runs the agent in a goroutine
-func runClarification(ctx context.Context, agent *impl.ClarifyingAgent, goal, history string, kgContext string) tea.Cmd {
+// runClarify runs clarification via PlanApp.Clarify for unified logic.
+// This ensures TUI and MCP/CLI use the exact same code path.
+func runClarify(ctx context.Context, planApp *app.PlanApp, goal, history string) tea.Cmd {
 	return func() tea.Msg {
-		out, err := agent.Run(ctx, core.Input{
-			ExistingContext: map[string]any{
-				"goal":    goal,
-				"history": history,
-				"context": kgContext,
-			},
-			Verbose: false,
+		result, err := planApp.Clarify(ctx, app.ClarifyOptions{
+			Goal:       goal,
+			History:    history,
+			AutoAnswer: false, // TUI handles interactivity
 		})
-		return MsgClarificationResult{Output: &out, Err: err}
+		return MsgClarifyResult{Result: result, Err: err}
 	}
 }
 
-// RunPlanning runs the planning agent with streaming
-func runPlanning(ctx context.Context, agent *impl.PlanningAgent, goal, enrichedGoal, kgContext string, stream *core.StreamingOutput) tea.Cmd {
+// RunGenerate runs plan generation via PlanApp.Generate.
+// It wraps the context with streaming callbacks so the TUI can visualize progress.
+func runGenerate(ctx context.Context, appLayer *app.PlanApp, goal, enrichedGoal string, stream *core.StreamingOutput) tea.Cmd {
 	return func() tea.Msg {
 		// Callback Handler
-		handler := core.CreateStreamingCallbackHandler(agent.Name(), stream)
-		runCtx := callbacks.InitCallbacks(ctx, &callbacks.RunInfo{Name: agent.Name()}, handler.Build())
+		// We use "planning" as component name to match expected stream events
+		handler := core.CreateStreamingCallbackHandler("planning", stream)
+		runCtx := callbacks.InitCallbacks(ctx, &callbacks.RunInfo{Name: "planning"}, handler.Build())
 
-		// Input
-		input := core.Input{
-			ExistingContext: map[string]any{
-				"enriched_goal": enrichedGoal,
-				"goal":          goal, // Fallback
-				"context":       kgContext,
-			},
-			Verbose: false, // TUI handles output
-		}
+		// Call PlanApp.Generate
+		// This will: 1. Run agent (streaming events will fire), 2. Validate tasks, 3. Save to DB
+		res, err := appLayer.Generate(runCtx, app.GenerateOptions{
+			Goal:         goal,
+			EnrichedGoal: enrichedGoal,
+			Save:         true,
+		})
 
-		out, err := agent.Run(runCtx, input)
-		return MsgPlanResult{Output: &out, Err: err}
+		return MsgGenerateResult{Result: res, Err: err}
 	}
 }
 
@@ -260,86 +252,62 @@ func listenForStream(stream *core.StreamingOutput) tea.Cmd {
 	}
 }
 
-// SavePlan persists the plan
-// goalSummary is the concise one-liner for UI display
-// enrichedGoal is the full technical specification used for task generation
-func savePlan(repo *memory.Repository, goalSummary, enrichedGoal string, output *core.Output) tea.Cmd {
-	return func() tea.Msg {
-		// Extract tasks
-		if len(output.Findings) == 0 {
-			return MsgSavedPlan{Err: fmt.Errorf("no findings to save")}
-		}
-
-		finding := output.Findings[0]
-		rawTasks, ok := finding.Metadata["tasks"].([]impl.PlanningTask)
-		if !ok {
-			return MsgSavedPlan{Err: fmt.Errorf("invalid tasks format")}
-		}
-
-		planID := "plan-" + fmt.Sprintf("%d", time.Now().Unix())
-		newPlan := &task.Plan{
-			ID:           planID,
-			Goal:         goalSummary, // Concise summary for UI
-			EnrichedGoal: enrichedGoal,
-			Status:       "active",
-		}
-
-		if err := repo.CreatePlan(newPlan); err != nil {
-			return MsgSavedPlan{Err: err}
-		}
-
-		taskCount := 0
-		for _, tData := range rawTasks {
-			newTask := &task.Task{
-				PlanID:             planID,
-				Title:              tData.Title,
-				Description:        tData.Description,
-				Priority:           tData.Priority,
-				AssignedAgent:      tData.AssignedAgent,
-				AcceptanceCriteria: tData.AcceptanceCriteria,
-				ValidationSteps:    tData.ValidationSteps,
-			}
-			// Populate AI integration fields (scope, keywords, suggested_recall_queries)
-			newTask.EnrichAIFields()
-			if err := repo.CreateTask(newTask); err == nil {
-				taskCount++
-			}
-		}
-
-		summary := fmt.Sprintf("Created plan %s with %d tasks", planID, taskCount)
-		return MsgSavedPlan{ID: planID, Summary: summary, Err: nil}
-	}
-}
-
-// runAutoAnswer triggers the agent to refine the spec with timeout
-func runAutoAnswer(ctx context.Context, agent *impl.ClarifyingAgent, currentSpec string, questions []string, kgContext string) tea.Cmd {
+// runAutoAnswer triggers PlanApp.Clarify with auto-answer mode
+func runAutoAnswer(ctx context.Context, planApp *app.PlanApp, goal, history string) tea.Cmd {
 	return func() tea.Msg {
 		timeoutCtx, cancel := context.WithTimeout(ctx, LLMTimeoutSeconds*time.Second)
 		defer cancel()
-		ans, err := agent.AutoAnswer(timeoutCtx, currentSpec, questions, kgContext)
+
+		result, err := planApp.Clarify(timeoutCtx, app.ClarifyOptions{
+			Goal:       goal,
+			History:    history,
+			AutoAnswer: true, // Let PlanApp handle auto-answering
+		})
+
 		if err != nil && timeoutCtx.Err() == context.DeadlineExceeded {
 			return MsgLLMTimeout{Operation: "auto-answer"}
 		}
 		if err != nil && timeoutCtx.Err() == context.Canceled {
 			return MsgLLMCancelled{Operation: "auto-answer"}
 		}
-		return MsgAutoAnswerResult{Answer: ans, Err: err}
+
+		// Return the enriched goal as answer
+		if result != nil && result.EnrichedGoal != "" {
+			return MsgAutoAnswerResult{Answer: result.EnrichedGoal, Err: err}
+		}
+		return MsgAutoAnswerResult{Answer: "", Err: err}
 	}
 }
 
-// runSingleAutoAnswer auto-answers a single question using the LLM with timeout
-func runSingleAutoAnswer(ctx context.Context, agent *impl.ClarifyingAgent, question string, kgContext string, qIdx int) tea.Cmd {
+// runSingleAutoAnswer auto-answers a single question using PlanApp
+// For single question auto-answer, we format it as history and call Clarify
+func runSingleAutoAnswer(ctx context.Context, planApp *app.PlanApp, goal, question string, qIdx int) tea.Cmd {
 	return func() tea.Msg {
 		timeoutCtx, cancel := context.WithTimeout(ctx, LLMTimeoutSeconds*time.Second)
 		defer cancel()
-		ans, err := agent.AutoAnswer(timeoutCtx, "", []string{question}, kgContext)
+
+		// Format question as history context
+		history := fmt.Sprintf("Question requiring auto-answer: %s", question)
+
+		result, err := planApp.Clarify(timeoutCtx, app.ClarifyOptions{
+			Goal:       goal,
+			History:    history,
+			AutoAnswer: true,
+		})
+
 		if err != nil && timeoutCtx.Err() == context.DeadlineExceeded {
 			return MsgLLMTimeout{Operation: "auto-answer question"}
 		}
 		if err != nil && timeoutCtx.Err() == context.Canceled {
 			return MsgLLMCancelled{Operation: "auto-answer question"}
 		}
-		return MsgSingleAutoAnswerResult{Answer: ans, QuestionIdx: qIdx, Err: err}
+
+		// Extract answer from enriched goal
+		answer := ""
+		if result != nil && result.EnrichedGoal != "" {
+			answer = result.EnrichedGoal
+		}
+		return MsgSingleAutoAnswerResult{Answer: answer, QuestionIdx: qIdx, Err: err}
 	}
 }
 
@@ -474,7 +442,7 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.HasUnsavedWork = true
 				currentQ := m.PendingQuestions[m.CurrentQIdx]
 				m.addMsg("SYSTEM", "Auto-generating answer... (Esc to cancel)")
-				cmds = append(cmds, runSingleAutoAnswer(m.Ctx, m.ClarifyingAgent, currentQ, m.KGContext, m.CurrentQIdx))
+				cmds = append(cmds, runSingleAutoAnswer(m.Ctx, m.PlanApp, m.InitialGoal, currentQ, m.CurrentQIdx))
 				cmds = append(cmds, checkTimeout())
 				return m, tea.Batch(cmds...)
 			}
@@ -575,7 +543,7 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.AutoAnswering = true
 				m.LLMStartTime = time.Now()
 				m.addMsg("SYSTEM", "Auto-generating specification... (Esc to cancel)")
-				cmds = append(cmds, runAutoAnswer(m.Ctx, m.ClarifyingAgent, m.EnrichedGoal, m.PendingQuestions, m.KGContext))
+				cmds = append(cmds, runAutoAnswer(m.Ctx, m.PlanApp, m.InitialGoal, m.History))
 				cmds = append(cmds, checkTimeout())
 				return m, tea.Batch(cmds...)
 			}
@@ -598,7 +566,7 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.State = StateClarifyingThinking
 				m.ThinkingStatus = "Finalizing specification..."
 				m.Msgs = append(m.Msgs, StyleSubtle.Render("Refining goal..."))
-				cmds = append(cmds, runClarification(m.Ctx, m.ClarifyingAgent, m.InitialGoal, m.History, m.KGContext))
+				cmds = append(cmds, runClarify(m.Ctx, m.PlanApp, m.InitialGoal, m.History))
 				return m, tea.Batch(cmds...)
 			}
 
@@ -694,85 +662,59 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.State = StateClarifyingThinking
 		m.ThinkingStatus = "Agent is clarifying the goal..."
-		cmds = append(cmds, runClarification(m.Ctx, m.ClarifyingAgent, m.InitialGoal, m.History, m.KGContext))
+		cmds = append(cmds, runClarify(m.Ctx, m.PlanApp, m.InitialGoal, m.History))
 
-	// clarification Result
-	case MsgClarificationResult:
+	// Clarify Result (unified via PlanApp.Clarify)
+	case MsgClarifyResult:
 		if msg.Err != nil {
 			m.Err = msg.Err
 			m.State = StateError
 			return m, nil
 		}
-
-		// Persist the context found in the first run
-		if msg.ContextUsed != "" && m.KGContext == "" {
-			m.KGContext = msg.ContextUsed
-			// m.addMsg("SYSTEM", "Fetched contextual memory...") // Optional feedback
+		if msg.Result == nil || !msg.Result.Success {
+			errMsg := "Clarification failed"
+			if msg.Result != nil && msg.Result.Message != "" {
+				errMsg = msg.Result.Message
+			}
+			m.Err = fmt.Errorf("%s", errMsg)
+			m.State = StateError
+			return m, nil
 		}
 
-		// Process output
-		m.ClarifyingResult = msg.Output
-
-		finding := msg.Output.Findings[0]
-		meta := finding.Metadata
-		isReady, _ := meta["is_ready_to_plan"].(bool)
-		enriched, _ := meta["enriched_goal"].(string)
-		goalSummary, _ := meta["goal_summary"].(string)
-		if enriched != "" {
-			m.EnrichedGoal = enriched
+		// Extract result fields
+		result := msg.Result
+		if result.EnrichedGoal != "" {
+			m.EnrichedGoal = result.EnrichedGoal
 		}
-		if goalSummary != "" {
+		if result.GoalSummary != "" {
 			// Enforce max 100 chars for GoalSummary (UI display)
-			// Use rune-based truncation for proper Unicode handling
+			goalSummary := result.GoalSummary
 			runes := []rune(goalSummary)
 			if len(runes) > 100 {
 				goalSummary = string(runes[:97]) + "..."
 			}
 			m.GoalSummary = goalSummary
 		}
-		// Handle questions type assertion carefully as it might be []string or []interface{}
-		var questions []string
-		if qs, ok := meta["questions"].([]string); ok {
-			questions = qs
-		} else if qs, ok := meta["questions"].([]interface{}); ok {
-			for _, q := range qs {
-				questions = append(questions, fmt.Sprintf("%v", q))
-			}
-		}
 
 		// Enforce at least one review pass (ClarifyTurns > 0) even if agent is ready
-		if (isReady && m.ClarifyTurns > 0) || m.ClarifyTurns >= 3 {
+		if (result.IsReadyToPlan && m.ClarifyTurns > 0) || m.ClarifyTurns >= 3 {
 			// Ready to plan!
 			m.State = StatePlanningPulse
 			m.addMsg("DONE", "Goal finalized! Drafting implementation plan...")
 			m.addMsg("GOAL", m.EnrichedGoal)
 
 			// Start Planning
-			// 1. Get KG context (blocking call ok here? Viewport update won't show. Assume fast enough or do async)
-			// For simplicity we do synchronous search here as it's typically fast SQLite/Vector
-			// But ideally we wrap this too. Let's do it inline for now.
-
-			rankedNodes, _ := m.KnowledgeService.Search(m.Ctx, m.EnrichedGoal, 5) // Ignore err for simplicity
-
-			var sb strings.Builder
-			sb.WriteString("RELEVANT ARCHITECTURAL CONTEXT:\n")
-			for _, node := range rankedNodes {
-				sb.WriteString(fmt.Sprintf("%s\n%s\n\n", node.Node.Summary, node.Node.Content))
-			}
-			kgContext := sb.String()
-
 			// Start Pulse listener
 			cmds = append(cmds, listenForStream(m.Stream))
-			// Start Planning Agent
-			cmds = append(cmds, runPlanning(m.Ctx, m.PlanningAgent, m.InitialGoal, m.EnrichedGoal, kgContext, m.Stream))
+			// Start Planning Agent via PlanApp.Generate
+			cmds = append(cmds, runGenerate(m.Ctx, m.PlanApp, m.InitialGoal, m.EnrichedGoal, m.Stream))
 
 		} else {
 			// Spec-First Refinement
 			m.ClarifyTurns++
-			m.PendingQuestions = questions
-			m.EnrichedGoal = enriched
+			m.PendingQuestions = result.Questions
 			m.CurrentQIdx = 0
-			m.CollectedAnswers = make([]string, len(questions))
+			m.CollectedAnswers = make([]string, len(result.Questions))
 			m.ThinkingStatus = ""
 
 			m.addMsg("AGENT", "I've drafted a technical specification based on your goal and project context.")
@@ -839,37 +781,23 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	// Planning Result
-	case MsgPlanResult:
+	// Generate Result (replaces PlanResult + SavedPlan)
+	case MsgGenerateResult:
 		if msg.Err != nil {
 			m.Err = msg.Err
 			m.State = StateError
 			return m, nil
 		}
-		m.PlanningResult = msg.Output
-		m.addMsg("THINKING", "Plan drafted. Saving to memory...")
-		// Use GoalSummary for UI display, fallback to truncated InitialGoal
-		goalSummary := m.GoalSummary
-		if goalSummary == "" {
-			goalSummary = m.InitialGoal
-			// Use rune-based truncation to avoid corrupting multi-byte Unicode characters
-			runes := []rune(goalSummary)
-			if len(runes) > 100 {
-				goalSummary = string(runes[:97]) + "..."
-			}
-		}
-		cmds = append(cmds, savePlan(m.Repo, goalSummary, m.EnrichedGoal, msg.Output))
-
-	// Saved Plan
-	case MsgSavedPlan:
-		if msg.Err != nil {
-			m.Err = msg.Err
-			m.State = StateError
-		} else {
+		m.GenerateResult = msg.Result
+		if msg.Result.Success {
 			m.State = StateSuccess
-			m.PlanID = msg.ID
-			m.PlanSummary = msg.Summary
-			return m, tea.Quit // We exit and let the main function print the final details if needed
+			m.PlanID = msg.Result.PlanID
+			m.PlanSummary = fmt.Sprintf("Created plan %s with %d tasks", msg.Result.PlanID, len(msg.Result.Tasks))
+			m.addMsg("DONE", "Plan generated and saved!")
+			return m, tea.Quit
+		} else {
+			m.Err = fmt.Errorf("generation failed: %s", msg.Result.Message)
+			m.State = StateError
 		}
 	}
 

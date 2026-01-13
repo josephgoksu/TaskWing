@@ -129,7 +129,7 @@ Use --analyze for deep LLM-powered analysis (slower, requires API key):
 				fmt.Printf("   Global MCP registered for: %s\n", strings.Join(existingGlobalAIs, ", "))
 				fmt.Print("   Restore missing configs? [Y/n]: ")
 				var input string
-				fmt.Scanln(&input)
+				_, _ = fmt.Scanln(&input)
 				input = strings.TrimSpace(strings.ToLower(input))
 				if input == "" || input == "y" || input == "yes" {
 					selectedAIs = missingLocalAIs // Only restore MISSING, not all
@@ -468,7 +468,7 @@ func promptAdditionalModels() error {
 	// Query model - only prompt if not configured
 	if queryModel == "" {
 		fmt.Print("   Configure fast query model? (for cheap/fast lookups) [y/N]: ")
-		fmt.Scanln(&input)
+		_, _ = fmt.Scanln(&input)
 		if input == "y" || input == "Y" || input == "yes" {
 			if err := configureQueryModel(); err != nil {
 				fmt.Printf("   ⚠️  Skipped: %v\n", err)
@@ -480,7 +480,7 @@ func promptAdditionalModels() error {
 	// Embedding model - only prompt if not configured
 	if embeddingModel == "" {
 		fmt.Print("   Configure embedding model? (for semantic search) [y/N]: ")
-		fmt.Scanln(&input)
+		_, _ = fmt.Scanln(&input)
 		if input == "y" || input == "Y" || input == "yes" {
 			if err := configureEmbedding(); err != nil {
 				fmt.Printf("   ⚠️  Skipped: %v\n", err)
@@ -492,7 +492,7 @@ func promptAdditionalModels() error {
 	// Reranking - only prompt if not configured
 	if !rerankingEnabled {
 		fmt.Print("   Configure reranking? (optional, improves search quality) [y/N]: ")
-		fmt.Scanln(&input)
+		_, _ = fmt.Scanln(&input)
 		if input == "y" || input == "Y" || input == "yes" {
 			if err := configureReranking(); err != nil {
 				fmt.Printf("   ⚠️  Skipped: %v\n", err)

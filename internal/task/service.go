@@ -21,6 +21,16 @@ type Repository interface {
 	ListTasks(planID string) ([]Task, error)
 	GetTask(id string) (*Task, error)
 	UpdateTaskStatus(id string, status TaskStatus) error
+
+	// Active Plan Management (DB-based)
+	SetActivePlan(id string) error
+	GetActivePlan() (*Plan, error)
+
+	// Search
+	SearchPlans(query string, status PlanStatus) ([]Plan, error)
+
+	// Audit
+	UpdatePlanAuditReport(id string, status PlanStatus, auditReportJSON string) error
 }
 
 // Service encapsulates all business logic for managing Plans and Tasks.
@@ -67,6 +77,11 @@ func (s *Service) ResolvePlanID(id string) (string, error) {
 // ListPlans returns all plans.
 func (s *Service) ListPlans() ([]Plan, error) {
 	return s.repo.ListPlans()
+}
+
+// SearchPlans filters plans by query and status.
+func (s *Service) SearchPlans(query string, status PlanStatus) ([]Plan, error) {
+	return s.repo.SearchPlans(query, status)
 }
 
 // GetPlan retrieves a plan by ID.
@@ -146,45 +161,38 @@ func (s *Service) UnarchivePlan(id string) error {
 
 // --- Active Plan State Management ---
 
-// SetActivePlan saves the active plan ID to the state file.
+// SetActivePlan delegates to repository for DB-level switch.
 func (s *Service) SetActivePlan(id string) error {
 	realID, err := s.ResolvePlanID(id)
 	if err != nil {
 		return err
 	}
-
-	// Verify plan exists
-	if _, err := s.repo.GetPlan(realID); err != nil {
-		return fmt.Errorf("plan not found: %w", err)
-	}
-
-	statePath := filepath.Join(s.stateDir, "state.json")
-	if err := os.MkdirAll(filepath.Dir(statePath), 0755); err != nil {
-		return err
-	}
-
-	data := fmt.Sprintf(`{"active_plan": "%s"}`, realID)
-	return os.WriteFile(statePath, []byte(data), 0644)
+	return s.repo.SetActivePlan(realID)
 }
 
-// GetActivePlanID reads the active plan ID from state file.
+// GetActivePlanID retrieves the ID of the currently active plan from DB.
 func (s *Service) GetActivePlanID() (string, error) {
-	statePath := filepath.Join(s.stateDir, "state.json")
-	data, err := os.ReadFile(statePath)
+	plan, err := s.repo.GetActivePlan()
 	if err != nil {
 		return "", err
 	}
-	// Simple parsing - extract plan ID
-	var planID string
-	_, _ = fmt.Sscanf(string(data), `{"active_plan": "%s"}`, &planID)
-	planID = strings.Trim(planID, `"`)
-	return planID, nil
+	if plan == nil {
+		return "", nil // No active plan
+	}
+	return plan.ID, nil
 }
 
-// ClearActivePlan removes the active plan state.
+// ClearActivePlan deactivates the current plan (sets to draft).
 func (s *Service) ClearActivePlan() error {
-	statePath := filepath.Join(s.stateDir, "state.json")
-	return os.Remove(statePath)
+	plan, err := s.repo.GetActivePlan()
+	if err != nil {
+		return err
+	}
+	if plan == nil {
+		return nil
+	}
+	// Demote to draft
+	return s.repo.UpdatePlan(plan.ID, "", "", PlanStatusDraft)
 }
 
 // --- Export Logic ---

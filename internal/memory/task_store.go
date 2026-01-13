@@ -240,26 +240,43 @@ func (s *SQLiteStore) UpdatePlan(id string, goal, enrichedGoal string, status ta
 
 // UpdatePlanAuditReport updates the audit report and status for a plan.
 // This is called by the audit agent after verification completes.
+// UpdatePlanAuditReport updates the audit report and status for a plan.
+// Also records the audit in history.
 func (s *SQLiteStore) UpdatePlanAuditReport(id string, status task.PlanStatus, auditReportJSON string) error {
-	if id == "" {
-		return fmt.Errorf("plan id is required")
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
 	}
+	defer func() { _ = tx.Rollback() }()
+
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	res, err := s.db.Exec(`
-		UPDATE plans SET status = ?, last_audit_report = ?, updated_at = ? WHERE id = ?
+	// 1. Update Plan
+	res, err := tx.Exec(`
+		UPDATE plans
+		SET status = ?, last_audit_report = ?, updated_at = ?
+		WHERE id = ?
 	`, status, auditReportJSON, now, id)
 	if err != nil {
-		return fmt.Errorf("update plan audit report: %w", err)
+		return fmt.Errorf("update plan audit: %w", err)
 	}
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("update plan audit report rows affected: %w", err)
-	}
+
+	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		return fmt.Errorf("plan not found: %s", id)
 	}
-	return nil
+
+	// 2. Insert into History (store raw status string if needed, or mapped)
+	// We store the plan status as the audit status for now.
+	_, err = tx.Exec(`
+		INSERT INTO plan_audit_histories (plan_id, status, report_json, created_at)
+		VALUES (?, ?, ?, ?)
+	`, id, status, auditReportJSON, now)
+	if err != nil {
+		return fmt.Errorf("insert audit history: %w", err)
+	}
+
+	return tx.Commit()
 }
 
 // DeletePlan removes a plan and its tasks (via FK cascade).
@@ -731,6 +748,46 @@ func (s *SQLiteStore) CompleteTask(taskID, summary string, filesModified []strin
 	return nil
 }
 
+// SearchPlans returns plans matching the query and status.
+// Query searches in goal and enriched_goal.
+func (s *SQLiteStore) SearchPlans(query string, status task.PlanStatus) ([]task.Plan, error) {
+	q := "SELECT id, goal, enriched_goal, status, created_at, updated_at FROM plans WHERE 1=1"
+	args := []any{}
+
+	if status != "" {
+		q += " AND status = ?"
+		args = append(args, status)
+	}
+
+	if query != "" {
+		q += " AND (goal LIKE ? OR enriched_goal LIKE ?)"
+		wildcard := "%" + query + "%"
+		args = append(args, wildcard, wildcard)
+	}
+
+	q += " ORDER BY updated_at DESC"
+
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search plans: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var plans []task.Plan
+	for rows.Next() {
+		var p task.Plan
+		var createdAt, updatedAt string
+		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scan plan: %w", err)
+		}
+		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		plans = append(plans, p)
+	}
+
+	return plans, nil
+}
+
 // GetActivePlan returns the currently active plan (status = active).
 // Returns nil if no active plan exists.
 func (s *SQLiteStore) GetActivePlan() (*task.Plan, error) {
@@ -766,4 +823,51 @@ func (s *SQLiteStore) GetActivePlan() (*task.Plan, error) {
 	p.Tasks = tasks
 
 	return &p, nil
+}
+
+// SetActivePlan atomically sets the given plan as active and deactivates others.
+func (s *SQLiteStore) SetActivePlan(id string) error {
+	if id == "" {
+		return fmt.Errorf("plan id is required")
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// 1. Demote any currently active plans to 'draft'
+	// Note: Ideally we'd have a 'paused' state, but 'draft' works for now to ensure exclusivity.
+	// We check if it's NOT the target plan to avoid unnecessary updates if re-setting same plan.
+	_, err = tx.Exec(`
+		UPDATE plans
+		SET status = ?, updated_at = ?
+		WHERE status = ? AND id != ?
+	`, task.PlanStatusDraft, now, task.PlanStatusActive, id)
+	if err != nil {
+		return fmt.Errorf("demote active plans: %w", err)
+	}
+
+	// 2. Promote target plan to 'active'
+	res, err := tx.Exec(`
+		UPDATE plans
+		SET status = ?, updated_at = ?
+		WHERE id = ?
+	`, task.PlanStatusActive, now, id)
+	if err != nil {
+		return fmt.Errorf("activate plan: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("activate plan rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("plan not found: %s", id)
+	}
+
+	return tx.Commit()
 }

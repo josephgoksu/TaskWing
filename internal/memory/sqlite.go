@@ -194,6 +194,16 @@ func (s *SQLiteStore) initSchema() error {
 		FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
 	);
 
+	-- Audit history (Persistent logs of verification runs)
+	CREATE TABLE IF NOT EXISTS plan_audit_histories (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		plan_id TEXT NOT NULL,
+		status TEXT NOT NULL,
+		report_json TEXT NOT NULL,
+		created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+	);
+
 	-- Project overview (high-level project description for AI context)
 	CREATE TABLE IF NOT EXISTS project_overview (
 		id INTEGER PRIMARY KEY CHECK (id = 1),  -- Singleton: only one row allowed

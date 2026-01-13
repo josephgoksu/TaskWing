@@ -568,7 +568,7 @@ func configureReranking() error {
 		fmt.Println()
 		fmt.Print("   Disable reranking? [y/N]: ")
 		var input string
-		fmt.Scanln(&input)
+		_, _ = fmt.Scanln(&input)
 		if strings.ToLower(input) == "y" || strings.ToLower(input) == "yes" {
 			viper.Set("retrieval.reranking.enabled", false)
 			if err := writeConfig(); err != nil {
@@ -581,11 +581,11 @@ func configureReranking() error {
 		fmt.Println()
 		fmt.Print("   Enable reranking? [y/N]: ")
 		var input string
-		fmt.Scanln(&input)
+		_, _ = fmt.Scanln(&input)
 		if strings.ToLower(input) == "y" || strings.ToLower(input) == "yes" {
 			fmt.Print("   TEI server URL [http://localhost:8081]: ")
 			var url string
-			fmt.Scanln(&url)
+			_, _ = fmt.Scanln(&url)
 			if url == "" {
 				url = "http://localhost:8081"
 			}

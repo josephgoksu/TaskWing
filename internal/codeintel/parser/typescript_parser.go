@@ -672,7 +672,7 @@ func extractDecoratorsForPosition(content []byte, position int) (string, int) {
 		} else if content[i] == '/' && i > 0 && content[i-1] == '*' {
 			// End of JSDoc comment - skip it backwards
 			i -= 2
-			for i > 0 && !(content[i] == '/' && content[i+1] == '*') {
+			for i > 0 && (content[i] != '/' || content[i+1] != '*') {
 				i--
 			}
 			if i > 0 {
@@ -986,9 +986,10 @@ func findMatchingBrace(content []byte, openBracePos int) int {
 			continue
 		}
 
-		if c == '{' {
+		switch c {
+		case '{':
 			depth++
-		} else if c == '}' {
+		case '}':
 			depth--
 			if depth == 0 {
 				return i

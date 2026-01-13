@@ -148,10 +148,11 @@ func FormatPlan(plan *task.Plan) string {
 		completed := 0
 		for _, t := range plan.Tasks {
 			checkbox := "[ ]"
-			if t.Status == task.StatusCompleted {
+			switch t.Status {
+			case task.StatusCompleted:
 				checkbox = "[x]"
 				completed++
-			} else if t.Status == task.StatusInProgress {
+			case task.StatusInProgress:
 				checkbox = "[~]"
 			}
 			sb.WriteString(fmt.Sprintf("- %s %s (P%d)\n", checkbox, t.Title, t.Priority))

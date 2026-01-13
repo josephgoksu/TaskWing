@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
-	"github.com/josephgoksu/TaskWing/internal/agents/impl"
+	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -44,6 +44,10 @@ func init() {
 	planUpdateCmd.Flags().String("goal", "", "Update goal")
 	planUpdateCmd.Flags().String("enriched-goal", "", "Update enriched goal")
 	planUpdateCmd.Flags().String("status", "", "Update status")
+
+	// List flags
+	planListCmd.Flags().StringP("query", "q", "", "Filter by goal/enriched goal")
+	planListCmd.Flags().StringP("status", "s", "", "Filter by status (active, draft, completed)")
 }
 
 // Wrapper to handle repo lifecycle automatically
@@ -101,11 +105,11 @@ var planNewCmd = &cobra.Command{
 		}
 		svc := task.NewService(repo, memoryPath)
 
-		// Initialize Agents
-		clarifyingAgent := impl.NewClarifyingAgent(cfg)
-		defer func() { _ = clarifyingAgent.Close() }()
-		planningAgent := impl.NewPlanningAgent(cfg)
-		defer func() { _ = planningAgent.Close() }()
+		// Initialize App Layer
+		// Agents are now managed internally by PlanApp methods
+		appCtx := app.NewContextWithConfig(repo, cfg)
+		planApp := app.NewPlanApp(appCtx)
+
 		ks := knowledge.NewService(repo, cfg)
 
 		stream := core.NewStreamingOutput(100)
@@ -114,8 +118,7 @@ var planNewCmd = &cobra.Command{
 		model := ui.NewPlanModel(
 			ctx,
 			goal,
-			clarifyingAgent,
-			planningAgent,
+			planApp,
 			ks,
 			repo,
 			stream,
@@ -166,7 +169,23 @@ var planListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all plans",
 	RunE: runWithService(func(svc *task.Service, cmd *cobra.Command, args []string) error {
-		plans, err := svc.ListPlans()
+		query, _ := cmd.Flags().GetString("query")
+		statusStr, _ := cmd.Flags().GetString("status")
+
+		// If using positional args for query
+		if len(args) > 0 {
+			query = strings.Join(args, " ")
+		}
+
+		var plans []task.Plan
+		var err error
+
+		if query != "" || statusStr != "" {
+			plans, err = svc.SearchPlans(query, task.PlanStatus(statusStr))
+		} else {
+			plans, err = svc.ListPlans()
+		}
+
 		if err != nil {
 			return err
 		}
@@ -176,7 +195,7 @@ var planListCmd = &cobra.Command{
 		}
 
 		if len(plans) == 0 {
-			fmt.Println("No plans found.\n\nCreate one with: tw plan new \"Your goal\"")
+			fmt.Println("No plans found matching criteria.")
 			return nil
 		}
 
@@ -185,6 +204,8 @@ var planListCmd = &cobra.Command{
 		return nil
 	}),
 }
+
+
 
 func printPlanTable(plans []task.Plan) {
 	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Bold(true)

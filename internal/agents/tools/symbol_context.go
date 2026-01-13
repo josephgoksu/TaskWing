@@ -58,7 +58,7 @@ func NewSymbolContext(basePath string, llmCfg llm.Config) (*SymbolContext, error
 
 	// Verify connection is valid
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("database ping failed: %w", err)
 	}
 

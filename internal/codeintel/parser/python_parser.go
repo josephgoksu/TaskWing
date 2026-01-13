@@ -941,12 +941,13 @@ func findPyBlockEnd(lines [][]byte, startLineIdx, baseIndent int) int {
 func countLeadingSpaces(line []byte) int {
 	count := 0
 	for _, b := range line {
-		if b == ' ' {
+		switch b {
+		case ' ':
 			count++
-		} else if b == '\t' {
+		case '\t':
 			count += 4 // Treat tab as 4 spaces
-		} else {
-			break
+		default:
+			return count
 		}
 	}
 	return count
