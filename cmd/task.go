@@ -22,165 +22,250 @@ var taskCmd = &cobra.Command{
 var taskListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all tasks",
-	Long:  `List all tasks, grouped by plan. Use --plan to filter by a specific plan.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		repo, err := openRepo()
-		if err != nil {
-			return err
-		}
-		defer func() { _ = repo.Close() }()
+	Long: `List all tasks, grouped by plan.
 
-		planFilter, _ := cmd.Flags().GetString("plan")
+Filter options:
+  --plan      Filter by plan ID (prefix match)
+  --status    Filter by status (pending, in_progress, completed, failed)
+  --priority  Filter by priority threshold (show tasks with priority <= value)
+  --scope     Filter by scope/tag
 
-		plans, err := repo.ListPlans()
-		if err != nil {
-			return err
-		}
+Examples:
+  taskwing task list                    # All tasks
+  taskwing task list --status pending   # Only pending tasks
+  taskwing task list --priority 50      # High priority tasks only
+  taskwing task list --scope api        # Tasks in api scope`,
+	RunE: runTaskList,
+}
 
-		if len(plans) == 0 {
-			if isJSON() {
-				return printJSON([]any{})
-			}
-			fmt.Println("No plans found. Create one with: tw plan new \"Your goal\"")
-			return nil
-		}
+func runTaskList(cmd *cobra.Command, args []string) error {
+	repo, err := openRepo()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = repo.Close() }()
 
-		// Handle JSON output
+	// Get filter flags
+	planFilter, _ := cmd.Flags().GetString("plan")
+	statusFilter, _ := cmd.Flags().GetString("status")
+	priorityFilter, _ := cmd.Flags().GetInt("priority")
+	scopeFilter, _ := cmd.Flags().GetString("scope")
+
+	plans, err := repo.ListPlans()
+	if err != nil {
+		return err
+	}
+
+	if len(plans) == 0 {
 		if isJSON() {
-			type taskJSON struct {
-				ID                     string   `json:"id"`
-				PlanID                 string   `json:"plan_id"`
-				Title                  string   `json:"title"`
-				Description            string   `json:"description"`
-				Status                 string   `json:"status"`
-				Priority               int      `json:"priority"`
-				Agent                  string   `json:"assigned_agent"`
-				Acceptance             []string `json:"acceptance_criteria"`
-				Validation             []string `json:"validation_steps"`
-				Scope                  string   `json:"scope"`
-				Keywords               []string `json:"keywords"`
-				SuggestedRecallQueries []string `json:"suggestedRecallQueries"`
+			return printJSON([]any{})
+		}
+		fmt.Println("No plans found. Create one with: tw plan new \"Your goal\"")
+		return nil
+	}
+
+	// Collect and filter tasks
+	type taskWithPlan struct {
+		Task   task.Task
+		PlanID string
+		Goal   string
+	}
+	var allTasks []taskWithPlan
+
+	for _, p := range plans {
+		if planFilter != "" && !strings.HasPrefix(p.ID, planFilter) {
+			continue
+		}
+		tasks, _ := repo.ListTasks(p.ID)
+		for _, t := range tasks {
+			// Apply filters
+			if statusFilter != "" && string(t.Status) != statusFilter {
+				continue
 			}
-			var allTasks []taskJSON
-			for _, p := range plans {
-				if planFilter != "" && !strings.HasPrefix(p.ID, planFilter) {
+			if priorityFilter > 0 && t.Priority > priorityFilter {
+				continue
+			}
+			if scopeFilter != "" && !strings.Contains(strings.ToLower(t.Scope), strings.ToLower(scopeFilter)) {
+				// Also check keywords
+				found := false
+				for _, kw := range t.Keywords {
+					if strings.Contains(strings.ToLower(kw), strings.ToLower(scopeFilter)) {
+						found = true
+						break
+					}
+				}
+				if !found {
 					continue
 				}
-				tasks, _ := repo.ListTasks(p.ID)
-				for _, t := range tasks {
-					allTasks = append(allTasks, taskJSON{
-						ID:                     t.ID,
-						PlanID:                 p.ID,
-						Title:                  t.Title,
-						Description:            t.Description,
-						Status:                 string(t.Status),
-						Priority:               t.Priority,
-						Agent:                  t.AssignedAgent,
-						Acceptance:             t.AcceptanceCriteria,
-						Validation:             t.ValidationSteps,
-						Scope:                  t.Scope,
-						Keywords:               t.Keywords,
-						SuggestedRecallQueries: t.SuggestedRecallQueries,
-					})
-				}
 			}
-			return printJSON(allTasks)
+			allTasks = append(allTasks, taskWithPlan{Task: t, PlanID: p.ID, Goal: p.Goal})
 		}
+	}
 
-		// Render header
-		ui.RenderPageHeader("TaskWing Task List", "")
-
-		// Styles
-		planHeader := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
-			Bold(true)
-		taskID := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-		statusPending := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("214"))
-		statusDone := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("42"))
-		priority := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("75"))
-		subtle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-
-		totalTasks := 0
-		plansShown := 0
-
-		for _, p := range plans {
-			// Filter by plan ID if specified
-			if planFilter != "" && !strings.HasPrefix(p.ID, planFilter) {
-				continue
-			}
-
-			tasks, _ := repo.ListTasks(p.ID)
-			if len(tasks) == 0 {
-				continue
-			}
-
-			plansShown++
-			totalTasks += len(tasks)
-
-			// Truncate goal for display
-			goal := p.Goal
-			if len(goal) > 60 {
-				goal = goal[:57] + "..."
-			}
-
-			// Plan header
-			fmt.Printf("\n%s %s\n", planHeader.Render("◆"), planHeader.Render(goal))
-			fmt.Printf("  %s %s\n\n", subtle.Render("Plan:"), subtle.Render(p.ID))
-
-			// Column headers
-			fmt.Printf("  %-14s %-12s %4s   %s\n",
-				subtle.Render("ID"),
-				subtle.Render("STATUS"),
-				subtle.Render("PRI"),
-				subtle.Render("TITLE"))
-
-			// Tasks
-			for _, t := range tasks {
-				// Format status with color
-				var statusStr string
-				switch t.Status {
-				case "done", "completed":
-					statusStr = statusDone.Render("[done]")
-				case "in_progress":
-					statusStr = statusPending.Render("[in-prog]")
-				default:
-					statusStr = statusPending.Render("[pending]")
-				}
-
-				// Truncate title
-				title := t.Title
-				if len(title) > 50 {
-					title = title[:47] + "..."
-				}
-
-				// Format task ID (shorter display)
-				tid := t.ID
-				if len(tid) > 12 {
-					tid = tid[:12]
-				}
-
-				fmt.Printf("  %-14s %-12s %s   %s\n",
-					taskID.Render(tid),
-					statusStr,
-					priority.Render(fmt.Sprintf("%3d", t.Priority)),
-					title)
-			}
+	// Handle JSON output
+	if isJSON() {
+		type taskJSON struct {
+			ID                     string   `json:"id"`
+			PlanID                 string   `json:"plan_id"`
+			Title                  string   `json:"title"`
+			Description            string   `json:"description"`
+			Status                 string   `json:"status"`
+			Priority               int      `json:"priority"`
+			Agent                  string   `json:"assigned_agent"`
+			Acceptance             []string `json:"acceptance_criteria"`
+			Validation             []string `json:"validation_steps"`
+			Scope                  string   `json:"scope"`
+			Keywords               []string `json:"keywords"`
+			SuggestedRecallQueries []string `json:"suggestedRecallQueries"`
 		}
-
-		if plansShown == 0 && planFilter != "" {
-			fmt.Printf("\nNo plan found matching: %s\n", planFilter)
-			fmt.Println("Run 'taskwing plan list' to see available plans.")
-		} else {
-			fmt.Printf("\n%s\n", subtle.Render(fmt.Sprintf("Total: %d tasks across %d plan(s)", totalTasks, plansShown)))
+		var jsonTasks []taskJSON
+		for _, tp := range allTasks {
+			t := tp.Task
+			jsonTasks = append(jsonTasks, taskJSON{
+				ID:                     t.ID,
+				PlanID:                 tp.PlanID,
+				Title:                  t.Title,
+				Description:            t.Description,
+				Status:                 string(t.Status),
+				Priority:               t.Priority,
+				Agent:                  t.AssignedAgent,
+				Acceptance:             t.AcceptanceCriteria,
+				Validation:             t.ValidationSteps,
+				Scope:                  t.Scope,
+				Keywords:               t.Keywords,
+				SuggestedRecallQueries: t.SuggestedRecallQueries,
+			})
 		}
+		return printJSON(jsonTasks)
+	}
 
+	// Render styled table
+	ui.RenderPageHeader("TaskWing Task List", "")
+
+	if len(allTasks) == 0 {
+		subtle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		fmt.Println(subtle.Render("\nNo tasks match the filters."))
+		if statusFilter != "" || priorityFilter > 0 || scopeFilter != "" {
+			fmt.Println(subtle.Render("Try adjusting your filter criteria."))
+		}
 		return nil
-	},
+	}
+
+	// Styles for colored output
+	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)   // Cyan, bold
+	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))          // White
+	scopeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Italic(true)
+	subtle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	// Group tasks by plan for display
+	tasksByPlan := make(map[string][]taskWithPlan)
+	planOrder := []string{}
+	for _, tp := range allTasks {
+		if _, exists := tasksByPlan[tp.PlanID]; !exists {
+			planOrder = append(planOrder, tp.PlanID)
+		}
+		tasksByPlan[tp.PlanID] = append(tasksByPlan[tp.PlanID], tp)
+	}
+
+	planHeader := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+
+	for _, planID := range planOrder {
+		tasks := tasksByPlan[planID]
+		if len(tasks) == 0 {
+			continue
+		}
+
+		// Plan header
+		goal := tasks[0].Goal
+		if len(goal) > 60 {
+			goal = goal[:57] + "..."
+		}
+		fmt.Printf("\n%s %s\n", planHeader.Render("◆"), planHeader.Render(goal))
+		fmt.Printf("  %s\n", subtle.Render(planID))
+
+		// Table header
+		fmt.Printf("\n  %-14s %-10s %4s  %-8s  %s\n",
+			subtle.Render("ID"),
+			subtle.Render("STATUS"),
+			subtle.Render("PRI"),
+			subtle.Render("SCOPE"),
+			subtle.Render("TITLE"))
+		fmt.Println(subtle.Render("  " + strings.Repeat("─", 80)))
+
+		// Task rows
+		for _, tp := range tasks {
+			t := tp.Task
+
+			// ID - Cyan and bold
+			tid := t.ID
+			if len(tid) > 12 {
+				tid = tid[:12]
+			}
+			idStr := idStyle.Render(tid)
+
+			// Status - Color coded
+			statusStr := formatTaskStatus(t.Status)
+
+			// Priority - Color coded by urgency
+			priStr := formatPriority(t.Priority)
+
+			// Scope
+			scope := t.Scope
+			if scope == "" && len(t.Keywords) > 0 {
+				scope = t.Keywords[0]
+			}
+			if len(scope) > 8 {
+				scope = scope[:7] + "…"
+			}
+			scopeStr := scopeStyle.Render(fmt.Sprintf("%-8s", scope))
+
+			// Title
+			title := t.Title
+			if len(title) > 45 {
+				title = title[:42] + "..."
+			}
+			titleStr := titleStyle.Render(title)
+
+			fmt.Printf("  %-14s %-10s %s  %s  %s\n", idStr, statusStr, priStr, scopeStr, titleStr)
+		}
+	}
+
+	// Summary
+	fmt.Printf("\n%s\n", subtle.Render(fmt.Sprintf("Total: %d task(s) across %d plan(s)", len(allTasks), len(planOrder))))
+
+	return nil
+}
+
+// formatTaskStatus returns a color-coded status string.
+func formatTaskStatus(status task.TaskStatus) string {
+	switch status {
+	case task.StatusCompleted, "done":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("[done]    ")
+	case task.StatusInProgress:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true).Render("[active]  ")
+	case task.StatusFailed:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("[failed]  ")
+	case task.StatusVerifying:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render("[verify]  ")
+	default:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("[pending] ")
+	}
+}
+
+// formatPriority returns a color-coded priority string.
+func formatPriority(priority int) string {
+	var color lipgloss.Color
+	switch {
+	case priority <= 20:
+		color = lipgloss.Color("196") // Red - critical
+	case priority <= 50:
+		color = lipgloss.Color("214") // Orange - high
+	case priority <= 75:
+		color = lipgloss.Color("226") // Yellow - medium
+	default:
+		color = lipgloss.Color("245") // Gray - low
+	}
+	return lipgloss.NewStyle().Foreground(color).Render(fmt.Sprintf("%3d ", priority))
 }
 
 var taskShowCmd = &cobra.Command{
@@ -622,6 +707,10 @@ func init() {
 
 	// Task list flags
 	taskListCmd.Flags().StringP("plan", "p", "", "Filter by plan ID (prefix match)")
+	taskListCmd.Flags().StringP("status", "s", "", "Filter by status (pending, in_progress, completed, failed)")
+	taskListCmd.Flags().IntP("priority", "P", 0, "Filter by max priority (show tasks with priority <= value)")
+	taskListCmd.Flags().String("scope", "", "Filter by scope/tag")
+
 	taskUpdateCmd.Flags().String("status", "", "Update the task status (draft, pending, in_progress, verifying, completed, failed)")
 	taskDeleteCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 
