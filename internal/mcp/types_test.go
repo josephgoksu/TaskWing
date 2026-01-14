@@ -55,6 +55,7 @@ func TestPlanAction_IsValid(t *testing.T) {
 	}{
 		{PlanActionClarify, true},
 		{PlanActionGenerate, true},
+		{PlanActionAudit, true},
 		{"invalid", false},
 		{"", false},
 	}
@@ -84,7 +85,7 @@ func TestValidTaskActions(t *testing.T) {
 
 func TestValidPlanActions(t *testing.T) {
 	actions := ValidPlanActions()
-	if len(actions) != 2 {
-		t.Errorf("ValidPlanActions() returned %d actions, want 2", len(actions))
+	if len(actions) != 3 {
+		t.Errorf("ValidPlanActions() returned %d actions, want 3", len(actions))
 	}
 }

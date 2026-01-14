@@ -58,17 +58,18 @@ type PlanAction string
 const (
 	PlanActionClarify  PlanAction = "clarify"
 	PlanActionGenerate PlanAction = "generate"
+	PlanActionAudit    PlanAction = "audit"
 )
 
 // ValidPlanActions returns all valid plan actions.
 func ValidPlanActions() []PlanAction {
-	return []PlanAction{PlanActionClarify, PlanActionGenerate}
+	return []PlanAction{PlanActionClarify, PlanActionGenerate, PlanActionAudit}
 }
 
 // IsValid checks if the action is a valid plan action.
 func (a PlanAction) IsValid() bool {
 	switch a {
-	case PlanActionClarify, PlanActionGenerate:
+	case PlanActionClarify, PlanActionGenerate, PlanActionAudit:
 		return true
 	}
 	return false
@@ -162,16 +163,30 @@ type TaskToolParams struct {
 	SkipUnpushedCheck bool `json:"skip_unpushed_check,omitempty"`
 }
 
+// === MCP Tool Parameters (non-unified) ===
+
+// ProjectContextParams defines the parameters for the recall tool.
+type ProjectContextParams struct {
+	Query  string `json:"query,omitempty"`
+	Answer bool   `json:"answer,omitempty"` // If true, generate RAG answer using LLM
+}
+
+// RememberParams defines the parameters for the remember tool.
+type RememberParams struct {
+	Content string `json:"content"`        // Required: knowledge to store
+	Type    string `json:"type,omitempty"` // Optional: decision, feature, plan, note
+}
+
 // PlanToolParams defines the parameters for the unified plan tool.
-// Consolidates: plan_clarify, plan_generate
+// Consolidates: plan_clarify, plan_generate, audit_plan
 type PlanToolParams struct {
 	// Action specifies which operation to perform.
-	// Required. One of: clarify, generate
+	// Required. One of: clarify, generate, audit
 	Action PlanAction `json:"action"`
 
 	// Goal is the user's development goal.
 	// Required for: clarify, generate
-	Goal string `json:"goal"`
+	Goal string `json:"goal,omitempty"`
 
 	// EnrichedGoal is the full technical specification from clarify.
 	// Required for: generate
@@ -188,4 +203,12 @@ type PlanToolParams struct {
 	// Save persists the generated plan to the database.
 	// Optional for: generate (default: true)
 	Save *bool `json:"save,omitempty"`
+
+	// PlanID is the plan to audit.
+	// Optional for: audit (defaults to active plan)
+	PlanID string `json:"plan_id,omitempty"`
+
+	// AutoFix attempts to automatically fix failures.
+	// Optional for: audit (default: true)
+	AutoFix *bool `json:"auto_fix,omitempty"`
 }

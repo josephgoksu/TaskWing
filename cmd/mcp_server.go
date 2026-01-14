@@ -54,23 +54,7 @@ func init() {
 	// NOTE: SSE transport (--port) intentionally removed. Stdio is the standard.
 }
 
-// ProjectContextParams defines the parameters for the recall tool
-type ProjectContextParams struct {
-	Query  string `json:"query,omitempty"`
-	Answer bool   `json:"answer,omitempty"` // If true, generate RAG answer using LLM
-}
 
-// RememberParams defines the parameters for the remember tool
-type RememberParams struct {
-	Content string `json:"content"`        // Required: knowledge to store
-	Type    string `json:"type,omitempty"` // Optional: decision, feature, plan, note
-}
-
-// AuditPlanParams defines the parameters for the audit_plan tool
-type AuditPlanParams struct {
-	PlanID  string `json:"plan_id,omitempty"`  // Optional: specific plan ID (defaults to active plan)
-	AutoFix *bool  `json:"auto_fix,omitempty"` // If true, attempt to fix failures automatically (default: true)
-}
 
 // mcpMarkdownResponse wraps Markdown content in an MCP tool result.
 // Use this instead of mcpJSONResponse for token-efficient LLM responses.
@@ -176,7 +160,7 @@ func runMCPServer(ctx context.Context) error {
 		Description: "Retrieve codebase architecture knowledge: decisions, patterns, constraints, and features. Returns an AI-synthesized answer and relevant context by default. Use {\"query\":\"search term\"} for semantic search.",
 	}
 
-	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
+	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		// Node-based system only
 		nodes, err := repo.ListNodes("")
 		if err != nil {
@@ -197,18 +181,10 @@ func runMCPServer(ctx context.Context) error {
 		Name:        "remember",
 		Description: "Add knowledge to project memory. Use this to persist decisions, patterns, or insights discovered during the session. Content will be classified automatically using AI.",
 	}
-	mcpsdk.AddTool(server, rememberTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[RememberParams]) (*mcpsdk.CallToolResultFor[any], error) {
+	mcpsdk.AddTool(server, rememberTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.RememberParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		return handleRemember(ctx, repo, params.Arguments)
 	})
 
-	// Register audit_plan tool - verify and fix completed plans
-	auditPlanTool := &mcpsdk.Tool{
-		Name:        "audit_plan",
-		Description: "Audit a completed plan by running build, tests, and semantic verification. Automatically attempts to fix failures up to 3 times. Updates plan status to 'verified' or 'needs_revision'. Use this after all tasks are complete to validate the implementation.",
-	}
-	mcpsdk.AddTool(server, auditPlanTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[AuditPlanParams]) (*mcpsdk.CallToolResultFor[any], error) {
-		return handleAuditPlan(ctx, repo, params.Arguments)
-	})
 
 	// === Unified Tools (consolidated from multiple single-purpose tools) ===
 
@@ -253,12 +229,13 @@ func runMCPServer(ctx context.Context) error {
 		return mcpMarkdownResponse(result.Content)
 	})
 
-	// Register unified 'plan' tool - consolidates plan_clarify, plan_generate
+	// Register unified 'plan' tool - consolidates plan_clarify, plan_generate, audit_plan
 	planTool := &mcpsdk.Tool{
 		Name: "plan",
 		Description: `Unified plan creation tool. Use action parameter to select operation:
 - clarify: Refine goal with clarifying questions (loop until is_ready_to_plan=true)
-- generate: Create plan with tasks from enriched goal`,
+- generate: Create plan with tasks from enriched goal
+- audit: Verify completed plan with build/test/semantic checks (auto-fixes failures)`,
 	}
 	mcpsdk.AddTool(server, planTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.PlanToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		result, err := mcppresenter.HandlePlanTool(ctx, repo, params.Arguments)
@@ -282,7 +259,7 @@ func runMCPServer(ctx context.Context) error {
 // handleNodeContext returns context using the knowledge.Service (same as CLI).
 // This ensures MCP and CLI use identical search logic with zero drift.
 // Uses the app.RecallApp for all business logic - single source of truth.
-func handleNodeContext(ctx context.Context, repo *memory.Repository, params ProjectContextParams) (*mcpsdk.CallToolResultFor[any], error) {
+func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcppresenter.ProjectContextParams) (*mcpsdk.CallToolResultFor[any], error) {
 	// Create app context with query role - respects llm.models.query config (same as CLI)
 	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
 	recallApp := app.NewRecallApp(appCtx)
@@ -321,7 +298,7 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params Proj
 
 // handleRemember adds knowledge to project memory.
 // Uses app.MemoryApp for all business logic - single source of truth.
-func handleRemember(ctx context.Context, repo *memory.Repository, params RememberParams) (*mcpsdk.CallToolResultFor[any], error) {
+func handleRemember(ctx context.Context, repo *memory.Repository, params mcppresenter.RememberParams) (*mcpsdk.CallToolResultFor[any], error) {
 	content := strings.TrimSpace(params.Content)
 	if content == "" {
 		return mcpValidationErrorResponse("content", "content is required")
@@ -343,27 +320,4 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params Remembe
 	return mcpMarkdownResponse(mcppresenter.FormatRemember(result))
 }
 
-// handleAuditPlan runs the audit service on a plan.
-// Uses app.PlanApp for all business logic - single source of truth.
-func handleAuditPlan(ctx context.Context, repo *memory.Repository, params AuditPlanParams) (*mcpsdk.CallToolResultFor[any], error) {
-	autoFix := true
-	if params.AutoFix != nil {
-		autoFix = *params.AutoFix
-	}
-
-	// Use RoleBootstrap for audit operations (same as CLI plan/audit commands)
-	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
-	planApp := app.NewPlanApp(appCtx)
-
-	result, err := planApp.Audit(ctx, app.AuditOptions{
-		PlanID:  params.PlanID,
-		AutoFix: autoFix,
-	})
-	if err != nil {
-		return mcpFormattedErrorResponse(mcppresenter.FormatError(err.Error()))
-	}
-
-	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(mcppresenter.FormatAuditResult(result))
-}
 

@@ -411,13 +411,13 @@ type PlanToolResult struct {
 
 // HandlePlanTool is the unified handler for all plan operations.
 // It routes to the appropriate service logic based on the action parameter.
-// Consolidates: plan_clarify, plan_generate
+// Consolidates: plan_clarify, plan_generate, audit_plan
 func HandlePlanTool(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
 	// Validate action
 	if !params.Action.IsValid() {
 		return &PlanToolResult{
 			Action: string(params.Action),
-			Error:  fmt.Sprintf("invalid action %q, must be one of: clarify, generate", params.Action),
+			Error:  fmt.Sprintf("invalid action %q, must be one of: clarify, generate, audit", params.Action),
 		}, nil
 	}
 
@@ -426,6 +426,8 @@ func HandlePlanTool(ctx context.Context, repo *memory.Repository, params PlanToo
 		return handlePlanClarify(ctx, repo, params)
 	case PlanActionGenerate:
 		return handlePlanGenerate(ctx, repo, params)
+	case PlanActionAudit:
+		return handlePlanAudit(ctx, repo, params)
 	default:
 		return &PlanToolResult{
 			Action: string(params.Action),
@@ -510,5 +512,34 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 	return &PlanToolResult{
 		Action:  "generate",
 		Content: FormatGenerateResult(result),
+	}, nil
+}
+
+// handlePlanAudit implements the 'audit' action - verify and fix a completed plan.
+func handlePlanAudit(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
+	// Default autoFix to true
+	autoFix := true
+	if params.AutoFix != nil {
+		autoFix = *params.AutoFix
+	}
+
+	// Use RoleBootstrap for audit operations
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	planApp := app.NewPlanApp(appCtx)
+
+	result, err := planApp.Audit(ctx, app.AuditOptions{
+		PlanID:  params.PlanID,
+		AutoFix: autoFix,
+	})
+	if err != nil {
+		return &PlanToolResult{
+			Action: "audit",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &PlanToolResult{
+		Action:  "audit",
+		Content: FormatAuditResult(result),
 	}, nil
 }
