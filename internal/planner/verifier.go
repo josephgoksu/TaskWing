@@ -407,3 +407,157 @@ func ApplyCorrections(text string, corrections map[string]string) string {
 	}
 	return result
 }
+
+// === Go Test Command Correction ===
+
+// goTestRegex matches go test commands with package paths
+var goTestRegex = regexp.MustCompile(`go\s+test\s+(-[a-z]+\s+)*(\./[^\s]+)`)
+
+// CommandCorrectionResult holds the result of correcting a command.
+type CommandCorrectionResult struct {
+	Original  string // Original command
+	Corrected string // Corrected command (same as Original if no change)
+	Changed   bool   // True if command was modified
+	Note      string // Explanation of what was changed
+}
+
+// CorrectGoTestCommand checks and corrects go test commands with invalid paths.
+func (v *PlanVerifier) CorrectGoTestCommand(ctx context.Context, command string) CommandCorrectionResult {
+	result := CommandCorrectionResult{
+		Original:  command,
+		Corrected: command,
+	}
+
+	// Find go test command with package path
+	match := goTestRegex.FindStringSubmatch(command)
+	if match == nil || len(match) < 3 {
+		return result // Not a go test command with path
+	}
+
+	pkgPath := match[2] // The package path (e.g., ./internal/ui/...)
+
+	// Normalize the path for checking
+	cleanPath := strings.TrimPrefix(pkgPath, "./")
+	cleanPath = strings.TrimSuffix(cleanPath, "/...")
+	cleanPath = strings.TrimSuffix(cleanPath, "/")
+
+	// Check if the directory exists
+	fullPath := filepath.Join(v.basePath, cleanPath)
+	if _, err := os.Stat(fullPath); err == nil {
+		return result // Path exists, no correction needed
+	}
+
+	// Path doesn't exist - try to find the correct package
+	correctedPath := v.findCorrectPackage(ctx, cleanPath)
+	if correctedPath == "" {
+		result.Note = fmt.Sprintf("Package path %s not found", pkgPath)
+		return result
+	}
+
+	// Build the corrected package path
+	correctedPkgPath := "./" + correctedPath
+	if strings.HasSuffix(pkgPath, "/...") {
+		correctedPkgPath += "/..."
+	}
+
+	// Replace the path in the command
+	result.Corrected = strings.Replace(command, pkgPath, correctedPkgPath, 1)
+	result.Changed = true
+	result.Note = fmt.Sprintf("Corrected: %s -> %s", pkgPath, correctedPkgPath)
+
+	return result
+}
+
+// findCorrectPackage attempts to find the correct package path using codeintel.
+func (v *PlanVerifier) findCorrectPackage(ctx context.Context, pkgPath string) string {
+	// Extract the package name (last segment)
+	segments := strings.Split(pkgPath, "/")
+	pkgName := segments[len(segments)-1]
+
+	// Try to find directory with matching name
+	// Strategy 1: Check if it's in internal/ with a different parent
+	if strings.HasPrefix(pkgPath, "internal/") {
+		// Search for the package name in internal/
+		searchPath := filepath.Join(v.basePath, "internal")
+		if found := v.findDirByName(searchPath, pkgName); found != "" {
+			rel, _ := filepath.Rel(v.basePath, found)
+			return rel
+		}
+	}
+
+	// Strategy 2: Check common locations (pkg/, cmd/)
+	for _, prefix := range []string{"pkg", "cmd", "internal"} {
+		searchPath := filepath.Join(v.basePath, prefix)
+		if found := v.findDirByName(searchPath, pkgName); found != "" {
+			rel, _ := filepath.Rel(v.basePath, found)
+			return rel
+		}
+	}
+
+	// Strategy 3: Use codeintel to search for files in the package
+	if v.query != nil {
+		results, err := v.query.HybridSearch(ctx, pkgName, 20)
+		if err == nil {
+			// Find the most common directory among results
+			dirCounts := make(map[string]int)
+			for _, r := range results {
+				dir := filepath.Dir(r.Symbol.FilePath)
+				if strings.Contains(dir, pkgName) {
+					dirCounts[dir]++
+				}
+			}
+
+			// Find best match
+			var bestDir string
+			var bestCount int
+			for dir, count := range dirCounts {
+				if count > bestCount {
+					bestDir = dir
+					bestCount = count
+				}
+			}
+
+			if bestDir != "" {
+				return bestDir
+			}
+		}
+	}
+
+	return ""
+}
+
+// findDirByName searches for a directory with the given name under root.
+func (v *PlanVerifier) findDirByName(root, name string) string {
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return ""
+	}
+
+	var found string
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() && info.Name() == name {
+			found = path
+			return filepath.SkipDir
+		}
+		return nil
+	})
+
+	return found
+}
+
+// CorrectTaskCommands corrects all go test commands in a task's validation steps.
+func (v *PlanVerifier) CorrectTaskCommands(ctx context.Context, task *LLMTaskSchema) (corrected bool, notes []string) {
+	for i, step := range task.ValidationSteps {
+		result := v.CorrectGoTestCommand(ctx, step)
+		if result.Changed {
+			task.ValidationSteps[i] = result.Corrected
+			corrected = true
+			notes = append(notes, result.Note)
+		} else if result.Note != "" {
+			notes = append(notes, result.Note)
+		}
+	}
+	return
+}
