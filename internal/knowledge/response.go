@@ -110,3 +110,48 @@ type ProjectSummary struct {
 	Total    int                    `json:"total"`
 	Types    map[string]TypeSummary `json:"types"`
 }
+
+// -----------------------------------------------------------------------------
+// Debug Retrieval Types — Raw search results for inspection and debugging
+// -----------------------------------------------------------------------------
+
+// DebugRetrievalResult represents a single search result with full debug information.
+// This is used by the `memory inspect` command to show raw retrieval data.
+type DebugRetrievalResult struct {
+	// Core identification
+	ID       string `json:"id"`        // Node/chunk ID (e.g., "n-abc123")
+	ChunkID  string `json:"chunk_id"`  // Same as ID for nodes, may differ for sub-chunks
+	NodeType string `json:"node_type"` // Type: decision, constraint, pattern, etc.
+
+	// Source information
+	SourceFilePath string `json:"source_file_path,omitempty"` // Absolute path to source file
+	SourceAgent    string `json:"source_agent,omitempty"`     // Agent that created this (doc-loader, code-agent, etc.)
+
+	// Content
+	Summary string `json:"summary"`           // Brief summary/title
+	Content string `json:"content,omitempty"` // Full content (truncated in display)
+
+	// Scoring (all normalized to 0-1 range)
+	FTSScore        float32 `json:"fts_score"`        // BM25 keyword match score
+	VectorScore     float32 `json:"vector_score"`     // Cosine similarity score
+	CombinedScore   float32 `json:"combined_score"`   // Weighted combination
+	RerankScore     float32 `json:"rerank_score"`     // After reranking (0 if not reranked)
+	IsExactMatch    bool    `json:"is_exact_match"`   // True if matched by exact ID
+	IsGraphExpanded bool    `json:"is_graph_expanded"` // True if added via graph expansion
+
+	// Evidence references
+	Evidence []EvidenceRef `json:"evidence,omitempty"` // File:line references
+
+	// Embedding info (for --verbose mode)
+	EmbeddingDimension int `json:"embedding_dimension,omitempty"` // Vector dimension (e.g., 1536)
+}
+
+// DebugRetrievalResponse contains the full debug output from a search.
+type DebugRetrievalResponse struct {
+	Query           string                 `json:"query"`            // Original query
+	RewrittenQuery  string                 `json:"rewritten_query"`  // Query after rewriting (if enabled)
+	TotalCandidates int                    `json:"total_candidates"` // Total candidates before filtering
+	Results         []DebugRetrievalResult `json:"results"`          // Ranked results
+	Pipeline        []string               `json:"pipeline"`         // Search stages used (FTS, Vector, Rerank, Graph)
+	Timings         map[string]int64       `json:"timings_ms"`       // Time per stage in milliseconds
+}

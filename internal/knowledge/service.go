@@ -709,3 +709,226 @@ Return JSON ONLY: ["concept 1", "concept 2"]`, goal)
 
 	return queries, nil
 }
+
+// SearchDebug performs a search with full debug information.
+// It returns raw retrieval data including individual scores from each stage.
+// This is used by the `memory inspect` command for transparency.
+func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*DebugRetrievalResponse, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	response := &DebugRetrievalResponse{
+		Query:   query,
+		Timings: make(map[string]int64),
+	}
+	pipeline := []string{}
+
+	cfg := s.retrievalCfg
+	ftsWeight := float32(cfg.FTSWeight)
+	vectorWeight := float32(cfg.VectorWeight)
+	vectorThreshold := float32(cfg.VectorScoreThreshold)
+
+	recallLimit := cfg.RerankTopK
+	if recallLimit <= 0 {
+		recallLimit = 25
+	}
+
+	// Track individual scores per node
+	type nodeScores struct {
+		node        *memory.Node
+		ftsScore    float32
+		vectorScore float32
+		combined    float32
+		rerankScore float32
+		isExact     bool
+		isExpanded  bool
+		expandedFrom string
+	}
+	scoreMap := make(map[string]*nodeScores)
+
+	// 1. Check for exact ID match first (Task ID priority)
+	startExact := time.Now()
+	if strings.HasPrefix(query, "task-") || strings.HasPrefix(query, "n-") || strings.HasPrefix(query, "plan-") {
+		node, err := s.repo.GetNode(query)
+		if err == nil && node != nil {
+			scoreMap[node.ID] = &nodeScores{
+				node:     node,
+				combined: 1.0, // Max score for exact match
+				isExact:  true,
+			}
+			pipeline = append(pipeline, "ExactMatch")
+		}
+	}
+	response.Timings["exact_match"] = time.Since(startExact).Milliseconds()
+
+	// 2. FTS5 keyword search
+	startFTS := time.Now()
+	ftsResults, err := s.repo.SearchFTS(query, recallLimit)
+	if err == nil && len(ftsResults) > 0 {
+		pipeline = append(pipeline, "FTS")
+		for _, r := range ftsResults {
+			ftsScore := float32(-r.Rank / 10.0)
+			if ftsScore > 1.0 {
+				ftsScore = 1.0
+			}
+			if ftsScore < 0.1 {
+				ftsScore = 0.1
+			}
+
+			node := r.Node
+			if existing, ok := scoreMap[node.ID]; ok {
+				existing.ftsScore = ftsScore
+				existing.combined += ftsScore * ftsWeight
+			} else {
+				scoreMap[node.ID] = &nodeScores{
+					node:     &node,
+					ftsScore: ftsScore,
+					combined: ftsScore * ftsWeight,
+				}
+			}
+		}
+	}
+	response.Timings["fts"] = time.Since(startFTS).Milliseconds()
+
+	// 3. Vector similarity search
+	startVector := time.Now()
+	queryEmbedding, embErr := GenerateEmbedding(ctx, query, s.llmCfg)
+	if embErr == nil && len(queryEmbedding) > 0 {
+		pipeline = append(pipeline, "Vector")
+		nodes, err := s.repo.ListNodesWithEmbeddings()
+		if err == nil {
+			for i := range nodes {
+				n := &nodes[i]
+				if len(n.Embedding) == 0 {
+					continue
+				}
+
+				vectorScore := CosineSimilarity(queryEmbedding, n.Embedding)
+				if vectorScore < vectorThreshold {
+					continue
+				}
+
+				if existing, ok := scoreMap[n.ID]; ok {
+					existing.vectorScore = vectorScore
+					existing.combined += vectorScore * vectorWeight
+				} else {
+					scoreMap[n.ID] = &nodeScores{
+						node:        n,
+						vectorScore: vectorScore,
+						combined:    vectorScore * vectorWeight,
+					}
+				}
+			}
+		}
+	}
+	response.Timings["vector"] = time.Since(startVector).Milliseconds()
+
+	// 4. Convert to sorted slice
+	var scored []ScoredNode
+	for _, ns := range scoreMap {
+		scored = append(scored, ScoredNode{Node: ns.node, Score: ns.combined})
+	}
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].Score > scored[j].Score
+	})
+
+	if len(scored) > recallLimit {
+		scored = scored[:recallLimit]
+	}
+	response.TotalCandidates = len(scored)
+
+	// 5. Reranking (if enabled)
+	startRerank := time.Now()
+	if cfg.RerankingEnabled && len(scored) > 0 {
+		reranker := s.getReranker(ctx)
+		if reranker != nil {
+			pipeline = append(pipeline, "Rerank")
+			scored = rerankResults(ctx, reranker, query, scored, 5*time.Second)
+			// Update rerank scores
+			for i, sn := range scored {
+				if ns, ok := scoreMap[sn.Node.ID]; ok {
+					ns.rerankScore = sn.Score
+					// Recalculate rank-based score
+					ns.combined = sn.Score
+					scored[i] = ScoredNode{Node: sn.Node, Score: sn.Score}
+				}
+			}
+		}
+	}
+	response.Timings["rerank"] = time.Since(startRerank).Milliseconds()
+
+	// 6. Graph Expansion
+	startGraph := time.Now()
+	if cfg.GraphExpansionEnabled && len(scored) > 0 {
+		beforeCount := len(scored)
+		scored = s.expandViaGraph(scored, cfg)
+		if len(scored) > beforeCount {
+			pipeline = append(pipeline, "Graph")
+			// Mark expanded nodes
+			for _, sn := range scored[beforeCount:] {
+				if ns, ok := scoreMap[sn.Node.ID]; ok {
+					ns.isExpanded = true
+				} else {
+					scoreMap[sn.Node.ID] = &nodeScores{
+						node:       sn.Node,
+						combined:   sn.Score,
+						isExpanded: true,
+						expandedFrom: sn.ExpandedFrom,
+					}
+				}
+			}
+		}
+	}
+	response.Timings["graph"] = time.Since(startGraph).Milliseconds()
+
+	// 7. Final limit
+	if len(scored) > limit {
+		scored = scored[:limit]
+	}
+
+	// 8. Build debug results
+	response.Pipeline = pipeline
+	for _, sn := range scored {
+		ns := scoreMap[sn.Node.ID]
+		if ns == nil {
+			continue
+		}
+
+		result := DebugRetrievalResult{
+			ID:              sn.Node.ID,
+			ChunkID:         sn.Node.ID, // Same for now, could differ for sub-chunks
+			NodeType:        sn.Node.Type,
+			SourceAgent:     sn.Node.SourceAgent,
+			Summary:         sn.Node.Summary,
+			Content:         sn.Node.Content,
+			FTSScore:        ns.ftsScore,
+			VectorScore:     ns.vectorScore,
+			CombinedScore:   ns.combined,
+			RerankScore:     ns.rerankScore,
+			IsExactMatch:    ns.isExact,
+			IsGraphExpanded: ns.isExpanded,
+			Evidence:        parseEvidence(sn.Node.Evidence),
+		}
+
+		// Extract source file path from evidence if available
+		if len(result.Evidence) > 0 {
+			result.SourceFilePath = result.Evidence[0].File
+		}
+
+		// Add embedding dimension if present
+		if len(sn.Node.Embedding) > 0 {
+			result.EmbeddingDimension = len(sn.Node.Embedding)
+		}
+
+		response.Results = append(response.Results, result)
+	}
+
+	return response, nil
+}
+
+// SearchByID retrieves a node by exact ID match.
+// This prioritizes Task IDs and Plan IDs for direct lookup.
+func (s *Service) SearchByID(ctx context.Context, id string) (*memory.Node, error) {
+	return s.repo.GetNode(id)
+}
