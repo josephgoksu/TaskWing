@@ -541,6 +541,176 @@ WARNING: This can be expensive if you have many nodes and are using a paid API.`
 	},
 }
 
+// memory inspect command
+var memoryInspectCmd = &cobra.Command{
+	Use:   "inspect <query>",
+	Short: "Inspect retrieval results with debug info",
+	Long: `Debug the semantic search pipeline by showing raw retrieval data.
+
+Shows detailed information about how the search works:
+  • Chunk IDs and source file paths
+  • Individual scores (FTS, Vector, Combined, Rerank)
+  • Search pipeline stages used (ExactMatch, FTS, Vector, Rerank, Graph)
+  • Timing for each stage
+
+This is useful for understanding why certain results rank higher than others.
+
+Examples:
+  taskwing memory inspect "authentication"       # Search for auth-related knowledge
+  taskwing memory inspect "task-abc123"          # Direct ID lookup
+  taskwing memory inspect "JWT" --verbose        # Show embedding dimensions
+  taskwing memory inspect "error handling" -n 20 # Show more results`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		query := args[0]
+		limit, _ := cmd.Flags().GetInt("limit")
+		verbose, _ := cmd.Flags().GetBool("verbose")
+
+		if limit <= 0 {
+			limit = 10
+		}
+
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		repo, err := memory.NewDefaultRepository(memoryPath)
+		if err != nil {
+			return fmt.Errorf("open memory repo: %w", err)
+		}
+		defer func() { _ = repo.Close() }()
+
+		llmCfg, _ := config.LoadLLMConfig()
+		svc := knowledge.NewService(repo, llmCfg)
+
+		ctx := context.Background()
+		result, err := svc.SearchDebug(ctx, query, limit)
+		if err != nil {
+			return fmt.Errorf("search failed: %w", err)
+		}
+
+		if viper.GetBool("json") {
+			output, _ := json.MarshalIndent(result, "", "  ")
+			fmt.Println(string(output))
+			return nil
+		}
+
+		// Header
+		ui.RenderPageHeader("TaskWing Memory Inspect", fmt.Sprintf("Query: %q", query))
+
+		// Pipeline info
+		fmt.Printf("📊 Pipeline: %s\n", formatPipeline(result.Pipeline))
+		fmt.Printf("🔍 Total candidates: %d\n", result.TotalCandidates)
+
+		// Timings
+		if verbose {
+			fmt.Printf("⏱  Timings: ")
+			first := true
+			for stage, ms := range result.Timings {
+				if ms > 0 {
+					if !first {
+						fmt.Print(", ")
+					}
+					fmt.Printf("%s=%dms", stage, ms)
+					first = false
+				}
+			}
+			fmt.Println()
+		}
+		fmt.Println()
+
+		if len(result.Results) == 0 {
+			fmt.Println("No results found.")
+			return nil
+		}
+
+		// Build table
+		table := ui.Table{
+			MaxWidth: 40,
+		}
+
+		if verbose {
+			table.Headers = []string{"ID", "Type", "Score", "FTS", "Vec", "Dim", "Source"}
+		} else {
+			table.Headers = []string{"ID", "Type", "Score", "Source/Summary"}
+		}
+
+		for _, r := range result.Results {
+			// Format score with indicator
+			scoreStr := fmt.Sprintf("%.3f", r.CombinedScore)
+			if r.IsExactMatch {
+				scoreStr += " ★"
+			} else if r.IsGraphExpanded {
+				scoreStr += " ◆"
+			}
+
+			// Source or summary
+			source := r.SourceFilePath
+			if source == "" {
+				source = r.Summary
+			}
+			if len(source) > 40 {
+				source = "..." + source[len(source)-37:]
+			}
+
+			if verbose {
+				ftsStr := "-"
+				if r.FTSScore > 0 {
+					ftsStr = fmt.Sprintf("%.2f", r.FTSScore)
+				}
+				vecStr := "-"
+				if r.VectorScore > 0 {
+					vecStr = fmt.Sprintf("%.2f", r.VectorScore)
+				}
+				dimStr := "-"
+				if r.EmbeddingDimension > 0 {
+					dimStr = fmt.Sprintf("%d", r.EmbeddingDimension)
+				}
+
+				table.Rows = append(table.Rows, []string{
+					ui.TruncateID(r.ID),
+					r.NodeType,
+					scoreStr,
+					ftsStr,
+					vecStr,
+					dimStr,
+					source,
+				})
+			} else {
+				table.Rows = append(table.Rows, []string{
+					ui.TruncateID(r.ID),
+					r.NodeType,
+					scoreStr,
+					source,
+				})
+			}
+		}
+
+		fmt.Println(table.Render())
+
+		// Legend
+		fmt.Println()
+		fmt.Println("Legend: ★ = exact ID match, ◆ = graph expanded")
+
+		return nil
+	},
+}
+
+// formatPipeline formats the pipeline stages for display
+func formatPipeline(stages []string) string {
+	if len(stages) == 0 {
+		return "(none)"
+	}
+	result := ""
+	for i, s := range stages {
+		if i > 0 {
+			result += " → "
+		}
+		result += s
+	}
+	return result
+}
+
 func init() {
 	rootCmd.AddCommand(memoryCmd)
 
@@ -552,8 +722,11 @@ func init() {
 	memoryCmd.AddCommand(memoryRebuildEmbeddingsCmd)
 	memoryCmd.AddCommand(memoryResetCmd)
 	memoryCmd.AddCommand(memoryExportCmd)
+	memoryCmd.AddCommand(memoryInspectCmd)
 
 	memoryResetCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 	memoryRebuildEmbeddingsCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 	memoryExportCmd.Flags().StringP("name", "n", "", "Project name for the document header")
+	memoryInspectCmd.Flags().IntP("limit", "n", 10, "Maximum number of results")
+	memoryInspectCmd.Flags().BoolP("verbose", "v", false, "Show detailed scores and embedding dimensions")
 }
