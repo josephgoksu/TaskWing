@@ -5,20 +5,25 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/impl"
+	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/planner"
 	"github.com/josephgoksu/TaskWing/internal/task"
+
+	_ "modernc.org/sqlite" // SQLite driver
 )
 
 // ClarifyResult contains the result of plan clarification.
@@ -361,6 +366,95 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 				"errors", len(semanticErrors),
 				"paths_checked", semanticResult.Stats.PathsChecked,
 				"commands_validated", semanticResult.Stats.CommandsValidated)
+		}
+	}
+
+	// Run PlanVerifier to auto-correct paths and commands using code intelligence
+	{
+		// Try to get codeintel QueryService (optional - best effort)
+		var queryService *codeintel.QueryService
+		var db *sql.DB
+		if memoryPath, err := config.GetMemoryBasePath(); err == nil {
+			dbPath := filepath.Join(memoryPath, "memory.db")
+			if _, statErr := os.Stat(dbPath); statErr == nil {
+				if db, err = sql.Open("sqlite", dbPath); err == nil {
+					defer func() { _ = db.Close() }()
+					repo := codeintel.NewRepository(db)
+					queryService = codeintel.NewQueryService(repo, llmCfg)
+				}
+			}
+		}
+
+		verifier := planner.NewPlanVerifierWithConfig(queryService, planner.VerifierConfig{
+			BasePath: a.ctx.BasePath,
+		})
+
+		// Convert tasks to planner schema for verification
+		plannerTasks := make([]planner.LLMTaskSchema, len(tasks))
+		for i, t := range tasks {
+			plannerTasks[i] = planner.LLMTaskSchema{
+				Title:              t.Title,
+				Description:        t.Description,
+				AcceptanceCriteria: t.AcceptanceCriteria,
+				ValidationSteps:    t.ValidationSteps,
+			}
+		}
+
+		// Run verification and apply corrections
+		correctedTasks, err := verifier.Verify(ctx, plannerTasks)
+		if err != nil {
+			slog.Debug("plan verification skipped", "error", err)
+		} else {
+			// Track corrections
+			var pathCorrections, commandCorrections int
+
+			// Apply path corrections
+			for i := range correctedTasks {
+				verifyResult := verifier.VerifyTaskPaths(ctx, i, &correctedTasks[i])
+				if verifyResult.Corrections > 0 {
+					pathCorrections += verifyResult.Corrections
+					// Apply corrections to descriptions
+					corrections := make(map[string]string)
+					for _, pr := range verifyResult.PathResults {
+						if pr.Corrected != "" {
+							corrections[pr.Original] = pr.Corrected
+						}
+					}
+					if len(corrections) > 0 {
+						correctedTasks[i].Description = planner.ApplyCorrections(correctedTasks[i].Description, corrections)
+						correctedTasks[i].Title = planner.ApplyCorrections(correctedTasks[i].Title, corrections)
+						for j, criterion := range correctedTasks[i].AcceptanceCriteria {
+							correctedTasks[i].AcceptanceCriteria[j] = planner.ApplyCorrections(criterion, corrections)
+						}
+					}
+				}
+
+				// Apply command corrections
+				corrected, notes := verifier.CorrectTaskCommands(ctx, &correctedTasks[i])
+				if corrected {
+					commandCorrections++
+					for _, note := range notes {
+						semanticWarnings = append(semanticWarnings, fmt.Sprintf("[Task %d] %s", i+1, note))
+					}
+				}
+			}
+
+			// Update original tasks with corrections
+			for i := range tasks {
+				tasks[i].Title = correctedTasks[i].Title
+				tasks[i].Description = correctedTasks[i].Description
+				tasks[i].AcceptanceCriteria = correctedTasks[i].AcceptanceCriteria
+				tasks[i].ValidationSteps = correctedTasks[i].ValidationSteps
+			}
+
+			// Log corrections
+			if pathCorrections > 0 || commandCorrections > 0 {
+				slog.Info("plan verifier applied corrections",
+					"path_corrections", pathCorrections,
+					"command_corrections", commandCorrections)
+				semanticWarnings = append(semanticWarnings,
+					fmt.Sprintf("Auto-corrected %d paths and %d commands using code intelligence", pathCorrections, commandCorrections))
+			}
 		}
 	}
 
