@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"time"
 
 	geminiEmbed "github.com/cloudwego/eino-ext/components/embedding/gemini"
 	ollamaEmbed "github.com/cloudwego/eino-ext/components/embedding/ollama"
@@ -18,17 +20,21 @@ import (
 	"google.golang.org/genai"
 )
 
+// DefaultRequestTimeout is the default timeout for LLM chat requests.
+const DefaultRequestTimeout = 2 * time.Minute
+
 // Provider identifies the LLM provider to use.
 type Provider string
 
 // Config holds configuration for creating an LLM client.
 type Config struct {
 	Provider       Provider
-	Model          string // Chat model
-	EmbeddingModel string // Embedding model (optional)
-	APIKey         string // Required for OpenAI
-	BaseURL        string // Required for Ollama (default: http://localhost:11434)
-	ThinkingBudget int    // Token budget for extended thinking (0 = disabled, only for supported models)
+	Model          string        // Chat model
+	EmbeddingModel string        // Embedding model (optional)
+	APIKey         string        // Required for OpenAI
+	BaseURL        string        // Required for Ollama (default: http://localhost:11434)
+	ThinkingBudget int           // Token budget for extended thinking (0 = disabled, only for supported models)
+	Timeout        time.Duration // Request timeout for chat completions (0 = no timeout)
 
 	// Embedding-specific provider (optional, defaults to Provider if empty)
 	EmbeddingProvider Provider
@@ -80,14 +86,20 @@ func (g *genaiClientCloser) Close() error {
 // NewCloseableChatModel creates a ChatModel with proper resource management.
 // Callers MUST call Close() when done to release resources.
 func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel, error) {
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = DefaultRequestTimeout
+	}
+
 	switch cfg.Provider {
 	case ProviderOpenAI:
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("OpenAI API key is required")
 		}
 		m, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-			Model:  cfg.Model,
-			APIKey: cfg.APIKey,
+			Model:   cfg.Model,
+			APIKey:  cfg.APIKey,
+			Timeout: timeout,
 		})
 		if err != nil {
 			return nil, err
@@ -102,6 +114,7 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 		m, err := ollama.NewChatModel(ctx, &ollama.ChatModelConfig{
 			BaseURL: baseURL,
 			Model:   cfg.Model,
+			Timeout: timeout,
 		})
 		if err != nil {
 			return nil, err
@@ -115,6 +128,9 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 		claudeConfig := &claude.Config{
 			APIKey: cfg.APIKey,
 			Model:  cfg.Model,
+		}
+		if timeout > 0 {
+			claudeConfig.HTTPClient = &http.Client{Timeout: timeout}
 		}
 		// Enable extended thinking if budget is set and model supports it
 		if cfg.ThinkingBudget > 0 && ModelSupportsThinking(cfg.Model) {
@@ -133,10 +149,15 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("gemini API key is required")
 		}
+		var httpClient *http.Client
+		if timeout > 0 {
+			httpClient = &http.Client{Timeout: timeout}
+		}
 		// Create genai.Client with API key
 		genaiClient, err := genai.NewClient(ctx, &genai.ClientConfig{
-			APIKey:  cfg.APIKey,
-			Backend: genai.BackendGeminiAPI,
+			APIKey:     cfg.APIKey,
+			Backend:    genai.BackendGeminiAPI,
+			HTTPClient: httpClient,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Gemini client: %w", err)

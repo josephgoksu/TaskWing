@@ -2,11 +2,16 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
 )
+
+// ErrRerankerDisabled is returned when reranking is disabled after repeated failures.
+var ErrRerankerDisabled = errors.New("reranker disabled")
 
 // Reranker defines the interface for reranking search results.
 type Reranker interface {
@@ -42,7 +47,7 @@ var DefaultRerankerFactory RerankerFactory = func(ctx context.Context, cfg Retri
 		return nil, err
 	}
 
-	return &teiRerankerAdapter{reranker: reranker}, nil
+	return newCircuitBreakerReranker(&teiRerankerAdapter{reranker: reranker}), nil
 }
 
 // teiRerankerAdapter adapts llm.TeiReranker to knowledge.Reranker interface.
@@ -71,6 +76,54 @@ func (a *teiRerankerAdapter) Close() error {
 	return a.reranker.Close()
 }
 
+type circuitBreakerReranker struct {
+	inner     Reranker
+	threshold int
+	mu        sync.Mutex
+	failures  int
+	disabled  bool
+}
+
+func newCircuitBreakerReranker(inner Reranker) Reranker {
+	return &circuitBreakerReranker{
+		inner:     inner,
+		threshold: 1,
+	}
+}
+
+func (c *circuitBreakerReranker) Rerank(ctx context.Context, query string, documents []string) ([]RerankResult, error) {
+	c.mu.Lock()
+	if c.disabled {
+		c.mu.Unlock()
+		return nil, ErrRerankerDisabled
+	}
+	c.mu.Unlock()
+
+	results, err := c.inner.Rerank(ctx, query, documents)
+	if err != nil {
+		c.mu.Lock()
+		c.failures++
+		if c.failures >= c.threshold {
+			c.disabled = true
+		}
+		c.mu.Unlock()
+		if c.disabled {
+			slog.Warn("reranker disabled after failure", "error", err)
+			return nil, ErrRerankerDisabled
+		}
+		return nil, err
+	}
+
+	c.mu.Lock()
+	c.failures = 0
+	c.mu.Unlock()
+	return results, nil
+}
+
+func (c *circuitBreakerReranker) Close() error {
+	return c.inner.Close()
+}
+
 // rerankResults applies reranking to scored nodes with timeout and fallback.
 // If reranking fails or times out, returns the original results unchanged.
 // Preserves reranker ordering and normalizes scores to meaningful display range.
@@ -95,6 +148,9 @@ func rerankResults(ctx context.Context, reranker Reranker, query string, scored 
 	// Attempt reranking
 	results, err := reranker.Rerank(rerankCtx, query, documents)
 	if err != nil {
+		if errors.Is(err, ErrRerankerDisabled) {
+			return scored
+		}
 		// Log warning and return original results
 		slog.Warn("reranking failed, using original scores",
 			"error", err,

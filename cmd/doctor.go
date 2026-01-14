@@ -41,10 +41,18 @@ func init() {
 
 // DoctorCheck represents a single diagnostic check
 type DoctorCheck struct {
-	Name    string
-	Status  string // "ok", "warn", "fail"
-	Message string
-	Hint    string
+	Name    string `json:"name"`
+	Status  string `json:"status"` // "ok", "warn", "fail"
+	Message string `json:"message"`
+	Hint    string `json:"hint,omitempty"`
+}
+
+// DoctorResult is the JSON output structure for doctor command
+type DoctorResult struct {
+	Status   string        `json:"status"` // "ok", "warn", "fail"
+	Checks   []DoctorCheck `json:"checks"`
+	Errors   int           `json:"errors"`
+	Warnings int           `json:"warnings"`
 }
 
 func runDoctor() error {
@@ -53,18 +61,17 @@ func runDoctor() error {
 		return fmt.Errorf("get current directory: %w", err)
 	}
 
-	fmt.Println("🩺 TaskWing Doctor")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println()
-
 	checks := []DoctorCheck{}
 	hasErrors := false
+	hasWarnings := false
 
 	// Check 1: TaskWing initialized
 	check := checkTaskWingInit(cwd)
 	checks = append(checks, check)
 	if check.Status == "fail" {
 		hasErrors = true
+	} else if check.Status == "warn" {
+		hasWarnings = true
 	}
 
 	// Check 2: MCP servers
@@ -77,6 +84,8 @@ func runDoctor() error {
 	for _, c := range hookChecks {
 		if c.Status == "fail" {
 			hasErrors = true
+		} else if c.Status == "warn" {
+			hasWarnings = true
 		}
 	}
 
@@ -87,6 +96,41 @@ func runDoctor() error {
 	// Check 5: Session state
 	sessionCheck := checkSession()
 	checks = append(checks, sessionCheck)
+
+	// Count errors and warnings
+	errorCount := 0
+	warningCount := 0
+	for _, c := range checks {
+		switch c.Status {
+		case "warn":
+			hasWarnings = true
+			warningCount++
+		case "fail":
+			hasErrors = true
+			errorCount++
+		}
+	}
+
+	// JSON output
+	if isJSON() {
+		status := "ok"
+		if hasErrors {
+			status = "fail"
+		} else if hasWarnings {
+			status = "warn"
+		}
+		return printJSON(DoctorResult{
+			Status:   status,
+			Checks:   checks,
+			Errors:   errorCount,
+			Warnings: warningCount,
+		})
+	}
+
+	// Human-readable output
+	fmt.Println("🩺 TaskWing Doctor")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
 
 	// Print all checks
 	for _, c := range checks {
@@ -99,6 +143,9 @@ func runDoctor() error {
 	// Summary and next steps
 	if hasErrors {
 		fmt.Println("❌ Issues found. Fix the errors above before continuing.")
+	} else if hasWarnings {
+		fmt.Println("⚠️  Warnings found. Review the warnings above.")
+		printNextSteps(checks)
 	} else {
 		fmt.Println("✅ Everything looks good!")
 		printNextSteps(checks)

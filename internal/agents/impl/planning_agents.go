@@ -180,6 +180,7 @@ type PlanningAgent struct {
 }
 
 // PlanningTask represents a single task in the plan.
+// Fields align with planner.LLMTaskSchema for validation compatibility.
 type PlanningTask struct {
 	Title              string   `json:"title"`
 	Description        string   `json:"description"`
@@ -189,6 +190,8 @@ type PlanningTask struct {
 	AssignedAgent      string   `json:"assigned_agent"`
 	Dependencies       []string `json:"dependencies"` // List of Task IDs (indices or titles)
 	Complexity         string   `json:"complexity"`   // "low", "medium", "high"
+	Scope              string   `json:"scope,omitempty"`
+	Keywords           []string `json:"keywords,omitempty"`
 }
 
 // PlanningOutput defines the structured response from the LLM.

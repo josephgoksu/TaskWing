@@ -55,7 +55,7 @@ func initConfig() {
 
 	// Attempt to read the configuration file
 	if err := viper.ReadInConfig(); err == nil {
-		if viper.GetBool("verbose") {
+		if viper.GetBool("verbose") && !viper.GetBool("json") {
 			fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
 		}
 	}

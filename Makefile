@@ -7,6 +7,7 @@ BUILD_DIR=.
 TEST_DIR=./test-results
 COVERAGE_FILE=$(TEST_DIR)/coverage.out
 COVERAGE_HTML=$(TEST_DIR)/coverage.html
+CORE_PKGS=./ ./cmd/... ./internal/...
 
 # Use local workspace cache/temp to work in sandboxed environments
 GOENV := GOCACHE=$(PWD)/$(TEST_DIR)/go-build GOTMPDIR=$(PWD)/$(TEST_DIR)/tmp
@@ -21,7 +22,7 @@ all: clean build test
 build:
 	@echo "🔨 Building TaskWing..."
 	mkdir -p $(TEST_DIR) $(TEST_DIR)/go-build $(TEST_DIR)/tmp
-	$(GO) generate ./...
+	$(GO) generate $(CORE_PKGS)
 	$(GO) build -o $(BINARY_NAME) main.go
 	@echo "✅ Build complete: $(BINARY_NAME)"
 
@@ -43,7 +44,7 @@ test: test-unit test-integration test-mcp
 test-unit:
 	@echo "🧪 Running unit tests..."
 	mkdir -p $(TEST_DIR)
-	$(GO) test -v ./... | tee $(TEST_DIR)/unit-tests.log
+	$(GO) test -v $(CORE_PKGS) | tee $(TEST_DIR)/unit-tests.log
 	@echo "✅ Unit tests complete"
 
 # Run integration tests
@@ -73,7 +74,7 @@ test-mcp-functional: test-mcp
 coverage:
 	@echo "📊 Generating test coverage..."
 	mkdir -p $(TEST_DIR)
-	$(GO) test -coverprofile=$(COVERAGE_FILE) ./...
+	$(GO) test -coverprofile=$(COVERAGE_FILE) $(CORE_PKGS)
 	go tool cover -html=$(COVERAGE_FILE) -o $(COVERAGE_HTML)
 	go tool cover -func=$(COVERAGE_FILE) | grep "total:" | tee $(TEST_DIR)/coverage-summary.txt
 	@echo "✅ Coverage report generated: $(COVERAGE_HTML)"
@@ -82,7 +83,7 @@ coverage:
 .PHONY: lint
 lint:
 	@echo "🔍 Running linting and formatting..."
-	$(GO) fmt ./...
+	$(GO) fmt $(CORE_PKGS)
 	@if [ -n "$(SKIP_GOLANGCI)" ]; then \
 		echo "⏭️  SKIP_GOLANGCI set; skipping golangci-lint"; \
 	elif command -v golangci-lint >/dev/null 2>&1; then \
@@ -103,7 +104,7 @@ test-all: clean build lint coverage test-integration test-mcp
 test-quick: build
 	@echo "⚡ Running quick tests..."
 	mkdir -p $(TEST_DIR)
-	$(GO) test ./...
+	$(GO) test $(CORE_PKGS)
 	$(GO) test -v ./cmd -run "TestMCPProtocolStdio"
 	@echo "✅ Quick tests complete"
 
@@ -117,7 +118,7 @@ dev-setup:
 		cp example.env .env; \
 	fi
 	$(GO) mod tidy
-	$(GO) generate ./...
+	$(GO) generate $(CORE_PKGS)
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
 		echo "📦 Installing golangci-lint from source..."; \
 		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0; \

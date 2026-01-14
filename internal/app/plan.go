@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
@@ -15,6 +17,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/planner"
 	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
@@ -38,13 +41,16 @@ type ClarifyOptions struct {
 
 // GenerateResult contains the result of plan generation.
 type GenerateResult struct {
-	Success      bool        `json:"success"`
-	Tasks        []task.Task `json:"tasks,omitempty"`
-	PlanID       string      `json:"plan_id,omitempty"`
-	Goal         string      `json:"goal,omitempty"`
-	EnrichedGoal string      `json:"enriched_goal,omitempty"`
-	Message      string      `json:"message,omitempty"`
-	Hint         string      `json:"hint,omitempty"`
+	Success          bool                             `json:"success"`
+	Tasks            []task.Task                      `json:"tasks,omitempty"`
+	PlanID           string                           `json:"plan_id,omitempty"`
+	Goal             string                           `json:"goal,omitempty"`
+	EnrichedGoal     string                           `json:"enriched_goal,omitempty"`
+	Message          string                           `json:"message,omitempty"`
+	Hint             string                           `json:"hint,omitempty"`
+	SemanticWarnings []string                         `json:"semantic_warnings,omitempty"`
+	SemanticErrors   []string                         `json:"semantic_errors,omitempty"`
+	ValidationStats  *planner.SemanticValidationStats `json:"validation_stats,omitempty"`
 }
 
 // GenerateOptions configures the behavior of plan generation.
@@ -304,6 +310,60 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 		}
 	}
 
+	// Run semantic validation (file paths, shell commands)
+	var semanticWarnings, semanticErrors []string
+	var validationStats *planner.SemanticValidationStats
+	{
+		// Prefer project base path when available (MCP/CLI may run from different cwd)
+		workDir := a.ctx.BasePath
+		if workDir == "" {
+			workDir, _ = os.Getwd()
+		}
+		middleware := planner.NewSemanticMiddleware(planner.MiddlewareConfig{
+			BasePath:          workDir,
+			AllowMissingFiles: true, // Warnings, not errors - plans often create new files
+		})
+
+		// Convert tasks to planner schema for validation
+		plannerTasks := make([]planner.LLMTaskSchema, len(tasks))
+		for i, t := range tasks {
+			plannerTasks[i] = planner.LLMTaskSchema{
+				Title:              t.Title,
+				Description:        t.Description,
+				AcceptanceCriteria: t.AcceptanceCriteria,
+				ValidationSteps:    t.ValidationSteps,
+			}
+		}
+
+		semanticResult := middleware.Validate(&planner.LLMPlanResponse{
+			GoalSummary:         truncateString(opts.Goal, 100),
+			Rationale:           opts.EnrichedGoal,
+			Tasks:               plannerTasks,
+			EstimatedComplexity: "medium", // Default
+		})
+
+		validationStats = &semanticResult.Stats
+
+		// Collect warnings
+		for _, w := range semanticResult.Warnings {
+			semanticWarnings = append(semanticWarnings, fmt.Sprintf("[Task %d] %s: %s", w.TaskIndex+1, w.Type, w.Message))
+		}
+
+		// Collect errors (these are non-blocking but logged)
+		for _, e := range semanticResult.Errors {
+			semanticErrors = append(semanticErrors, fmt.Sprintf("[Task %d] %s: %s", e.TaskIndex+1, e.Type, e.Message))
+		}
+
+		// Log validation results
+		if len(semanticWarnings) > 0 || len(semanticErrors) > 0 {
+			slog.Debug("semantic validation completed",
+				"warnings", len(semanticWarnings),
+				"errors", len(semanticErrors),
+				"paths_checked", semanticResult.Stats.PathsChecked,
+				"commands_validated", semanticResult.Stats.CommandsValidated)
+		}
+	}
+
 	// Save the plan
 	var planID string
 	{
@@ -350,14 +410,25 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 	}
 
 	return &GenerateResult{
-		Success:      true,
-		Tasks:        tasks,
-		PlanID:       planID,
-		Goal:         opts.Goal,
-		EnrichedGoal: opts.EnrichedGoal,
-		Message:      "Plan generated successfully",
-		Hint:         "Use task_next to begin working on the first task.",
+		Success:          true,
+		Tasks:            tasks,
+		PlanID:           planID,
+		Goal:             opts.Goal,
+		EnrichedGoal:     opts.EnrichedGoal,
+		Message:          "Plan generated successfully",
+		Hint:             "Use task_next to begin working on the first task.",
+		SemanticWarnings: semanticWarnings,
+		SemanticErrors:   semanticErrors,
+		ValidationStats:  validationStats,
 	}, nil
+}
+
+// truncateString truncates a string to maxLen characters.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
 }
 
 // Audit runs verification on a completed plan.
@@ -418,8 +489,64 @@ func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, e
 	// Create audit service
 	auditService := impl.NewService(workDir, llmCfg)
 
+	if !opts.AutoFix {
+		auditResult, err := auditService.Audit(ctx, plan)
+		if err != nil {
+			return &AuditResult{
+				Success: false,
+				PlanID:  plan.ID,
+				Message: fmt.Sprintf("Audit failed: %v", err),
+			}, nil
+		}
+
+		result := &AuditResult{
+			Success:        true,
+			PlanID:         plan.ID,
+			RetryCount:     1,
+			BuildPassed:    auditResult.BuildResult.Passed,
+			TestsPassed:    auditResult.TestResult.Passed,
+			SemanticIssues: auditResult.SemanticResult.Issues,
+		}
+
+		// Update plan status in database
+		var newStatus task.PlanStatus
+		if auditResult.Status == "passed" {
+			result.Status = "verified"
+			newStatus = task.PlanStatusVerified
+			result.Message = "Plan verified successfully. All checks passed."
+			result.Hint = "The plan is complete and verified. You can create a PR or start a new plan."
+		} else {
+			result.Status = "needs_revision"
+			newStatus = task.PlanStatusNeedsRevision
+			result.Message = "Plan needs revision. One or more checks failed."
+			result.Hint = "Review the failed checks and fix them, then run audit again."
+		}
+		result.PlanStatus = newStatus
+
+		// Store audit report
+		report := task.AuditReport{
+			Status:         auditResult.Status,
+			BuildOutput:    auditResult.BuildResult.Output,
+			TestOutput:     auditResult.TestResult.Output,
+			SemanticIssues: auditResult.SemanticResult.Issues,
+			RetryCount:     1,
+			CompletedAt:    time.Now().UTC(),
+		}
+		if !auditResult.BuildResult.Passed && auditResult.BuildResult.Error != "" {
+			report.ErrorMessage = "Build failed: " + auditResult.BuildResult.Error
+		} else if !auditResult.TestResult.Passed && auditResult.TestResult.Error != "" {
+			report.ErrorMessage = "Tests failed: " + auditResult.TestResult.Error
+		}
+		reportJSON, marshalErr := json.Marshal(report)
+		if marshalErr == nil {
+			_ = repo.UpdatePlanAuditReport(plan.ID, newStatus, string(reportJSON))
+		}
+
+		return result, nil
+	}
+
 	// Run audit with auto-fix
-	auditResult, err := auditService.AuditWithAutoFix(ctx, plan)
+	autoFixResult, err := auditService.AuditWithAutoFix(ctx, plan)
 	if err != nil {
 		return &AuditResult{
 			Success: false,
@@ -431,32 +558,32 @@ func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, e
 	result := &AuditResult{
 		Success:    true,
 		PlanID:     plan.ID,
-		Status:     auditResult.FinalStatus,
-		RetryCount: auditResult.Attempts,
+		Status:     autoFixResult.FinalStatus,
+		RetryCount: autoFixResult.Attempts,
 	}
-	result.FixesApplied = auditResult.FixesApplied
+	result.FixesApplied = autoFixResult.FixesApplied
 
-	if auditResult.FinalAudit != nil {
-		result.BuildPassed = auditResult.FinalAudit.BuildResult.Passed
-		result.TestsPassed = auditResult.FinalAudit.TestResult.Passed
-		result.SemanticIssues = auditResult.FinalAudit.SemanticResult.Issues
+	if autoFixResult.FinalAudit != nil {
+		result.BuildPassed = autoFixResult.FinalAudit.BuildResult.Passed
+		result.TestsPassed = autoFixResult.FinalAudit.TestResult.Passed
+		result.SemanticIssues = autoFixResult.FinalAudit.SemanticResult.Issues
 	}
 
 	// Update plan status in database
 	var newStatus task.PlanStatus
-	if auditResult.FinalStatus == "verified" {
+	if autoFixResult.FinalStatus == "verified" {
 		newStatus = task.PlanStatusVerified
 		result.Message = "Plan verified successfully. All checks passed."
 		result.Hint = "The plan is complete and verified. You can create a PR or start a new plan."
 	} else {
 		newStatus = task.PlanStatusNeedsRevision
-		result.Message = fmt.Sprintf("Plan needs revision after %d fix attempts.", auditResult.Attempts)
+		result.Message = fmt.Sprintf("Plan needs revision after %d fix attempts.", autoFixResult.Attempts)
 		result.Hint = "Review the semantic issues and fix them manually, then run audit again."
 	}
 	result.PlanStatus = newStatus
 
 	// Store audit report
-	auditReport := auditResult.ToAuditReportWithFixes()
+	auditReport := autoFixResult.ToAuditReportWithFixes()
 	reportJSON, marshalErr := json.Marshal(auditReport)
 	if marshalErr == nil {
 		_ = repo.UpdatePlanAuditReport(plan.ID, newStatus, string(reportJSON))
@@ -485,8 +612,6 @@ func parseQuestionsFromMetadata(metadata map[string]any) []string {
 	return nil
 }
 
-// parseTasksFromMetadata extracts tasks from agent metadata,
-// handling both []impl.PlanningTask and []any (from JSON unmarshaling).
 // parseTasksFromMetadata extracts tasks from agent metadata,
 // handling both []impl.PlanningTask and []any (from JSON unmarshaling).
 func parseTasksFromMetadata(metadata map[string]any) []task.Task {
@@ -519,7 +644,9 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 				Priority:           pt.Priority,
 				Status:             task.StatusPending,
 				AssignedAgent:      pt.AssignedAgent,
-				Complexity:         pt.Complexity, // direct map
+				Complexity:         pt.Complexity,
+				Scope:              pt.Scope,
+				Keywords:           pt.Keywords,
 			}
 			t.EnrichAIFields()
 			tasks = append(tasks, t)
@@ -538,6 +665,7 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 				priority, _ := tm["priority"].(float64)
 				agent, _ := tm["assigned_agent"].(string)
 				complexity, _ := tm["complexity"].(string)
+				scope, _ := tm["scope"].(string)
 
 				var criteria []string
 				if ac, ok := tm["acceptance_criteria"].([]any); ok {
@@ -566,6 +694,15 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 					}
 				}
 
+				var keywords []string
+				if kw, ok := tm["keywords"].([]any); ok {
+					for _, k := range kw {
+						if ks, ok := k.(string); ok {
+							keywords = append(keywords, ks)
+						}
+					}
+				}
+
 				id := genID()
 				newTask := task.Task{
 					ID:                 id,
@@ -577,6 +714,8 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 					Status:             task.StatusPending,
 					AssignedAgent:      agent,
 					Complexity:         complexity,
+					Scope:              scope,
+					Keywords:           keywords,
 				}
 				newTask.EnrichAIFields()
 				tasks = append(tasks, newTask)

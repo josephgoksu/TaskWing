@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"sort"
 	"strings"
 
@@ -50,6 +51,8 @@ type RecallOptions struct {
 	GenerateAnswer bool      // Whether to generate a RAG answer
 	IncludeSymbols bool      // Whether to include code symbols in search (default: true)
 	NoRewrite      bool      // Disable LLM query rewriting (faster, no API call)
+	DisableVector  bool      // Disable vector search (FTS-only, no embeddings)
+	DisableRerank  bool      // Disable reranking (skip TEI reranker)
 	StreamWriter   io.Writer // If set, stream RAG answer tokens to this writer
 }
 
@@ -61,6 +64,8 @@ func DefaultRecallOptions() RecallOptions {
 		GenerateAnswer: false,
 		IncludeSymbols: true,
 		NoRewrite:      false,
+		DisableVector:  false,
+		DisableRerank:  false,
 		StreamWriter:   nil,
 	}
 }
@@ -92,7 +97,67 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 		opts.SymbolLimit = 5
 	}
 
-	ks := knowledge.NewService(a.ctx.Repo, a.ctx.LLMCfg)
+	retrievalCfg := knowledge.LoadRetrievalConfig()
+	if opts.DisableVector {
+		retrievalCfg.VectorWeight = 0
+		retrievalCfg.FTSWeight = 1.0
+	}
+	if opts.DisableRerank {
+		retrievalCfg.RerankingEnabled = false
+	}
+	embeddingConfigWarning := ""
+	if !opts.DisableVector && retrievalCfg.VectorWeight > 0 {
+		embeddingProvider := a.ctx.LLMCfg.EmbeddingProvider
+		if embeddingProvider == "" {
+			embeddingProvider = a.ctx.LLMCfg.Provider
+		}
+		embeddingAPIKey := a.ctx.LLMCfg.EmbeddingAPIKey
+		if embeddingAPIKey == "" {
+			embeddingAPIKey = a.ctx.LLMCfg.APIKey
+		}
+		supportsEmbeddings := embeddingProvider == llm.ProviderOpenAI ||
+			embeddingProvider == llm.ProviderOllama ||
+			embeddingProvider == llm.ProviderGemini ||
+			embeddingProvider == llm.ProviderTEI
+		if !supportsEmbeddings {
+			retrievalCfg.VectorWeight = 0
+			retrievalCfg.FTSWeight = 1.0
+			if embeddingProvider == "" {
+				embeddingConfigWarning = "Embeddings disabled: no embedding provider configured"
+			} else {
+				embeddingConfigWarning = fmt.Sprintf("Embeddings disabled: provider %s does not support embeddings", embeddingProvider)
+			}
+		} else if (embeddingProvider == llm.ProviderOpenAI || embeddingProvider == llm.ProviderGemini) && embeddingAPIKey == "" {
+			retrievalCfg.VectorWeight = 0
+			retrievalCfg.FTSWeight = 1.0
+			embeddingConfigWarning = fmt.Sprintf("Embeddings disabled: missing API key for %s", embeddingProvider)
+		}
+	}
+	var embeddingStatsChecked bool
+	var embeddingStatsMessage string
+	if !opts.DisableVector && retrievalCfg.VectorWeight > 0 {
+		if stats, err := a.ctx.Repo.GetEmbeddingStats(); err == nil && stats != nil {
+			embeddingStatsChecked = true
+			if stats.TotalNodes > 0 && stats.NodesWithEmbeddings == 0 {
+				// No embeddings exist - skip vector search to avoid wasted LLM calls
+				retrievalCfg.VectorWeight = 0
+				retrievalCfg.FTSWeight = 1.0
+			}
+			if stats.TotalNodes > 0 {
+				if stats.MixedDimensions {
+					msg := fmt.Sprintf("Embedding issues: mixed embedding dimensions detected (found %d-dim, but others exist)", stats.EmbeddingDimension)
+					if stats.NodesWithoutEmbeddings > 0 {
+						msg += fmt.Sprintf("; %d nodes missing embeddings", stats.NodesWithoutEmbeddings)
+					}
+					msg += ". Run 'tw memory rebuild-embeddings' to fix."
+					embeddingStatsMessage = msg
+				} else if stats.NodesWithoutEmbeddings > 0 {
+					embeddingStatsMessage = fmt.Sprintf("%d nodes missing embeddings. Run 'tw memory generate-embeddings' to backfill.", stats.NodesWithoutEmbeddings)
+				}
+			}
+		}
+	}
+	ks := knowledge.NewServiceWithConfig(a.ctx.Repo, a.ctx.LLMCfg, retrievalCfg)
 	cfg := ks.GetRetrievalConfig()
 
 	// 1. Query rewriting (skip if NoRewrite option is set)
@@ -106,18 +171,37 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 	}
 
 	// 2. Build pipeline description for transparency
-	pipeline := "FTS + Vector"
+	var pipelineParts []string
+	if cfg.FTSWeight > 0 {
+		pipelineParts = append(pipelineParts, "FTS")
+	}
+	if cfg.VectorWeight > 0 {
+		pipelineParts = append(pipelineParts, "Vector")
+	}
 	if cfg.QueryRewriteEnabled && !opts.NoRewrite {
-		pipeline += " + Rewrite"
+		pipelineParts = append(pipelineParts, "Rewrite")
 	}
 	if cfg.RerankingEnabled {
-		pipeline += " + Rerank"
+		pipelineParts = append(pipelineParts, "Rerank")
 	}
 	if cfg.GraphExpansionEnabled {
-		pipeline += " + Graph"
+		pipelineParts = append(pipelineParts, "Graph")
 	}
 	if opts.IncludeSymbols {
-		pipeline += " + Symbols"
+		pipelineParts = append(pipelineParts, "Symbols")
+	}
+	pipeline := strings.Join(pipelineParts, " + ")
+	if pipeline == "" {
+		pipeline = "None"
+	}
+
+	// 2b. Embedding consistency warning (surface missing/mixed embeddings)
+	var warnings []string
+	if embeddingConfigWarning != "" {
+		warnings = append(warnings, embeddingConfigWarning)
+	}
+	if embeddingStatsChecked && embeddingStatsMessage != "" {
+		warnings = append(warnings, embeddingStatsMessage)
 	}
 
 	// 3. Execute knowledge search (hybrid + rerank + graph expansion)
@@ -139,7 +223,7 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 	}
 
 	// 6. Generate RAG answer if requested (Code-Based RAG)
-	var answer, warning string
+	var answer string
 	if opts.GenerateAnswer {
 		// Fetch actual source code for symbols to ground the answer
 		// Use same search as UI symbols to ensure consistency (what you see = what RAG uses)
@@ -157,7 +241,7 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 		// Generate answer with both knowledge nodes and code snippets
 		ans, err := a.generateRAGAnswer(ctx, query, scored, codeSnippets, opts.StreamWriter)
 		if err != nil {
-			warning = fmt.Sprintf("Answer unavailable: %v", err)
+			warnings = append(warnings, fmt.Sprintf("Answer unavailable: %v", err))
 		} else {
 			answer = ans
 		}
@@ -172,7 +256,7 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 		Total:          len(results),
 		TotalSymbols:   len(symbols),
 		Answer:         answer,
-		Warning:        warning,
+		Warning:        strings.Join(warnings, " "),
 	}, nil
 }
 
@@ -318,6 +402,10 @@ Be concise and direct.
 		return "", fmt.Errorf("create chat model: %w", err)
 	}
 	defer func() { _ = chatModel.Close() }()
+	if a.ctx.LLMCfg.Provider == llm.ProviderGemini {
+		restore := suppressStdLogger()
+		defer restore()
+	}
 
 	messages := []*schema.Message{
 		schema.UserMessage(prompt),
@@ -345,6 +433,9 @@ Be concise and direct.
 			// Also accumulate for return value
 			fullAnswer.WriteString(chunk.Content)
 		}
+		if fullAnswer.Len() == 0 {
+			return "", fmt.Errorf("empty response from model")
+		}
 		return fullAnswer.String(), nil
 	}
 
@@ -355,4 +446,12 @@ Be concise and direct.
 	}
 
 	return resp.Content, nil
+}
+
+func suppressStdLogger() func() {
+	prev := log.Writer()
+	log.SetOutput(io.Discard)
+	return func() {
+		log.SetOutput(prev)
+	}
 }

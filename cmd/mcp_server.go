@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
@@ -98,9 +99,9 @@ type PlanClarifyParams struct {
 
 // PlanGenerateParams defines the parameters for the plan_generate tool
 type PlanGenerateParams struct {
-	Goal         string `json:"goal"`          // Required: user's original goal
-	EnrichedGoal string `json:"enriched_goal"` // Required: full technical spec from plan_clarify
-	Save         bool   `json:"save"`          // If true (default), save plan to database
+	Goal         string `json:"goal"`           // Required: user's original goal
+	EnrichedGoal string `json:"enriched_goal"`  // Required: full technical spec from plan_clarify
+	Save         *bool  `json:"save,omitempty"` // If true (default), save plan to database
 }
 
 // RememberParams defines the parameters for the remember tool
@@ -112,7 +113,7 @@ type RememberParams struct {
 // AuditPlanParams defines the parameters for the audit_plan tool
 type AuditPlanParams struct {
 	PlanID  string `json:"plan_id,omitempty"`  // Optional: specific plan ID (defaults to active plan)
-	AutoFix bool   `json:"auto_fix,omitempty"` // If true, attempt to fix failures automatically (default: true)
+	AutoFix *bool  `json:"auto_fix,omitempty"` // If true, attempt to fix failures automatically (default: true)
 }
 
 // === Code Intelligence Tool Parameters ===
@@ -539,12 +540,24 @@ func handleTaskComplete(repo *memory.Repository, params TaskCompleteParams) (*mc
 // handlePlanClarify runs the ClarifyingAgent to refine a goal.
 // Uses app.PlanApp for all business logic - single source of truth.
 func handlePlanClarify(ctx context.Context, repo *memory.Repository, params PlanClarifyParams) (*mcpsdk.CallToolResultFor[any], error) {
+	goal := strings.TrimSpace(params.Goal)
+	if goal == "" {
+		return mcpValidationErrorResponse("goal", "goal is required")
+	}
+
 	// Use RoleBootstrap for planning operations (same as CLI bootstrap/plan commands)
 	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	planApp := app.NewPlanApp(appCtx)
 
-	result, err := planApp.Clarify(ctx, app.ClarifyOptions{
-		Goal:       params.Goal,
+	planCtx := ctx
+	cancel := func() {}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		planCtx, cancel = context.WithTimeout(ctx, 2*time.Minute)
+	}
+	defer cancel()
+
+	result, err := planApp.Clarify(planCtx, app.ClarifyOptions{
+		Goal:       goal,
 		History:    params.History,
 		AutoAnswer: params.AutoAnswer,
 	})
@@ -559,14 +572,35 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 // handlePlanGenerate runs the PlanningAgent to create tasks.
 // Uses app.PlanApp for all business logic - single source of truth.
 func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params PlanGenerateParams) (*mcpsdk.CallToolResultFor[any], error) {
+	goal := strings.TrimSpace(params.Goal)
+	if goal == "" {
+		return mcpValidationErrorResponse("goal", "goal is required")
+	}
+	enrichedGoal := strings.TrimSpace(params.EnrichedGoal)
+	if enrichedGoal == "" {
+		return mcpValidationErrorResponse("enriched_goal", "enriched_goal is required")
+	}
+
+	save := true
+	if params.Save != nil {
+		save = *params.Save
+	}
+
 	// Use RoleBootstrap for planning operations (same as CLI bootstrap/plan commands)
 	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	planApp := app.NewPlanApp(appCtx)
 
-	result, err := planApp.Generate(ctx, app.GenerateOptions{
-		Goal:         params.Goal,
-		EnrichedGoal: params.EnrichedGoal,
-		Save:         params.Save,
+	planCtx := ctx
+	cancel := func() {}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		planCtx, cancel = context.WithTimeout(ctx, 2*time.Minute)
+	}
+	defer cancel()
+
+	result, err := planApp.Generate(planCtx, app.GenerateOptions{
+		Goal:         goal,
+		EnrichedGoal: enrichedGoal,
+		Save:         save,
 	})
 	if err != nil {
 		return mcpFormattedErrorResponse(mcppresenter.FormatError(err.Error()))
@@ -603,13 +637,18 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params Remembe
 // handleAuditPlan runs the audit service on a plan.
 // Uses app.PlanApp for all business logic - single source of truth.
 func handleAuditPlan(ctx context.Context, repo *memory.Repository, params AuditPlanParams) (*mcpsdk.CallToolResultFor[any], error) {
+	autoFix := true
+	if params.AutoFix != nil {
+		autoFix = *params.AutoFix
+	}
+
 	// Use RoleBootstrap for audit operations (same as CLI plan/audit commands)
 	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Audit(ctx, app.AuditOptions{
 		PlanID:  params.PlanID,
-		AutoFix: params.AutoFix,
+		AutoFix: autoFix,
 	})
 	if err != nil {
 		return mcpFormattedErrorResponse(mcppresenter.FormatError(err.Error()))

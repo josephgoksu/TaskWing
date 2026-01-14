@@ -369,6 +369,25 @@ Requires an API key for the configured provider (OpenAI/Gemini) or a local Ollam
 		fmt.Printf("Generating embeddings for %d nodes...\n", len(toProcess))
 
 		ctx := context.Background()
+		// Preflight embedding generation to avoid repeated failures
+		if _, err := knowledge.GenerateEmbedding(ctx, "taskwing-embedding-healthcheck", llmCfg); err != nil {
+			embeddingProvider := llmCfg.EmbeddingProvider
+			if embeddingProvider == "" {
+				embeddingProvider = llmCfg.Provider
+			}
+			if embeddingProvider == llm.ProviderOllama {
+				baseURL := llmCfg.EmbeddingBaseURL
+				if baseURL == "" {
+					baseURL = llmCfg.BaseURL
+				}
+				if baseURL == "" {
+					baseURL = llm.DefaultOllamaURL
+				}
+				return fmt.Errorf("embedding generation failed: Ollama not reachable at %s (start Ollama or set llm.provider/llm.embedding_provider to openai/gemini)", baseURL)
+			}
+			return fmt.Errorf("embedding generation failed: %w", err)
+		}
+
 		generated := 0
 
 		for _, n := range toProcess {

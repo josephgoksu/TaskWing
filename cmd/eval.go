@@ -18,8 +18,10 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/josephgoksu/TaskWing/internal/app"
 	evalpkg "github.com/josephgoksu/TaskWing/internal/eval"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/mcp"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -484,6 +486,15 @@ Examples:
 			return fmt.Errorf("get cwd: %w", err)
 		}
 
+		offline, _ := cmd.Flags().GetBool("offline")
+		noLLM, _ := cmd.Flags().GetBool("no-llm")
+		if noLLM {
+			offline = true
+		}
+		if offline {
+			return errors.New("offline mode: task generation requires LLM access. Run without --offline or create tasks manually via `tw eval init`")
+		}
+
 		count, _ := cmd.Flags().GetInt("count")
 		if count <= 0 {
 			count = 5
@@ -510,14 +521,18 @@ Examples:
 			fmt.Println("🔍 Reading project constraints from memory via CLI...")
 		}
 
-		// Use tw context to get architectural constraints and workflows
+		// Use tw context to get architectural constraints and workflows (JSON for parsing)
 		ctx := cmd.Context()
-		result, err := cliRunner.Execute(ctx, "context", "architectural constraints decisions rules workflows processes patterns")
+		result, err := cliRunner.Execute(ctx, "context", "--json", "architectural constraints decisions rules workflows processes patterns")
 		if err != nil {
 			return fmt.Errorf("context retrieval: %w (run 'taskwing bootstrap' first)", err)
 		}
 
-		contextStr := result.Stdout
+		var recall app.RecallResult
+		if err := json.Unmarshal([]byte(result.Stdout), &recall); err != nil {
+			return fmt.Errorf("parse context JSON: %w", err)
+		}
+		contextStr := mcp.FormatRecall(&recall)
 		if len(contextStr) < 100 {
 			return errors.New("not enough context in memory. Run 'taskwing bootstrap' first to populate knowledge")
 		}
@@ -651,6 +666,8 @@ func init() {
 
 	evalGenerateTasksCmd.Flags().Int("count", 5, "Number of tasks to generate")
 	evalGenerateTasksCmd.Flags().Bool("force", false, "Overwrite existing tasks.yaml without confirmation")
+	evalGenerateTasksCmd.Flags().Bool("offline", false, "Disable LLM usage (requires manual task authoring)")
+	evalGenerateTasksCmd.Flags().Bool("no-llm", false, "Alias for --offline")
 
 	evalCmd.AddCommand(evalInitCmd, evalRunCmd, evalJudgeCmd, evalReportCmd, evalBenchmarkCmd, evalGenerateTasksCmd)
 	rootCmd.AddCommand(evalCmd)

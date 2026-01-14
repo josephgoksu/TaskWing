@@ -31,12 +31,6 @@ var (
 	registrationsMu sync.RWMutex
 )
 
-// RegisterAgentFactory registers a factory function for creating an agent.
-// Deprecated: Use RegisterAgent instead which includes static metadata.
-func RegisterAgentFactory(id string, factory AgentFactory) {
-	RegisterAgent(id, factory, id, "") // Use ID as name, empty description
-}
-
 // RegisterAgent registers an agent with static metadata.
 // This avoids creating agents with empty config just to get Name/Description.
 func RegisterAgent(id string, factory AgentFactory, name, description string) {

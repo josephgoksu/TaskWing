@@ -13,7 +13,8 @@ import (
 // Runner invokes TaskWing CLI commands as subprocesses.
 // This ensures eval tests the actual CLI behavior, not internal reimplementations.
 type Runner struct {
-	// Binary is the path to the tw binary. Default: "tw" (uses PATH lookup).
+	// Binary is the path to the TaskWing CLI. Defaults to TASKWING_CLI_BIN,
+	// then the current executable, then "taskwing".
 	Binary string
 
 	// WorkDir is the working directory for command execution.
@@ -50,8 +51,14 @@ type Result struct {
 
 // NewRunner creates a Runner with sensible defaults.
 func NewRunner(workDir string) *Runner {
+	binary := "taskwing"
+	if env := os.Getenv("TASKWING_CLI_BIN"); env != "" {
+		binary = env
+	} else if exe, err := os.Executable(); err == nil {
+		binary = exe
+	}
 	return &Runner{
-		Binary:  "tw",
+		Binary:  binary,
 		WorkDir: workDir,
 		Timeout: 10 * time.Minute,
 		Env:     nil,

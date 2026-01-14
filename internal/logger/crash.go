@@ -58,32 +58,35 @@ func SetCommand(cmd string) {
 func SetLastInput(input string) {
 	globalContext.mu.Lock()
 	defer globalContext.mu.Unlock()
-	globalContext.lastInput = input
+	globalContext.lastInput = truncateForLog(strings.TrimSpace(input), 500)
 }
 
 // SetLastPrompt sets the last LLM prompt for crash context.
 func SetLastPrompt(prompt string) {
 	globalContext.mu.Lock()
 	defer globalContext.mu.Unlock()
-	// Truncate long prompts
-	if len(prompt) > 2000 {
-		prompt = prompt[:2000] + "... [truncated]"
+	globalContext.lastPrompt = truncateForLog(prompt, 2000)
+}
+
+func truncateForLog(value string, maxLen int) string {
+	if len(value) <= maxLen {
+		return value
 	}
-	globalContext.lastPrompt = prompt
+	return value[:maxLen] + "... [truncated]"
 }
 
 // CrashLog represents a crash log entry.
 type CrashLog struct {
-	Timestamp   time.Time `json:"timestamp"`
-	Version     string    `json:"version"`
-	Command     string    `json:"command"`
-	PanicValue  string    `json:"panic_value"`
-	StackTrace  string    `json:"stack_trace"`
-	LastInput   string    `json:"last_input,omitempty"`
-	LastPrompt  string    `json:"last_prompt,omitempty"`
-	GoVersion   string    `json:"go_version"`
-	OS          string    `json:"os"`
-	Arch        string    `json:"arch"`
+	Timestamp  time.Time `json:"timestamp"`
+	Version    string    `json:"version"`
+	Command    string    `json:"command"`
+	PanicValue string    `json:"panic_value"`
+	StackTrace string    `json:"stack_trace"`
+	LastInput  string    `json:"last_input,omitempty"`
+	LastPrompt string    `json:"last_prompt,omitempty"`
+	GoVersion  string    `json:"go_version"`
+	OS         string    `json:"os"`
+	Arch       string    `json:"arch"`
 }
 
 // HandlePanic is a deferred function that recovers from panics and logs them.
@@ -121,16 +124,16 @@ func createCrashLog(panicValue any) CrashLog {
 	defer globalContext.mu.RUnlock()
 
 	return CrashLog{
-		Timestamp:   time.Now(),
-		Version:     globalContext.version,
-		Command:     globalContext.command,
-		PanicValue:  fmt.Sprintf("%v", panicValue),
-		StackTrace:  string(debug.Stack()),
-		LastInput:   globalContext.lastInput,
-		LastPrompt:  globalContext.lastPrompt,
-		GoVersion:   runtime.Version(),
-		OS:          runtime.GOOS,
-		Arch:        runtime.GOARCH,
+		Timestamp:  time.Now(),
+		Version:    globalContext.version,
+		Command:    globalContext.command,
+		PanicValue: fmt.Sprintf("%v", panicValue),
+		StackTrace: string(debug.Stack()),
+		LastInput:  globalContext.lastInput,
+		LastPrompt: globalContext.lastPrompt,
+		GoVersion:  runtime.Version(),
+		OS:         runtime.GOOS,
+		Arch:       runtime.GOARCH,
 	}
 }
 

@@ -163,6 +163,11 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		thinkingBudget = 8192
 	}
 
+	timeout, err := config.ResolveLLMTimeout()
+	if err != nil {
+		return llm.Config{}, err
+	}
+
 	return llm.Config{
 		Provider:       llmProvider,
 		Model:          model,
@@ -170,6 +175,7 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		APIKey:         apiKey,
 		BaseURL:        ollamaURL,
 		ThinkingBudget: thinkingBudget,
+		Timeout:        timeout,
 	}, nil
 }
 

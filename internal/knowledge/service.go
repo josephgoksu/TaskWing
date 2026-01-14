@@ -291,44 +291,46 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 	}
 
 	// 2. Vector similarity search (single query, not N+1)
-	queryEmbedding, embErr := GenerateEmbedding(ctx, query, s.llmCfg)
-	if embErr == nil && len(queryEmbedding) > 0 {
-		// Use the optimized single-query method
-		nodes, err := s.repo.ListNodesWithEmbeddings()
-		if err == nil {
-			for i := range nodes {
-				n := &nodes[i]
-				if len(n.Embedding) == 0 {
-					continue
-				}
-
-				// TYPE FILTERING
-				if typeFilter != "" {
-					match := false
-					if n.Type == typeFilter {
-						match = true
-					} else if typeFilter == "workflow" && n.Type == "pattern" {
-						// Check metadata for workflow tag
-						// We do a quick string check on the content for the "Steps:" marker
-						if strings.Contains(n.Content, "Steps:") {
-							match = true
-						}
-					}
-					if !match {
+	if vectorWeight > 0 {
+		queryEmbedding, embErr := GenerateEmbedding(ctx, query, s.llmCfg)
+		if embErr == nil && len(queryEmbedding) > 0 {
+			// Use the optimized single-query method
+			nodes, err := s.repo.ListNodesWithEmbeddings()
+			if err == nil {
+				for i := range nodes {
+					n := &nodes[i]
+					if len(n.Embedding) == 0 {
 						continue
 					}
-				}
 
-				vectorScore := CosineSimilarity(queryEmbedding, n.Embedding)
-				if vectorScore < vectorThreshold {
-					continue // Skip low-relevance results
-				}
+					// TYPE FILTERING
+					if typeFilter != "" {
+						match := false
+						if n.Type == typeFilter {
+							match = true
+						} else if typeFilter == "workflow" && n.Type == "pattern" {
+							// Check metadata for workflow tag
+							// We do a quick string check on the content for the "Steps:" marker
+							if strings.Contains(n.Content, "Steps:") {
+								match = true
+							}
+						}
+						if !match {
+							continue
+						}
+					}
 
-				if _, exists := nodeByID[n.ID]; !exists {
-					nodeByID[n.ID] = n
-					scoreByID[n.ID] = 0
+					vectorScore := CosineSimilarity(queryEmbedding, n.Embedding)
+					if vectorScore < vectorThreshold {
+						continue // Skip low-relevance results
+					}
+
+					if _, exists := nodeByID[n.ID]; !exists {
+						nodeByID[n.ID] = n
+						scoreByID[n.ID] = 0
+					}
+					scoreByID[n.ID] += vectorScore * vectorWeight
 				}
-				scoreByID[n.ID] += vectorScore * vectorWeight
 			}
 		}
 	}
@@ -645,7 +647,13 @@ func (s *Service) CheckEmbeddingConsistency() (*EmbeddingConsistencyCheck, error
 	}
 
 	if check.NeedsAttention {
-		check.Message = fmt.Sprintf("Embedding issues: %s. Run 'tw memory rebuild-embeddings' to fix.", strings.Join(issues, "; "))
+		fixHint := "Run 'tw memory rebuild-embeddings' to fix."
+		if stats.MixedDimensions && stats.NodesWithoutEmbeddings > 0 {
+			fixHint = "Run 'tw memory rebuild-embeddings' to fix mixed dimensions and regenerate missing embeddings."
+		} else if !stats.MixedDimensions && stats.NodesWithoutEmbeddings > 0 {
+			fixHint = "Run 'tw memory generate-embeddings' to backfill."
+		}
+		check.Message = fmt.Sprintf("Embedding issues: %s. %s", strings.Join(issues, "; "), fixHint)
 		slog.Warn("embedding consistency check failed",
 			"total_nodes", stats.TotalNodes,
 			"nodes_with_embeddings", stats.NodesWithEmbeddings,
@@ -793,30 +801,32 @@ func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*De
 
 	// 3. Vector similarity search
 	startVector := time.Now()
-	queryEmbedding, embErr := GenerateEmbedding(ctx, query, s.llmCfg)
-	if embErr == nil && len(queryEmbedding) > 0 {
-		pipeline = append(pipeline, "Vector")
-		nodes, err := s.repo.ListNodesWithEmbeddings()
-		if err == nil {
-			for i := range nodes {
-				n := &nodes[i]
-				if len(n.Embedding) == 0 {
-					continue
-				}
+	if vectorWeight > 0 {
+		queryEmbedding, embErr := GenerateEmbedding(ctx, query, s.llmCfg)
+		if embErr == nil && len(queryEmbedding) > 0 {
+			pipeline = append(pipeline, "Vector")
+			nodes, err := s.repo.ListNodesWithEmbeddings()
+			if err == nil {
+				for i := range nodes {
+					n := &nodes[i]
+					if len(n.Embedding) == 0 {
+						continue
+					}
 
-				vectorScore := CosineSimilarity(queryEmbedding, n.Embedding)
-				if vectorScore < vectorThreshold {
-					continue
-				}
+					vectorScore := CosineSimilarity(queryEmbedding, n.Embedding)
+					if vectorScore < vectorThreshold {
+						continue
+					}
 
-				if existing, ok := scoreMap[n.ID]; ok {
-					existing.vectorScore = vectorScore
-					existing.combined += vectorScore * vectorWeight
-				} else {
-					scoreMap[n.ID] = &nodeScores{
-						node:        n,
-						vectorScore: vectorScore,
-						combined:    vectorScore * vectorWeight,
+					if existing, ok := scoreMap[n.ID]; ok {
+						existing.vectorScore = vectorScore
+						existing.combined += vectorScore * vectorWeight
+					} else {
+						scoreMap[n.ID] = &nodeScores{
+							node:        n,
+							vectorScore: vectorScore,
+							combined:    vectorScore * vectorWeight,
+						}
 					}
 				}
 			}

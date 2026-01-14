@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -12,10 +15,12 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
 func init() {
@@ -36,6 +41,8 @@ func init() {
 	planNewCmd.Flags().Bool("no-export", false, "Skip automatic export")
 	planNewCmd.Flags().String("export-path", "", "Custom path to export plan")
 	planNewCmd.Flags().Bool("non-interactive", false, "Run without user interaction (headless)")
+	planNewCmd.Flags().Bool("offline", false, "Disable LLM usage (create a draft plan without tasks)")
+	planNewCmd.Flags().Bool("no-llm", false, "Alias for --offline")
 
 	planExportCmd.Flags().Bool("stdout", false, "Print to stdout")
 	planExportCmd.Flags().StringP("output", "o", "", "Custom output path")
@@ -48,7 +55,7 @@ func init() {
 
 	// List flags
 	planListCmd.Flags().StringP("query", "q", "", "Filter by goal/enriched goal")
-	planListCmd.Flags().StringP("status", "s", "", "Filter by status (active, draft, completed)")
+	planListCmd.Flags().StringP("status", "s", "", "Filter by status (draft, active, completed, verified, needs_revision, archived)")
 }
 
 // Wrapper to handle repo lifecycle automatically
@@ -89,10 +96,8 @@ var planNewCmd = &cobra.Command{
 		ctx := context.Background()
 		goal := args[0]
 
-		cfg, err := getLLMConfigForRole(cmd, llm.RoleBootstrap)
-		if err != nil {
-			return fmt.Errorf("llm config: %w", err)
-		}
+		// Track user input for crash logging
+		logger.SetLastInput(fmt.Sprintf("plan new %q", goal))
 
 		repo, err := openRepo()
 		if err != nil {
@@ -106,20 +111,76 @@ var planNewCmd = &cobra.Command{
 		}
 		svc := task.NewService(repo, memoryPath)
 
+		offline, _ := cmd.Flags().GetBool("offline")
+		noLLM, _ := cmd.Flags().GetBool("no-llm")
+		if noLLM {
+			offline = true
+		}
+		if offline {
+			if !isQuiet() && !isJSON() {
+				fmt.Fprintln(os.Stderr, "⚠️  Offline mode: LLM disabled. Creating a draft plan without tasks.")
+			}
+			draft := &task.Plan{
+				Goal:         goal,
+				EnrichedGoal: goal,
+				Status:       task.PlanStatusDraft,
+				Tasks:        []task.Task{},
+			}
+			if err := repo.CreatePlan(draft); err != nil {
+				return fmt.Errorf("create draft plan: %w", err)
+			}
+			createdPlan, err := svc.GetPlanWithTasks(draft.ID)
+			if err != nil {
+				return fmt.Errorf("fetch created plan: %w", err)
+			}
+			fmt.Println()
+			printPlanView(createdPlan)
+
+			noExport, _ := cmd.Flags().GetBool("no-export")
+			exportPath, _ := cmd.Flags().GetString("export-path")
+			if !noExport && !viper.GetBool("preview") {
+				outputPath, err := svc.ExportPlanToFile(createdPlan, exportPath)
+				if err != nil {
+					return fmt.Errorf("export plan: %w", err)
+				}
+				if !isQuiet() && !isJSON() {
+					fmt.Printf("\nSaved: %s\n", outputPath)
+				}
+			}
+			return nil
+		}
+
+		cfg, err := getLLMConfigForRole(cmd, llm.RoleBootstrap)
+		if err != nil {
+			return fmt.Errorf("llm config: %w", err)
+		}
+
 		// Initialize App Layer
 		// Agents are now managed internally by PlanApp methods
 		appCtx := app.NewContextWithConfig(repo, cfg)
 		planApp := app.NewPlanApp(appCtx)
 
 		nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
+		if !nonInteractive && !hasTTY() {
+			nonInteractive = true
+			if !isQuiet() && !isJSON() {
+				fmt.Fprintln(os.Stderr, "⚠️  No TTY detected; falling back to --non-interactive")
+			}
+		}
 		if nonInteractive {
 			// Headless Flow
 			fmt.Printf("Analyzing goal: %q...\n", goal)
-			clarifyRes, err := planApp.Clarify(ctx, app.ClarifyOptions{
+
+			clarifyCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+			defer cancel()
+			clarifyRes, err := planApp.Clarify(clarifyCtx, app.ClarifyOptions{
 				Goal:       goal,
 				AutoAnswer: true,
 			})
 			if err != nil {
+				if errors.Is(clarifyCtx.Err(), context.DeadlineExceeded) {
+					return fmt.Errorf("clarification timed out after 2 minutes")
+				}
 				return fmt.Errorf("clarification error: %w", err)
 			}
 			if !clarifyRes.Success {
@@ -127,12 +188,17 @@ var planNewCmd = &cobra.Command{
 			}
 			fmt.Printf("Goal refined: %s\nGenerating plan...\n", clarifyRes.GoalSummary)
 
-			genRes, err := planApp.Generate(ctx, app.GenerateOptions{
+			genCtx, genCancel := context.WithTimeout(ctx, 2*time.Minute)
+			defer genCancel()
+			genRes, err := planApp.Generate(genCtx, app.GenerateOptions{
 				Goal:         goal,
 				EnrichedGoal: clarifyRes.EnrichedGoal,
 				Save:         true,
 			})
 			if err != nil {
+				if errors.Is(genCtx.Err(), context.DeadlineExceeded) {
+					return fmt.Errorf("plan generation timed out after 2 minutes")
+				}
 				return fmt.Errorf("generation error: %w", err)
 			}
 			if !genRes.Success {
@@ -146,6 +212,20 @@ var planNewCmd = &cobra.Command{
 			}
 			fmt.Println()
 			printPlanView(createdPlan)
+
+			if !isQuiet() && !isJSON() {
+				if len(genRes.SemanticWarnings) > 0 || len(genRes.SemanticErrors) > 0 {
+					fmt.Println()
+					fmt.Printf("Semantic validation (non-blocking): %d warning(s), %d error(s)\n",
+						len(genRes.SemanticWarnings), len(genRes.SemanticErrors))
+					for _, w := range genRes.SemanticWarnings {
+						fmt.Printf("  ⚠ %s\n", w)
+					}
+					for _, e := range genRes.SemanticErrors {
+						fmt.Printf("  ⚠ %s\n", e)
+					}
+				}
+			}
 
 			// Export logic
 			noExport, _ := cmd.Flags().GetBool("no-export")
@@ -217,6 +297,10 @@ var planNewCmd = &cobra.Command{
 	},
 }
 
+func hasTTY() bool {
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+}
+
 var planListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all plans",
@@ -256,8 +340,6 @@ var planListCmd = &cobra.Command{
 		return nil
 	}),
 }
-
-
 
 func printPlanTable(plans []task.Plan) {
 	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Bold(true)

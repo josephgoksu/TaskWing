@@ -11,6 +11,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -51,6 +52,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("content cannot be empty")
 	}
 
+	// Track user input for crash logging
+	logger.SetLastInput(fmt.Sprintf("add %q", content))
+
 	// 1. Initialize repository
 	repo, err := openRepo()
 	if err != nil {
@@ -74,7 +78,24 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		fmt.Fprint(os.Stderr, "🧠 Processing...")
 	}
 
-	// 4. Execute add via app layer (ALL business logic here)
+	// 4. Check for preview mode
+	if isPreview() {
+		if !isQuiet() {
+			fmt.Fprintln(os.Stderr, " done (preview)")
+		}
+		if isJSON() {
+			return printJSON(map[string]interface{}{
+				"status":  "preview",
+				"content": content,
+				"type":    addType,
+				"message": "Would add this content (dry run)",
+			})
+		}
+		fmt.Printf("[PREVIEW] Would add: %s\n", truncateForLog(content, 100))
+		return nil
+	}
+
+	// 5. Execute add via app layer (ALL business logic here)
 	ctx := context.Background()
 	result, err := memoryApp.Add(ctx, content, app.AddOptions{
 		Type:   addType,
@@ -87,7 +108,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("add node failed: %w", err)
 	}
 
-	// 5. Output (JSON or CLI)
+	// 6. Output (JSON or CLI)
 	if isJSON() {
 		return printJSON(nodeCreatedResponse{
 			Status:       "created",

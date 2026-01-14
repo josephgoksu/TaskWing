@@ -790,6 +790,16 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.GenerateResult = msg.Result
 		if msg.Result.Success {
+			if len(msg.Result.SemanticWarnings) > 0 || len(msg.Result.SemanticErrors) > 0 {
+				m.addMsg("WARN", fmt.Sprintf("Semantic validation (non-blocking): %d warning(s), %d error(s)",
+					len(msg.Result.SemanticWarnings), len(msg.Result.SemanticErrors)))
+				for _, w := range msg.Result.SemanticWarnings {
+					m.addMsg("WARN", w)
+				}
+				for _, e := range msg.Result.SemanticErrors {
+					m.addMsg("WARN", e)
+				}
+			}
 			m.State = StateSuccess
 			m.PlanID = msg.Result.PlanID
 			m.PlanSummary = fmt.Sprintf("Created plan %s with %d tasks", msg.Result.PlanID, len(msg.Result.Tasks))

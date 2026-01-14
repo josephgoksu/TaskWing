@@ -16,6 +16,18 @@ func isJSON() bool {
 	return viper.GetBool("json")
 }
 
+func isPreview() bool {
+	return viper.GetBool("preview")
+}
+
+// truncateForLog truncates a string to maxLen characters for logging purposes.
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
 func isQuiet() bool {
 	return viper.GetBool("quiet")
 }
@@ -54,4 +66,44 @@ func confirmOrAbort(prompt string) bool {
 		return false
 	}
 	return true
+}
+
+func resolveNodeID(repo *memory.Repository, id string) (string, *memory.Node, error) {
+	if id == "" {
+		return "", nil, fmt.Errorf("node id cannot be empty")
+	}
+
+	node, err := repo.GetNode(id)
+	if err == nil && node != nil {
+		return id, node, nil
+	}
+
+	nodes, listErr := repo.ListNodes("")
+	if listErr != nil {
+		return "", nil, fmt.Errorf("node not found: %s", id)
+	}
+
+	var matches []memory.Node
+	for _, n := range nodes {
+		if strings.HasPrefix(n.ID, id) {
+			matches = append(matches, n)
+		}
+	}
+
+	if len(matches) == 0 {
+		return "", nil, fmt.Errorf("node not found: %s", id)
+	}
+	if len(matches) > 1 {
+		var ids []string
+		for i, n := range matches {
+			if i >= 5 {
+				ids = append(ids, "...")
+				break
+			}
+			ids = append(ids, n.ID)
+		}
+		return "", nil, fmt.Errorf("ambiguous node id %q (matches: %s)", id, strings.Join(ids, ", "))
+	}
+
+	return matches[0].ID, &matches[0], nil
 }

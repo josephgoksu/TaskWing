@@ -40,7 +40,7 @@ type Task struct {
 	Title              string     `json:"title"`
 	Description        string     `json:"description"`
 	Status             TaskStatus `json:"status"`
-	Priority           int        `json:"priority"` // 0-100 (High to Low)
+	Priority           int        `json:"priority"`   // 0-100 (High to Low)
 	Complexity         string     `json:"complexity"` // "low", "medium", "high"
 	AssignedAgent      string     `json:"assignedAgent"`
 	ParentTaskID       string     `json:"parentTaskId,omitempty"`
@@ -185,7 +185,11 @@ func (t *Task) EnrichAIFields() {
 	if len(keywords) > 10 {
 		keywords = keywords[:10]
 	}
-	t.Keywords = keywords
+	effectiveKeywords := t.Keywords
+	if len(effectiveKeywords) == 0 {
+		effectiveKeywords = keywords
+		t.Keywords = keywords
+	}
 
 	// Infer scope from ALL words (including 2-char like "db", "ui")
 	scopeScores := make(map[string]int)
@@ -198,25 +202,29 @@ func (t *Task) EnrichAIFields() {
 	}
 
 	// Find highest scoring scope
-	bestScope := "general"
-	bestScore := 0
-	for scope, score := range scopeScores {
-		if score > bestScore {
-			bestScore = score
-			bestScope = scope
+	effectiveScope := t.Scope
+	if effectiveScope == "" {
+		bestScope := "general"
+		bestScore := 0
+		for scope, score := range scopeScores {
+			if score > bestScore {
+				bestScore = score
+				bestScope = scope
+			}
 		}
+		effectiveScope = bestScope
+		t.Scope = bestScope
 	}
-	t.Scope = bestScope
 
 	// Generate suggested recall queries
 	var queries []string
 
 	// Query 1: Scope-based patterns and constraints
-	queries = append(queries, t.Scope+" patterns constraints decisions")
+	queries = append(queries, effectiveScope+" patterns constraints decisions")
 
 	// Query 2: Top keywords (up to 5)
-	if len(keywords) > 0 {
-		topKw := keywords
+	if len(effectiveKeywords) > 0 {
+		topKw := effectiveKeywords
 		if len(topKw) > 5 {
 			topKw = topKw[:5]
 		}

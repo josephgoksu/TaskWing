@@ -15,26 +15,19 @@ All bootstrap agents use a single LLM call with pre-gathered context:
 | `GitAgent` | git log, shortlog | Milestones, Evolution |
 | `DepsAgent` | go.mod, package.json | Tech decisions, Stack |
 
-### Interactive Agent (ReAct)
+### Planning Agents
 
 | Agent | Pattern | Purpose |
 |-------|---------|---------|
-| `ReactAgent` | `react.NewAgent` | Dynamic tool exploration for `tw context --answer` |
+| `ClarifyingAgent` | Deterministic | Refines user goals by asking clarifying questions |
+| `PlanningAgent` | Deterministic | Decomposes goals into actionable tasks with dependencies |
 
 ## Eino Patterns Used
 
 ```go
-// Deterministic chain (used by bootstrap agents)
+// Deterministic chain (used by all agents)
 chain := core.NewDeterministicChain[ResponseType](ctx, name, model, promptTemplate)
 parsed, raw, duration, err := chain.Invoke(ctx, input)
-
-// ReAct agent with tool calling (used by ReactAgent)
-agent, _ := react.NewAgent(ctx, &react.AgentConfig{
-    ToolCallingModel: model,
-    ToolsConfig:      compose.ToolsNodeConfig{Tools: tools},
-    MessageModifier:  func(ctx, msgs) []*schema.Message { ... },
-})
-result, _ := agent.Generate(ctx, messages)
 ```
 
 ## Adding a New Agent
@@ -42,25 +35,39 @@ result, _ := agent.Generate(ctx, messages)
 1. Embed `core.BaseAgent`
 2. Use `core.NewDeterministicChain` for single-call agents
 3. Add prompt template to `config/prompts.go`
-4. Register in `init()` with `core.RegisterAgentFactory()`
+4. Register in `init()` with `core.RegisterAgent()`
 
 ## File Structure
 
 ```
-analysis/
-├── code.go              # ReactAgent (interactive exploration)
-├── code_deterministic.go # CodeAgent (bootstrap)
-├── doc.go               # DocAgent
-├── git.go               # GitAgent
-└── deps.go              # DepsAgent
-
-tools/
-├── eino.go              # Tools for ReactAgent (read_file, grep_search, etc.)
-└── context.go           # Context gathering utilities
-
 core/
 ├── agent.go             # Agent interface, Finding types
 ├── base.go              # BaseAgent implementation
 ├── eino.go              # DeterministicChain wrapper
-└── registry.go          # Agent factory registry
+├── registry.go          # Agent factory registry
+├── types.go             # Shared types
+├── parsers.go           # JSON parsing utilities
+├── callbacks.go         # LLM callbacks
+└── report.go            # Report generation
+
+impl/
+├── analysis_code.go            # CodeAgent (bootstrap)
+├── analysis_code_deterministic.go  # Deterministic code analysis
+├── analysis_deps.go            # DepsAgent
+├── analysis_doc.go             # DocAgent
+├── analysis_git.go             # GitAgent
+├── planning_agents.go          # ClarifyingAgent, PlanningAgent
+├── planning_context.go         # Planning context utilities
+├── audit.go                    # Audit agent
+├── watch_agent.go              # Watch agent
+└── watch_activity.go           # Activity tracking
+
+tools/
+├── eino.go              # Tools for agents (read_file, grep_search, etc.)
+├── context.go           # Context gathering utilities
+├── budget.go            # Token budget management
+└── symbol_context.go    # Symbol context utilities
+
+verification/
+└── agent.go             # Verification agent
 ```

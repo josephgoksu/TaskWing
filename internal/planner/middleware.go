@@ -60,7 +60,9 @@ type MiddlewareConfig struct {
 
 // SemanticMiddleware validates plans for semantic correctness.
 type SemanticMiddleware struct {
-	cfg MiddlewareConfig
+	cfg            MiddlewareConfig
+	shellAvailable bool
+	shellChecked   bool
 }
 
 // NewSemanticMiddleware creates a new semantic validation middleware.
@@ -68,7 +70,14 @@ func NewSemanticMiddleware(cfg MiddlewareConfig) *SemanticMiddleware {
 	if cfg.BasePath == "" {
 		cfg.BasePath, _ = os.Getwd()
 	}
-	return &SemanticMiddleware{cfg: cfg}
+	m := &SemanticMiddleware{cfg: cfg}
+	if !cfg.SkipCommandValidation {
+		if _, err := exec.LookPath("bash"); err == nil {
+			m.shellAvailable = true
+		}
+		m.shellChecked = true
+	}
+	return m
 }
 
 // Validate performs semantic validation on a plan.
@@ -151,7 +160,29 @@ func (m *SemanticMiddleware) validateFilePaths(result *SemanticValidationResult,
 
 // validateCommands checks shell commands for syntax validity.
 func (m *SemanticMiddleware) validateCommands(result *SemanticValidationResult, taskIdx int, task *LLMTaskSchema) {
+	if !m.shellChecked {
+		if _, err := exec.LookPath("bash"); err == nil {
+			m.shellAvailable = true
+		}
+		m.shellChecked = true
+	}
+	if !m.shellAvailable {
+		if len(task.ValidationSteps) > 0 {
+			result.Warnings = append(result.Warnings, SemanticWarning{
+				TaskIndex: taskIdx,
+				TaskTitle: task.Title,
+				Type:      "command_validation_skipped",
+				Message:   "bash not available; skipping shell syntax validation",
+			})
+		}
+		return
+	}
+
 	for _, step := range task.ValidationSteps {
+		step = strings.TrimSpace(step)
+		if step == "" {
+			continue
+		}
 		result.Stats.CommandsValidated++
 
 		if err := validateShellSyntax(step); err != nil {

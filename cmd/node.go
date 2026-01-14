@@ -26,7 +26,7 @@ var nodeShowCmd = &cobra.Command{
 		}
 		defer func() { _ = repo.Close() }()
 
-		node, err := repo.GetNode(nodeID)
+		_, node, err := resolveNodeID(repo, nodeID)
 		if err != nil {
 			return err
 		}
@@ -74,11 +74,15 @@ var nodeUpdateCmd = &cobra.Command{
 		}
 		defer func() { _ = repo.Close() }()
 
-		if err := repo.UpdateNode(nodeID, content, nodeType, summary); err != nil {
+		resolvedID, _, err := resolveNodeID(repo, nodeID)
+		if err != nil {
+			return err
+		}
+		if err := repo.UpdateNode(resolvedID, content, nodeType, summary); err != nil {
 			return err
 		}
 
-		updated, err := repo.GetNode(nodeID)
+		updated, err := repo.GetNode(resolvedID)
 		if err != nil {
 			return err
 		}
@@ -88,7 +92,7 @@ var nodeUpdateCmd = &cobra.Command{
 		}
 
 		if !isQuiet() {
-			fmt.Printf("✓ Updated node %s\n", nodeID)
+			fmt.Printf("✓ Updated node %s\n", resolvedID)
 		}
 		return nil
 	},
@@ -165,7 +169,7 @@ Examples:
 		}
 
 		nodeID := args[0]
-		node, err := repo.GetNode(nodeID)
+		resolvedID, node, err := resolveNodeID(repo, nodeID)
 		if err != nil {
 			return err
 		}
@@ -186,14 +190,14 @@ Examples:
 			}
 		}
 
-		if err := repo.DeleteNode(nodeID); err != nil {
+		if err := repo.DeleteNode(resolvedID); err != nil {
 			return err
 		}
 
 		if isJSON() {
 			return printJSON(deletedResponse{
 				Status: "deleted",
-				ID:     nodeID,
+				ID:     resolvedID,
 				Type:   node.Type,
 			})
 		}

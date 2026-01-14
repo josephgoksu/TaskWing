@@ -81,6 +81,33 @@ func runConfigShow() error {
 		return fmt.Errorf("get current directory: %w", err)
 	}
 
+	if isJSON() {
+		type configFiles struct {
+			Claude string `json:"claude,omitempty"`
+			Codex  string `json:"codex,omitempty"`
+		}
+		type configStatus struct {
+			Hooks       HooksSettings `json:"hooks"`
+			ConfigFiles configFiles   `json:"config_files"`
+		}
+
+		settings := loadHooksSettings(cwd)
+		files := configFiles{}
+		claudePath := filepath.Join(cwd, ".claude", "settings.json")
+		codexPath := filepath.Join(cwd, ".codex", "settings.json")
+		if _, err := os.Stat(claudePath); err == nil {
+			files.Claude = claudePath
+		}
+		if _, err := os.Stat(codexPath); err == nil {
+			files.Codex = codexPath
+		}
+
+		return printJSON(configStatus{
+			Hooks:       settings,
+			ConfigFiles: files,
+		})
+	}
+
 	fmt.Println("TaskWing Configuration")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
@@ -153,10 +180,19 @@ func runConfigGet(key string) error {
 
 	switch key {
 	case "hooks.enabled":
+		if isJSON() {
+			return printJSON(map[string]any{"key": key, "value": settings.Enabled})
+		}
 		fmt.Println(settings.Enabled)
 	case "hooks.max-tasks":
+		if isJSON() {
+			return printJSON(map[string]any{"key": key, "value": settings.MaxTasks})
+		}
 		fmt.Println(settings.MaxTasks)
 	case "hooks.max-minutes":
+		if isJSON() {
+			return printJSON(map[string]any{"key": key, "value": settings.MaxMinutes})
+		}
 		fmt.Println(settings.MaxMinutes)
 	default:
 		return fmt.Errorf("unknown config key: %s", key)

@@ -13,6 +13,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
@@ -43,6 +44,7 @@ var (
 	contextNoRewrite bool
 	contextDeep      bool
 	contextDepth     int
+	contextOffline   bool
 )
 
 func init() {
@@ -52,12 +54,20 @@ func init() {
 	contextCmd.Flags().BoolVar(&contextNoRewrite, "no-rewrite", false, "Disable LLM query rewriting (faster, no API call)")
 	contextCmd.Flags().BoolVar(&contextDeep, "deep", false, "Deep dive: show call graph, impact analysis, and related architecture")
 	contextCmd.Flags().IntVar(&contextDepth, "depth", 2, "Call graph traversal depth for --deep mode (1-5)")
+	contextCmd.Flags().BoolVar(&contextOffline, "offline", false, "Disable all LLM usage (FTS-only, no rewrite, no answer)")
+	contextCmd.Flags().BoolVar(&contextOffline, "no-llm", false, "Alias for --offline")
 }
 
 func runContext(cmd *cobra.Command, args []string) error {
 	query := args[0]
 
+	// Track user input for crash logging
+	logger.SetLastInput(fmt.Sprintf("context %q", query))
+
 	// Handle --deep mode: route to ExplainApp for symbol deep dive
+	if contextDeep && contextOffline {
+		return fmt.Errorf("--deep requires LLM access; rerun without --offline")
+	}
 	if contextDeep {
 		return runDeepDive(cmd, query)
 	}
@@ -74,10 +84,23 @@ func runContext(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = repo.Close() }()
 
+	if contextOffline {
+		if contextAnswer && !isQuiet() && !isJSON() {
+			fmt.Fprintln(os.Stderr, "⚠️  --offline disables --answer; continuing without LLM answer.")
+		}
+		contextAnswer = false
+		contextNoRewrite = true
+	}
+
 	// 3. Create app context with LLM config
-	llmCfg, err := getLLMConfigForRole(cmd, llm.RoleQuery)
-	if err != nil {
-		return err
+	var llmCfg llm.Config
+	if contextOffline {
+		llmCfg = llm.Config{}
+	} else {
+		llmCfg, err = getLLMConfigForRole(cmd, llm.RoleQuery)
+		if err != nil {
+			return err
+		}
 	}
 	appCtx := app.NewContextWithConfig(repo, llmCfg)
 	recallApp := app.NewRecallApp(appCtx)
@@ -89,7 +112,7 @@ func runContext(cmd *cobra.Command, args []string) error {
 
 	// 5. Show progress (CLI-specific)
 	// For streaming mode, use a different message since answer will appear inline
-	if !isQuiet() {
+	if !isQuiet() && !isJSON() {
 		if willStream {
 			fmt.Fprintln(os.Stderr, "🔍 Searching and generating answer...")
 			fmt.Fprintln(os.Stderr, "")
@@ -109,6 +132,8 @@ func runContext(cmd *cobra.Command, args []string) error {
 		GenerateAnswer: contextAnswer,
 		IncludeSymbols: true, // Include code symbols in search
 		NoRewrite:      contextNoRewrite,
+		DisableVector:  contextOffline,
+		DisableRerank:  contextOffline,
 		StreamWriter:   streamWriter,
 	})
 	if err != nil {
@@ -119,7 +144,7 @@ func runContext(cmd *cobra.Command, args []string) error {
 	}
 
 	// 7. Show completion (CLI-specific)
-	if !isQuiet() && !willStream {
+	if !isQuiet() && !isJSON() && !willStream {
 		fmt.Fprintln(os.Stderr, " done")
 		// Show query rewriting info if it happened
 		if result.RewrittenQuery != "" {
@@ -127,18 +152,21 @@ func runContext(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "📊 Pipeline: %s\n", result.Pipeline)
 	}
-
-	// 7. Handle empty results
-	if len(result.Results) == 0 && len(result.Symbols) == 0 {
-		fmt.Println("No matching knowledge or code symbols found.")
-		fmt.Println("Try adding more context with: taskwing add \"...\"")
-		fmt.Println("Or run: taskwing bootstrap to index your codebase")
-		return nil
+	if result.Warning != "" && !isJSON() {
+		fmt.Fprintf(os.Stderr, "⚠️  %s\n", result.Warning)
 	}
 
 	// 8. Output (JSON or TUI)
 	if isJSON() {
 		return printJSON(result)
+	}
+
+	// 8. Handle empty results (non-JSON)
+	if len(result.Results) == 0 && len(result.Symbols) == 0 {
+		fmt.Println("No matching knowledge or code symbols found.")
+		fmt.Println("Try adding more context with: taskwing add \"...\"")
+		fmt.Println("Or run: taskwing bootstrap to index your codebase")
+		return nil
 	}
 
 	// When streaming was used, answer was already printed - just add a newline

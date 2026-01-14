@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/spf13/viper"
@@ -87,6 +88,11 @@ func ParseModelSpec(spec string, role llm.ModelRole) (llm.Config, error) {
 		thinkingBudget = 8192
 	}
 
+	timeout, err := ResolveLLMTimeout()
+	if err != nil {
+		return llm.Config{}, err
+	}
+
 	return llm.Config{
 		Provider:       llmProvider,
 		Model:          model,
@@ -94,6 +100,7 @@ func ParseModelSpec(spec string, role llm.ModelRole) (llm.Config, error) {
 		APIKey:         apiKey,
 		BaseURL:        baseURL,
 		ThinkingBudget: thinkingBudget,
+		Timeout:        timeout,
 		// EmbeddingProvider, EmbeddingAPIKey, EmbeddingBaseURL left empty
 		// client.go will fallback to main Provider for embeddings
 	}, nil
@@ -182,6 +189,11 @@ func LoadLLMConfig() (llm.Config, error) {
 	}
 	// If same provider or empty, client.go will fallback to main APIKey
 
+	timeout, err := ResolveLLMTimeout()
+	if err != nil {
+		return llm.Config{}, err
+	}
+
 	return llm.Config{
 		Provider:          llmProvider,
 		Model:             model,
@@ -191,7 +203,31 @@ func LoadLLMConfig() (llm.Config, error) {
 		EmbeddingProvider: embeddingProvider,
 		EmbeddingAPIKey:   embeddingAPIKey,
 		EmbeddingBaseURL:  embeddingBaseURL,
+		Timeout:           timeout,
 	}, nil
+}
+
+// ResolveLLMTimeout resolves LLM timeout from config or env with defaults.
+func ResolveLLMTimeout() (time.Duration, error) {
+	if viper.IsSet("llm.timeout") {
+		raw := strings.TrimSpace(viper.GetString("llm.timeout"))
+		if raw == "" {
+			return llm.DefaultRequestTimeout, nil
+		}
+		dur, err := time.ParseDuration(raw)
+		if err != nil {
+			return 0, fmt.Errorf("invalid llm.timeout: %w", err)
+		}
+		return dur, nil
+	}
+	if viper.IsSet("llm.timeout_seconds") {
+		seconds := viper.GetInt("llm.timeout_seconds")
+		if seconds < 0 {
+			return 0, fmt.Errorf("invalid llm.timeout_seconds: %d", seconds)
+		}
+		return time.Duration(seconds) * time.Second, nil
+	}
+	return llm.DefaultRequestTimeout, nil
 }
 
 // ResolveAPIKey returns the best API key for the given provider using

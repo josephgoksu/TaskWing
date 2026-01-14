@@ -41,9 +41,9 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	defer func() { _ = repo.Close() }()
 
 	// Check if node exists
-	node, err := repo.GetNode(nodeID)
+	resolvedID, node, err := resolveNodeID(repo, nodeID)
 	if err != nil {
-		return fmt.Errorf("node not found: %s", nodeID)
+		return err
 	}
 
 	// Confirmation prompt (unless --force or --json)
@@ -54,11 +54,11 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Summary: %s\n", node.Summary)
 		if node.Content != "" && node.Content != node.Summary {
 			// Show truncated content preview
-			preview := node.Content
-			if len(preview) > 100 {
-				preview = preview[:97] + "..."
+			contentPreview := node.Content
+			if len(contentPreview) > 100 {
+				contentPreview = contentPreview[:97] + "..."
 			}
-			fmt.Printf("  Content: %s\n", preview)
+			fmt.Printf("  Content: %s\n", contentPreview)
 		}
 		fmt.Println()
 
@@ -67,15 +67,30 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Check for preview mode - exit before making changes
+	if isPreview() {
+		if isJSON() {
+			return printJSON(map[string]any{
+				"status":  "preview",
+				"id":      resolvedID,
+				"type":    node.Type,
+				"summary": node.Summary,
+				"message": "Would delete this node (dry run)",
+			})
+		}
+		fmt.Printf("[PREVIEW] Would delete [%s]: %s\n", node.Type, node.Summary)
+		return nil
+	}
+
 	// Delete the node
-	if err := repo.DeleteNode(nodeID); err != nil {
+	if err := repo.DeleteNode(resolvedID); err != nil {
 		return fmt.Errorf("delete node: %w", err)
 	}
 
 	if isJSON() {
 		return printJSON(deletedResponse{
 			Status: "deleted",
-			ID:     nodeID,
+			ID:     resolvedID,
 			Type:   node.Type,
 		})
 	} else if !isQuiet() {

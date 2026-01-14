@@ -28,19 +28,6 @@ func quoteYAMLValue(value string) string {
 	return `"` + escaped + `"`
 }
 
-// SaveGlobalLLMConfig saves the LLM provider, API key, and default model to global config.
-// Deprecated: Use SaveGlobalLLMConfigWithModel to also specify the model.
-func SaveGlobalLLMConfig(provider, key string) error {
-	if provider == "" {
-		return fmt.Errorf("provider cannot be empty")
-	}
-	if key == "" {
-		return fmt.Errorf("API key cannot be empty")
-	}
-	model := llm.DefaultModelForProvider(provider)
-	return SaveGlobalLLMConfigWithModel(provider, model, key)
-}
-
 // SaveGlobalLLMConfigWithModel saves the LLM provider, model, and API key to global config.
 func SaveGlobalLLMConfigWithModel(provider, model, key string) error {
 	// Input validation

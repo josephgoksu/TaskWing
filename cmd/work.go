@@ -46,6 +46,10 @@ func init() {
 }
 
 func runWork(launch bool, planGoal string) error {
+	if isJSON() {
+		return runWorkJSON(launch, planGoal)
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current directory: %w", err)
@@ -251,4 +255,112 @@ func runWork(launch bool, planGoal string) error {
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 	return nil
+}
+
+type workCheck struct {
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+	Hint    string `json:"hint,omitempty"`
+}
+
+type workPlanSummary struct {
+	ID        string `json:"id"`
+	Completed int    `json:"completed"`
+	Total     int    `json:"total"`
+}
+
+type workStatus struct {
+	Initialized        bool             `json:"initialized"`
+	Hooks              []workCheck      `json:"hooks,omitempty"`
+	MCP                *workCheck       `json:"mcp,omitempty"`
+	ActivePlan         *workPlanSummary `json:"active_plan,omitempty"`
+	SessionInitialized bool             `json:"session_initialized"`
+	Warnings           []string         `json:"warnings,omitempty"`
+	Actions            []string         `json:"actions,omitempty"`
+}
+
+func runWorkJSON(launch bool, planGoal string) error {
+	status := workStatus{
+		SessionInitialized: false,
+	}
+
+	if launch {
+		status.Warnings = append(status.Warnings, "launch_ignored_in_json")
+	}
+	if planGoal != "" {
+		status.Warnings = append(status.Warnings, "plan_goal_ignored_in_json")
+		status.Actions = append(status.Actions, fmt.Sprintf("taskwing plan new %q", planGoal))
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get current directory: %w", err)
+	}
+
+	taskwingDir := filepath.Join(cwd, ".taskwing")
+	if _, err := os.Stat(taskwingDir); os.IsNotExist(err) {
+		status.Initialized = false
+		status.Actions = append(status.Actions, "taskwing bootstrap")
+	} else {
+		status.Initialized = true
+	}
+
+	hookChecks := checkHooksConfig(cwd)
+	for _, hc := range hookChecks {
+		status.Hooks = append(status.Hooks, workCheck{
+			Status:  hc.Status,
+			Message: hc.Message,
+			Hint:    hc.Hint,
+		})
+		if hc.Status == "warn" || hc.Status == "fail" {
+			status.Warnings = append(status.Warnings, fmt.Sprintf("hooks_%s", hc.Status))
+			if hc.Hint != "" {
+				status.Actions = append(status.Actions, hc.Hint)
+			}
+		}
+	}
+
+	claudeMCP := checkClaudeMCP()
+	if claudeMCP.Status != "" {
+		status.MCP = &workCheck{
+			Status:  claudeMCP.Status,
+			Message: claudeMCP.Message,
+			Hint:    claudeMCP.Hint,
+		}
+		if claudeMCP.Status == "warn" || claudeMCP.Status == "fail" {
+			status.Warnings = append(status.Warnings, fmt.Sprintf("mcp_%s", claudeMCP.Status))
+			if claudeMCP.Hint != "" {
+				status.Actions = append(status.Actions, claudeMCP.Hint)
+			}
+		}
+	}
+
+	if status.Initialized {
+		repo, repoErr := openRepo()
+		if repoErr == nil {
+			defer func() { _ = repo.Close() }()
+			if activePlan, planErr := repo.GetActivePlan(); planErr == nil && activePlan != nil {
+				completed := 0
+				for _, t := range activePlan.Tasks {
+					if t.Status == "completed" {
+						completed++
+					}
+				}
+				status.ActivePlan = &workPlanSummary{
+					ID:        activePlan.ID,
+					Completed: completed,
+					Total:     len(activePlan.Tasks),
+				}
+			} else {
+				status.Actions = append(status.Actions, "taskwing plan new \"your development goal\"")
+			}
+		}
+	}
+
+	if len(status.Actions) == 0 {
+		status.Actions = append(status.Actions, "taskwing hook session-init")
+		status.Actions = append(status.Actions, "claude")
+	}
+
+	return printJSON(status)
 }

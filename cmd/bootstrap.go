@@ -18,6 +18,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/josephgoksu/TaskWing/internal/project"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
@@ -55,6 +56,9 @@ Use --analyze for deep LLM-powered analysis (slower, requires API key):
 		if err != nil {
 			return fmt.Errorf("get current directory: %w", err)
 		}
+
+		// Track user input for crash logging
+		logger.SetLastInput(fmt.Sprintf("bootstrap (analyze=%v, dir=%s)", analyze, cwd))
 
 		// Load LLM config - only required for --analyze mode
 		var llmCfg llm.Config
