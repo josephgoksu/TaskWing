@@ -3,6 +3,8 @@ package planner
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -21,13 +23,33 @@ type Verifier interface {
 // It uses the codeintel.QueryService to verify file paths, symbol references,
 // and dependency relationships mentioned in tasks.
 type PlanVerifier struct {
-	query *codeintel.QueryService
+	query    *codeintel.QueryService
+	basePath string // Project root for resolving relative paths
+}
+
+// VerifierConfig configures the PlanVerifier behavior.
+type VerifierConfig struct {
+	BasePath string // Project root directory
 }
 
 // NewPlanVerifier creates a new PlanVerifier with the given query service.
 func NewPlanVerifier(query *codeintel.QueryService) *PlanVerifier {
+	basePath, _ := os.Getwd()
 	return &PlanVerifier{
-		query: query,
+		query:    query,
+		basePath: basePath,
+	}
+}
+
+// NewPlanVerifierWithConfig creates a PlanVerifier with custom configuration.
+func NewPlanVerifierWithConfig(query *codeintel.QueryService, cfg VerifierConfig) *PlanVerifier {
+	basePath := cfg.BasePath
+	if basePath == "" {
+		basePath, _ = os.Getwd()
+	}
+	return &PlanVerifier{
+		query:    query,
+		basePath: basePath,
 	}
 }
 
@@ -209,4 +231,179 @@ func ExtractPathsFromTask(task *LLMTaskSchema) []PathReference {
 	}
 
 	return ExtractPaths(allText.String())
+}
+
+// === Path Validation and Auto-Recovery ===
+
+// PathValidationResult represents the outcome of validating a single path.
+type PathValidationResult struct {
+	Original    string   // The original path from the task
+	Valid       bool     // True if path exists
+	Corrected   string   // The corrected path (if auto-recovered)
+	Suggestions []string // Alternative paths if ambiguous
+	Note        string   // Additional context (e.g., "Did you mean...?")
+}
+
+// VerificationResult contains the full verification outcome for a task.
+type VerificationResult struct {
+	TaskIndex   int
+	TaskTitle   string
+	PathResults []PathValidationResult
+	Corrections int // Number of auto-corrections applied
+	Warnings    int // Number of suggestions/notes added
+}
+
+// ValidatePath checks if a path exists and attempts recovery if not.
+func (v *PlanVerifier) ValidatePath(ctx context.Context, ref PathReference) PathValidationResult {
+	result := PathValidationResult{
+		Original: ref.Path,
+	}
+
+	// Resolve full path
+	fullPath := ref.Path
+	if !filepath.IsAbs(ref.Path) {
+		fullPath = filepath.Join(v.basePath, ref.Path)
+	}
+
+	// Check if path exists
+	if _, err := os.Stat(fullPath); err == nil {
+		result.Valid = true
+		return result
+	}
+
+	// Path doesn't exist - attempt recovery
+	recovery := v.recoverPath(ctx, ref)
+	result.Valid = recovery.found
+	result.Corrected = recovery.correctedPath
+	result.Suggestions = recovery.suggestions
+	result.Note = recovery.note
+
+	return result
+}
+
+// pathRecovery holds the result of a path recovery attempt.
+type pathRecovery struct {
+	found         bool
+	correctedPath string
+	suggestions   []string
+	note          string
+}
+
+// recoverPath attempts to find the correct path using codeintel.
+func (v *PlanVerifier) recoverPath(ctx context.Context, ref PathReference) pathRecovery {
+	basename := filepath.Base(ref.Path)
+
+	// Skip directory references - can't recover those easily
+	if ref.IsDir {
+		return pathRecovery{
+			note: fmt.Sprintf("Directory %s not found", ref.Path),
+		}
+	}
+
+	// If no query service, we can't search
+	if v.query == nil {
+		return pathRecovery{
+			note: fmt.Sprintf("File %s not found (no code index available)", ref.Path),
+		}
+	}
+
+	// Search for files matching the basename using HybridSearch
+	results, err := v.query.HybridSearch(ctx, basename, 10)
+	if err != nil || len(results) == 0 {
+		return pathRecovery{
+			note: fmt.Sprintf("File %s not found in codebase", ref.Path),
+		}
+	}
+
+	// Filter results to those with matching basename
+	var candidates []string
+	for _, r := range results {
+		if filepath.Base(r.Symbol.FilePath) == basename {
+			// Deduplicate
+			found := false
+			for _, c := range candidates {
+				if c == r.Symbol.FilePath {
+					found = true
+					break
+				}
+			}
+			if !found {
+				candidates = append(candidates, r.Symbol.FilePath)
+			}
+		}
+	}
+
+	// If no exact basename matches, try fuzzy matches
+	if len(candidates) == 0 {
+		nameWithoutExt := strings.TrimSuffix(basename, filepath.Ext(basename))
+		for _, r := range results {
+			fileBase := filepath.Base(r.Symbol.FilePath)
+			fileNameWithoutExt := strings.TrimSuffix(fileBase, filepath.Ext(fileBase))
+			if strings.Contains(strings.ToLower(fileNameWithoutExt), strings.ToLower(nameWithoutExt)) {
+				found := false
+				for _, c := range candidates {
+					if c == r.Symbol.FilePath {
+						found = true
+						break
+					}
+				}
+				if !found {
+					candidates = append(candidates, r.Symbol.FilePath)
+				}
+			}
+		}
+	}
+
+	// Apply recovery logic
+	switch len(candidates) {
+	case 0:
+		return pathRecovery{
+			note: fmt.Sprintf("File %s not found in codebase", ref.Path),
+		}
+	case 1:
+		// Unique match - auto-correct
+		return pathRecovery{
+			found:         true,
+			correctedPath: candidates[0],
+			note:          fmt.Sprintf("Auto-corrected: %s -> %s", ref.Path, candidates[0]),
+		}
+	default:
+		// Multiple candidates - provide suggestions
+		return pathRecovery{
+			suggestions: candidates,
+			note:        fmt.Sprintf("Did you mean one of: %s?", strings.Join(candidates, ", ")),
+		}
+	}
+}
+
+// VerifyTaskPaths validates all paths in a task and returns the results.
+func (v *PlanVerifier) VerifyTaskPaths(ctx context.Context, taskIdx int, task *LLMTaskSchema) VerificationResult {
+	result := VerificationResult{
+		TaskIndex: taskIdx,
+		TaskTitle: task.Title,
+	}
+
+	paths := ExtractPathsFromTask(task)
+	for _, ref := range paths {
+		pathResult := v.ValidatePath(ctx, ref)
+		result.PathResults = append(result.PathResults, pathResult)
+
+		if pathResult.Corrected != "" {
+			result.Corrections++
+		}
+		if len(pathResult.Suggestions) > 0 || (pathResult.Note != "" && !pathResult.Valid) {
+			result.Warnings++
+		}
+	}
+
+	return result
+}
+
+// ApplyCorrections applies path corrections to task text.
+func ApplyCorrections(text string, corrections map[string]string) string {
+	result := text
+	for original, corrected := range corrections {
+		result = strings.ReplaceAll(result, original, corrected)
+	}
+	return result
 }
