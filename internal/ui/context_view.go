@@ -41,19 +41,15 @@ func RenderContextResultsWithSymbolsVerbose(query string, scored []knowledge.Sco
 func renderContextInternal(query string, scored []knowledge.ScoredNode, answer string, verbose bool) {
 	// Styles
 	var (
-		cardStyle   = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).Padding(0, 2).MarginTop(1).BorderForeground(lipgloss.Color("63"))
-		titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		sourceTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-		metaStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		barFull     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-		barEmpty    = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+		titleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+		sectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
 	)
 
-	// Render Answer Summary
+	// Render Answer Panel
 	if answer != "" {
 		fmt.Println()
 		fmt.Println(titleStyle.Render(fmt.Sprintf("📖 %s", query)))
-		fmt.Println(cardStyle.Render(answer))
+		fmt.Println(RenderInfoPanel("Answer", answer))
 	} else {
 		fmt.Println(titleStyle.Render(fmt.Sprintf("🔍 Context for: \"%s\"", query)))
 	}
@@ -61,82 +57,124 @@ func renderContextInternal(query string, scored []knowledge.ScoredNode, answer s
 	// Render Sources
 	fmt.Println()
 	if answer != "" {
-		fmt.Println(titleStyle.Render("📚 Sources"))
+		fmt.Println(sectionStyle.Render("📚 Sources"))
 	}
 
-	// Calculate max score for relative scaling (handles low-score embeddings like Qwen3)
-	var maxScore float32 = 0.01 // Minimum to avoid division by zero
+	// Calculate max score for relative scaling
+	var maxScore float32 = 0.01
 	for _, s := range scored {
 		if s.Score > maxScore {
 			maxScore = s.Score
 		}
 	}
 
+	// Render each result in a Panel
 	for i, s := range scored {
-		// Relative scoring: scale to max in result set, minimum 1 bar for any result
-		relativeScore := s.Score / maxScore
-		barSegments := int(relativeScore * 10)
-		if barSegments < 1 && s.Score > 0 {
-			barSegments = 1 // At least 1 segment for any non-zero result
-		}
-		if barSegments > 10 {
-			barSegments = 10
-		}
-		bar := barFull.Render(strings.Repeat("━", barSegments)) + barEmpty.Render(strings.Repeat("━", 10-barSegments))
+		renderScoredNodePanel(i+1, s, maxScore, verbose)
+	}
+}
 
-		summary := s.Node.Summary
-		if summary == "" {
-			// truncate content if summary is missing
-			runes := []rune(s.Node.Content)
-			if len(runes) > 60 {
-				summary = string(runes[:60]) + "..."
-			} else {
-				summary = string(runes)
-			}
-		}
+// renderScoredNodePanel renders a single knowledge result as a styled panel.
+func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, verbose bool) {
+	// Styles
+	var (
+		headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)  // Cyan for headers
+		metaStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))            // Dim for metadata
+		contentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))            // Light for content
+		barFull      = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))             // Green
+		barEmpty     = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))            // Dark gray
+		panelBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(scoreToColor(s.Score, maxScore)).Padding(0, 1).MarginTop(1)
+	)
 
-		id := s.Node.ID
-		if len(id) > 6 {
-			id = id[:6]
-		}
+	// Calculate score bar
+	relativeScore := s.Score / maxScore
+	barSegments := int(relativeScore * 10)
+	if barSegments < 1 && s.Score > 0 {
+		barSegments = 1
+	}
+	if barSegments > 10 {
+		barSegments = 10
+	}
+	bar := barFull.Render(strings.Repeat("━", barSegments)) + barEmpty.Render(strings.Repeat("━", 10-barSegments))
 
-		// Use unified icon mapping from list_view.go
-		icon := TypeIcon(s.Node.Type)
-
-		// Add graph expansion indicator
-		expandedIndicator := ""
-		if s.ExpandedFrom != "" {
-			expandedIndicator = " 🔗" // Indicates this came from graph expansion
-		}
-
-		// Show content for high-scoring results (>70% of max AND >0.25 absolute)
-		// Get content without the summary prefix to avoid redundancy
-		cleanContent := getContentWithoutSummary(s.Node.Content, summary)
-		showContent := relativeScore > contentDisplayRelativeThreshold &&
-			s.Score > contentDisplayAbsoluteThreshold &&
-			cleanContent != ""
-
-		if verbose {
-			// Verbose: show full metadata
-			fmt.Printf(" %d. %s %s\n", i+1, icon, sourceTitle.Render(summary))
-			fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("ID: %s | Type: %s | Score: %.2f%s", id, s.Node.Type, s.Score, expandedIndicator)))
-			if s.Node.SourceAgent != "" {
-				fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("Agent: %s", s.Node.SourceAgent)))
-			}
-			if showContent {
-				// Show truncated content for high-scoring results
-				content := truncateContent(cleanContent, 200)
-				fmt.Printf("    %s\n", metaStyle.Render(content))
-			}
+	// Build summary
+	summary := s.Node.Summary
+	if summary == "" {
+		runes := []rune(s.Node.Content)
+		if len(runes) > 60 {
+			summary = string(runes[:60]) + "..."
 		} else {
-			// Compact: single line with score bar
-			fmt.Printf(" %d. %s %s %s%s\n", i+1, icon, sourceTitle.Render(summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)), expandedIndicator)
-			if showContent {
-				// Show truncated content for high-scoring results
-				content := truncateContent(cleanContent, 150)
-				fmt.Printf("    %s\n", metaStyle.Render(content))
-			}
+			summary = string(runes)
 		}
+	}
+
+	// Build ID
+	id := s.Node.ID
+	if len(id) > 8 {
+		id = id[:8]
+	}
+
+	// Icon
+	icon := TypeIcon(s.Node.Type)
+
+	// Graph expansion indicator
+	expandedIndicator := ""
+	if s.ExpandedFrom != "" {
+		expandedIndicator = " 🔗"
+	}
+
+	// Build panel content
+	var content strings.Builder
+
+	// Header line: Type icon and summary
+	content.WriteString(headerStyle.Render(fmt.Sprintf("%s %s", icon, summary)))
+	content.WriteString(expandedIndicator)
+	content.WriteString("\n")
+
+	// Metadata line: Score bar, ID, Type
+	content.WriteString(metaStyle.Render(fmt.Sprintf("Score: %s %.2f  │  Source: %s  │  Type: %s",
+		bar, s.Score, id, s.Node.Type)))
+
+	if verbose {
+		// Additional metadata in verbose mode
+		if s.Node.SourceAgent != "" {
+			content.WriteString("\n")
+			content.WriteString(metaStyle.Render(fmt.Sprintf("Agent: %s", s.Node.SourceAgent)))
+		}
+	}
+
+	// Content section for high-scoring results
+	cleanContent := getContentWithoutSummary(s.Node.Content, summary)
+	showContent := relativeScore > contentDisplayRelativeThreshold &&
+		s.Score > contentDisplayAbsoluteThreshold &&
+		cleanContent != ""
+
+	if showContent {
+		maxLen := 150
+		if verbose {
+			maxLen = 300
+		}
+		truncated := truncateContent(cleanContent, maxLen)
+		content.WriteString("\n")
+		content.WriteString(metaStyle.Render("─────────────────────────────────────────────────"))
+		content.WriteString("\n")
+		content.WriteString(contentStyle.Render(truncated))
+	}
+
+	fmt.Printf(" %d. ", index)
+	fmt.Println(panelBorder.Render(content.String()))
+}
+
+// scoreToColor returns a border color based on the score (green for high, yellow for medium, gray for low).
+func scoreToColor(score, maxScore float32) lipgloss.Color {
+	relative := score / maxScore
+	switch {
+	case relative >= 0.8:
+		return lipgloss.Color("42") // Green - high relevance
+	case relative >= 0.5:
+		return lipgloss.Color("214") // Orange - medium relevance
+	default:
+		return lipgloss.Color("241") // Gray - lower relevance
 	}
 }
 
@@ -144,21 +182,15 @@ func renderContextInternal(query string, scored []knowledge.ScoredNode, answer s
 func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNode, symbols []app.SymbolResponse, answer string, verbose bool) {
 	// Styles
 	var (
-		cardStyle     = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).Padding(0, 2).MarginTop(1).BorderForeground(lipgloss.Color("63"))
-		titleStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		sectionStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
-		sourceTitle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-		metaStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		locationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
-		barFull       = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-		barEmpty      = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))
+		titleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+		sectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
 	)
 
-	// Render Answer Summary
+	// Render Answer Panel
 	if answer != "" {
 		fmt.Println()
 		fmt.Println(titleStyle.Render(fmt.Sprintf("📖 %s", query)))
-		fmt.Println(cardStyle.Render(answer))
+		fmt.Println(RenderInfoPanel("Answer", answer))
 	} else {
 		fmt.Println(titleStyle.Render(fmt.Sprintf("🔍 Context for: \"%s\"", query)))
 	}
@@ -181,61 +213,7 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 		}
 
 		for i, s := range scored {
-			relativeScore := s.Score / maxScore
-			barSegments := int(relativeScore * 10)
-			if barSegments < 1 && s.Score > 0 {
-				barSegments = 1
-			}
-			if barSegments > 10 {
-				barSegments = 10
-			}
-			bar := barFull.Render(strings.Repeat("━", barSegments)) + barEmpty.Render(strings.Repeat("━", 10-barSegments))
-
-			summary := s.Node.Summary
-			if summary == "" {
-				runes := []rune(s.Node.Content)
-				if len(runes) > 60 {
-					summary = string(runes[:60]) + "..."
-				} else {
-					summary = string(runes)
-				}
-			}
-
-			id := s.Node.ID
-			if len(id) > 6 {
-				id = id[:6]
-			}
-
-			icon := TypeIcon(s.Node.Type)
-			expandedIndicator := ""
-			if s.ExpandedFrom != "" {
-				expandedIndicator = " 🔗"
-			}
-
-			// Show content for high-scoring results (>70% of max AND >0.25 absolute)
-			// Get content without the summary prefix to avoid redundancy
-			cleanContent := getContentWithoutSummary(s.Node.Content, summary)
-			showContent := relativeScore > contentDisplayRelativeThreshold &&
-				s.Score > contentDisplayAbsoluteThreshold &&
-				cleanContent != ""
-
-			if verbose {
-				fmt.Printf(" %d. %s %s\n", i+1, icon, sourceTitle.Render(summary))
-				fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("ID: %s | Type: %s | Score: %.2f%s", id, s.Node.Type, s.Score, expandedIndicator)))
-				if s.Node.SourceAgent != "" {
-					fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("Agent: %s", s.Node.SourceAgent)))
-				}
-				if showContent {
-					content := truncateContent(cleanContent, 200)
-					fmt.Printf("    %s\n", metaStyle.Render(content))
-				}
-			} else {
-				fmt.Printf(" %d. %s %s %s%s\n", i+1, icon, sourceTitle.Render(summary), metaStyle.Render(fmt.Sprintf("[%s %s]", bar, id)), expandedIndicator)
-				if showContent {
-					content := truncateContent(cleanContent, 150)
-					fmt.Printf("    %s\n", metaStyle.Render(content))
-				}
-			}
+			renderScoredNodePanel(i+1, s, maxScore, verbose)
 		}
 	}
 
@@ -245,41 +223,60 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 		fmt.Println(sectionStyle.Render("💻 Code Symbols"))
 
 		for i, sym := range symbols {
-			icon := symbolKindIcon(sym.Kind)
-			visibilityMark := ""
-			if sym.Visibility == "private" {
-				visibilityMark = metaStyle.Render(" (private)")
-			}
-
-			name := sym.Name
-			if sym.Signature != "" && !verbose {
-				// Show short signature in compact mode (use runes for UTF-8 safety)
-				name = sym.Name + truncateContent(sym.Signature, 40)
-			}
-
-			location := locationStyle.Render(sym.Location)
-
-			if verbose {
-				fmt.Printf(" %d. %s %s%s\n", i+1, icon, sourceTitle.Render(sym.Name), visibilityMark)
-				if sym.Signature != "" {
-					fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("Signature: %s", sym.Signature)))
-				}
-				fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("Kind: %s | Language: %s", sym.Kind, sym.Language)))
-				fmt.Printf("    %s\n", location)
-				if sym.DocComment != "" {
-					// Show first line of doc comment (use runes for UTF-8 safety)
-					doc := sym.DocComment
-					if idx := strings.Index(doc, "\n"); idx > 0 {
-						doc = doc[:idx]
-					}
-					doc = truncateContent(doc, 80)
-					fmt.Printf("    %s\n", metaStyle.Render(fmt.Sprintf("Doc: %s", doc)))
-				}
-			} else {
-				fmt.Printf(" %d. %s %s %s%s\n", i+1, icon, sourceTitle.Render(name), location, visibilityMark)
-			}
+			renderSymbolPanel(i+1, sym, verbose)
 		}
 	}
+}
+
+// renderSymbolPanel renders a code symbol as a styled panel.
+func renderSymbolPanel(index int, sym app.SymbolResponse, verbose bool) {
+	// Styles
+	var (
+		headerStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
+		metaStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+		locationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+		panelBorder   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(0, 1).MarginTop(1)
+	)
+
+	icon := symbolKindIcon(sym.Kind)
+	visibilityMark := ""
+	if sym.Visibility == "private" {
+		visibilityMark = " (private)"
+	}
+
+	// Build panel content
+	var content strings.Builder
+
+	// Header line: Icon, name, visibility
+	content.WriteString(headerStyle.Render(fmt.Sprintf("%s %s", icon, sym.Name)))
+	content.WriteString(metaStyle.Render(visibilityMark))
+	content.WriteString("\n")
+
+	// Metadata line: Kind, Language, Location
+	content.WriteString(metaStyle.Render(fmt.Sprintf("Kind: %s  │  Language: %s  │  ", sym.Kind, sym.Language)))
+	content.WriteString(locationStyle.Render(sym.Location))
+
+	if verbose {
+		// Additional metadata in verbose mode
+		if sym.Signature != "" {
+			content.WriteString("\n")
+			content.WriteString(metaStyle.Render(fmt.Sprintf("Signature: %s", truncateContent(sym.Signature, 60))))
+		}
+		if sym.DocComment != "" {
+			doc := sym.DocComment
+			if idx := strings.Index(doc, "\n"); idx > 0 {
+				doc = doc[:idx]
+			}
+			doc = truncateContent(doc, 80)
+			content.WriteString("\n")
+			content.WriteString(metaStyle.Render("─────────────────────────────────────────────────"))
+			content.WriteString("\n")
+			content.WriteString(metaStyle.Render(doc))
+		}
+	}
+
+	fmt.Printf(" %d. ", index)
+	fmt.Println(panelBorder.Render(content.String()))
 }
 
 // truncateContent truncates content to maxLen runes and adds ellipsis if needed.
