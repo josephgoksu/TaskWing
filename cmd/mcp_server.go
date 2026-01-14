@@ -353,7 +353,68 @@ func runMCPServer(ctx context.Context) error {
 		return handleAuditPlan(ctx, repo, params.Arguments)
 	})
 
-	// === Code Intelligence Tools ===
+	// === Unified Tools (consolidated from multiple single-purpose tools) ===
+
+	// Register unified 'code' tool - consolidates find_symbol, semantic_search_code, explain_symbol, get_callers, analyze_impact
+	codeTool := &mcpsdk.Tool{
+		Name: "code",
+		Description: `Unified code intelligence tool. Use action parameter to select operation:
+- find: Locate symbols by name, ID, or file path
+- search: Hybrid semantic + lexical code search
+- explain: Deep dive into a symbol with call graph and AI explanation
+- callers: Get call graph relationships (who calls it, what it calls)
+- impact: Analyze change impact via recursive call graph traversal`,
+	}
+	mcpsdk.AddTool(server, codeTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.CodeToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		result, err := mcppresenter.HandleCodeTool(ctx, repo, params.Arguments)
+		if err != nil {
+			return mcpErrorResponse(err)
+		}
+		if result.Error != "" {
+			return mcpFormattedErrorResponse(mcppresenter.FormatError(result.Error))
+		}
+		return mcpMarkdownResponse(result.Content)
+	})
+
+	// Register unified 'task' tool - consolidates task_next, task_current, task_start, task_complete
+	taskTool := &mcpsdk.Tool{
+		Name: "task",
+		Description: `Unified task lifecycle tool. Use action parameter to select operation:
+- next: Get next pending task from plan (use auto_start=true to claim immediately)
+- current: Get current in-progress task for session
+- start: Claim a specific task by ID
+- complete: Mark task as completed with summary`,
+	}
+	mcpsdk.AddTool(server, taskTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.TaskToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		result, err := mcppresenter.HandleTaskTool(ctx, repo, params.Arguments)
+		if err != nil {
+			return mcpErrorResponse(err)
+		}
+		if result.Error != "" {
+			return mcpFormattedErrorResponse(mcppresenter.FormatError(result.Error))
+		}
+		return mcpMarkdownResponse(result.Content)
+	})
+
+	// Register unified 'plan' tool - consolidates plan_clarify, plan_generate
+	planTool := &mcpsdk.Tool{
+		Name: "plan",
+		Description: `Unified plan creation tool. Use action parameter to select operation:
+- clarify: Refine goal with clarifying questions (loop until is_ready_to_plan=true)
+- generate: Create plan with tasks from enriched goal`,
+	}
+	mcpsdk.AddTool(server, planTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.PlanToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		result, err := mcppresenter.HandlePlanTool(ctx, repo, params.Arguments)
+		if err != nil {
+			return mcpErrorResponse(err)
+		}
+		if result.Error != "" {
+			return mcpFormattedErrorResponse(mcppresenter.FormatError(result.Error))
+		}
+		return mcpMarkdownResponse(result.Content)
+	})
+
+	// === Legacy Code Intelligence Tools (deprecated - use unified 'code' tool instead) ===
 
 	// Register find_symbol tool - locate symbols by name, ID, or file
 	findSymbolTool := &mcpsdk.Tool{
