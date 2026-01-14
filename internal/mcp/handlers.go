@@ -399,3 +399,116 @@ func handleTaskComplete(ctx context.Context, repo *memory.Repository, params Tas
 		Content: FormatTask(result),
 	}, nil
 }
+
+// === Plan Tool Handler ===
+
+// PlanToolResult represents the response from the unified plan tool.
+type PlanToolResult struct {
+	Action  string `json:"action"`
+	Content string `json:"content"`
+	Error   string `json:"error,omitempty"`
+}
+
+// HandlePlanTool is the unified handler for all plan operations.
+// It routes to the appropriate service logic based on the action parameter.
+// Consolidates: plan_clarify, plan_generate
+func HandlePlanTool(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
+	// Validate action
+	if !params.Action.IsValid() {
+		return &PlanToolResult{
+			Action: string(params.Action),
+			Error:  fmt.Sprintf("invalid action %q, must be one of: clarify, generate", params.Action),
+		}, nil
+	}
+
+	switch params.Action {
+	case PlanActionClarify:
+		return handlePlanClarify(ctx, repo, params)
+	case PlanActionGenerate:
+		return handlePlanGenerate(ctx, repo, params)
+	default:
+		return &PlanToolResult{
+			Action: string(params.Action),
+			Error:  fmt.Sprintf("unsupported action: %s", params.Action),
+		}, nil
+	}
+}
+
+// handlePlanClarify implements the 'clarify' action - refine a goal with questions.
+func handlePlanClarify(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
+	// Validate required fields
+	goal := strings.TrimSpace(params.Goal)
+	if goal == "" {
+		return &PlanToolResult{
+			Action: "clarify",
+			Error:  "goal is required for clarify action",
+		}, nil
+	}
+
+	// Use RoleBootstrap for planning operations
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	planApp := app.NewPlanApp(appCtx)
+
+	result, err := planApp.Clarify(ctx, app.ClarifyOptions{
+		Goal:       goal,
+		History:    params.History,
+		AutoAnswer: params.AutoAnswer,
+	})
+	if err != nil {
+		return &PlanToolResult{
+			Action: "clarify",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &PlanToolResult{
+		Action:  "clarify",
+		Content: FormatClarifyResult(result),
+	}, nil
+}
+
+// handlePlanGenerate implements the 'generate' action - create a plan with tasks.
+func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
+	// Validate required fields
+	goal := strings.TrimSpace(params.Goal)
+	if goal == "" {
+		return &PlanToolResult{
+			Action: "generate",
+			Error:  "goal is required for generate action",
+		}, nil
+	}
+	enrichedGoal := strings.TrimSpace(params.EnrichedGoal)
+	if enrichedGoal == "" {
+		return &PlanToolResult{
+			Action: "generate",
+			Error:  "enriched_goal is required for generate action",
+		}, nil
+	}
+
+	// Default save to true
+	save := true
+	if params.Save != nil {
+		save = *params.Save
+	}
+
+	// Use RoleBootstrap for planning operations
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	planApp := app.NewPlanApp(appCtx)
+
+	result, err := planApp.Generate(ctx, app.GenerateOptions{
+		Goal:         goal,
+		EnrichedGoal: enrichedGoal,
+		Save:         save,
+	})
+	if err != nil {
+		return &PlanToolResult{
+			Action: "generate",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &PlanToolResult{
+		Action:  "generate",
+		Content: FormatGenerateResult(result),
+	}, nil
+}

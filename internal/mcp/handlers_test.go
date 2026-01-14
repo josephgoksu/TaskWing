@@ -241,3 +241,118 @@ func TestHandleTaskTool_ActionRouting(t *testing.T) {
 		})
 	}
 }
+
+// === Plan Tool Handler Tests ===
+
+func TestHandlePlanTool_InvalidAction(t *testing.T) {
+	params := PlanToolParams{
+		Action: "invalid_action",
+		Goal:   "test goal",
+	}
+
+	result, err := HandlePlanTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Error == "" {
+		t.Error("expected error for invalid action")
+	}
+	if result.Action != "invalid_action" {
+		t.Errorf("expected action 'invalid_action', got %q", result.Action)
+	}
+}
+
+func TestHandlePlanTool_ClarifyMissingGoal(t *testing.T) {
+	params := PlanToolParams{
+		Action: PlanActionClarify,
+		Goal:   "", // missing
+	}
+
+	result, err := HandlePlanTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Error == "" {
+		t.Error("expected error for missing goal")
+	}
+	if result.Action != "clarify" {
+		t.Errorf("expected action 'clarify', got %q", result.Action)
+	}
+}
+
+func TestHandlePlanTool_GenerateMissingGoal(t *testing.T) {
+	params := PlanToolParams{
+		Action:       PlanActionGenerate,
+		Goal:         "", // missing
+		EnrichedGoal: "some enriched goal",
+	}
+
+	result, err := HandlePlanTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Error == "" {
+		t.Error("expected error for missing goal")
+	}
+	if result.Action != "generate" {
+		t.Errorf("expected action 'generate', got %q", result.Action)
+	}
+}
+
+func TestHandlePlanTool_GenerateMissingEnrichedGoal(t *testing.T) {
+	params := PlanToolParams{
+		Action:       PlanActionGenerate,
+		Goal:         "test goal",
+		EnrichedGoal: "", // missing
+	}
+
+	result, err := HandlePlanTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Error == "" {
+		t.Error("expected error for missing enriched_goal")
+	}
+	if result.Action != "generate" {
+		t.Errorf("expected action 'generate', got %q", result.Action)
+	}
+}
+
+func TestHandlePlanTool_ActionRouting(t *testing.T) {
+	// Test actions that have validation before hitting the repo
+	tests := []struct {
+		action        PlanAction
+		name          string
+		expectError   bool
+		errorContains string
+	}{
+		{PlanActionClarify, "clarify", true, "goal is required"},
+		{PlanActionGenerate, "generate", true, "goal is required"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := PlanToolParams{
+				Action: tt.action,
+				// Intentionally missing required fields
+			}
+
+			result, err := HandlePlanTool(context.Background(), nil, params)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if result.Action != tt.name {
+				t.Errorf("expected action %q, got %q", tt.name, result.Action)
+			}
+
+			if tt.expectError && result.Error == "" {
+				t.Error("expected validation error")
+			}
+		})
+	}
+}
