@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -85,6 +84,3 @@ func (b *BaseAgent) GenerateWithTiming(ctx context.Context, messages []*schema.M
 	content, err := b.Generate(ctx, messages)
 	return content, time.Since(start), err
 }
-
-// RunInfo is a type alias for callback injection.
-type RunInfo = callbacks.RunInfo

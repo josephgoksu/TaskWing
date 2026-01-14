@@ -578,7 +578,15 @@ func runCodeIndexing(ctx context.Context, basePath string, forceIndex, isQuiet b
 
 	// Run indexing
 	start := time.Now()
-	stats, err := indexer.IndexDirectory(ctx, basePath)
+
+	// Prune stale files first
+	prunedCount, err := indexer.PruneStaleFiles(ctx)
+	if err != nil && !isQuiet {
+		fmt.Fprintf(os.Stderr, "   ⚠️  Prune failed: %v\n", err)
+	}
+
+	// Run incremental indexing
+	stats, err := indexer.IncrementalIndex(ctx, basePath)
 	if err != nil {
 		if !isQuiet {
 			fmt.Fprintf(os.Stderr, "\r                                                        \n")
@@ -591,8 +599,8 @@ func runCodeIndexing(ctx context.Context, basePath string, forceIndex, isQuiet b
 	if !isQuiet {
 		fmt.Fprintf(os.Stderr, "\r                                                        \n")
 		duration := time.Since(start)
-		fmt.Printf("   ✅ Indexed %d files → %d symbols in %v\n",
-			stats.FilesIndexed, stats.SymbolsFound, duration.Round(time.Millisecond))
+		fmt.Printf("   ✅ Indexed %d updates, pruned %d files in %v\n",
+			stats.FilesIndexed, prunedCount, duration.Round(time.Millisecond))
 		if stats.RelationsFound > 0 {
 			fmt.Printf("   🔗 Discovered %d call relationships\n", stats.RelationsFound)
 		}

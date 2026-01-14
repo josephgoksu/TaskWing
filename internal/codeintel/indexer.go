@@ -617,6 +617,26 @@ func (idx *Indexer) GetStats(ctx context.Context) (*IndexStats, error) {
 	}, nil
 }
 
+// PruneStaleFiles removes symbols for files that no longer exist.
+func (idx *Indexer) PruneStaleFiles(ctx context.Context) (int, error) {
+	staleFiles, err := idx.repo.GetStaleSymbolFiles(ctx, func(path string) bool {
+		_, err := os.Stat(path)
+		return err == nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get stale files: %w", err)
+	}
+
+	count := 0
+	for _, file := range staleFiles {
+		if err := idx.repo.DeleteSymbolsByFile(ctx, file); err != nil {
+			return count, fmt.Errorf("delete symbols for %s: %w", file, err)
+		}
+		count++
+	}
+	return count, nil
+}
+
 // buildSymbolKeyForIndexer creates a unique key for symbol lookup.
 func buildSymbolKeyForIndexer(modulePath, name string, kind SymbolKind) string {
 	return fmt.Sprintf("%s:%s:%s", modulePath, kind, name)

@@ -58,6 +58,14 @@ func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
 
+	// Migrations
+	if _, err := db.Exec(`ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'medium'`); err != nil {
+		// Ignore if column already exists
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			// fmt.Printf("Migration warning (complexity): %v\n", err)
+		}
+	}
+
 	return store, nil
 }
 
@@ -151,6 +159,7 @@ func (s *SQLiteStore) initSchema() error {
 		validation_steps TEXT,             -- JSON array
 		status TEXT DEFAULT 'pending',     -- pending, in_progress, verifying, completed, failed
 		priority INTEGER DEFAULT 50,
+		complexity TEXT DEFAULT 'medium',
 		assigned_agent TEXT,
 		parent_task_id TEXT,
 		context_summary TEXT,              -- Summary of linked knowledge nodes

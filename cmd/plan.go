@@ -35,6 +35,7 @@ func init() {
 	// Flags
 	planNewCmd.Flags().Bool("no-export", false, "Skip automatic export")
 	planNewCmd.Flags().String("export-path", "", "Custom path to export plan")
+	planNewCmd.Flags().Bool("non-interactive", false, "Run without user interaction (headless)")
 
 	planExportCmd.Flags().Bool("stdout", false, "Print to stdout")
 	planExportCmd.Flags().StringP("output", "o", "", "Custom output path")
@@ -109,6 +110,57 @@ var planNewCmd = &cobra.Command{
 		// Agents are now managed internally by PlanApp methods
 		appCtx := app.NewContextWithConfig(repo, cfg)
 		planApp := app.NewPlanApp(appCtx)
+
+		nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
+		if nonInteractive {
+			// Headless Flow
+			fmt.Printf("Analyzing goal: %q...\n", goal)
+			clarifyRes, err := planApp.Clarify(ctx, app.ClarifyOptions{
+				Goal:       goal,
+				AutoAnswer: true,
+			})
+			if err != nil {
+				return fmt.Errorf("clarification error: %w", err)
+			}
+			if !clarifyRes.Success {
+				return fmt.Errorf("clarification failed: %s", clarifyRes.Message)
+			}
+			fmt.Printf("Goal refined: %s\nGenerating plan...\n", clarifyRes.GoalSummary)
+
+			genRes, err := planApp.Generate(ctx, app.GenerateOptions{
+				Goal:         goal,
+				EnrichedGoal: clarifyRes.EnrichedGoal,
+				Save:         true,
+			})
+			if err != nil {
+				return fmt.Errorf("generation error: %w", err)
+			}
+			if !genRes.Success {
+				return fmt.Errorf("generation failed: %s", genRes.Message)
+			}
+
+			// Reuse success logic
+			createdPlan, err := svc.GetPlanWithTasks(genRes.PlanID)
+			if err != nil {
+				return fmt.Errorf("fetch created plan: %w", err)
+			}
+			fmt.Println()
+			printPlanView(createdPlan)
+
+			// Export logic
+			noExport, _ := cmd.Flags().GetBool("no-export")
+			exportPath, _ := cmd.Flags().GetString("export-path")
+			if !noExport && !viper.GetBool("preview") {
+				outputPath, err := svc.ExportPlanToFile(createdPlan, exportPath)
+				if err != nil {
+					return fmt.Errorf("export plan: %w", err)
+				}
+				if !isQuiet() && !isJSON() {
+					fmt.Printf("\nSaved: %s\n", outputPath)
+				}
+			}
+			return nil
+		}
 
 		ks := knowledge.NewService(repo, cfg)
 

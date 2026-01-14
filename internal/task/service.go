@@ -21,6 +21,8 @@ type Repository interface {
 	ListTasks(planID string) ([]Task, error)
 	GetTask(id string) (*Task, error)
 	UpdateTaskStatus(id string, status TaskStatus) error
+	AddDependency(taskID, dependsOn string) error
+	RemoveDependency(taskID, dependsOn string) error
 
 	// Active Plan Management (DB-based)
 	SetActivePlan(id string) error

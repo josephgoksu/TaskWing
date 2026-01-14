@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/google/uuid"
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/config"
@@ -486,13 +487,31 @@ func parseQuestionsFromMetadata(metadata map[string]any) []string {
 
 // parseTasksFromMetadata extracts tasks from agent metadata,
 // handling both []impl.PlanningTask and []any (from JSON unmarshaling).
+// parseTasksFromMetadata extracts tasks from agent metadata,
+// handling both []impl.PlanningTask and []any (from JSON unmarshaling).
 func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 	var tasks []task.Task
 
+	// Map title -> ID for dependency resolution
+	titleToID := make(map[string]string)
+	// Temp storage for title dependencies
+	type pendingDep struct {
+		taskIdx int
+		titles  []string
+	}
+	var pendingDeps []pendingDep
+
+	// Helper to generate IDs immediately so we can link them
+	genID := func() string {
+		return "task-" + uuid.New().String()[:8]
+	}
+
 	// Try typed slice first
 	if tasksRaw, ok := metadata["tasks"].([]impl.PlanningTask); ok {
-		for _, pt := range tasksRaw {
+		for i, pt := range tasksRaw {
+			id := genID()
 			t := task.Task{
+				ID:                 id,
 				Title:              pt.Title,
 				Description:        pt.Description,
 				AcceptanceCriteria: pt.AcceptanceCriteria,
@@ -500,21 +519,25 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 				Priority:           pt.Priority,
 				Status:             task.StatusPending,
 				AssignedAgent:      pt.AssignedAgent,
+				Complexity:         pt.Complexity, // direct map
 			}
 			t.EnrichAIFields()
 			tasks = append(tasks, t)
-		}
-		return tasks
-	}
+			titleToID[pt.Title] = id
 
-	// Handle []any from JSON unmarshaling
-	if tasksAny, ok := metadata["tasks"].([]any); ok {
-		for _, t := range tasksAny {
+			if len(pt.Dependencies) > 0 {
+				pendingDeps = append(pendingDeps, pendingDep{taskIdx: i, titles: pt.Dependencies})
+			}
+		}
+	} else if tasksAny, ok := metadata["tasks"].([]any); ok {
+		// Handle []any from JSON unmarshaling
+		for i, t := range tasksAny {
 			if tm, ok := t.(map[string]any); ok {
 				title, _ := tm["title"].(string)
 				desc, _ := tm["description"].(string)
 				priority, _ := tm["priority"].(float64)
 				agent, _ := tm["assigned_agent"].(string)
+				complexity, _ := tm["complexity"].(string)
 
 				var criteria []string
 				if ac, ok := tm["acceptance_criteria"].([]any); ok {
@@ -534,7 +557,18 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 					}
 				}
 
-				t := task.Task{
+				var deps []string
+				if ds, ok := tm["dependencies"].([]any); ok {
+					for _, d := range ds {
+						if dsStr, ok := d.(string); ok {
+							deps = append(deps, dsStr)
+						}
+					}
+				}
+
+				id := genID()
+				newTask := task.Task{
+					ID:                 id,
 					Title:              title,
 					Description:        desc,
 					AcceptanceCriteria: criteria,
@@ -542,9 +576,24 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 					Priority:           int(priority),
 					Status:             task.StatusPending,
 					AssignedAgent:      agent,
+					Complexity:         complexity,
 				}
-				t.EnrichAIFields()
-				tasks = append(tasks, t)
+				newTask.EnrichAIFields()
+				tasks = append(tasks, newTask)
+				titleToID[title] = id
+
+				if len(deps) > 0 {
+					pendingDeps = append(pendingDeps, pendingDep{taskIdx: i, titles: deps})
+				}
+			}
+		}
+	}
+
+	// Resolve dependencies
+	for _, pd := range pendingDeps {
+		for _, depTitle := range pd.titles {
+			if depID, ok := titleToID[depTitle]; ok {
+				tasks[pd.taskIdx].Dependencies = append(tasks[pd.taskIdx].Dependencies, depID)
 			}
 		}
 	}

@@ -217,9 +217,9 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) e
 		if !isQuiet {
 			fmt.Printf(" %d commits, %d contributors\n", gitStats.TotalCommits, len(gitStats.Contributors))
 		}
-		// Convert to finding for storage (use "metadata" type for non-LLM data)
+		// Convert to finding for storage (deterministic bootstrap data)
 		findings = append(findings, core.Finding{
-			Type:        "metadata",
+			Type:        memory.NodeTypeMetadata,
 			Title:       "Git Repository Statistics",
 			Description: gitStats.ToMarkdown(),
 			SourceAgent: "git-stats",
@@ -261,7 +261,7 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) e
 		// Convert each doc to a finding for storage and RAG retrieval
 		for _, doc := range docs {
 			findings = append(findings, core.Finding{
-				Type:        "documentation",
+				Type:        memory.NodeTypeDocumentation,
 				Title:       fmt.Sprintf("Documentation: %s", doc.Name),
 				Description: doc.Content,
 				SourceAgent: "doc-loader",

@@ -187,6 +187,8 @@ type PlanningTask struct {
 	ValidationSteps    []string `json:"validation_steps"`
 	Priority           int      `json:"priority"`
 	AssignedAgent      string   `json:"assigned_agent"`
+	Dependencies       []string `json:"dependencies"` // List of Task IDs (indices or titles)
+	Complexity         string   `json:"complexity"`   // "low", "medium", "high"
 }
 
 // PlanningOutput defines the structured response from the LLM.

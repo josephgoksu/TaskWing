@@ -53,3 +53,15 @@ func (r *Repository) Repair() error {
 func (r *Repository) Close() error {
 	return r.db.Close()
 }
+
+// === Task Repository Methods (delegate to SQLiteStore) ===
+
+// AddDependency adds a dependency relationship between two tasks.
+func (r *Repository) AddDependency(taskID, dependsOn string) error {
+	return r.db.AddDependency(taskID, dependsOn)
+}
+
+// RemoveDependency removes a dependency relationship between two tasks.
+func (r *Repository) RemoveDependency(taskID, dependsOn string) error {
+	return r.db.RemoveDependency(taskID, dependsOn)
+}

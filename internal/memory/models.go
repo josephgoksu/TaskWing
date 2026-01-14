@@ -99,14 +99,25 @@ type NodeEdge struct {
 
 // NodeType constants for classification.
 const (
-	NodeTypeDecision   = "decision"
-	NodeTypeFeature    = "feature"
-	NodeTypePlan       = "plan"
-	NodeTypeNote       = "note"
-	NodeTypeUnknown    = "unknown"
-	NodeTypeConstraint = "constraint" // For mandatory architectural rules
-	NodeTypePattern    = "pattern"    // For recurring patterns and workflows
+	NodeTypeDecision      = "decision"
+	NodeTypeFeature       = "feature"
+	NodeTypePlan          = "plan"
+	NodeTypeNote          = "note"
+	NodeTypeUnknown       = "unknown"
+	NodeTypeConstraint    = "constraint"    // For mandatory architectural rules
+	NodeTypePattern       = "pattern"       // For recurring patterns and workflows
+	NodeTypeMetadata      = "metadata"      // Git stats, project info (deterministic bootstrap)
+	NodeTypeDocumentation = "documentation" // README, CLAUDE.md, etc. (deterministic bootstrap)
 )
+
+// AllNodeTypes returns ordered list for UI rendering.
+func AllNodeTypes() []string {
+	return []string{
+		NodeTypeDecision, NodeTypeFeature, NodeTypeConstraint,
+		NodeTypePattern, NodeTypePlan, NodeTypeNote,
+		NodeTypeMetadata, NodeTypeDocumentation,
+	}
+}
 
 // NodeRelation constants for edge types.
 const (

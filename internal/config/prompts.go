@@ -507,7 +507,9 @@ Your job is to decompose this goal into a sequential list of actionable executio
       "acceptance_criteria": ["Criteria 1", "Criteria 2"],
       "validation_steps": ["go test ./..."],
       "priority": 80, // 0-100
-      "assigned_agent": "coder" // or "doc", "architect"
+      "assigned_agent": "coder", // or "doc", "architect"
+      "dependencies": ["Title of Task A"], // List of task titles that must be completed BEFORE this task
+      "complexity": "medium" // "low", "medium", or "high"
     }
   ],
   "rationale": "Why you chose this approach and how it adheres to architectural constraints..."

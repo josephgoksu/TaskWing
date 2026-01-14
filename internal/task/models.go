@@ -17,6 +17,8 @@ const (
 	StatusVerifying  TaskStatus = "verifying"   // Work done, running validation
 	StatusCompleted  TaskStatus = "completed"   // Successfully verified
 	StatusFailed     TaskStatus = "failed"      // Execution or verification failed
+	StatusBlocked    TaskStatus = "blocked"     // Waiting on dependencies
+	StatusReady      TaskStatus = "ready"       // Dependencies met, ready for execution
 )
 
 // PlanStatus represents the lifecycle state of a plan
@@ -39,6 +41,7 @@ type Task struct {
 	Description        string     `json:"description"`
 	Status             TaskStatus `json:"status"`
 	Priority           int        `json:"priority"` // 0-100 (High to Low)
+	Complexity         string     `json:"complexity"` // "low", "medium", "high"
 	AssignedAgent      string     `json:"assignedAgent"`
 	ParentTaskID       string     `json:"parentTaskId,omitempty"`
 	ContextSummary     string     `json:"contextSummary"` // AI-generated summary of linked nodes

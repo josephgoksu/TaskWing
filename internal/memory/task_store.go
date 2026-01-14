@@ -42,14 +42,14 @@ func insertTaskTx(tx txExecutor, t *task.Task) error {
 		INSERT INTO tasks (
 			id, plan_id, title, description,
 			acceptance_criteria, validation_steps,
-			status, priority, assigned_agent, parent_task_id, context_summary,
+			status, priority, complexity, assigned_agent, parent_task_id, context_summary,
 			scope, keywords, suggested_recall_queries,
 			claimed_by, claimed_at, completed_at, completion_summary, files_modified,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, t.ID, t.PlanID, t.Title, t.Description,
 		string(acJSON), string(vsJSON),
-		t.Status, t.Priority, t.AssignedAgent, parentID, t.ContextSummary,
+		t.Status, t.Priority, t.Complexity, t.AssignedAgent, parentID, t.ContextSummary,
 		t.Scope, string(keywordsJSON), string(queriesJSON),
 		t.ClaimedBy, nullTimeString(t.ClaimedAt), nullTimeString(t.CompletedAt), t.CompletionSummary, string(filesJSON),
 		t.CreatedAt.Format(time.RFC3339), t.UpdatedAt.Format(time.RFC3339))
@@ -160,10 +160,14 @@ func (s *SQLiteStore) GetPlan(id string) (*task.Plan, error) {
 	return &p, nil
 }
 
-// ListPlans returns all plans.
+// ListPlans returns all plans with task counts (but not full task data).
 func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
+	// Use a subquery to get task counts efficiently without loading all task data
 	rows, err := s.db.Query(`
-		SELECT id, goal, enriched_goal, status, created_at, updated_at, last_audit_report FROM plans ORDER BY created_at DESC
+		SELECT p.id, p.goal, p.enriched_goal, p.status, p.created_at, p.updated_at, p.last_audit_report,
+		       (SELECT COUNT(*) FROM tasks t WHERE t.plan_id = p.id) as task_count
+		FROM plans p
+		ORDER BY p.created_at DESC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query plans: %w", err)
@@ -175,7 +179,8 @@ func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 		var p task.Plan
 		var createdAt, updatedAt string
 		var lastAuditReport sql.NullString
-		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &lastAuditReport); err != nil {
+		var taskCount int
+		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &lastAuditReport, &taskCount); err != nil {
 			return nil, fmt.Errorf("scan plan: %w", err)
 		}
 		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
@@ -183,9 +188,11 @@ func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 		if lastAuditReport.Valid {
 			p.LastAuditReport = lastAuditReport.String
 		}
+		// Store task count in a placeholder slice (just for count display)
+		// This avoids loading all tasks but allows len(p.Tasks) to work
+		p.Tasks = make([]task.Task, taskCount)
 		plans = append(plans, p)
 	}
-	// Note: We don't fetch tasks here to keep it lightweight. Use GetPlan for details.
 
 	return plans, nil
 }
@@ -324,13 +331,13 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	var t task.Task
 	var desc, acJSON, vsJSON sql.NullString
 	var parentID sql.NullString
-	var scope, keywordsJSON, queriesJSON sql.NullString
+	var scope, keywordsJSON, queriesJSON, complexity sql.NullString
 	var claimedBy, claimedAt, completedAt, completionSummary, filesJSON sql.NullString
 	var createdAt, updatedAt string
 
 	err := row.Scan(
 		&t.ID, &t.PlanID, &t.Title, &desc, &acJSON, &vsJSON,
-		&t.Status, &t.Priority, &t.AssignedAgent, &parentID, &t.ContextSummary,
+		&t.Status, &t.Priority, &complexity, &t.AssignedAgent, &parentID, &t.ContextSummary,
 		&scope, &keywordsJSON, &queriesJSON,
 		&claimedBy, &claimedAt, &completedAt, &completionSummary, &filesJSON,
 		&createdAt, &updatedAt,
@@ -340,6 +347,7 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	}
 
 	t.Description = desc.String
+	t.Complexity = complexity.String
 	t.ParentTaskID = parentID.String
 	t.Scope = scope.String
 	t.ClaimedBy = claimedBy.String
@@ -374,7 +382,7 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 }
 
 const taskSelectColumns = `id, plan_id, title, description, acceptance_criteria, validation_steps,
-       status, priority, assigned_agent, parent_task_id, context_summary,
+       status, priority, complexity, assigned_agent, parent_task_id, context_summary,
        scope, keywords, suggested_recall_queries,
        claimed_by, claimed_at, completed_at, completion_summary, files_modified,
        created_at, updated_at`
@@ -477,6 +485,18 @@ func (s *SQLiteStore) DeleteTask(id string) error {
 		return fmt.Errorf("task not found: %s", id)
 	}
 	return nil
+}
+
+// AddDependency adds a dependency relationship between two tasks.
+func (s *SQLiteStore) AddDependency(taskID, dependsOn string) error {
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO task_dependencies (task_id, depends_on) VALUES (?, ?)`, taskID, dependsOn)
+	return err
+}
+
+// RemoveDependency removes a dependency relationship between two tasks.
+func (s *SQLiteStore) RemoveDependency(taskID, dependsOn string) error {
+	_, err := s.db.Exec(`DELETE FROM task_dependencies WHERE task_id = ? AND depends_on = ?`, taskID, dependsOn)
+	return err
 }
 
 // === Task Helpers ===
@@ -748,24 +768,26 @@ func (s *SQLiteStore) CompleteTask(taskID, summary string, filesModified []strin
 	return nil
 }
 
-// SearchPlans returns plans matching the query and status.
+// SearchPlans returns plans matching the query and status (with task counts).
 // Query searches in goal and enriched_goal.
 func (s *SQLiteStore) SearchPlans(query string, status task.PlanStatus) ([]task.Plan, error) {
-	q := "SELECT id, goal, enriched_goal, status, created_at, updated_at FROM plans WHERE 1=1"
+	q := `SELECT p.id, p.goal, p.enriched_goal, p.status, p.created_at, p.updated_at,
+	             (SELECT COUNT(*) FROM tasks t WHERE t.plan_id = p.id) as task_count
+	      FROM plans p WHERE 1=1`
 	args := []any{}
 
 	if status != "" {
-		q += " AND status = ?"
+		q += " AND p.status = ?"
 		args = append(args, status)
 	}
 
 	if query != "" {
-		q += " AND (goal LIKE ? OR enriched_goal LIKE ?)"
+		q += " AND (p.goal LIKE ? OR p.enriched_goal LIKE ?)"
 		wildcard := "%" + query + "%"
 		args = append(args, wildcard, wildcard)
 	}
 
-	q += " ORDER BY updated_at DESC"
+	q += " ORDER BY p.updated_at DESC"
 
 	rows, err := s.db.Query(q, args...)
 	if err != nil {
@@ -777,11 +799,14 @@ func (s *SQLiteStore) SearchPlans(query string, status task.PlanStatus) ([]task.
 	for rows.Next() {
 		var p task.Plan
 		var createdAt, updatedAt string
-		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt); err != nil {
+		var taskCount int
+		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &taskCount); err != nil {
 			return nil, fmt.Errorf("scan plan: %w", err)
 		}
 		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		// Store task count in placeholder slice for display
+		p.Tasks = make([]task.Task, taskCount)
 		plans = append(plans, p)
 	}
 

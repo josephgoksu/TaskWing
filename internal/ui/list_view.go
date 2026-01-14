@@ -30,8 +30,8 @@ func renderNodeListInternal(nodes []memory.Node, verbose bool) {
 		byType[t] = append(byType[t], n)
 	}
 
-	// Calculate stats - include all known types
-	typeOrder := []string{"decision", "feature", "constraint", "pattern", "plan", "note", "unknown"}
+	// Calculate stats - use centralized type list
+	typeOrder := append(memory.AllNodeTypes(), "unknown")
 	var stats []string
 	totalCount := 0
 
@@ -120,18 +120,22 @@ func renderVerboseTable(byType map[string][]memory.Node, typeOrder []string) {
 
 func TypeIcon(t string) string {
 	switch t {
-	case "decision":
+	case memory.NodeTypeDecision:
 		return "🎯"
-	case "feature":
+	case memory.NodeTypeFeature:
 		return "📦"
-	case "constraint":
+	case memory.NodeTypeConstraint:
 		return "⚠️"
-	case "pattern":
+	case memory.NodeTypePattern:
 		return "🧩"
-	case "plan":
+	case memory.NodeTypePlan:
 		return "📋"
-	case "note":
+	case memory.NodeTypeNote:
 		return "📝"
+	case memory.NodeTypeMetadata:
+		return "📊"
+	case memory.NodeTypeDocumentation:
+		return "📄"
 	default:
 		return "❓"
 	}

@@ -103,6 +103,14 @@ func (m *MockRepository) DeletePlan(id string) error {
 	return nil
 }
 
+func (m *MockRepository) AddDependency(taskID, dependsOn string) error {
+	return nil
+}
+
+func (m *MockRepository) RemoveDependency(taskID, dependsOn string) error {
+	return nil
+}
+
 func TestPlanApp_Generate_Failures(t *testing.T) {
 	// Placeholder test
 }
