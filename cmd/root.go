@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
+	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -36,6 +38,10 @@ No more generic AI suggestions that ignore your patterns, constraints, and decis
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	// Set up crash handler
+	initCrashHandler()
+	defer logger.HandlePanic()
+
 	// Enable Cobra's built-in suggestions
 	rootCmd.SuggestionsMinimumDistance = 2
 
@@ -55,6 +61,24 @@ func Execute() {
 			}
 		}
 		os.Exit(1)
+	}
+}
+
+// initCrashHandler sets up the crash logging context.
+func initCrashHandler() {
+	// Set version
+	logger.SetVersion(version)
+
+	// Set base path for crash logs
+	basePath, err := config.GetMemoryBasePath()
+	if err == nil {
+		// Use the parent of memory path (i.e., .taskwing)
+		logger.SetBasePath(strings.TrimSuffix(basePath, "/memory"))
+	}
+
+	// Set command name (will be updated by each subcommand if needed)
+	if len(os.Args) > 1 {
+		logger.SetCommand(strings.Join(os.Args[1:], " "))
 	}
 }
 
