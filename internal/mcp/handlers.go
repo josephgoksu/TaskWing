@@ -245,3 +245,157 @@ func handleCodeImpact(ctx context.Context, repo *memory.Repository, params CodeT
 		Content: FormatImpact(result),
 	}, nil
 }
+
+// === Task Tool Handler ===
+
+// TaskToolResult represents the response from the unified task tool.
+type TaskToolResult struct {
+	Action  string `json:"action"`
+	Content string `json:"content"`
+	Error   string `json:"error,omitempty"`
+}
+
+// HandleTaskTool is the unified handler for all task lifecycle operations.
+// It routes to the appropriate service logic based on the action parameter.
+// Consolidates: task_next, task_current, task_start, task_complete
+func HandleTaskTool(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+	// Validate action
+	if !params.Action.IsValid() {
+		return &TaskToolResult{
+			Action: string(params.Action),
+			Error:  fmt.Sprintf("invalid action %q, must be one of: next, current, start, complete", params.Action),
+		}, nil
+	}
+
+	switch params.Action {
+	case TaskActionNext:
+		return handleTaskNext(ctx, repo, params)
+	case TaskActionCurrent:
+		return handleTaskCurrent(ctx, repo, params)
+	case TaskActionStart:
+		return handleTaskStart(ctx, repo, params)
+	case TaskActionComplete:
+		return handleTaskComplete(ctx, repo, params)
+	default:
+		return &TaskToolResult{
+			Action: string(params.Action),
+			Error:  fmt.Sprintf("unsupported action: %s", params.Action),
+		}, nil
+	}
+}
+
+// handleTaskNext implements the 'next' action - get the next pending task.
+func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+	appCtx := app.NewContext(repo)
+	taskApp := app.NewTaskApp(appCtx)
+
+	result, err := taskApp.Next(ctx, app.TaskNextOptions{
+		PlanID:            params.PlanID,
+		SessionID:         params.SessionID,
+		AutoStart:         params.AutoStart,
+		CreateBranch:      params.CreateBranch,
+		SkipUnpushedCheck: params.SkipUnpushedCheck,
+	})
+	if err != nil {
+		return &TaskToolResult{
+			Action: "next",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &TaskToolResult{
+		Action:  "next",
+		Content: FormatTask(result),
+	}, nil
+}
+
+// handleTaskCurrent implements the 'current' action - get the current in-progress task.
+func handleTaskCurrent(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+	appCtx := app.NewContext(repo)
+	taskApp := app.NewTaskApp(appCtx)
+
+	result, err := taskApp.Current(ctx, params.SessionID, params.PlanID)
+	if err != nil {
+		return &TaskToolResult{
+			Action: "current",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &TaskToolResult{
+		Action:  "current",
+		Content: FormatTask(result),
+	}, nil
+}
+
+// handleTaskStart implements the 'start' action - claim a specific task.
+func handleTaskStart(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+	// Validate required fields
+	taskID := strings.TrimSpace(params.TaskID)
+	if taskID == "" {
+		return &TaskToolResult{
+			Action: "start",
+			Error:  "task_id is required for start action",
+		}, nil
+	}
+
+	sessionID := strings.TrimSpace(params.SessionID)
+	if sessionID == "" {
+		return &TaskToolResult{
+			Action: "start",
+			Error:  "session_id is required for start action",
+		}, nil
+	}
+
+	appCtx := app.NewContext(repo)
+	taskApp := app.NewTaskApp(appCtx)
+
+	result, err := taskApp.Start(ctx, app.TaskStartOptions{
+		TaskID:    taskID,
+		SessionID: sessionID,
+	})
+	if err != nil {
+		return &TaskToolResult{
+			Action: "start",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &TaskToolResult{
+		Action:  "start",
+		Content: FormatTask(result),
+	}, nil
+}
+
+// handleTaskComplete implements the 'complete' action - mark a task as done.
+func handleTaskComplete(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+	// Validate required fields
+	taskID := strings.TrimSpace(params.TaskID)
+	if taskID == "" {
+		return &TaskToolResult{
+			Action: "complete",
+			Error:  "task_id is required for complete action",
+		}, nil
+	}
+
+	// Use RoleBootstrap for audit operations triggered on plan completion
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	taskApp := app.NewTaskApp(appCtx)
+
+	result, err := taskApp.Complete(ctx, app.TaskCompleteOptions{
+		TaskID:        taskID,
+		Summary:       params.Summary,
+		FilesModified: params.FilesModified,
+	})
+	if err != nil {
+		return &TaskToolResult{
+			Action: "complete",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &TaskToolResult{
+		Action:  "complete",
+		Content: FormatTask(result),
+	}, nil
+}
