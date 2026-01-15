@@ -63,25 +63,28 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 		marker := d.findMarkerAt(current)
 
 		// If .taskwing found, return immediately (highest priority)
-		if marker == MarkerTaskWing {
+		// BUT: Only accept .taskwing if we haven't crossed a git repo boundary.
+		// The global ~/.taskwing is NOT a project marker - it's global config.
+		// Once we've found a .git, we're at the repo root and should not
+		// accept .taskwing from parent directories (they belong to different repos).
+		if marker == MarkerTaskWing && gitRoot == "" {
 			// Before returning, check if there's a .git at current or above
-			if gitRoot == "" {
-				gitRoot = d.findGitRoot(current)
-			}
+			foundGitRoot := d.findGitRoot(current)
 			return &Context{
 				RootPath:   current,
 				MarkerType: MarkerTaskWing,
-				GitRoot:    gitRoot,
-				IsMonorepo: gitRoot != "" && gitRoot != current,
+				GitRoot:    foundGitRoot,
+				IsMonorepo: foundGitRoot != "" && foundGitRoot != current,
 			}, nil
 		}
 
-		// Always check for .git to track git root (even if another marker was found first)
+		// Track .git to establish repo boundary
+		// Once we find .git, we should NOT accept .taskwing from parent directories
 		if gitRoot == "" && d.hasGit(current) {
 			gitRoot = current
 		}
 
-		// Track language manifest as candidate (but continue upward looking for .taskwing)
+		// Track language manifest as candidate (but continue upward looking for .taskwing within repo)
 		if marker.IsLanguageManifest() {
 			// Only update if this is a higher priority or first candidate
 			if bestCandidate == nil || marker.Priority() > bestCandidate.MarkerType.Priority() {
@@ -92,6 +95,12 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 					IsMonorepo: false,
 				}
 			}
+		}
+
+		// Stop traversal at git root - don't look for .taskwing in parent directories
+		// This prevents picking up ~/.taskwing as project root when we're in a git repo
+		if gitRoot != "" && current == gitRoot {
+			break
 		}
 
 		// Move to parent directory

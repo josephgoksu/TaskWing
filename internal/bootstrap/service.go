@@ -38,6 +38,13 @@ func (s *Service) InitializeProject(verbose bool, selectedAIs []string) error {
 	return s.initializer.Run(verbose, selectedAIs)
 }
 
+// EnsureDirectoryStructure creates the minimal .taskwing directory structure
+// without setting up any AI integrations. This is used when AI selection is
+// skipped but we still need a place to store data.
+func (s *Service) EnsureDirectoryStructure() error {
+	return s.initializer.createStructure(false)
+}
+
 // RunMultiRepoAnalysis executes analysis for all services in a workspace.
 func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.WorkspaceInfo) ([]core.Finding, []core.Relationship, []string, error) {
 	var allFindings []core.Finding

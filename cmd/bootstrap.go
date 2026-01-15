@@ -189,8 +189,17 @@ Use --analyze for deep LLM-powered analysis (slower, requires API key):
 					fmt.Printf("⚠️  Additional model config skipped: %v\n", err)
 				}
 			} else {
-				fmt.Println("\n⚠️  No AI assistants selected - skipping initialization")
+				fmt.Println("\n⚠️  No AI assistants selected - skipping AI integration setup")
 				fmt.Println()
+				// Still create minimal directory structure for memory/indexing
+				if err := svc.EnsureDirectoryStructure(); err != nil {
+					return fmt.Errorf("create directory structure: %w", err)
+				}
+			}
+		} else if !taskwingExists {
+			// Even with --skip-init, we need the directory structure for data storage
+			if err := svc.EnsureDirectoryStructure(); err != nil {
+				return fmt.Errorf("create directory structure: %w", err)
 			}
 		}
 
