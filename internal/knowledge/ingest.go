@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -161,11 +162,17 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 	}
 
 	nodesCreated := 0
+	nodesFailed := 0
 	skippedDuplicates := 0
 	nodesByTitle := make(map[string]string) // title -> nodeID
 
 	// Deduplication index
-	existingNodes, _ := s.repo.ListNodesWithEmbeddings()
+	existingNodes, err := s.repo.ListNodesWithEmbeddings()
+	if err != nil {
+		slog.Warn("failed to list existing nodes for deduplication", "error", err)
+		// Continue with empty list - deduplication will be skipped but ingestion continues
+		existingNodes = nil
+	}
 	existingByContent := make(map[string]bool)
 	dedupKey := func(content string) string {
 		if len(content) > 200 {
@@ -243,11 +250,20 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 			}
 		}
 
-		if err := s.repo.UpsertNodeBySummary(node); err == nil {
+		if err := s.repo.UpsertNodeBySummary(node); err != nil {
+			nodesFailed++
+			slog.Error("failed to save node", "summary", node.Summary, "error", err)
+		} else {
 			nodesCreated++
 			nodesByTitle[strings.ToLower(f.Title)] = nodeID
 		}
 	}
+
+	// Report failures if any occurred
+	if nodesFailed > 0 {
+		slog.Warn("node ingestion completed with failures", "created", nodesCreated, "failed", nodesFailed)
+	}
+
 	return nodesCreated, skippedDuplicates, nodesByTitle, nil
 }
 
@@ -260,7 +276,11 @@ func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, 
 	featureIDByName := make(map[string]string)
 
 	// Load existing features
-	if existing, err := s.repo.ListFeatures(); err == nil {
+	existing, err := s.repo.ListFeatures()
+	if err != nil {
+		slog.Warn("failed to load existing features", "error", err)
+		// Continue - we'll just create new features as needed
+	} else {
 		for _, f := range existing {
 			featureIDByName[strings.ToLower(f.Name)] = f.ID
 		}
@@ -285,7 +305,9 @@ func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, 
 				OneLiner:  f.Description,
 				Status:    memory.FeatureStatusActive,
 				CreatedAt: time.Now(),
-			}); err == nil {
+			}); err != nil {
+				slog.Error("failed to create feature", "name", name, "error", err)
+			} else {
 				featureIDByName[key] = newID
 				featuresCreated++
 			}
@@ -304,7 +326,9 @@ func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, 
 				Context:      context,
 				Solution:     solution,
 				Consequences: consequences,
-			}); err == nil {
+			}); err != nil {
+				slog.Error("failed to create pattern", "name", name, "error", err)
+			} else {
 				patternsCreated++
 			}
 
@@ -336,7 +360,10 @@ func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, 
 					Name:     compName,
 					OneLiner: "Auto-detected component",
 					Status:   memory.FeatureStatusActive,
-				}); err == nil {
+				}); err != nil {
+					slog.Error("failed to create auto-feature for decision", "component", compName, "error", err)
+					featID = "" // Reset so we don't try to add decision
+				} else {
 					featureIDByName[featKey] = featID
 					featuresCreated++
 				}
@@ -348,7 +375,9 @@ func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, 
 					Summary:   f.Description,
 					Reasoning: f.Why,
 					Tradeoffs: f.Tradeoffs,
-				}); err == nil {
+				}); err != nil {
+					slog.Error("failed to add decision", "title", title, "featureID", featID, "error", err)
+				} else {
 					decisionsCreated++
 				}
 			}
@@ -383,7 +412,7 @@ func (s *Service) linkKnowledgeGraph(verbose bool) (int, int, error) {
 	evidenceEdges := s.linkByEvidence(allNodes)
 
 	// Phase 2: Semantic similarity-based edges
-	semanticEdges := s.linkSemantic(allNodes)
+	semanticEdges := s.linkSemantic()
 
 	return evidenceEdges, semanticEdges, nil
 }
@@ -458,7 +487,9 @@ func (s *Service) linkByEvidence(allNodes []memory.Node) int {
 					"shared_file":  filePath,
 					"shared_count": sharedFiles,
 				}
-				if err := s.repo.LinkNodes(nodeA, nodeB, memory.NodeRelationSharesEvidence, weight, props); err == nil {
+				if err := s.repo.LinkNodes(nodeA, nodeB, memory.NodeRelationSharesEvidence, weight, props); err != nil {
+					slog.Debug("failed to create evidence edge", "from", nodeA, "to", nodeB, "error", err)
+				} else {
 					count++
 				}
 			}
@@ -483,7 +514,7 @@ func countSharedFiles(filesA, filesB []string) int {
 	return count
 }
 
-func (s *Service) linkSemantic(allNodes []memory.Node) int {
+func (s *Service) linkSemantic() int {
 	count := 0
 	threshold := SemanticSimilarityThreshold
 
@@ -506,7 +537,9 @@ func (s *Service) linkSemantic(allNodes []memory.Node) int {
 			similarity := CosineSimilarity(nodeA.Embedding, nodeB.Embedding)
 			if similarity >= float32(threshold) {
 				props := map[string]any{"similarity": similarity}
-				if err := s.repo.LinkNodes(nodeA.ID, nodeB.ID, memory.NodeRelationSemanticallySimilar, float64(similarity), props); err == nil {
+				if err := s.repo.LinkNodes(nodeA.ID, nodeB.ID, memory.NodeRelationSemanticallySimilar, float64(similarity), props); err != nil {
+					slog.Debug("failed to create semantic edge", "from", nodeA.ID, "to", nodeB.ID, "error", err)
+				} else {
 					count++
 				}
 			}
@@ -558,7 +591,9 @@ func (s *Service) linkByLLMRelationships(relationships []core.Relationship, node
 			"reason":        rel.Reason,
 		}
 
-		if err := s.repo.LinkNodes(fromID, toID, relationType, weight, props); err == nil {
+		if err := s.repo.LinkNodes(fromID, toID, relationType, weight, props); err != nil {
+			slog.Debug("failed to create LLM relationship edge", "from", fromID, "to", toID, "relation", relationType, "error", err)
+		} else {
 			count++
 		}
 	}

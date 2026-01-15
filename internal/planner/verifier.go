@@ -61,9 +61,43 @@ func NewPlanVerifierWithConfig(query *codeintel.QueryService, cfg VerifierConfig
 //
 // Returns the verified (and potentially corrected) tasks.
 func (v *PlanVerifier) Verify(ctx context.Context, tasks []LLMTaskSchema) ([]LLMTaskSchema, error) {
-	// TODO: Implement verification logic in subsequent tasks
-	// For now, pass through unchanged
-	return tasks, nil
+	if len(tasks) == 0 {
+		return tasks, nil
+	}
+
+	// Make a copy to avoid modifying the original
+	result := make([]LLMTaskSchema, len(tasks))
+	copy(result, tasks)
+
+	// Verify and correct each task
+	for i := range result {
+		// 1. Verify and correct file paths
+		verifyResult := v.VerifyTaskPaths(ctx, i, &result[i])
+		if verifyResult.Corrections > 0 {
+			// Apply path corrections to task text
+			corrections := make(map[string]string)
+			for _, pr := range verifyResult.PathResults {
+				if pr.Corrected != "" {
+					corrections[pr.Original] = pr.Corrected
+				}
+			}
+			if len(corrections) > 0 {
+				result[i].Description = ApplyCorrections(result[i].Description, corrections)
+				result[i].Title = ApplyCorrections(result[i].Title, corrections)
+				for j, criterion := range result[i].AcceptanceCriteria {
+					result[i].AcceptanceCriteria[j] = ApplyCorrections(criterion, corrections)
+				}
+				for j, step := range result[i].ValidationSteps {
+					result[i].ValidationSteps[j] = ApplyCorrections(step, corrections)
+				}
+			}
+		}
+
+		// 2. Correct go test commands in validation steps
+		_, _ = v.CorrectTaskCommands(ctx, &result[i])
+	}
+
+	return result, nil
 }
 
 // Ensure PlanVerifier implements Verifier
@@ -94,22 +128,14 @@ var (
 	backtickPathRegex = regexp.MustCompile("`([a-zA-Z0-9_][\\w/.-]+)`")
 )
 
-// validExtensions maps file extensions to their validity
-var validExtensions = map[string]bool{
-	".go": true, ".ts": true, ".js": true, ".tsx": true, ".jsx": true,
-	".py": true, ".rs": true, ".java": true, ".cpp": true, ".c": true,
-	".h": true, ".hpp": true, ".rb": true, ".php": true, ".swift": true,
-	".kt": true, ".scala": true, ".vue": true, ".svelte": true,
-	".css": true, ".scss": true, ".less": true, ".html": true,
-	".yaml": true, ".yml": true, ".json": true, ".xml": true,
-	".md": true, ".txt": true, ".toml": true, ".sh": true,
-	".sql": true, ".proto": true, ".graphql": true,
-}
+// validSourceExtensions is defined in middleware.go - shared across the planner package
+// This comment ensures we don't accidentally re-declare it.
+// See: validSourceExtensions in middleware.go
 
 // commonWords that should not be treated as paths even if they match patterns
 var commonWords = map[string]bool{
 	"error.go": true, "main.go": true, // too generic without directory
-	"test.go":  true, "doc.go": true,
+	"test.go": true, "doc.go": true,
 }
 
 // ExtractPaths extracts file paths and directory references from text.
@@ -169,7 +195,7 @@ func ExtractPaths(text string) []PathReference {
 			path := match[1]
 			if isValidPath(path) {
 				ext := filepath.Ext(path)
-				isDir := ext == "" || !validExtensions[ext]
+				isDir := ext == "" || !validSourceExtensions[ext]
 				pathSet[path] = PathReference{
 					Path:     path,
 					IsDir:    isDir,
@@ -207,7 +233,7 @@ func isValidPath(path string) bool {
 	// Must have at least one path separator or be a file with extension
 	ext := filepath.Ext(path)
 	hasSlash := strings.Contains(path, "/")
-	hasValidExt := ext != "" && validExtensions[ext]
+	hasValidExt := ext != "" && validSourceExtensions[ext]
 
 	return hasSlash || hasValidExt
 }
@@ -430,7 +456,7 @@ func (v *PlanVerifier) CorrectGoTestCommand(ctx context.Context, command string)
 
 	// Find go test command with package path
 	match := goTestRegex.FindStringSubmatch(command)
-	if match == nil || len(match) < 3 {
+	if len(match) < 3 {
 		return result // Not a go test command with path
 	}
 

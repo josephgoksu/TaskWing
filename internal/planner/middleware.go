@@ -242,6 +242,19 @@ var (
 	quotedPathRegex = regexp.MustCompile("(?:`|\")'?([a-zA-Z0-9_\\-./]+\\.[a-z]{1,5})'?(?:`|\")")
 )
 
+// validSourceExtensions maps file extensions to their validity for source code files.
+// This is shared across the planner package (used by both middleware.go and verifier.go).
+var validSourceExtensions = map[string]bool{
+	".go": true, ".ts": true, ".js": true, ".tsx": true, ".jsx": true,
+	".py": true, ".rs": true, ".java": true, ".cpp": true, ".c": true,
+	".h": true, ".hpp": true, ".rb": true, ".php": true, ".swift": true,
+	".kt": true, ".scala": true, ".vue": true, ".svelte": true,
+	".css": true, ".scss": true, ".less": true, ".html": true,
+	".yaml": true, ".yml": true, ".json": true, ".xml": true,
+	".md": true, ".txt": true, ".toml": true, ".sh": true,
+	".sql": true, ".proto": true, ".graphql": true,
+}
+
 // extractFilePaths finds file path references in text.
 func extractFilePaths(text string) []string {
 	pathSet := make(map[string]bool)
@@ -292,19 +305,8 @@ func isLikelyFilePath(path string) bool {
 		return false
 	}
 
-	// Common source code extensions
-	validExts := map[string]bool{
-		".go": true, ".ts": true, ".js": true, ".tsx": true, ".jsx": true,
-		".py": true, ".rs": true, ".java": true, ".cpp": true, ".c": true,
-		".h": true, ".hpp": true, ".rb": true, ".php": true, ".swift": true,
-		".kt": true, ".scala": true, ".vue": true, ".svelte": true,
-		".css": true, ".scss": true, ".less": true, ".html": true,
-		".yaml": true, ".yml": true, ".json": true, ".xml": true,
-		".md": true, ".txt": true, ".toml": true, ".sh": true,
-		".sql": true, ".proto": true, ".graphql": true,
-	}
-
-	return validExts[ext]
+	// Use shared extensions map
+	return validSourceExtensions[ext]
 }
 
 // isCreationContext checks if a path is mentioned in a "create" context.

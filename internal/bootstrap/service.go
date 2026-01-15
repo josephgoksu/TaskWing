@@ -296,10 +296,32 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) e
 		return fmt.Errorf("ingest metadata: %w", err)
 	}
 
+	// Verify actual saved count by querying database
+	allNodes, err := repo.ListNodes("")
+	if err != nil {
+		if !isQuiet {
+			fmt.Println(" done (verification skipped)")
+		}
+		return nil
+	}
+
 	elapsed := time.Since(startTime).Round(time.Millisecond)
+	savedCount := len(allNodes)
+
 	if !isQuiet {
 		fmt.Printf(" done (%v)\n", elapsed)
-		fmt.Printf("\n   ✅ Extracted %d items in %v\n", len(findings), elapsed)
+		if savedCount == len(findings) {
+			fmt.Printf("\n   ✅ Extracted %d items in %v\n", savedCount, elapsed)
+		} else if savedCount > 0 {
+			fmt.Printf("\n   ⚠️  Extracted %d/%d items in %v (some duplicates or failures)\n", savedCount, len(findings), elapsed)
+		} else {
+			fmt.Printf("\n   ❌ Extraction failed: 0/%d items saved\n", len(findings))
+		}
+	}
+
+	// Sanity check: if we had findings but nothing saved, that's an error
+	if len(findings) > 0 && savedCount == 0 {
+		return fmt.Errorf("bootstrap integrity check failed: %d items extracted but 0 saved to database", len(findings))
 	}
 
 	return nil
