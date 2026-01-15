@@ -47,6 +47,20 @@ func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("enable foreign keys: %w", err)
 	}
 
+	// Use DELETE journal mode instead of WAL to ensure writes are immediately visible
+	// to other processes. This is critical for first-time bootstrap where the CLI
+	// creates data and then immediately re-reads it in a new process.
+	if _, err := db.Exec("PRAGMA journal_mode = DELETE"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("set journal mode: %w", err)
+	}
+
+	// Ensure synchronous writes for durability
+	if _, err := db.Exec("PRAGMA synchronous = FULL"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("set synchronous mode: %w", err)
+	}
+
 	store := &SQLiteStore{
 		db:       db,
 		basePath: basePath,
