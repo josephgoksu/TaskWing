@@ -19,6 +19,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/logger"
+	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/project"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
@@ -50,12 +51,15 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	// ═══════════════════════════════════════════════════════════════════════
 	// PHASE 0: Parse and Validate Flags
 	// ═══════════════════════════════════════════════════════════════════════
+	onlyAgents, _ := cmd.Flags().GetStringSlice("only-agents")
 	flags := bootstrap.Flags{
 		Preview:     getBoolFlag(cmd, "preview"),
 		SkipInit:    getBoolFlag(cmd, "skip-init"),
 		SkipIndex:   getBoolFlag(cmd, "skip-index"),
 		SkipAnalyze: getBoolFlag(cmd, "skip-analyze"),
 		Force:       getBoolFlag(cmd, "force"),
+		Resume:      getBoolFlag(cmd, "resume"),
+		OnlyAgents:  onlyAgents,
 		Trace:       getBoolFlag(cmd, "trace"),
 		TraceStdout: getBoolFlag(cmd, "trace-stdout"),
 		TraceFile:   getStringFlag(cmd, "trace-file"),
@@ -366,7 +370,7 @@ func executeLLMAnalyze(ctx context.Context, svc *bootstrap.Service, cwd string, 
 	}
 
 	// Run agent TUI flow with LLM analysis
-	return runAgentTUI(ctx, svc, cwd, llmCfg, flags.Trace, flags.TraceFile, flags.TraceStdout, flags.Preview)
+	return runAgentTUI(ctx, svc, cwd, llmCfg, flags)
 }
 
 // Helper functions for flag parsing
@@ -386,6 +390,8 @@ func init() {
 	bootstrapCmd.Flags().Bool("skip-index", false, "Skip code indexing (symbol extraction)")
 	bootstrapCmd.Flags().Bool("force", false, "Force indexing even for large codebases (>5000 files)")
 	bootstrapCmd.Flags().Bool("skip-analyze", false, "Skip LLM analysis (for CI/testing)")
+	bootstrapCmd.Flags().Bool("resume", false, "Resume from last checkpoint (skip completed agents)")
+	bootstrapCmd.Flags().StringSlice("only-agents", nil, "Run only specified agents (e.g., --only-agents=code,doc)")
 	bootstrapCmd.Flags().Bool("trace", false, "Emit JSON event stream to stderr")
 	bootstrapCmd.Flags().String("trace-file", "", "Write JSON event stream to file (default: .taskwing/logs/bootstrap.trace.jsonl)")
 	bootstrapCmd.Flags().Bool("trace-stdout", false, "Emit JSON event stream to stderr (overrides trace file)")
@@ -395,13 +401,39 @@ func init() {
 }
 
 // runAgentTUI handles the interactive UI part, delegating work to the service
-func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg llm.Config, trace bool, traceFile string, traceStdout bool, preview bool) error {
+func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg llm.Config, flags bootstrap.Flags) error {
 	fmt.Println("")
 	ui.RenderPageHeader("TaskWing Bootstrap", fmt.Sprintf("Using: %s (%s)", llmCfg.Model, llmCfg.Provider))
 
 	projectName := filepath.Base(cwd)
-	agentsList := bootstrap.NewDefaultAgents(llmCfg, cwd)
-	defer core.CloseAgents(agentsList)
+	allAgents := bootstrap.NewDefaultAgents(llmCfg, cwd)
+	defer core.CloseAgents(allAgents)
+
+	// Open repository for checkpoint tracking
+	repo, repoErr := openRepo()
+	if repoErr != nil && flags.Resume {
+		fmt.Fprintf(os.Stderr, "⚠️  Cannot resume: %v\n", repoErr)
+		flags.Resume = false
+	}
+	if repo != nil {
+		defer func() { _ = repo.Close() }()
+	}
+
+	// Filter agents based on flags
+	agentsList, skippedAgents := filterAgents(allAgents, flags, repo)
+
+	// Show skipped agents
+	if len(skippedAgents) > 0 && !flags.Quiet {
+		fmt.Printf("⏭️  Skipping completed agents: %s\n", strings.Join(skippedAgents, ", "))
+	}
+
+	// If all agents were skipped, nothing to do
+	if len(agentsList) == 0 {
+		if !flags.Quiet {
+			fmt.Println("✅ All agents already completed. Use 'bootstrap' without --resume to re-run.")
+		}
+		return nil
+	}
 
 	input := core.Input{
 		BasePath:    cwd,
@@ -413,7 +445,7 @@ func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg
 	stream := core.NewStreamingOutput(100)
 	defer stream.Close()
 
-	traceCleanup := setupTrace(stream, trace, traceFile, traceStdout, cwd)
+	traceCleanup := setupTrace(stream, flags.Trace, flags.TraceFile, flags.TraceStdout, cwd)
 	defer traceCleanup()
 
 	// Run TUI
@@ -430,6 +462,14 @@ func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg
 		return nil
 	}
 
+	// Update checkpoint state for completed agents
+	if repo != nil {
+		store := repo.GetDB()
+		if store != nil {
+			updateAgentCheckpoints(bootstrapModel.Agents, store)
+		}
+	}
+
 	// Check failures
 	if err := checkAgentFailures(bootstrapModel.Agents); err != nil {
 		return err
@@ -439,7 +479,78 @@ func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg
 	allFindings := core.AggregateFindings(bootstrapModel.Results)
 	allRelationships := core.AggregateRelationships(bootstrapModel.Results)
 
-	return svc.ProcessAndSaveResults(ctx, bootstrapModel.Results, allFindings, allRelationships, preview, viper.GetBool("quiet"))
+	return svc.ProcessAndSaveResults(ctx, bootstrapModel.Results, allFindings, allRelationships, flags.Preview, viper.GetBool("quiet"))
+}
+
+// filterAgents filters agents based on resume state and --only-agents flag.
+// Returns the filtered list and names of skipped agents.
+func filterAgents(agents []core.Agent, flags bootstrap.Flags, repo *memory.Repository) ([]core.Agent, []string) {
+	var filtered []core.Agent
+	var skipped []string
+
+	// Build set of agents to run (if --only-agents specified)
+	onlySet := make(map[string]bool)
+	for _, name := range flags.OnlyAgents {
+		onlySet[strings.ToLower(name)] = true
+	}
+
+	// Get store for checkpoint queries
+	var store *memory.SQLiteStore
+	if repo != nil {
+		store = repo.GetDB()
+	}
+
+	for _, agent := range agents {
+		name := agent.Name()
+
+		// Check --only-agents filter
+		if len(onlySet) > 0 && !onlySet[strings.ToLower(name)] {
+			skipped = append(skipped, name+" (filtered)")
+			continue
+		}
+
+		// Check resume state
+		if flags.Resume && store != nil {
+			completed, err := store.HasCompletedBootstrap(name)
+			if err == nil && completed {
+				skipped = append(skipped, name+" (cached)")
+				continue
+			}
+		}
+
+		filtered = append(filtered, agent)
+	}
+
+	return filtered, skipped
+}
+
+// updateAgentCheckpoints updates the bootstrap_state table based on agent results.
+func updateAgentCheckpoints(agents []*ui.AgentState, store *memory.SQLiteStore) {
+	for _, agent := range agents {
+		state := &memory.BootstrapState{
+			Component: agent.Name,
+		}
+
+		switch agent.Status {
+		case ui.StatusDone:
+			state.Status = memory.BootstrapStatusCompleted
+			if agent.Result != nil {
+				state.Metadata = map[string]any{
+					"findings_count": len(agent.Result.Findings),
+					"duration_ms":    agent.Result.Duration.Milliseconds(),
+				}
+			}
+		case ui.StatusError:
+			state.Status = memory.BootstrapStatusFailed
+			if agent.Err != nil {
+				state.ErrorMessage = agent.Err.Error()
+			}
+		default:
+			state.Status = memory.BootstrapStatusPending
+		}
+
+		_ = store.SetBootstrapState(state)
+	}
 }
 
 // runMultiRepoBootstrap uses the service to analyze multiple repos

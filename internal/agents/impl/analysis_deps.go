@@ -61,9 +61,9 @@ func (a *DepsAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 		a.chain = chain
 	}
 
-	// Initialize budget
+	// Initialize budget - use safe budget to avoid exceeding practical API limits
 	limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
-	budget := tools.NewContextBudget(int(float64(limit) * 0.7))
+	budget := tools.NewSafeContextBudget(int(float64(limit) * 0.7))
 
 	depsInfo, filesRead := gatherDepsWithTracking(input.BasePath, budget)
 	if depsInfo == "" {

@@ -311,7 +311,7 @@ TaskWing provides project memory for AI assistants via MCP tools and slash comma
 
 ### CLI Commands
 ```bash
-tw bootstrap        # Initialize project memory (requires API key)
+tw bootstrap        # Initialize project memory (first-time setup)
 tw context "query"  # Search knowledge semantically
 tw add "content"    # Add knowledge to memory
 tw plan new "goal"  # Create development plan

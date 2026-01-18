@@ -9,6 +9,14 @@ import (
 // ErrBudgetExceeded is returned when a token reservation would exceed the budget.
 var ErrBudgetExceeded = errors.New("context budget exceeded")
 
+// MaxSafeContextBudget is the maximum tokens we'll use for context, regardless of model limits.
+// This prevents hitting practical API limits that are lower than documented limits.
+// Set to 80k tokens to safely fit within all providers' practical limits with room for:
+// - System prompt overhead (~5-10k tokens)
+// - Response buffer
+// - Safety margin for token estimation variance
+const MaxSafeContextBudget = 80_000
+
 // ContextBudget tracks token usage and enforces limits.
 // Use this to prevent agents from exceeding model context windows.
 // Thread-safe for concurrent access.
@@ -23,6 +31,16 @@ type ContextBudget struct {
 func NewContextBudget(totalTokens int) *ContextBudget {
 	return &ContextBudget{
 		totalBudget: totalTokens,
+		usedTokens:  0,
+	}
+}
+
+// NewSafeContextBudget creates a budget tracker that respects MaxSafeContextBudget.
+// Use this for agents that need to stay within practical API limits regardless of
+// the model's theoretical context window.
+func NewSafeContextBudget(requestedTokens int) *ContextBudget {
+	return &ContextBudget{
+		totalBudget: min(requestedTokens, MaxSafeContextBudget),
 		usedTokens:  0,
 	}
 }

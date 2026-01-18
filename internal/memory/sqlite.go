@@ -222,6 +222,36 @@ func (s *SQLiteStore) initSchema() error {
 		last_edited_at TEXT                     -- When manually edited (NULL if never)
 	);
 
+	-- === Bootstrap State Tracking Tables ===
+	-- These tables support incremental updates and partial retries for bootstrap operations.
+
+	-- Bootstrap state tracks completion status of bootstrap components
+	-- Used for partial retry: if one agent fails, resume from checkpoint
+	CREATE TABLE IF NOT EXISTS bootstrap_state (
+		component TEXT PRIMARY KEY,             -- Agent name or operation (e.g., 'code', 'doc', 'git', 'deps')
+		status TEXT NOT NULL,                   -- 'pending', 'in_progress', 'completed', 'failed'
+		last_updated TEXT NOT NULL,             -- Timestamp of last status change
+		checksum TEXT,                          -- Hash of input data for change detection
+		error_message TEXT,                     -- Error details if status='failed'
+		metadata TEXT                           -- JSON for additional context (e.g., file count, duration)
+	);
+
+	-- Tool versions tracks installed AI tool configurations
+	-- Used for incremental updates: detect when new commands are added
+	-- NOTE: Currently, version tracking uses marker files (.taskwing-managed) and
+	-- inline comments (<!-- TASKWING_MANAGED -->). This table is prepared for future
+	-- optimization to enable faster version checks without file parsing.
+	CREATE TABLE IF NOT EXISTS tool_versions (
+		tool_name TEXT PRIMARY KEY,             -- AI tool name (e.g., 'claude', 'cursor', 'copilot')
+		version TEXT NOT NULL,                  -- TaskWing version that configured this tool
+		command_hash TEXT,                      -- Hash of expected command files for change detection
+		installed_at TEXT NOT NULL,             -- When first installed
+		updated_at TEXT NOT NULL                -- When last updated
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_bootstrap_state_status ON bootstrap_state(status);
+	CREATE INDEX IF NOT EXISTS idx_tool_versions_updated ON tool_versions(updated_at);
+
 	-- FTS5 for keyword search (hybrid with vector similarity)
 	CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
 		id UNINDEXED,
@@ -2136,4 +2166,266 @@ func (s *SQLiteStore) GetEmbeddingStats() (*EmbeddingStats, error) {
 	}
 
 	return stats, nil
+}
+
+// === Bootstrap State Management ===
+
+// BootstrapState represents the status of a bootstrap component.
+type BootstrapState struct {
+	Component    string            `json:"component"`     // Agent name or operation
+	Status       string            `json:"status"`        // pending, in_progress, completed, failed
+	LastUpdated  time.Time         `json:"last_updated"`
+	Checksum     string            `json:"checksum,omitempty"`      // Hash for change detection
+	ErrorMessage string            `json:"error_message,omitempty"` // Error details if failed
+	Metadata     map[string]any    `json:"metadata,omitempty"`      // Additional context
+}
+
+// BootstrapStateStatus constants
+const (
+	BootstrapStatusPending    = "pending"
+	BootstrapStatusInProgress = "in_progress"
+	BootstrapStatusCompleted  = "completed"
+	BootstrapStatusFailed     = "failed"
+)
+
+// GetBootstrapState retrieves the state of a bootstrap component.
+func (s *SQLiteStore) GetBootstrapState(component string) (*BootstrapState, error) {
+	var state BootstrapState
+	var lastUpdated string
+	var checksum, errorMessage, metadataJSON sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT component, status, last_updated, checksum, error_message, metadata
+		FROM bootstrap_state WHERE component = ?
+	`, component).Scan(&state.Component, &state.Status, &lastUpdated, &checksum, &errorMessage, &metadataJSON)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // Not found, return nil without error
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query bootstrap state: %w", err)
+	}
+
+	state.LastUpdated, _ = time.Parse(time.RFC3339, lastUpdated)
+	if checksum.Valid {
+		state.Checksum = checksum.String
+	}
+	if errorMessage.Valid {
+		state.ErrorMessage = errorMessage.String
+	}
+	if metadataJSON.Valid && metadataJSON.String != "" {
+		_ = json.Unmarshal([]byte(metadataJSON.String), &state.Metadata)
+	}
+
+	return &state, nil
+}
+
+// SetBootstrapState creates or updates the state of a bootstrap component.
+func (s *SQLiteStore) SetBootstrapState(state *BootstrapState) error {
+	if state.Component == "" {
+		return fmt.Errorf("component is required")
+	}
+	if state.Status == "" {
+		state.Status = BootstrapStatusPending
+	}
+	state.LastUpdated = time.Now().UTC()
+
+	var metadataJSON []byte
+	if len(state.Metadata) > 0 {
+		var err error
+		metadataJSON, err = json.Marshal(state.Metadata)
+		if err != nil {
+			return fmt.Errorf("marshal metadata: %w", err)
+		}
+	}
+
+	_, err := s.db.Exec(`
+		INSERT OR REPLACE INTO bootstrap_state (component, status, last_updated, checksum, error_message, metadata)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, state.Component, state.Status, state.LastUpdated.Format(time.RFC3339),
+		sql.NullString{String: state.Checksum, Valid: state.Checksum != ""},
+		sql.NullString{String: state.ErrorMessage, Valid: state.ErrorMessage != ""},
+		sql.NullString{String: string(metadataJSON), Valid: len(metadataJSON) > 0})
+
+	if err != nil {
+		return fmt.Errorf("upsert bootstrap state: %w", err)
+	}
+
+	return nil
+}
+
+// ListBootstrapStates returns all bootstrap component states.
+func (s *SQLiteStore) ListBootstrapStates() ([]BootstrapState, error) {
+	rows, err := s.db.Query(`
+		SELECT component, status, last_updated, checksum, error_message, metadata
+		FROM bootstrap_state ORDER BY component
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query bootstrap states: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var states []BootstrapState
+	for rows.Next() {
+		var state BootstrapState
+		var lastUpdated string
+		var checksum, errorMessage, metadataJSON sql.NullString
+
+		if err := rows.Scan(&state.Component, &state.Status, &lastUpdated, &checksum, &errorMessage, &metadataJSON); err != nil {
+			return nil, fmt.Errorf("scan bootstrap state: %w", err)
+		}
+
+		state.LastUpdated, _ = time.Parse(time.RFC3339, lastUpdated)
+		if checksum.Valid {
+			state.Checksum = checksum.String
+		}
+		if errorMessage.Valid {
+			state.ErrorMessage = errorMessage.String
+		}
+		if metadataJSON.Valid && metadataJSON.String != "" {
+			_ = json.Unmarshal([]byte(metadataJSON.String), &state.Metadata)
+		}
+
+		states = append(states, state)
+	}
+
+	return states, nil
+}
+
+// ClearBootstrapStates removes all bootstrap state entries.
+// Used to start a fresh bootstrap run.
+func (s *SQLiteStore) ClearBootstrapStates() error {
+	_, err := s.db.Exec("DELETE FROM bootstrap_state")
+	if err != nil {
+		return fmt.Errorf("clear bootstrap states: %w", err)
+	}
+	return nil
+}
+
+// HasCompletedBootstrap checks if a component has completed successfully.
+func (s *SQLiteStore) HasCompletedBootstrap(component string) (bool, error) {
+	state, err := s.GetBootstrapState(component)
+	if err != nil {
+		return false, err
+	}
+	return state != nil && state.Status == BootstrapStatusCompleted, nil
+}
+
+// === Tool Version Management ===
+
+// ToolVersion represents the installed version of an AI tool configuration.
+type ToolVersion struct {
+	ToolName    string    `json:"tool_name"`    // AI tool name (e.g., 'claude', 'cursor')
+	Version     string    `json:"version"`      // TaskWing version that configured this tool
+	CommandHash string    `json:"command_hash"` // Hash of command configuration for change detection
+	InstalledAt time.Time `json:"installed_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// GetToolVersion retrieves the installed version of an AI tool.
+func (s *SQLiteStore) GetToolVersion(toolName string) (*ToolVersion, error) {
+	var tv ToolVersion
+	var installedAt, updatedAt string
+	var commandHash sql.NullString
+
+	err := s.db.QueryRow(`
+		SELECT tool_name, version, command_hash, installed_at, updated_at
+		FROM tool_versions WHERE tool_name = ?
+	`, toolName).Scan(&tv.ToolName, &tv.Version, &commandHash, &installedAt, &updatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // Not found
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query tool version: %w", err)
+	}
+
+	tv.InstalledAt, _ = time.Parse(time.RFC3339, installedAt)
+	tv.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	if commandHash.Valid {
+		tv.CommandHash = commandHash.String
+	}
+
+	return &tv, nil
+}
+
+// SetToolVersion creates or updates the installed version of an AI tool.
+func (s *SQLiteStore) SetToolVersion(tv *ToolVersion) error {
+	if tv.ToolName == "" {
+		return fmt.Errorf("tool_name is required")
+	}
+	if tv.Version == "" {
+		return fmt.Errorf("version is required")
+	}
+
+	now := time.Now().UTC()
+	tv.UpdatedAt = now
+
+	// Check if exists to determine installed_at
+	existing, err := s.GetToolVersion(tv.ToolName)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		tv.InstalledAt = now
+	} else {
+		tv.InstalledAt = existing.InstalledAt
+	}
+
+	_, err = s.db.Exec(`
+		INSERT OR REPLACE INTO tool_versions (tool_name, version, command_hash, installed_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, tv.ToolName, tv.Version, tv.CommandHash, tv.InstalledAt.Format(time.RFC3339), tv.UpdatedAt.Format(time.RFC3339))
+
+	if err != nil {
+		return fmt.Errorf("upsert tool version: %w", err)
+	}
+
+	return nil
+}
+
+// ListToolVersions returns all installed tool versions.
+func (s *SQLiteStore) ListToolVersions() ([]ToolVersion, error) {
+	rows, err := s.db.Query(`
+		SELECT tool_name, version, command_hash, installed_at, updated_at
+		FROM tool_versions ORDER BY tool_name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query tool versions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var versions []ToolVersion
+	for rows.Next() {
+		var tv ToolVersion
+		var installedAt, updatedAt string
+		var commandHash sql.NullString
+
+		if err := rows.Scan(&tv.ToolName, &tv.Version, &commandHash, &installedAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scan tool version: %w", err)
+		}
+
+		tv.InstalledAt, _ = time.Parse(time.RFC3339, installedAt)
+		tv.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		if commandHash.Valid {
+			tv.CommandHash = commandHash.String
+		}
+
+		versions = append(versions, tv)
+	}
+
+	return versions, nil
+}
+
+// NeedsToolUpdate checks if a tool needs to be updated based on version hash comparison.
+// Returns true if the tool is not installed or if the installed version differs from expectedVersion.
+func (s *SQLiteStore) NeedsToolUpdate(toolName, expectedVersion string) (bool, error) {
+	tv, err := s.GetToolVersion(toolName)
+	if err != nil {
+		return false, err
+	}
+	if tv == nil {
+		return true, nil // Not installed
+	}
+	return tv.CommandHash != expectedVersion, nil
 }

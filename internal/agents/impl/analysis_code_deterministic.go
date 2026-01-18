@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-
 	"strings"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/tools"
@@ -43,7 +43,8 @@ func (a *CodeAgent) Close() error {
 	return nil
 }
 
-// Run executes the agent using a single LLM call with pre-gathered context.
+// Run executes the agent using chunked processing with deduplication.
+// For large codebases, splits files into chunks, analyzes each, then merges results.
 func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
 	// Initialize chain (lazy)
 	if a.chain == nil {
@@ -69,77 +70,76 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 		basePath = a.basePath
 	}
 
-	// Gather context - prefer symbol index, fallback to raw files
-	var sourceCode string
-	var dirTree string
-	var gatherer *tools.ContextGatherer // Track for coverage stats
 	isIncremental := input.Mode == core.ModeWatch && len(input.ChangedFiles) > 0
 
-	if isIncremental {
-		// INCR ANALYSIS: Always use raw files for changed files
-		gatherer = tools.NewContextGatherer(basePath)
-		limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
-		budget := tools.NewContextBudget(int(float64(limit) * 0.7))
-		gatherer.SetBudget(budget)
-		dirTree = gatherer.ListDirectoryTree(5)
-		sourceCode = gatherer.GatherSpecificFiles(input.ChangedFiles)
-	} else {
-		// FULL ANALYSIS: Try symbol index first
-		symbolCtx, err := tools.NewSymbolContext(basePath, a.LLMConfig())
-		if err == nil {
-			// Use symbol index (compact, scalable)
-			defer func() { _ = symbolCtx.Close() }()
-			symbolCtx.SetConfig(tools.SymbolContextConfig{
-				MaxTokens:    50000, // ~50k tokens for symbols
-				PreferPublic: true,
-			})
-			sourceCode, err = symbolCtx.GatherArchitecturalContext(ctx)
-			if err != nil {
-				sourceCode = "" // Fall through to raw files
-			}
-		}
+	// Format existing knowledge context (used by all analysis paths)
+	existingKnowledgeStr := a.formatExistingKnowledge(input.ExistingContext)
 
-		// Fallback to raw files if index not available or failed
-		if sourceCode == "" {
-			gatherer = tools.NewContextGatherer(basePath)
-			limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
-			budget := tools.NewContextBudget(int(float64(limit) * 0.5)) // Stricter for raw files
-			gatherer.SetBudget(budget)
-			dirTree = gatherer.ListDirectoryTree(5)
-			sourceCode = gatherer.GatherSourceCode()
-		} else {
-			// Still need dir tree for context
-			gatherer = tools.NewContextGatherer(basePath)
-			dirTree = gatherer.ListDirectoryTree(5)
+	// Get directory tree (used by all analysis paths)
+	gatherer := tools.NewContextGatherer(basePath)
+	dirTree := gatherer.ListDirectoryTree(5)
+
+	// Route to appropriate analysis strategy
+	if isIncremental {
+		return a.runIncrementalAnalysis(ctx, input, basePath, dirTree, existingKnowledgeStr)
+	}
+
+	// FULL ANALYSIS: Try symbol index first (compact, scalable)
+	symbolCtx, err := tools.NewSymbolContext(basePath, a.LLMConfig())
+	if err == nil {
+		defer func() { _ = symbolCtx.Close() }()
+		symbolCtx.SetConfig(tools.SymbolContextConfig{
+			MaxTokens:    50000, // ~50k tokens for symbols
+			PreferPublic: true,
+		})
+		sourceCode, err := symbolCtx.GatherArchitecturalContext(ctx)
+		if err == nil && sourceCode != "" {
+			// C3 Fix: Get coverage from symbol index stats, not empty gatherer
+			coverage := tools.CoverageStats{} // Default empty
+			if stats, statsErr := symbolCtx.GetStats(ctx); statsErr == nil && stats != nil {
+				coverage = tools.CoverageStats{
+					FilesRead: make([]tools.FileRecord, 0),
+					FilesSkipped: []tools.SkipRecord{{
+						Path:   "(symbol index)",
+						Reason: fmt.Sprintf("analyzed %d symbols from %d indexed files", stats.SymbolsFound, stats.FilesIndexed),
+					}},
+				}
+			}
+			// Symbol index available - single LLM call
+			return a.runSingleAnalysis(ctx, input, dirTree, sourceCode, existingKnowledgeStr, coverage)
 		}
 	}
 
-	if sourceCode == "" || sourceCode == "No source code files found." {
+	// Fallback: Chunked processing for raw files (handles large codebases)
+	return a.runChunkedAnalysis(ctx, input, basePath, dirTree, existingKnowledgeStr)
+}
+
+// runIncrementalAnalysis handles watch mode with specific changed files.
+func (a *CodeAgent) runIncrementalAnalysis(ctx context.Context, input core.Input, basePath, dirTree, existingKnowledge string) (core.Output, error) {
+	gatherer := tools.NewContextGatherer(basePath)
+	limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
+	budget := tools.NewSafeContextBudget(int(float64(limit) * 0.7))
+	gatherer.SetBudget(budget)
+
+	sourceCode := gatherer.GatherSpecificFiles(input.ChangedFiles)
+	if sourceCode == "" {
 		return core.Output{
 			AgentName: a.Name(),
-			Error:     fmt.Errorf("no source code found to analyze"),
+			Error:     fmt.Errorf("no source code found in changed files"),
 		}, nil
 	}
 
-	// Format existing knowledge context
-	var existingKnowledgeStr string
-	if nodesObj, ok := input.ExistingContext["existing_nodes"]; ok {
-		if nodes, ok := nodesObj.([]memory.Node); ok && len(nodes) > 0 {
-			var sb strings.Builder
-			for _, n := range nodes {
-				sb.WriteString(fmt.Sprintf("- [%s] %s: %s\n", n.Type, n.ID, n.Summary))
-			}
-			existingKnowledgeStr = sb.String()
-		}
-	}
+	return a.runSingleAnalysis(ctx, input, dirTree, sourceCode, existingKnowledge, gatherer.GetCoverage())
+}
 
-	// Execute Chain with single LLM call
+// runSingleAnalysis executes a single LLM call (used for symbol index and incremental).
+func (a *CodeAgent) runSingleAnalysis(ctx context.Context, input core.Input, dirTree, sourceCode, existingKnowledge string, coverage tools.CoverageStats) (core.Output, error) {
 	chainInput := map[string]any{
 		"ProjectName":       input.ProjectName,
 		"DirTree":           dirTree,
 		"SourceCode":        sourceCode,
-		"IsIncremental":     isIncremental,
-		"ExistingKnowledge": existingKnowledgeStr,
+		"IsIncremental":     input.Mode == core.ModeWatch,
+		"ExistingKnowledge": existingKnowledge,
 	}
 
 	parsed, raw, duration, err := a.chain.Invoke(ctx, chainInput)
@@ -154,12 +154,132 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 
 	findings, relationships := a.parseFindings(parsed)
 	output := core.BuildOutputWithRelationships(a.Name(), findings, relationships, "JSON output handled by Eino", duration)
-
-	// Add coverage stats from context gathering
-	toolsCoverage := gatherer.GetCoverage()
-	output.Coverage = convertToolsCoverage(toolsCoverage)
+	output.Coverage = convertToolsCoverage(coverage)
 
 	return output, nil
+}
+
+// runChunkedAnalysis processes large codebases in chunks, then deduplicates.
+func (a *CodeAgent) runChunkedAnalysis(ctx context.Context, input core.Input, basePath, dirTree, existingKnowledge string) (core.Output, error) {
+	chunker := tools.NewCodeChunker(basePath)
+	chunker.SetConfig(tools.ChunkConfig{
+		MaxTokensPerChunk:  30000, // 30k tokens per chunk - safe margin
+		MaxFilesPerChunk:   40,    // Limit files per chunk
+		IncludeLineNumbers: true,
+	})
+
+	chunks, err := chunker.ChunkSourceCode()
+	if err != nil {
+		return core.Output{
+			AgentName: a.Name(),
+			Error:     fmt.Errorf("chunking failed: %w", err),
+		}, nil
+	}
+
+	if len(chunks) == 0 {
+		return core.Output{
+			AgentName: a.Name(),
+			Error:     fmt.Errorf("no source code found to analyze"),
+		}, nil
+	}
+
+	// Process each chunk and collect findings
+	var allFindings []core.Finding
+	var allRelationships []core.Relationship
+	var totalDuration time.Duration
+	var chunkErrors []string
+	successfulChunks := 0
+
+	for i, chunk := range chunks {
+		select {
+		case <-ctx.Done():
+			return core.Output{
+				AgentName: a.Name(),
+				Error:     ctx.Err(),
+			}, nil
+		default:
+		}
+
+		// Add chunk context to help LLM understand partial view
+		chunkContext := fmt.Sprintf("(Chunk %d/%d: %s)", i+1, len(chunks), chunk.Description)
+
+		chainInput := map[string]any{
+			"ProjectName":       input.ProjectName + " " + chunkContext,
+			"DirTree":           dirTree,
+			"SourceCode":        chunk.Content,
+			"IsIncremental":     false,
+			"ExistingKnowledge": existingKnowledge,
+		}
+
+		parsed, _, duration, err := a.chain.Invoke(ctx, chainInput)
+		totalDuration += duration
+
+		if err != nil {
+			// Track failed chunks for reporting
+			chunkErrors = append(chunkErrors, fmt.Sprintf("chunk %d (%s): %v", i+1, chunk.Description, err))
+			continue
+		}
+
+		successfulChunks++
+		findings, relationships := a.parseFindings(parsed)
+		allFindings = append(allFindings, findings...)
+		allRelationships = append(allRelationships, relationships...)
+	}
+
+	// C1 Fix: If ALL chunks failed, return an error instead of silent empty result
+	if successfulChunks == 0 {
+		return core.Output{
+			AgentName: a.Name(),
+			Error:     fmt.Errorf("all %d chunks failed: %s", len(chunks), strings.Join(chunkErrors, "; ")),
+			Duration:  totalDuration,
+		}, nil
+	}
+
+	// Deduplicate findings from all chunks
+	deduplicator := tools.NewFindingDeduplicator()
+	dedupedFindings := deduplicator.DeduplicateFindings(allFindings)
+	dedupedRelationships := deduplicator.DeduplicateRelationships(allRelationships)
+
+	// C2 Fix: Include chunk success/failure stats in output
+	rawOutput := fmt.Sprintf("Chunked analysis: %d/%d chunks succeeded, %d findings deduplicated to %d",
+		successfulChunks, len(chunks), len(allFindings), len(dedupedFindings))
+	if len(chunkErrors) > 0 {
+		rawOutput += fmt.Sprintf(" (failures: %s)", strings.Join(chunkErrors, "; "))
+	}
+
+	output := core.BuildOutputWithRelationships(
+		a.Name(),
+		dedupedFindings,
+		dedupedRelationships,
+		rawOutput,
+		totalDuration,
+	)
+	output.Coverage = convertToolsCoverage(chunker.GetCoverage())
+
+	return output, nil
+}
+
+// formatExistingKnowledge formats existing knowledge nodes for the prompt.
+func (a *CodeAgent) formatExistingKnowledge(existingContext map[string]any) string {
+	if existingContext == nil {
+		return ""
+	}
+
+	nodesObj, ok := existingContext["existing_nodes"]
+	if !ok {
+		return ""
+	}
+
+	nodes, ok := nodesObj.([]memory.Node)
+	if !ok || len(nodes) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, n := range nodes {
+		fmt.Fprintf(&sb, "- [%s] %s: %s\n", n.Type, n.ID, n.Summary)
+	}
+	return sb.String()
 }
 
 // convertToolsCoverage converts tools.CoverageStats to core.CoverageStats
