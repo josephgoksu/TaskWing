@@ -117,19 +117,20 @@ type Plan struct {
 	LastAuditReport string `json:"lastAuditReport,omitempty"` // JSON-serialized AuditReport
 }
 
-// scopeKeywords maps scope names to keywords that indicate them
-var scopeKeywords = map[string][]string{
-	"auth":         {"auth", "authentication", "login", "logout", "session", "cookie", "jwt", "token", "password", "credential", "oauth", "sso"},
-	"api":          {"api", "endpoint", "handler", "route", "rest", "graphql", "grpc", "request", "response", "middleware"},
-	"database":     {"database", "db", "sql", "sqlite", "postgres", "mysql", "migration", "schema", "query", "table", "index"},
-	"vectorsearch": {"vector", "embedding", "lancedb", "similarity", "semantic", "search", "rag", "retrieval"},
-	"llm":          {"llm", "openai", "claude", "gemini", "ollama", "prompt", "completion", "chat", "model", "inference"},
-	"cli":          {"cli", "command", "flag", "cobra", "terminal", "argument", "subcommand"},
-	"mcp":          {"mcp", "tool", "protocol", "context", "stdio", "jsonrpc"},
-	"bootstrap":    {"bootstrap", "scan", "analyze", "extract", "discover", "pattern"},
-	"ui":           {"ui", "tui", "interface", "display", "render", "bubbletea", "lipgloss"},
-	"test":         {"test", "testing", "mock", "fixture", "assert", "benchmark", "coverage"},
-}
+// scopeKeywords is DEPRECATED - use GetScopeConfig().GetScopes() instead.
+// Kept for backward compatibility with any direct references.
+// New code should use the configurable scope system in scope_config.go.
+//
+// To customize scopes, add to .taskwing.yaml or ~/.taskwing/config.yaml:
+//
+//	task:
+//	  scopes:
+//	    custom_scope:
+//	      - keyword1
+//	      - keyword2
+//	  maxKeywords: 15  # default: 10
+//	  minWordLength: 4 # default: 3
+var scopeKeywords = defaultScopeKeywords
 
 // stopWords are common words to exclude from keyword extraction
 var stopWords = map[string]bool{
@@ -151,7 +152,38 @@ var stopWords = map[string]bool{
 
 // EnrichAIFields populates Scope, Keywords, and SuggestedRecallQueries from title/description.
 // Call this before CreateTask to ensure AI integration fields are set.
+//
+// Algorithm Overview:
+// 1. KEYWORD EXTRACTION:
+//   - Combine title and description into lowercase text
+//   - Remove punctuation, split into words
+//   - Filter out stop words (common English words like "the", "and", etc.)
+//   - Keep words >= minWordLength (default: 3 chars) for keywords
+//   - Limit to maxKeywords (default: 10) to keep context focused
+//
+// 2. SCOPE INFERENCE:
+//   - Collect ALL words >= 2 chars (to match abbreviations like "db", "ui")
+//   - For each configured scope, count keyword matches
+//   - Highest-scoring scope wins; defaults to "general" if no matches
+//   - Scopes are configurable via task.scopes in .taskwing.yaml
+//
+// 3. RECALL QUERY GENERATION:
+//   - Query 1: "<scope> patterns constraints decisions" - domain-specific architecture
+//   - Query 2: Top 5 keywords joined - content-specific search
+//   - Query 3: Simplified title words - intent-focused search
+//
+// Configuration (in .taskwing.yaml or ~/.taskwing/config.yaml):
+//
+//	task:
+//	  scopes:
+//	    custom_domain:
+//	      - keyword1
+//	      - keyword2
+//	  maxKeywords: 15   # default: 10
+//	  minWordLength: 4  # default: 3
 func (t *Task) EnrichAIFields() {
+	cfg := GetScopeConfig()
+
 	// Extract keywords from title and description
 	text := strings.ToLower(t.Title + " " + t.Description)
 
@@ -160,19 +192,22 @@ func (t *Task) EnrichAIFields() {
 	text = re.ReplaceAllString(text, " ")
 	words := strings.Fields(text)
 
-	// First pass: collect ALL words >= 2 chars for scope matching (includes "db", "ui", etc.)
+	// First pass: collect ALL words >= minWordLenScope (2) for scope matching
+	// This catches abbreviations like "db", "ui", "ai"
 	allWords := make(map[string]bool)
+	minLenScope := cfg.MinWordLengthForScope()
 	for _, word := range words {
-		if len(word) >= 2 && !stopWords[word] {
+		if len(word) >= minLenScope && !stopWords[word] {
 			allWords[word] = true
 		}
 	}
 
-	// Second pass: filter to >= 3 chars for keyword extraction (more meaningful terms)
+	// Second pass: filter to >= minWordLength (default 3) for keyword extraction
+	minLen := cfg.MinWordLength()
 	seen := make(map[string]bool)
 	var keywords []string
 	for _, word := range words {
-		if len(word) < 3 {
+		if len(word) < minLen {
 			continue
 		}
 		if stopWords[word] {
@@ -185,9 +220,10 @@ func (t *Task) EnrichAIFields() {
 		keywords = append(keywords, word)
 	}
 
-	// Limit to top 10 keywords (first ones tend to be most relevant)
-	if len(keywords) > 10 {
-		keywords = keywords[:10]
+	// Limit to configured max keywords (first ones tend to be most relevant)
+	maxKw := cfg.MaxKeywords()
+	if len(keywords) > maxKw {
+		keywords = keywords[:maxKw]
 	}
 	effectiveKeywords := t.Keywords
 	if len(effectiveKeywords) == 0 {
@@ -195,29 +231,11 @@ func (t *Task) EnrichAIFields() {
 		t.Keywords = keywords
 	}
 
-	// Infer scope from ALL words (including 2-char like "db", "ui")
-	scopeScores := make(map[string]int)
-	for scope, scopeKws := range scopeKeywords {
-		for _, kw := range scopeKws {
-			if allWords[kw] {
-				scopeScores[scope]++
-			}
-		}
-	}
-
-	// Find highest scoring scope
+	// Infer scope using configurable scope keywords
 	effectiveScope := t.Scope
 	if effectiveScope == "" {
-		bestScope := "general"
-		bestScore := 0
-		for scope, score := range scopeScores {
-			if score > bestScore {
-				bestScore = score
-				bestScope = scope
-			}
-		}
-		effectiveScope = bestScope
-		t.Scope = bestScope
+		effectiveScope = cfg.InferScope(allWords)
+		t.Scope = effectiveScope
 	}
 
 	// Generate suggested recall queries
@@ -240,7 +258,7 @@ func (t *Task) EnrichAIFields() {
 	var titleKw []string
 	for _, w := range titleWords {
 		w = re.ReplaceAllString(w, "")
-		if len(w) >= 3 && !stopWords[w] {
+		if len(w) >= minLen && !stopWords[w] {
 			titleKw = append(titleKw, w)
 		}
 	}
