@@ -153,6 +153,8 @@ var stopWords = map[string]bool{
 // EnrichAIFields populates Scope, Keywords, and SuggestedRecallQueries from title/description.
 // Call this before CreateTask to ensure AI integration fields are set.
 //
+// This is part of the early binding context strategy - see docs/architecture/ADR_CONTEXT_BINDING.md
+//
 // Algorithm Overview:
 // 1. KEYWORD EXTRACTION:
 //   - Combine title and description into lowercase text

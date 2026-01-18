@@ -18,7 +18,10 @@ type RecallResult struct {
 
 // FormatRichContext builds a rich Markdown context string for a task.
 // This is used by both CLI hooks and MCP tools to ensure consistent presentation.
-// Uses Task.ContextSummary (early binding) if available, with searchFn as fallback.
+//
+// Context Binding Strategy (see docs/architecture/ADR_CONTEXT_BINDING.md):
+// - Early binding: Uses Task.ContextSummary if available (populated at creation)
+// - Late binding: Falls back to searchFn if ContextSummary is empty (backward compatibility)
 func FormatRichContext(ctx context.Context, t *Task, p *Plan, searchFn RecallSearchFunc) string {
 	var recallContext string
 

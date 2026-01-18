@@ -139,6 +139,22 @@ Bootstrap runs LLM analysis by default.
 
 `tw mcp` starts a JSON-RPC stdio server exposing `recall` tool for AI assistants. Target token budget: 500-1000 tokens per context response.
 
+### Task Context Binding
+
+Tasks receive architectural context via a **hybrid early+late binding** approach:
+
+1. **Early binding** (at task creation): `TaskEnricher` executes recall queries and embeds results in `Task.ContextSummary`
+2. **Late binding** (at display): `FormatRichContext()` uses early-bound context or fetches fresh context as fallback
+
+This ensures tasks always have relevant architecture context while maintaining backward compatibility with older tasks.
+
+**Key files**:
+- `internal/app/plan.go` - TaskEnricher executes queries at creation time
+- `internal/task/presentation.go` - FormatRichContext() handles display with fallback
+- `internal/task/scope_config.go` - Configurable scope keywords for context matching
+
+See `docs/architecture/ADR_CONTEXT_BINDING.md` for full design rationale.
+
 ### Autonomous Task Execution (Hooks)
 
 TaskWing integrates with Claude Code's hook system for autonomous plan execution:

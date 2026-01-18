@@ -101,7 +101,8 @@ type TaskPlanner interface {
 }
 
 // TaskContextEnricher executes recall queries and returns aggregated context for a task.
-// This is used during task creation to populate ContextSummary.
+// This is used during task creation to populate ContextSummary (early binding).
+// See docs/architecture/ADR_CONTEXT_BINDING.md for the full context binding design.
 type TaskContextEnricher func(ctx context.Context, queries []string) (string, error)
 
 // PlanApp provides plan lifecycle operations.
