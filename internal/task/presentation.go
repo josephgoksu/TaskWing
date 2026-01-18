@@ -18,18 +18,36 @@ type RecallResult struct {
 
 // FormatRichContext builds a rich Markdown context string for a task.
 // This is used by both CLI hooks and MCP tools to ensure consistent presentation.
-// searchFn may be nil if no recall context is needed.
+// Uses Task.ContextSummary (early binding) if available, with searchFn as fallback.
 func FormatRichContext(ctx context.Context, t *Task, p *Plan, searchFn RecallSearchFunc) string {
 	var recallContext string
-	if len(t.SuggestedRecallQueries) > 0 && searchFn != nil {
-		results, err := searchFn(ctx, t.SuggestedRecallQueries[0], 3)
-		if err == nil && len(results) > 0 {
+
+	// Early binding: Use pre-computed ContextSummary if available
+	if t.ContextSummary != "" {
+		recallContext = "\n" + t.ContextSummary
+	} else if len(t.SuggestedRecallQueries) > 0 && searchFn != nil {
+		// Late binding fallback: Fetch context dynamically using ALL queries
+		var allResults []RecallResult
+		for _, query := range t.SuggestedRecallQueries {
+			results, err := searchFn(ctx, query, 3)
+			if err == nil {
+				allResults = append(allResults, results...)
+			}
+		}
+
+		if len(allResults) > 0 {
 			recallContext = "\n## Relevant Architecture Context\n"
-			for _, r := range results {
-				// Truncate content for display
+			seen := make(map[string]bool) // Dedupe by summary
+			for _, r := range allResults {
+				if seen[r.Summary] {
+					continue
+				}
+				seen[r.Summary] = true
+
+				// Truncate content for display (increased from 100 to 300)
 				content := r.Content
-				if len(content) > 100 {
-					content = content[:97] + "..."
+				if len(content) > 300 {
+					content = content[:297] + "..."
 				}
 				recallContext += fmt.Sprintf("- **%s** (%s): %s\n", r.Summary, r.Type, content)
 			}
