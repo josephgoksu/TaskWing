@@ -297,16 +297,18 @@ TaskWing provides project memory for AI assistants via MCP tools and slash comma
 - `/tw-done` - Complete current task with summary
 - `/tw-plan` - Create development plan from goal
 - `/tw-status` - Show current task status
+- `/tw-debug` - Get systematic debugging help for issues
+- `/tw-explain` - Get deep-dive explanation of a code symbol
+- `/tw-simplify` - Simplify code while preserving behavior
 
 ### MCP Tools
 | Tool | Description |
 |------|-------------|
 | `recall` | Retrieve project knowledge (decisions, patterns, constraints) |
-| `task_next` | Get next pending task from plan |
-| `task_start` | Claim and start a specific task |
-| `task_complete` | Mark task as completed |
-| `plan_clarify` | Refine goal with clarifying questions |
-| `plan_generate` | Generate plan with tasks |
+| `task` | Unified task lifecycle (next, current, start, complete) |
+| `plan` | Plan management (clarify, generate, audit) |
+| `code` | Code intelligence (find, search, explain, callers, impact, simplify) |
+| `debug` | Diagnose issues systematically with AI-powered analysis |
 | `remember` | Store knowledge in project memory |
 
 ### CLI Commands

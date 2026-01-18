@@ -20,7 +20,7 @@ import (
 
 var (
 	// version is the application version.
-	version = "1.13.2"
+	version = "1.13.3"
 
 	// postHogAPIKey is the PostHog project API key.
 	// Set via ldflags at build time: -ldflags "-X github.com/josephgoksu/TaskWing/cmd.postHogAPIKey=phc_xxx"

@@ -33,6 +33,7 @@ func init() {
 	slashCmd.AddCommand(slashTaskwingCmd)
 	slashCmd.AddCommand(slashSimplifyCmd)
 	slashCmd.AddCommand(slashDebugCmd)
+	slashCmd.AddCommand(slashExplainCmd)
 }
 
 // slashNextCmd outputs the /tw-next prompt content
@@ -95,5 +96,14 @@ var slashDebugCmd = &cobra.Command{
 	Short: "Output /tw-debug command content",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Print(slashDebugContent)
+	},
+}
+
+// slashExplainCmd outputs the /tw-explain prompt content
+var slashExplainCmd = &cobra.Command{
+	Use:   "explain",
+	Short: "Output /tw-explain command content",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Print(slashExplainContent)
 	},
 }
