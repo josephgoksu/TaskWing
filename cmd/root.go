@@ -10,6 +10,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/logger"
+	"github.com/josephgoksu/TaskWing/internal/telemetry"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -17,6 +18,10 @@ import (
 var (
 	// version is the application version.
 	version = "1.12.3"
+
+	// telemetryClient is the global telemetry client instance.
+	// Initialized in PersistentPreRunE, closed in PersistentPostRunE.
+	telemetryClient telemetry.Client
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -27,6 +32,8 @@ var rootCmd = &cobra.Command{
 
 Generate context-aware development tasks that actually match your architecture.
 No more generic AI suggestions that ignore your patterns, constraints, and decisions.`,
+	PersistentPreRunE:  initTelemetry,
+	PersistentPostRunE: closeTelemetry,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			_ = cmd.Help()
@@ -116,11 +123,13 @@ func init() {
 	rootCmd.PersistentFlags().Bool("json", false, "Output as JSON")
 	rootCmd.PersistentFlags().Bool("quiet", false, "Minimal output")
 	rootCmd.PersistentFlags().Bool("preview", false, "Dry run (no changes)")
+	rootCmd.PersistentFlags().Bool("no-telemetry", false, "Disable telemetry for this command")
 
 	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	_ = viper.BindPFlag("json", rootCmd.PersistentFlags().Lookup("json"))
 	_ = viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
 	_ = viper.BindPFlag("preview", rootCmd.PersistentFlags().Lookup("preview"))
+	_ = viper.BindPFlag("no-telemetry", rootCmd.PersistentFlags().Lookup("no-telemetry"))
 
 	// Custom Help Template
 	rootCmd.SetHelpTemplate(`{{if .Long}}
@@ -144,4 +153,104 @@ func init() {
 // GetVersion returns the application version
 func GetVersion() string {
 	return version
+}
+
+// initTelemetry initializes the telemetry client.
+// It checks for:
+// 1. --no-telemetry flag (disables for this command)
+// 2. CI environment variable (auto-disables in CI)
+// 3. Non-interactive terminal (auto-disables if not a TTY)
+// 4. User's telemetry config preference
+func initTelemetry(cmd *cobra.Command, args []string) error {
+	// Check if telemetry is explicitly disabled via flag
+	if viper.GetBool("no-telemetry") {
+		telemetryClient = telemetry.NewNoopClient()
+		return nil
+	}
+
+	// Check for CI environment - auto-disable in CI
+	if isCI() {
+		telemetryClient = telemetry.NewNoopClient()
+		return nil
+	}
+
+	// Load telemetry config
+	cfg, err := telemetry.Load()
+	if err != nil {
+		// If we can't load config, fail gracefully with noop client
+		telemetryClient = telemetry.NewNoopClient()
+		return nil
+	}
+
+	// If telemetry is disabled in config, use noop client
+	if !cfg.IsEnabled() {
+		telemetryClient = telemetry.NewNoopClient()
+		return nil
+	}
+
+	// Get PostHog API key from environment
+	apiKey := os.Getenv("TASKWING_POSTHOG_KEY")
+	if apiKey == "" {
+		// No API key configured - use noop client
+		telemetryClient = telemetry.NewNoopClient()
+		return nil
+	}
+
+	// Initialize the PostHog client
+	client, err := telemetry.NewPostHogClient(telemetry.ClientConfig{
+		APIKey:  apiKey,
+		Version: version,
+		Config:  cfg,
+	})
+	if err != nil {
+		// Fail gracefully - telemetry errors should never break the CLI
+		telemetryClient = telemetry.NewNoopClient()
+		return nil
+	}
+
+	telemetryClient = client
+	return nil
+}
+
+// closeTelemetry flushes and closes the telemetry client.
+func closeTelemetry(cmd *cobra.Command, args []string) error {
+	if telemetryClient != nil {
+		// Ignore errors - telemetry should never affect CLI exit status
+		_ = telemetryClient.Close()
+	}
+	return nil
+}
+
+// isCI returns true if running in a CI environment.
+// Checks common CI environment variables.
+func isCI() bool {
+	// Common CI environment variables
+	ciEnvVars := []string{
+		"CI",
+		"CONTINUOUS_INTEGRATION",
+		"GITHUB_ACTIONS",
+		"GITLAB_CI",
+		"CIRCLECI",
+		"TRAVIS",
+		"JENKINS_URL",
+		"BUILDKITE",
+		"DRONE",
+		"TEAMCITY_VERSION",
+	}
+
+	for _, envVar := range ciEnvVars {
+		if os.Getenv(envVar) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// GetTelemetryClient returns the global telemetry client.
+// This allows subcommands to track events.
+func GetTelemetryClient() telemetry.Client {
+	if telemetryClient == nil {
+		return telemetry.NewNoopClient()
+	}
+	return telemetryClient
 }
