@@ -24,10 +24,11 @@ TaskWing collects **anonymous usage statistics** to help improve the product. Th
 
 ## How It Works
 
-1. **First Run Consent**: On first use, TaskWing prompts you to enable/disable telemetry
+1. **First Run Consent**: On first use, TaskWing prompts you to enable/disable telemetry (opt-in, defaults to disabled)
 2. **Anonymous ID**: A random UUID is generated (not tied to your identity)
 3. **Local Storage**: Your preference is stored in `~/.taskwing/telemetry.json`
 4. **Async & Non-blocking**: Telemetry never slows down your workflow
+5. **CI Auto-Disable**: Telemetry is automatically disabled in CI/CD environments (GitHub Actions, GitLab CI, CircleCI, Travis, Jenkins, etc.)
 
 ## Opt Out
 

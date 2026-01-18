@@ -4,10 +4,12 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/josephgoksu/TaskWing)](https://goreportcard.com/report/github.com/josephgoksu/TaskWing)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Downloads](https://img.shields.io/github/downloads/josephgoksu/TaskWing/total)
 
 ## The Problem
 
 Every session with Claude, Cursor, or Copilot:
+
 - Forgets why you chose PostgreSQL over MongoDB
 - Suggests Redux when you picked Zustand
 - Ignores your file structure and patterns
@@ -27,10 +29,10 @@ Your AI now knows your architecture permanently.
 
 ## Results
 
-| Without TaskWing | With TaskWing |
-|------------------|---------------|
-| Score: 3.6/10 | Score: 8.0/10 |
-| 0% pass rate | 100% pass rate |
+| Without TaskWing | With TaskWing  |
+| ---------------- | -------------- |
+| Score: 3.6/10    | Score: 8.0/10  |
+| 0% pass rate     | 100% pass rate |
 
 **+122% better responses.** [Methodology →](docs/development/EVALUATION.md)
 

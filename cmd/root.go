@@ -20,15 +20,29 @@ import (
 
 var (
 	// version is the application version.
-	version = "1.12.3"
+	version = "1.12.4"
+
+	// postHogAPIKey is the PostHog project API key.
+	// Set via ldflags at build time: -ldflags "-X github.com/josephgoksu/TaskWing/cmd.postHogAPIKey=phc_xxx"
+	// Falls back to embedded default for development builds.
+	postHogAPIKey = "phc_itYzXvsW73J37ivErHAdSbNhyF1GjGar5lKl5UITEoz"
+
+	// postHogEndpoint is the PostHog API endpoint.
+	// Set via ldflags at build time: -ldflags "-X github.com/josephgoksu/TaskWing/cmd.postHogEndpoint=https://..."
+	postHogEndpoint = "https://us.i.posthog.com"
 
 	// telemetryClient is the global telemetry client instance.
-	// Initialized in PersistentPreRunE, closed in PersistentPostRunE.
+	// Initialized in PersistentPreRunE, closed in Execute().
 	telemetryClient telemetry.Client
 
 	// commandStartTime tracks when the current command started.
 	// Used to calculate command duration for telemetry.
 	commandStartTime time.Time
+
+	// executedCmd and executedArgs store the command being executed.
+	// Used for telemetry tracking in Execute() after command completes.
+	executedCmd  *cobra.Command
+	executedArgs []string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -60,6 +74,10 @@ func Execute() {
 	rootCmd.SuggestionsMinimumDistance = 2
 
 	err := rootCmd.Execute()
+
+	// Track command execution (success or failure) and close telemetry
+	trackAndCloseTelemetry(err)
+
 	if err != nil {
 		// Check if it's an unknown command error and provide helpful hints
 		errStr := err.Error()
@@ -170,7 +188,9 @@ func GetVersion() string {
 // 4. First-run consent prompt (if needed)
 // 5. User's telemetry config preference
 func initTelemetry(cmd *cobra.Command, args []string) error {
-	// Capture start time for duration tracking (do this first)
+	// Store cmd and args for tracking in Execute() (do this first)
+	executedCmd = cmd
+	executedArgs = args
 	commandStartTime = time.Now()
 
 	// Check if telemetry is explicitly disabled via flag
@@ -216,19 +236,12 @@ func initTelemetry(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Get PostHog API key from environment
-	apiKey := os.Getenv("TASKWING_POSTHOG_KEY")
-	if apiKey == "" {
-		// No API key configured - use noop client
-		telemetryClient = telemetry.NewNoopClient()
-		return nil
-	}
-
-	// Initialize the PostHog client
+	// Initialize the PostHog client (credentials set via ldflags or defaults)
 	client, err := telemetry.NewPostHogClient(telemetry.ClientConfig{
-		APIKey:  apiKey,
-		Version: version,
-		Config:  cfg,
+		APIKey:   postHogAPIKey,
+		Endpoint: postHogEndpoint,
+		Version:  version,
+		Config:   cfg,
 	})
 	if err != nil {
 		// Fail gracefully - telemetry errors should never break the CLI
@@ -241,14 +254,14 @@ func initTelemetry(cmd *cobra.Command, args []string) error {
 }
 
 // promptTelemetryConsent displays a consent prompt and returns true if user accepts.
-// Uses [Y/n] format where Enter defaults to Yes.
+// Uses [y/N] format where Enter defaults to No (opt-in consent per GDPR).
 func promptTelemetryConsent() bool {
 	fmt.Println()
-	fmt.Println("  TaskWing collects anonymous usage statistics to improve the product.")
+	fmt.Println("  TaskWing can collect anonymous usage statistics to improve the product.")
 	fmt.Println("  This includes: command names, success/failure, duration, OS, and CLI version.")
 	fmt.Println("  No code, file paths, or personal data is collected.")
 	fmt.Println()
-	fmt.Print("  Enable anonymous telemetry? [Y/n]: ")
+	fmt.Print("  Enable anonymous telemetry? [y/N]: ")
 
 	reader := bufio.NewReader(os.Stdin)
 	response, err := reader.ReadString('\n')
@@ -259,8 +272,8 @@ func promptTelemetryConsent() bool {
 
 	response = strings.TrimSpace(strings.ToLower(response))
 
-	// Default to Yes if user just hits Enter, or explicitly says yes
-	if response == "" || response == "y" || response == "yes" {
+	// Only enable if user explicitly says yes (opt-in)
+	if response == "y" || response == "yes" {
 		fmt.Println("  Telemetry enabled. Thank you for helping improve TaskWing!")
 		fmt.Println()
 		return true
@@ -271,25 +284,67 @@ func promptTelemetryConsent() bool {
 	return false
 }
 
-// closeTelemetry tracks command execution and flushes the telemetry client.
+// closeTelemetry is kept for Cobra hook compatibility but does nothing.
+// Actual tracking and close happens in Execute() to capture both success and failure.
 func closeTelemetry(cmd *cobra.Command, args []string) error {
-	if telemetryClient != nil {
-		// Track command execution
-		// Note: PersistentPostRunE runs after successful command execution
-		// Errors would cause an early exit before reaching here
-		trackCommandExecution(cmd, args, true)
-
-		// Flush pending events and close
-		// Ignore errors - telemetry should never affect CLI exit status
-		_ = telemetryClient.Close()
-	}
+	// Tracking moved to Execute() - see trackAndCloseTelemetry()
 	return nil
 }
 
-// trackCommandExecution tracks a command execution event.
-// Properties include: command path, duration, success, and arg count (NOT arg values for PII protection).
-func trackCommandExecution(cmd *cobra.Command, args []string, success bool) {
+// trackAndCloseTelemetry tracks command execution and closes the telemetry client.
+// Called from Execute() to capture both successful and failed commands.
+func trackAndCloseTelemetry(cmdErr error) {
 	if telemetryClient == nil {
+		return
+	}
+
+	// Track the command execution
+	success := cmdErr == nil
+	errorType := classifyError(cmdErr)
+	trackCommandExecutionWithError(executedCmd, executedArgs, success, errorType)
+
+	// Flush pending events and close
+	// Ignore errors - telemetry should never affect CLI exit status
+	_ = telemetryClient.Close()
+}
+
+// classifyError returns a category for the error type (not the message, for privacy).
+// Returns empty string if no error.
+func classifyError(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	errStr := err.Error()
+
+	// Classify by error pattern (never include actual error message)
+	switch {
+	case strings.Contains(errStr, "unknown command"):
+		return "unknown_command"
+	case strings.Contains(errStr, "unknown flag"):
+		return "unknown_flag"
+	case strings.Contains(errStr, "required flag"):
+		return "missing_required_flag"
+	case strings.Contains(errStr, "invalid argument"):
+		return "invalid_argument"
+	case strings.Contains(errStr, "not found"):
+		return "not_found"
+	case strings.Contains(errStr, "permission denied"):
+		return "permission_denied"
+	case strings.Contains(errStr, "timeout"):
+		return "timeout"
+	case strings.Contains(errStr, "connection"):
+		return "connection_error"
+	case strings.Contains(errStr, "API"):
+		return "api_error"
+	default:
+		return "other"
+	}
+}
+
+// trackCommandExecutionWithError tracks a command execution event with error type.
+func trackCommandExecutionWithError(cmd *cobra.Command, args []string, success bool, errorType string) {
+	if telemetryClient == nil || cmd == nil {
 		return
 	}
 
@@ -299,14 +354,21 @@ func trackCommandExecution(cmd *cobra.Command, args []string, success bool) {
 	// Get full command path (e.g., "plan new", "task list")
 	commandPath := getCommandPath(cmd)
 
-	// Track the event
-	// Note: We only track arg COUNT, never arg VALUES (to avoid PII)
-	telemetryClient.Track("command_executed", telemetry.Properties{
+	// Build properties
+	props := telemetry.Properties{
 		"command":     commandPath,
 		"duration_ms": durationMs,
 		"success":     success,
 		"args_count":  len(args),
-	})
+	}
+
+	// Add error type if present (never the actual error message)
+	if errorType != "" {
+		props["error_type"] = errorType
+	}
+
+	// Track the event
+	telemetryClient.Track("command_executed", props)
 }
 
 // getCommandPath returns the full command path (e.g., "plan new", "task list").

@@ -127,6 +127,10 @@ func (c *PostHogClient) Track(event string, properties map[string]any) {
 	props.Set("arch", runtime.GOARCH)
 	props.Set("cli_version", c.version)
 
+	// Disable person profile processing for GDPR compliance.
+	// This ensures telemetry is truly anonymous - no user profiles are created.
+	props.Set("$process_person_profile", false)
+
 	// Enqueue event (PostHog client handles async dispatch)
 	_ = c.client.Enqueue(posthog.Capture{
 		DistinctId: c.config.AnonymousID,
