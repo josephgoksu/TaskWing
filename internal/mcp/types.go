@@ -7,22 +7,23 @@ package mcp
 type CodeAction string
 
 const (
-	CodeActionFind    CodeAction = "find"
-	CodeActionSearch  CodeAction = "search"
-	CodeActionExplain CodeAction = "explain"
-	CodeActionCallers CodeAction = "callers"
-	CodeActionImpact  CodeAction = "impact"
+	CodeActionFind     CodeAction = "find"
+	CodeActionSearch   CodeAction = "search"
+	CodeActionExplain  CodeAction = "explain"
+	CodeActionCallers  CodeAction = "callers"
+	CodeActionImpact   CodeAction = "impact"
+	CodeActionSimplify CodeAction = "simplify"
 )
 
 // ValidCodeActions returns all valid code actions.
 func ValidCodeActions() []CodeAction {
-	return []CodeAction{CodeActionFind, CodeActionSearch, CodeActionExplain, CodeActionCallers, CodeActionImpact}
+	return []CodeAction{CodeActionFind, CodeActionSearch, CodeActionExplain, CodeActionCallers, CodeActionImpact, CodeActionSimplify}
 }
 
 // IsValid checks if the action is a valid code action.
 func (a CodeAction) IsValid() bool {
 	switch a {
-	case CodeActionFind, CodeActionSearch, CodeActionExplain, CodeActionCallers, CodeActionImpact:
+	case CodeActionFind, CodeActionSearch, CodeActionExplain, CodeActionCallers, CodeActionImpact, CodeActionSimplify:
 		return true
 	}
 	return false
@@ -78,10 +79,10 @@ func (a PlanAction) IsValid() bool {
 // === Unified Tool Parameters ===
 
 // CodeToolParams defines the parameters for the unified code tool.
-// Consolidates: find_symbol, semantic_search_code, explain_symbol, get_callers, analyze_impact
+// Consolidates: find_symbol, semantic_search_code, explain_symbol, get_callers, analyze_impact, simplify
 type CodeToolParams struct {
 	// Action specifies which operation to perform.
-	// Required. One of: find, search, explain, callers, impact
+	// Required. One of: find, search, explain, callers, impact, simplify
 	Action CodeAction `json:"action"`
 
 	// Query is the symbol name or search query.
@@ -94,8 +95,13 @@ type CodeToolParams struct {
 	SymbolID uint32 `json:"symbol_id,omitempty"`
 
 	// FilePath filters results to a specific file or directory.
+	// Required for: simplify (specifies file to simplify)
 	// Optional for: find, search
 	FilePath string `json:"file_path,omitempty"`
+
+	// Code is the source code to process.
+	// Required for: simplify (if file_path not provided)
+	Code string `json:"code,omitempty"`
 
 	// Language filters results by programming language (e.g., "go", "typescript").
 	// Optional for: find
@@ -175,6 +181,25 @@ type ProjectContextParams struct {
 type RememberParams struct {
 	Content string `json:"content"`        // Required: knowledge to store
 	Type    string `json:"type,omitempty"` // Optional: decision, feature, plan, note
+}
+
+// DebugToolParams defines the parameters for the debug tool.
+type DebugToolParams struct {
+	// Problem is the description of the issue.
+	// Required.
+	Problem string `json:"problem"`
+
+	// Error is the error message (if available).
+	// Optional.
+	Error string `json:"error,omitempty"`
+
+	// StackTrace is the stack trace (if available).
+	// Optional.
+	StackTrace string `json:"stack_trace,omitempty"`
+
+	// FilePath is a file related to the issue.
+	// Optional. If provided, context will be fetched for that file.
+	FilePath string `json:"file_path,omitempty"`
 }
 
 // PlanToolParams defines the parameters for the unified plan tool.

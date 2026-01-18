@@ -292,6 +292,139 @@ tw plan new "Your goal description"
 ` + "```" + `
 `
 
+// slashSimplifyContent is the prompt content for /tw-simplify
+const slashSimplifyContent = `# Simplify Code
+
+**Usage:** ` + "`/tw-simplify [file_path or paste code]`" + `
+
+Reduce code complexity while preserving behavior.
+
+## Step 1: Get the Code
+
+**If $ARGUMENTS is a file path:**
+Call MCP tool ` + "`code`" + ` with action=simplify:
+` + "```json" + `
+{"action": "simplify", "file_path": "[file path from arguments]"}
+` + "```" + `
+
+**If $ARGUMENTS is code or empty:**
+Ask the user to paste the code, then call:
+` + "```json" + `
+{"action": "simplify", "code": "[pasted code]"}
+` + "```" + `
+
+## Step 2: Review Results
+
+The tool returns:
+- Simplified code
+- Line count reduction (before/after)
+- List of changes made with reasoning
+- Risk assessment
+
+## Step 3: Present to User
+
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧹 CODE SIMPLIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Simplified Code
+[The simplified version]
+
+## Summary
+Lines: [before] → [after] (-[reduction]%)
+Risk: [risk level]
+
+## Changes Made
+- [What was changed and why]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Step 4: Offer to Apply
+
+Ask if the user wants to apply the changes to the file.
+
+## Fallback (No MCP)
+` + "```bash" + `
+# Manual review recommended
+` + "```" + `
+`
+
+// slashDebugContent is the prompt content for /tw-debug
+const slashDebugContent = `# Debug Issue
+
+**Usage:** ` + "`/tw-debug <problem description>`" + `
+
+**Example:** ` + "`/tw-debug API returns 500 on /users endpoint`" + `
+
+Get systematic debugging help using AI-powered analysis.
+
+## Step 1: Gather Information
+
+**If $ARGUMENTS is empty:**
+Ask the user: "What issue are you experiencing? Please describe the problem, and optionally include any error messages or stack traces."
+Wait for user response.
+
+**If $ARGUMENTS is provided:**
+Use $ARGUMENTS as the problem description.
+
+## Step 2: Call Debug Tool
+
+Call MCP tool ` + "`debug`" + `:
+` + "```json" + `
+{
+  "problem": "[problem description]",
+  "error": "[error message if available]",
+  "stack_trace": "[stack trace if available]"
+}
+` + "```" + `
+
+## Step 3: Present Analysis
+
+Display the debug analysis:
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍 DEBUG ANALYSIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Most Likely Cause
+[Primary hypothesis]
+
+## Hypotheses (Ranked)
+🔴 1. [High likelihood cause]
+   [Reasoning]
+   📍 Check: [file locations]
+
+🟡 2. [Medium likelihood cause]
+   [Reasoning]
+
+🔵 3. [Lower likelihood cause]
+   [Reasoning]
+
+## Investigation Steps
+1. [First step to try]
+   ` + "```" + `
+   [command to run]
+   ` + "```" + `
+
+2. [Second step]
+   ...
+
+## Quick Fixes
+- [Quick fix if applicable]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+## Step 4: Offer to Help
+
+Ask if the user wants help implementing any of the investigation steps or fixes.
+
+## Fallback (No MCP)
+` + "```bash" + `
+tw context -q "error handling [component]"
+` + "```" + `
+`
+
 // slashTaskwingContent is the prompt content for /taskwing
 const slashTaskwingContent = `# TaskWing Full Repository Context
 

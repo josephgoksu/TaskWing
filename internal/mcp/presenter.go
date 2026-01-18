@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	agentcore "github.com/josephgoksu/TaskWing/internal/agents/core"
+	agentimpl "github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
@@ -820,4 +822,261 @@ func FormatNodeResponse(node knowledge.NodeResponse) string {
 		sb.WriteString(fmt.Sprintf("\n%s", node.DebtWarning))
 	}
 	return sb.String()
+}
+
+// FormatDebugResult formats the output from the DebugAgent.
+func FormatDebugResult(findings []agentcore.Finding) string {
+	if len(findings) == 0 {
+		return "No debug analysis available."
+	}
+
+	var sb strings.Builder
+	for _, f := range findings {
+		sb.WriteString("## Debug Analysis\n\n")
+		sb.WriteString(fmt.Sprintf("**Most Likely Cause**: %s\n\n", f.Description))
+
+		// Hypotheses - handle both direct type and []interface{} from JSON
+		if hypothesesRaw, ok := f.Metadata["hypotheses"]; ok {
+			hypotheses := extractDebugHypotheses(hypothesesRaw)
+			if len(hypotheses) > 0 {
+				sb.WriteString("### Hypotheses\n")
+				for i, h := range hypotheses {
+					icon := "🔵"
+					if h.Likelihood == "high" {
+						icon = "🔴"
+					} else if h.Likelihood == "medium" {
+						icon = "🟡"
+					}
+					sb.WriteString(fmt.Sprintf("\n%d. %s **%s** (%s)\n", i+1, icon, h.Cause, h.Likelihood))
+					sb.WriteString(fmt.Sprintf("   %s\n", h.Reasoning))
+					if len(h.CodeLocations) > 0 {
+						sb.WriteString("   📍 Check: ")
+						sb.WriteString(strings.Join(h.CodeLocations, ", "))
+						sb.WriteString("\n")
+					}
+				}
+				sb.WriteString("\n")
+			}
+		}
+
+		// Investigation steps - handle both direct type and []interface{} from JSON
+		if stepsRaw, ok := f.Metadata["investigation_steps"]; ok {
+			steps := extractDebugSteps(stepsRaw)
+			if len(steps) > 0 {
+				sb.WriteString("### Investigation Steps\n")
+				for _, s := range steps {
+					sb.WriteString(fmt.Sprintf("%d. **%s**\n", s.Step, s.Action))
+					if s.Command != "" {
+						sb.WriteString(fmt.Sprintf("   ```\n   %s\n   ```\n", s.Command))
+					}
+					if s.ExpectedFinding != "" {
+						sb.WriteString(fmt.Sprintf("   → Look for: %s\n", s.ExpectedFinding))
+					}
+				}
+				sb.WriteString("\n")
+			}
+		}
+
+		// Quick fixes - handle both direct type and []interface{} from JSON
+		if fixesRaw, ok := f.Metadata["quick_fixes"]; ok {
+			fixes := extractDebugFixes(fixesRaw)
+			if len(fixes) > 0 {
+				sb.WriteString("### Quick Fixes\n")
+				for _, fix := range fixes {
+					sb.WriteString(fmt.Sprintf("- **%s**", fix.Fix))
+					if fix.When != "" {
+						sb.WriteString(fmt.Sprintf(" (%s)", fix.When))
+					}
+					sb.WriteString("\n")
+				}
+			}
+		}
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// extractDebugHypotheses safely extracts hypotheses from interface{}.
+// Handles both direct []DebugHypothesis and []interface{} from JSON.
+func extractDebugHypotheses(raw interface{}) []agentimpl.DebugHypothesis {
+	// Direct type match (from agent output before serialization)
+	if typed, ok := raw.([]agentimpl.DebugHypothesis); ok {
+		return typed
+	}
+	// Handle []interface{} from JSON unmarshaling
+	if arr, ok := raw.([]interface{}); ok {
+		result := make([]agentimpl.DebugHypothesis, 0, len(arr))
+		for _, item := range arr {
+			if m, ok := item.(map[string]interface{}); ok {
+				h := agentimpl.DebugHypothesis{
+					Cause:      getStringField(m, "cause"),
+					Likelihood: getStringField(m, "likelihood"),
+					Reasoning:  getStringField(m, "reasoning"),
+				}
+				if locs, ok := m["code_locations"].([]interface{}); ok {
+					for _, loc := range locs {
+						if s, ok := loc.(string); ok {
+							h.CodeLocations = append(h.CodeLocations, s)
+						}
+					}
+				}
+				result = append(result, h)
+			}
+		}
+		return result
+	}
+	return nil
+}
+
+// extractDebugSteps safely extracts investigation steps from interface{}.
+func extractDebugSteps(raw interface{}) []agentimpl.DebugInvestigationStep {
+	if typed, ok := raw.([]agentimpl.DebugInvestigationStep); ok {
+		return typed
+	}
+	if arr, ok := raw.([]interface{}); ok {
+		result := make([]agentimpl.DebugInvestigationStep, 0, len(arr))
+		for _, item := range arr {
+			if m, ok := item.(map[string]interface{}); ok {
+				s := agentimpl.DebugInvestigationStep{
+					Step:            getIntField(m, "step"),
+					Action:          getStringField(m, "action"),
+					Command:         getStringField(m, "command"),
+					ExpectedFinding: getStringField(m, "expected_finding"),
+				}
+				result = append(result, s)
+			}
+		}
+		return result
+	}
+	return nil
+}
+
+// extractDebugFixes safely extracts quick fixes from interface{}.
+func extractDebugFixes(raw interface{}) []agentimpl.DebugQuickFix {
+	if typed, ok := raw.([]agentimpl.DebugQuickFix); ok {
+		return typed
+	}
+	if arr, ok := raw.([]interface{}); ok {
+		result := make([]agentimpl.DebugQuickFix, 0, len(arr))
+		for _, item := range arr {
+			if m, ok := item.(map[string]interface{}); ok {
+				f := agentimpl.DebugQuickFix{
+					Fix:  getStringField(m, "fix"),
+					When: getStringField(m, "when"),
+				}
+				result = append(result, f)
+			}
+		}
+		return result
+	}
+	return nil
+}
+
+// getStringField safely extracts a string from a map.
+func getStringField(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// getIntField safely extracts an int from a map (handles float64 from JSON).
+func getIntField(m map[string]interface{}, key string) int {
+	if v, ok := m[key].(float64); ok {
+		return int(v)
+	}
+	if v, ok := m[key].(int); ok {
+		return v
+	}
+	return 0
+}
+
+// FormatSimplifyResult formats the output from the SimplifyAgent.
+func FormatSimplifyResult(findings []agentcore.Finding) string {
+	if len(findings) == 0 {
+		return "No simplification results."
+	}
+
+	var sb strings.Builder
+	for _, f := range findings {
+		sb.WriteString("## Code Simplification\n\n")
+		sb.WriteString(f.Description)
+		sb.WriteString("\n\n")
+
+		if meta, ok := f.Metadata["simplified_code"].(string); ok && meta != "" {
+			sb.WriteString("### Simplified Code\n")
+			sb.WriteString("```\n")
+			sb.WriteString(meta)
+			sb.WriteString("\n```\n\n")
+		}
+
+		// Extract line counts - handle both int and float64 from JSON
+		orig := getIntFromMetadata(f.Metadata, "original_lines")
+		simp := getIntFromMetadata(f.Metadata, "simplified_lines")
+		reduction := getIntFromMetadata(f.Metadata, "reduction_percentage")
+		if orig > 0 && simp > 0 {
+			sb.WriteString(fmt.Sprintf("**Lines**: %d → %d (-%d%%)\n", orig, simp, reduction))
+		}
+
+		if risk, ok := f.Metadata["risk_assessment"].(string); ok && risk != "" {
+			sb.WriteString(fmt.Sprintf("**Risk**: %s\n\n", risk))
+		}
+
+		// Extract changes - handle both direct type and []interface{} from JSON
+		if changesRaw, ok := f.Metadata["changes"]; ok {
+			changes := extractSimplifyChanges(changesRaw)
+			if len(changes) > 0 {
+				sb.WriteString("### Changes Made\n")
+				for _, c := range changes {
+					sb.WriteString(fmt.Sprintf("- **%s**: %s", c.What, c.Why))
+					if c.Risk != "none" && c.Risk != "" {
+						sb.WriteString(fmt.Sprintf(" (risk: %s)", c.Risk))
+					}
+					sb.WriteString("\n")
+				}
+			}
+		}
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// extractSimplifyChanges safely extracts changes from interface{}.
+// Handles both direct []SimplifyChange and []interface{} from JSON.
+func extractSimplifyChanges(raw interface{}) []agentimpl.SimplifyChange {
+	// Direct type match (from agent output before serialization)
+	if typed, ok := raw.([]agentimpl.SimplifyChange); ok {
+		return typed
+	}
+	// Handle []interface{} from JSON unmarshaling
+	if arr, ok := raw.([]interface{}); ok {
+		result := make([]agentimpl.SimplifyChange, 0, len(arr))
+		for _, item := range arr {
+			if m, ok := item.(map[string]interface{}); ok {
+				c := agentimpl.SimplifyChange{
+					What: getStringField(m, "what"),
+					Why:  getStringField(m, "why"),
+					Risk: getStringField(m, "risk"),
+				}
+				result = append(result, c)
+			}
+		}
+		return result
+	}
+	return nil
+}
+
+// getIntFromMetadata safely extracts an int from metadata map.
+// Handles both int and float64 (from JSON unmarshaling).
+func getIntFromMetadata(m map[string]any, key string) int {
+	if m == nil {
+		return 0
+	}
+	if v, ok := m[key].(float64); ok {
+		return int(v)
+	}
+	if v, ok := m[key].(int); ok {
+		return v
+	}
+	return 0
 }

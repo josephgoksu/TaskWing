@@ -4,8 +4,12 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	agentcore "github.com/josephgoksu/TaskWing/internal/agents/core"
+	agentimpl "github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/config"
@@ -28,7 +32,7 @@ func HandleCodeTool(ctx context.Context, repo *memory.Repository, params CodeToo
 	if !params.Action.IsValid() {
 		return &CodeToolResult{
 			Action: string(params.Action),
-			Error:  fmt.Sprintf("invalid action %q, must be one of: find, search, explain, callers, impact", params.Action),
+			Error:  fmt.Sprintf("invalid action %q, must be one of: find, search, explain, callers, impact, simplify", params.Action),
 		}, nil
 	}
 
@@ -43,6 +47,8 @@ func HandleCodeTool(ctx context.Context, repo *memory.Repository, params CodeToo
 		return handleCodeCallers(ctx, repo, params)
 	case CodeActionImpact:
 		return handleCodeImpact(ctx, repo, params)
+	case CodeActionSimplify:
+		return handleCodeSimplify(ctx, repo, params)
 	default:
 		// This should never happen due to IsValid() check above
 		return &CodeToolResult{
@@ -243,6 +249,249 @@ func handleCodeImpact(ctx context.Context, repo *memory.Repository, params CodeT
 	return &CodeToolResult{
 		Action:  "impact",
 		Content: FormatImpact(result),
+	}, nil
+}
+
+// handleCodeSimplify implements the 'simplify' action - reduce code complexity.
+func handleCodeSimplify(ctx context.Context, repo *memory.Repository, params CodeToolParams) (*CodeToolResult, error) {
+	// Input validation: need either file_path or code
+	code := strings.TrimSpace(params.Code)
+	filePath := strings.TrimSpace(params.FilePath)
+
+	if code == "" && filePath == "" {
+		return &CodeToolResult{
+			Action: "simplify",
+			Error:  "either code or file_path is required for simplify action",
+		}, nil
+	}
+
+	// If file_path provided, read the file content
+	if filePath != "" && code == "" {
+		projectRoot, _ := config.GetProjectRoot()
+
+		// Validate path to prevent traversal attacks
+		resolvedPath, err := validateAndResolvePath(filePath, projectRoot)
+		if err != nil {
+			return &CodeToolResult{
+				Action: "simplify",
+				Error:  fmt.Sprintf("invalid file path: %v", err),
+			}, nil
+		}
+
+		content, err := readFileContent(resolvedPath)
+		if err != nil {
+			return &CodeToolResult{
+				Action: "simplify",
+				Error:  fmt.Sprintf("failed to read file %s: %v", filePath, err),
+			}, nil
+		}
+		code = content
+	}
+
+	// Get architectural context for better simplification
+	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
+	recallApp := app.NewRecallApp(appCtx)
+
+	var kgContext string
+	if filePath != "" {
+		result, err := recallApp.Query(ctx, "patterns and constraints for "+filePath, app.RecallOptions{
+			Limit:          3,
+			GenerateAnswer: false,
+		})
+		if err == nil && result != nil {
+			kgContext = formatRecallContext(result)
+		}
+	}
+
+	// Create and run the SimplifyAgent
+	llmCfg, err := config.LoadLLMConfigForRole(llm.RoleQuery)
+	if err != nil {
+		return &CodeToolResult{
+			Action: "simplify",
+			Error:  fmt.Sprintf("failed to load LLM config: %v", err),
+		}, nil
+	}
+	agent := agentimpl.NewSimplifyAgent(llmCfg)
+	defer agent.Close()
+
+	input := agentcore.Input{
+		ExistingContext: map[string]any{
+			"code":      code,
+			"file_path": filePath,
+			"context":   kgContext,
+		},
+	}
+
+	output, err := agent.Run(ctx, input)
+	if err != nil {
+		return &CodeToolResult{
+			Action: "simplify",
+			Error:  fmt.Sprintf("agent error: %v", err),
+		}, nil
+	}
+
+	if output.Error != nil {
+		return &CodeToolResult{
+			Action: "simplify",
+			Error:  output.Error.Error(),
+		}, nil
+	}
+
+	// Format the output
+	return &CodeToolResult{
+		Action:  "simplify",
+		Content: FormatSimplifyResult(output.Findings),
+	}, nil
+}
+
+// readFileContent reads file content from disk.
+func readFileContent(path string) (string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
+}
+
+// validateAndResolvePath validates a file path to prevent path traversal attacks.
+// Returns the resolved absolute path if valid, or an error if the path is unsafe.
+func validateAndResolvePath(requestedPath string, projectRoot string) (string, error) {
+	// Clean the path to normalize it
+	cleanPath := filepath.Clean(requestedPath)
+
+	// Reject paths with explicit traversal attempts
+	if strings.Contains(cleanPath, "..") {
+		return "", fmt.Errorf("path traversal not allowed: %s", requestedPath)
+	}
+
+	// Resolve to absolute path
+	var absPath string
+	if filepath.IsAbs(cleanPath) {
+		absPath = cleanPath
+	} else {
+		if projectRoot == "" {
+			return "", fmt.Errorf("cannot resolve relative path without project root")
+		}
+		absPath = filepath.Join(projectRoot, cleanPath)
+	}
+
+	// Ensure the resolved path is within the project root
+	if projectRoot != "" {
+		absProjectRoot, err := filepath.Abs(projectRoot)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve project root: %w", err)
+		}
+		absPath, err = filepath.Abs(absPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve path: %w", err)
+		}
+
+		// Check that the path starts with the project root
+		if !strings.HasPrefix(absPath, absProjectRoot+string(filepath.Separator)) &&
+			absPath != absProjectRoot {
+			return "", fmt.Errorf("path outside project root not allowed: %s", requestedPath)
+		}
+	}
+
+	// Verify the file exists and is a regular file
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("path is a directory, not a file: %s", requestedPath)
+	}
+
+	return absPath, nil
+}
+
+// formatRecallContext formats recall results for agent context.
+func formatRecallContext(result *app.RecallResult) string {
+	if result == nil || len(result.Results) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for _, r := range result.Results {
+		sb.WriteString(fmt.Sprintf("- %s: %s\n", r.Type, r.ID))
+		if r.Summary != "" {
+			sb.WriteString(fmt.Sprintf("  %s\n", r.Summary))
+		}
+	}
+	return sb.String()
+}
+
+// === Debug Tool Handler ===
+
+// DebugToolResult represents the response from the debug tool.
+type DebugToolResult struct {
+	Content string `json:"content"`
+	Error   string `json:"error,omitempty"`
+}
+
+// HandleDebugTool helps diagnose issues using the DebugAgent.
+func HandleDebugTool(ctx context.Context, repo *memory.Repository, params DebugToolParams) (*DebugToolResult, error) {
+	// Validate required fields
+	problem := strings.TrimSpace(params.Problem)
+	if problem == "" {
+		return &DebugToolResult{
+			Error: "problem description is required",
+		}, nil
+	}
+
+	// Get architectural context for better diagnosis
+	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
+	recallApp := app.NewRecallApp(appCtx)
+
+	var kgContext string
+	// Build context query from problem and file path
+	contextQuery := problem
+	if params.FilePath != "" {
+		contextQuery = params.FilePath + " " + problem
+	}
+
+	result, err := recallApp.Query(ctx, contextQuery, app.RecallOptions{
+		Limit:          5,
+		GenerateAnswer: false,
+	})
+	if err == nil && result != nil {
+		kgContext = formatRecallContext(result)
+	}
+
+	// Create and run the DebugAgent
+	llmCfg, err := config.LoadLLMConfigForRole(llm.RoleQuery)
+	if err != nil {
+		return &DebugToolResult{
+			Error: fmt.Sprintf("failed to load LLM config: %v", err),
+		}, nil
+	}
+	agent := agentimpl.NewDebugAgent(llmCfg)
+	defer agent.Close()
+
+	input := agentcore.Input{
+		ExistingContext: map[string]any{
+			"problem":     problem,
+			"error":       params.Error,
+			"stack_trace": params.StackTrace,
+			"context":     kgContext,
+		},
+	}
+
+	output, err := agent.Run(ctx, input)
+	if err != nil {
+		return &DebugToolResult{
+			Error: fmt.Sprintf("agent error: %v", err),
+		}, nil
+	}
+
+	if output.Error != nil {
+		return &DebugToolResult{
+			Error: output.Error.Error(),
+		}, nil
+	}
+
+	// Format the output
+	return &DebugToolResult{
+		Content: FormatDebugResult(output.Findings),
 	}, nil
 }
 

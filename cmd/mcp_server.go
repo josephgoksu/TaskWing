@@ -193,7 +193,8 @@ func runMCPServer(ctx context.Context) error {
 - search: Hybrid semantic + lexical code search
 - explain: Deep dive into a symbol with call graph and AI explanation
 - callers: Get call graph relationships (who calls it, what it calls)
-- impact: Analyze change impact via recursive call graph traversal`,
+- impact: Analyze change impact via recursive call graph traversal
+- simplify: Reduce code complexity while preserving behavior`,
 	}
 	mcpsdk.AddTool(server, codeTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.CodeToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		result, err := mcppresenter.HandleCodeTool(ctx, repo, params.Arguments)
@@ -236,6 +237,26 @@ func runMCPServer(ctx context.Context) error {
 	}
 	mcpsdk.AddTool(server, planTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.PlanToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		result, err := mcppresenter.HandlePlanTool(ctx, repo, params.Arguments)
+		if err != nil {
+			return mcpErrorResponse(err)
+		}
+		if result.Error != "" {
+			return mcpFormattedErrorResponse(mcppresenter.FormatError(result.Error))
+		}
+		return mcpMarkdownResponse(result.Content)
+	})
+
+	// Register 'debug' tool - helps diagnose issues using the DebugAgent
+	debugTool := &mcpsdk.Tool{
+		Name: "debug",
+		Description: `Diagnose issues systematically using AI-powered analysis.
+- Analyzes error symptoms and generates ranked hypotheses
+- Provides investigation steps with commands to run
+- Suggests quick fixes when applicable
+- Uses architectural context for better diagnosis`,
+	}
+	mcpsdk.AddTool(server, debugTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.DebugToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		result, err := mcppresenter.HandleDebugTool(ctx, repo, params.Arguments)
 		if err != nil {
 			return mcpErrorResponse(err)
 		}

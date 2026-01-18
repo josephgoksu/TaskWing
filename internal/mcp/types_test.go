@@ -12,6 +12,7 @@ func TestCodeAction_IsValid(t *testing.T) {
 		{CodeActionExplain, true},
 		{CodeActionCallers, true},
 		{CodeActionImpact, true},
+		{CodeActionSimplify, true},
 		{"invalid", false},
 		{"", false},
 		{"FIND", false}, // case-sensitive
@@ -71,8 +72,8 @@ func TestPlanAction_IsValid(t *testing.T) {
 
 func TestValidCodeActions(t *testing.T) {
 	actions := ValidCodeActions()
-	if len(actions) != 5 {
-		t.Errorf("ValidCodeActions() returned %d actions, want 5", len(actions))
+	if len(actions) != 6 {
+		t.Errorf("ValidCodeActions() returned %d actions, want 6", len(actions))
 	}
 }
 

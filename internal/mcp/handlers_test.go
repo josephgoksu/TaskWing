@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -355,4 +357,181 @@ func TestHandlePlanTool_ActionRouting(t *testing.T) {
 			}
 		})
 	}
+}
+
+// === Path Validation Tests ===
+
+func TestValidateAndResolvePath_PathTraversal(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name        string
+		path        string
+		projectRoot string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:        "direct traversal",
+			path:        "../../../etc/passwd",
+			projectRoot: tmpDir,
+			wantErr:     true,
+			errContains: "path traversal not allowed",
+		},
+		{
+			name:        "hidden traversal in middle",
+			path:        "foo/../../../etc/passwd",
+			projectRoot: tmpDir,
+			wantErr:     true,
+			errContains: "path traversal not allowed",
+		},
+		{
+			name:        "absolute path outside project",
+			path:        "/etc/passwd",
+			projectRoot: tmpDir,
+			wantErr:     true,
+			errContains: "path outside project root",
+		},
+		{
+			name:        "relative path no project root",
+			path:        "foo/bar.go",
+			projectRoot: "",
+			wantErr:     true,
+			errContains: "cannot resolve relative path",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := validateAndResolvePath(tt.path, tt.projectRoot)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateAndResolvePath() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && err != nil {
+				if tt.errContains != "" && !stringContains(err.Error(), tt.errContains) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.errContains)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateAndResolvePath_ValidPaths(t *testing.T) {
+	// Create a temp directory with a test file
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.go")
+	if err := os.WriteFile(testFile, []byte("package test"), 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Create a subdirectory with a file
+	subDir := filepath.Join(tmpDir, "subdir")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("failed to create subdir: %v", err)
+	}
+	subFile := filepath.Join(subDir, "sub.go")
+	if err := os.WriteFile(subFile, []byte("package sub"), 0644); err != nil {
+		t.Fatalf("failed to create sub file: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		path        string
+		projectRoot string
+		wantPath    string
+	}{
+		{
+			name:        "relative path in root",
+			path:        "test.go",
+			projectRoot: tmpDir,
+			wantPath:    testFile,
+		},
+		{
+			name:        "relative path in subdir",
+			path:        "subdir/sub.go",
+			projectRoot: tmpDir,
+			wantPath:    subFile,
+		},
+		{
+			name:        "absolute path within project",
+			path:        testFile,
+			projectRoot: tmpDir,
+			wantPath:    testFile,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validateAndResolvePath(tt.path, tt.projectRoot)
+			if err != nil {
+				t.Errorf("validateAndResolvePath() unexpected error: %v", err)
+				return
+			}
+			if got != tt.wantPath {
+				t.Errorf("validateAndResolvePath() = %q, want %q", got, tt.wantPath)
+			}
+		})
+	}
+}
+
+func TestValidateAndResolvePath_DirectoryRejection(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	_, err := validateAndResolvePath(tmpDir, tmpDir)
+	if err == nil {
+		t.Error("expected error for directory path")
+	}
+	if !stringContains(err.Error(), "directory") {
+		t.Errorf("error %q does not mention directory", err.Error())
+	}
+}
+
+func TestHandleCodeTool_SimplifyMissingInput(t *testing.T) {
+	params := CodeToolParams{
+		Action:   CodeActionSimplify,
+		Code:     "",     // missing
+		FilePath: "",     // missing
+	}
+
+	result, err := HandleCodeTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Error == "" {
+		t.Error("expected error for missing code/file_path")
+	}
+	if result.Action != "simplify" {
+		t.Errorf("expected action 'simplify', got %q", result.Action)
+	}
+}
+
+func TestHandleCodeTool_SimplifyPathTraversal(t *testing.T) {
+	params := CodeToolParams{
+		Action:   CodeActionSimplify,
+		FilePath: "../../../etc/passwd",
+	}
+
+	result, err := HandleCodeTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Error == "" {
+		t.Error("expected error for path traversal attempt")
+	}
+	if !stringContains(result.Error, "path traversal") && !stringContains(result.Error, "invalid file path") {
+		t.Errorf("error %q does not mention path traversal", result.Error)
+	}
+}
+
+// stringContains checks if a string contains a substring (avoids conflict with presenter_test.go)
+func stringContains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
