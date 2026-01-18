@@ -18,7 +18,7 @@ func RenderDriftReport(report *app.DriftReport, verbose bool) {
 	// No rules found
 	if report.RulesChecked == 0 {
 		fmt.Println("📋 No architectural rules found in knowledge base.")
-		fmt.Println("   Run 'tw bootstrap --analyze' to extract rules from your codebase,")
+		fmt.Println("   Run 'tw bootstrap' to extract rules from your codebase,")
 		fmt.Println("   or add rules with 'tw add \"All services must use repository pattern\"'")
 		return
 	}

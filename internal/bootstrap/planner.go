@@ -96,8 +96,8 @@ type Flags struct {
 	Preview     bool   `json:"preview"`      // Dry-run, no writes
 	SkipInit    bool   `json:"skip_init"`    // Skip initialization phase
 	SkipIndex   bool   `json:"skip_index"`   // Skip code indexing
+	SkipAnalyze bool   `json:"skip_analyze"` // Skip LLM analysis (for CI/testing)
 	Force       bool   `json:"force"`        // Force index even on large codebases (--force flag)
-	Analyze     bool   `json:"analyze"`      // Run LLM analysis
 	Trace       bool   `json:"trace"`        // Enable tracing
 	TraceStdout bool   `json:"trace_stdout"` // Trace to stdout instead of file
 	TraceFile   string `json:"trace_file,omitempty"`
@@ -310,8 +310,8 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		}
 	}
 
-	// Handle --analyze flag
-	if flags.Analyze {
+	// LLM analysis runs by default unless --skip-analyze is set
+	if !flags.SkipAnalyze {
 		plan.RequiresLLMConfig = true
 		if !containsAction(plan.Actions, ActionLLMAnalyze) {
 			plan.Actions = append(plan.Actions, ActionLLMAnalyze)
@@ -374,8 +374,8 @@ func decideActions(snap *Snapshot, flags Flags, mode BootstrapMode) []Action {
 		actions = append(actions, ActionExtractMetadata)
 	}
 
-	// LLM analysis only if explicitly requested
-	if flags.Analyze {
+	// LLM analysis runs by default unless skipped
+	if !flags.SkipAnalyze {
 		actions = append(actions, ActionLLMAnalyze)
 	}
 
@@ -444,6 +444,10 @@ func generateSkippedActions(snap *Snapshot, flags Flags) []string {
 
 	if flags.SkipIndex {
 		skipped = append(skipped, "index_code (reason: --skip-index flag)")
+	}
+
+	if flags.SkipAnalyze {
+		skipped = append(skipped, "llm_analyze (reason: --skip-analyze flag)")
 	}
 
 	if flags.Preview {

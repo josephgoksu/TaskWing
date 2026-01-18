@@ -431,7 +431,7 @@ func FormatDriftReport(report *app.DriftReport) string {
 	// No rules
 	if report.RulesChecked == 0 {
 		sb.WriteString("No architectural rules found in knowledge base.\n")
-		sb.WriteString("Run `tw bootstrap --analyze` to extract rules, or add rules with `tw add`.\n")
+		sb.WriteString("Run `tw bootstrap` to extract rules, or add rules with `tw add`.\n")
 		return sb.String()
 	}
 

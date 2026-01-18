@@ -133,7 +133,7 @@ Uses CloudWeGo Eino for multi-provider support:
 - OpenAI: Set `OPENAI_API_KEY` or `TASKWING_LLM_APIKEY`
 - Ollama: Set `TASKWING_LLM_PROVIDER=ollama` and `TASKWING_LLM_MODELNAME=<model>`
 
-Bootstrap runs LLM analysis by default.
+**Bootstrap requires an LLM API key by default** to analyze architecture. Use `--skip-analyze` for CI/testing without LLM (hidden flag, deterministic mode only).
 
 ### MCP Server
 
@@ -311,7 +311,7 @@ TaskWing provides project memory for AI assistants via MCP tools and slash comma
 
 ### CLI Commands
 ```bash
-tw bootstrap        # Initialize project memory (first-time setup)
+tw bootstrap        # Initialize project memory (requires API key)
 tw context "query"  # Search knowledge semantically
 tw add "content"    # Add knowledge to memory
 tw plan new "goal"  # Create development plan

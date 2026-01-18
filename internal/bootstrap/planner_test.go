@@ -36,8 +36,8 @@ func TestValidateFlags(t *testing.T) {
 			errMsg:  "cannot skip indexing and force indexing",
 		},
 		{
-			name:    "analyze flag valid",
-			flags:   Flags{Analyze: true},
+			name:    "skip-analyze flag valid",
+			flags:   Flags{SkipAnalyze: true},
 			wantErr: false,
 		},
 		{
@@ -47,7 +47,7 @@ func TestValidateFlags(t *testing.T) {
 		},
 		{
 			name:    "all non-conflicting flags valid",
-			flags:   Flags{Preview: true, Analyze: true, Verbose: true, Trace: true},
+			flags:   Flags{Preview: true, SkipAnalyze: true, Verbose: true, Trace: true},
 			wantErr: false,
 		},
 	}
@@ -217,7 +217,7 @@ func TestDecidePlan_Actions(t *testing.T) {
 		expectSkipped bool // Check that skipped actions are populated
 	}{
 		{
-			name: "first time - all init actions",
+			name: "first time - all init actions including LLM",
 			snapshot: &Snapshot{
 				Project:         ProjectHealth{Status: HealthMissing},
 				AIHealth:        map[string]AIHealth{},
@@ -231,10 +231,11 @@ func TestDecidePlan_Actions(t *testing.T) {
 				ActionInstallMCP,
 				ActionIndexCode,
 				ActionExtractMetadata,
+				ActionLLMAnalyze,
 			},
 		},
 		{
-			name: "run mode - only index and extract",
+			name: "run mode - index, extract, and LLM (default)",
 			snapshot: &Snapshot{
 				Project:         ProjectHealth{Status: HealthOK, DirExists: true, MemoryDirExists: true, PlansDirExists: true},
 				AIHealth:        map[string]AIHealth{"claude": {Status: HealthOK}},
@@ -245,10 +246,11 @@ func TestDecidePlan_Actions(t *testing.T) {
 			expectActions: []Action{
 				ActionIndexCode,
 				ActionExtractMetadata,
+				ActionLLMAnalyze,
 			},
 		},
 		{
-			name: "skip-index removes indexing",
+			name: "skip-index removes indexing but keeps LLM",
 			snapshot: &Snapshot{
 				Project:         ProjectHealth{Status: HealthOK, DirExists: true, MemoryDirExists: true, PlansDirExists: true},
 				AIHealth:        map[string]AIHealth{"claude": {Status: HealthOK}},
@@ -258,26 +260,27 @@ func TestDecidePlan_Actions(t *testing.T) {
 			flags: Flags{SkipIndex: true},
 			expectActions: []Action{
 				ActionExtractMetadata,
+				ActionLLMAnalyze,
 			},
 			expectSkipped: true,
 		},
 		{
-			name: "analyze adds LLM action",
+			name: "skip-analyze removes LLM action",
 			snapshot: &Snapshot{
 				Project:         ProjectHealth{Status: HealthOK, DirExists: true, MemoryDirExists: true, PlansDirExists: true},
 				AIHealth:        map[string]AIHealth{"claude": {Status: HealthOK}},
 				HasAnyLocalAI:   true,
 				ExistingLocalAI: []string{"claude"},
 			},
-			flags: Flags{Analyze: true},
+			flags: Flags{SkipAnalyze: true},
 			expectActions: []Action{
 				ActionIndexCode,
 				ActionExtractMetadata,
-				ActionLLMAnalyze,
 			},
+			expectSkipped: true,
 		},
 		{
-			name: "large project without force skips indexing",
+			name: "large project without force skips indexing but keeps LLM",
 			snapshot: &Snapshot{
 				Project:         ProjectHealth{Status: HealthOK, DirExists: true, MemoryDirExists: true, PlansDirExists: true},
 				AIHealth:        map[string]AIHealth{"claude": {Status: HealthOK}},
@@ -289,11 +292,12 @@ func TestDecidePlan_Actions(t *testing.T) {
 			flags: Flags{},
 			expectActions: []Action{
 				ActionExtractMetadata,
+				ActionLLMAnalyze,
 			},
 			expectSkipped: true,
 		},
 		{
-			name: "large project with force includes indexing",
+			name: "large project with force includes indexing and LLM",
 			snapshot: &Snapshot{
 				Project:         ProjectHealth{Status: HealthOK, DirExists: true, MemoryDirExists: true, PlansDirExists: true},
 				AIHealth:        map[string]AIHealth{"claude": {Status: HealthOK}},
@@ -306,10 +310,11 @@ func TestDecidePlan_Actions(t *testing.T) {
 			expectActions: []Action{
 				ActionIndexCode,
 				ActionExtractMetadata,
+				ActionLLMAnalyze,
 			},
 		},
 		{
-			name: "preview skips extract",
+			name: "preview skips extract but keeps LLM",
 			snapshot: &Snapshot{
 				Project:         ProjectHealth{Status: HealthOK, DirExists: true, MemoryDirExists: true, PlansDirExists: true},
 				AIHealth:        map[string]AIHealth{"claude": {Status: HealthOK}},
@@ -319,6 +324,7 @@ func TestDecidePlan_Actions(t *testing.T) {
 			flags: Flags{Preview: true},
 			expectActions: []Action{
 				ActionIndexCode,
+				ActionLLMAnalyze,
 			},
 			expectSkipped: true,
 		},
@@ -383,14 +389,14 @@ func TestDecidePlan_RequiresLLMConfig(t *testing.T) {
 		wantLLM bool
 	}{
 		{
-			name:    "no analyze - no LLM required",
+			name:    "default - LLM required (analyze is default)",
 			flags:   Flags{},
-			wantLLM: false,
+			wantLLM: true,
 		},
 		{
-			name:    "analyze - LLM required",
-			flags:   Flags{Analyze: true},
-			wantLLM: true,
+			name:    "skip-analyze - no LLM required",
+			flags:   Flags{SkipAnalyze: true},
+			wantLLM: false,
 		},
 	}
 

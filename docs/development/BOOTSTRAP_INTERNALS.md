@@ -16,25 +16,23 @@ Empty memory = useless AI context. Manual entry = too much friction.
 ## CLI Command
 
 ```bash
-# Fast mode (DEFAULT) - No LLM required, ~5 seconds, 100% success rate
-taskwing bootstrap                   # Deterministic: code indexing + git stats + docs
+# Default: LLM-powered analysis (requires API key)
+taskwing bootstrap                   # Full analysis: code indexing + git stats + docs + LLM
 taskwing bootstrap --skip-init       # Skip first-time AI assistant prompt
+taskwing bootstrap --preview         # Preview analysis without saving
 
-# Deep analysis mode - Requires LLM API key, slower but richer insights
-taskwing bootstrap --analyze         # Run LLM-powered analysis agents
-taskwing bootstrap --analyze --preview  # Preview LLM analysis without saving
+# CI/Testing mode (hidden flag, no LLM required)
+taskwing bootstrap --skip-analyze    # Deterministic only: code indexing + git stats + docs
 
 # Debugging
 taskwing bootstrap --trace           # JSON event stream to file (.taskwing/logs/...)
 taskwing bootstrap --trace --trace-stdout  # JSON event stream to stderr
 ```
 
-**Two Modes:**
+**Requirements:**
 
-| Mode | Flag | LLM Required | Time | Use Case |
-|------|------|--------------|------|----------|
-| Fast (default) | none | ❌ No | ~5s | Quick setup, always works |
-| Deep analysis | `--analyze` | ✅ Yes | 30-60s | Rich architectural insights |
+Bootstrap requires an LLM API key by default (`OPENAI_API_KEY` or `TASKWING_LLM_APIKEY`).
+Use `--skip-analyze` for CI/testing environments without LLM access.
 
 Writes to `.taskwing/memory/`.
 
@@ -42,7 +40,7 @@ Writes to `.taskwing/memory/`.
 
 ## Data Sources
 
-### Fast Mode (Default - No LLM)
+### Deterministic Extraction (always runs)
 
 | Source | Component | What We Extract |
 |--------|-----------|-----------------|
@@ -51,7 +49,7 @@ Writes to `.taskwing/memory/`.
 | Git history | `GitStatParser` | Commit counts, contributors, activity, commit types |
 | Documentation | `DocLoader` | README.md, ARCHITECTURE.md, docs/*.md (raw text) |
 
-### Deep Analysis Mode (`--analyze` - Requires LLM)
+### LLM Analysis (default, requires API key)
 
 | Source | What We Extract |
 |--------|-----------------|

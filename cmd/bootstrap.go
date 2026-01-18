@@ -28,20 +28,19 @@ import (
 // bootstrapCmd represents the bootstrap command
 var bootstrapCmd = &cobra.Command{
 	Use:   "bootstrap",
-	Short: "Initialize project memory (fast, deterministic)",
+	Short: "Initialize project memory with LLM-powered analysis",
 	Long: `Initialize TaskWing for your repository.
 
-By default, bootstrap runs in FAST MODE (no LLM required):
+Bootstrap analyzes your codebase to extract architectural knowledge:
   • Creates .taskwing/ directory structure
   • Sets up AI assistant integration (Claude, Cursor, etc.)
   • Indexes code symbols (functions, types, etc.)
-  • Extracts git statistics and documentation
-  • Completes in ~5 seconds, always succeeds
+  • Analyzes code patterns and architecture (requires API key)
+  • Extracts decisions and understands WHY choices were made
 
-Use --analyze for deep LLM-powered analysis (slower, requires API key):
-  • Analyzes code patterns and architecture
-  • Extracts decisions from git history
-  • Understands WHY decisions were made`,
+Requires: OPENAI_API_KEY or TASKWING_LLM_APIKEY environment variable.
+
+Use --skip-analyze for CI/testing (deterministic, no LLM).`,
 	RunE: runBootstrap,
 }
 
@@ -55,8 +54,8 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		Preview:     getBoolFlag(cmd, "preview"),
 		SkipInit:    getBoolFlag(cmd, "skip-init"),
 		SkipIndex:   getBoolFlag(cmd, "skip-index"),
+		SkipAnalyze: getBoolFlag(cmd, "skip-analyze"),
 		Force:       getBoolFlag(cmd, "force"),
-		Analyze:     getBoolFlag(cmd, "analyze"),
 		Trace:       getBoolFlag(cmd, "trace"),
 		TraceStdout: getBoolFlag(cmd, "trace-stdout"),
 		TraceFile:   getStringFlag(cmd, "trace-file"),
@@ -75,7 +74,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	}
 
 	// Track user input for crash logging
-	logger.SetLastInput(fmt.Sprintf("bootstrap (analyze=%v, dir=%s)", flags.Analyze, cwd))
+	logger.SetLastInput(fmt.Sprintf("bootstrap (skip-analyze=%v, dir=%s)", flags.SkipAnalyze, cwd))
 
 	// ═══════════════════════════════════════════════════════════════════════
 	// PHASE 1: Probe Environment (no side effects)
@@ -135,7 +134,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	if plan.RequiresLLMConfig {
 		llmCfg, err = getLLMConfigForRole(cmd, llm.RoleBootstrap)
 		if err != nil {
-			return fmt.Errorf("LLM config required for --analyze: %w", err)
+			return fmt.Errorf("TaskWing requires an LLM API key to analyze your architecture.\nSet OPENAI_API_KEY or TASKWING_LLM_APIKEY environment variable.\nUse --skip-analyze for CI/testing without LLM: %w", err)
 		}
 	}
 
@@ -153,10 +152,6 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	if !flags.Quiet {
 		fmt.Println()
 		fmt.Println("✅ Bootstrap complete!")
-		if !flags.Analyze {
-			fmt.Println()
-			fmt.Println("💡 Tip: Use 'tw bootstrap --analyze' for deep LLM-powered analysis")
-		}
 	}
 
 	return nil
@@ -390,10 +385,13 @@ func init() {
 	bootstrapCmd.Flags().Bool("skip-init", false, "Skip initialization prompt")
 	bootstrapCmd.Flags().Bool("skip-index", false, "Skip code indexing (symbol extraction)")
 	bootstrapCmd.Flags().Bool("force", false, "Force indexing even for large codebases (>5000 files)")
-	bootstrapCmd.Flags().Bool("analyze", false, "Run LLM-powered deep analysis (slower, requires API key)")
+	bootstrapCmd.Flags().Bool("skip-analyze", false, "Skip LLM analysis (for CI/testing)")
 	bootstrapCmd.Flags().Bool("trace", false, "Emit JSON event stream to stderr")
 	bootstrapCmd.Flags().String("trace-file", "", "Write JSON event stream to file (default: .taskwing/logs/bootstrap.trace.jsonl)")
 	bootstrapCmd.Flags().Bool("trace-stdout", false, "Emit JSON event stream to stderr (overrides trace file)")
+
+	// Hide --skip-analyze from main help (documented in CLAUDE.md)
+	_ = bootstrapCmd.Flags().MarkHidden("skip-analyze")
 }
 
 // runAgentTUI handles the interactive UI part, delegating work to the service
