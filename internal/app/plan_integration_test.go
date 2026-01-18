@@ -89,6 +89,11 @@ func TestPlanApp_TUIFlow(t *testing.T) {
 		}, nil
 	}
 
+	// Mock TaskEnricher to avoid calling real RecallApp
+	app.TaskEnricher = func(ctx context.Context, queries []string) (string, error) {
+		return "## Mock Context\n- Test decision: Use mock pattern", nil
+	}
+
 	// Mock Clarifier
 	app.ClarifierFactory = func(cfg llm.Config) GoalsClarifier {
 		return &MockClarifier{

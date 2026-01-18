@@ -352,7 +352,7 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 	}
 
 	finding := output.Findings[0]
-	tasks := parseTasksFromMetadata(finding.Metadata)
+	tasks := a.parseTasksFromMetadata(ctx, finding.Metadata)
 
 	if len(tasks) == 0 {
 		return &GenerateResult{
@@ -764,7 +764,8 @@ func parseQuestionsFromMetadata(metadata map[string]any) []string {
 
 // parseTasksFromMetadata extracts tasks from agent metadata,
 // handling both []impl.PlanningTask and []any (from JSON unmarshaling).
-func parseTasksFromMetadata(metadata map[string]any) []task.Task {
+// It enriches each task with AI fields and populates ContextSummary via TaskEnricher.
+func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[string]any) []task.Task {
 	var tasks []task.Task
 
 	// Map title -> ID for dependency resolution
@@ -800,6 +801,14 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 				ExpectedFiles:      pt.ExpectedFiles,
 			}
 			t.EnrichAIFields()
+
+			// Populate ContextSummary by executing recall queries
+			if a.TaskEnricher != nil && len(t.SuggestedRecallQueries) > 0 {
+				if contextSummary, err := a.TaskEnricher(ctx, t.SuggestedRecallQueries); err == nil && contextSummary != "" {
+					t.ContextSummary = contextSummary
+				}
+			}
+
 			tasks = append(tasks, t)
 			titleToID[pt.Title] = id
 
@@ -879,6 +888,14 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 					ExpectedFiles:      expectedFiles,
 				}
 				newTask.EnrichAIFields()
+
+				// Populate ContextSummary by executing recall queries
+				if a.TaskEnricher != nil && len(newTask.SuggestedRecallQueries) > 0 {
+					if contextSummary, err := a.TaskEnricher(ctx, newTask.SuggestedRecallQueries); err == nil && contextSummary != "" {
+						newTask.ContextSummary = contextSummary
+					}
+				}
+
 				tasks = append(tasks, newTask)
 				titleToID[title] = id
 
