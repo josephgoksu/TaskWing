@@ -4,6 +4,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/josephgoksu/TaskWing/internal/telemetry"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -160,7 +162,8 @@ func GetVersion() string {
 // 1. --no-telemetry flag (disables for this command)
 // 2. CI environment variable (auto-disables in CI)
 // 3. Non-interactive terminal (auto-disables if not a TTY)
-// 4. User's telemetry config preference
+// 4. First-run consent prompt (if needed)
+// 5. User's telemetry config preference
 func initTelemetry(cmd *cobra.Command, args []string) error {
 	// Check if telemetry is explicitly disabled via flag
 	if viper.GetBool("no-telemetry") {
@@ -182,7 +185,24 @@ func initTelemetry(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// If telemetry is disabled in config, use noop client
+	// First-run consent prompt (only in interactive terminals)
+	if cfg.NeedsConsent() && ui.IsInteractive() {
+		enabled := promptTelemetryConsent()
+		if enabled {
+			cfg.Enable()
+		} else {
+			cfg.Disable()
+		}
+		// Save the user's choice immediately
+		if err := cfg.Save(); err != nil {
+			// Log but don't fail - we'll just ask again next time
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "Warning: could not save telemetry preference: %v\n", err)
+			}
+		}
+	}
+
+	// If telemetry is disabled in config (or user just declined), use noop client
 	if !cfg.IsEnabled() {
 		telemetryClient = telemetry.NewNoopClient()
 		return nil
@@ -210,6 +230,37 @@ func initTelemetry(cmd *cobra.Command, args []string) error {
 
 	telemetryClient = client
 	return nil
+}
+
+// promptTelemetryConsent displays a consent prompt and returns true if user accepts.
+// Uses [Y/n] format where Enter defaults to Yes.
+func promptTelemetryConsent() bool {
+	fmt.Println()
+	fmt.Println("  TaskWing collects anonymous usage statistics to improve the product.")
+	fmt.Println("  This includes: command names, success/failure, duration, OS, and CLI version.")
+	fmt.Println("  No code, file paths, or personal data is collected.")
+	fmt.Println()
+	fmt.Print("  Enable anonymous telemetry? [Y/n]: ")
+
+	reader := bufio.NewReader(os.Stdin)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		// On error (e.g., piped input), default to disabled for safety
+		return false
+	}
+
+	response = strings.TrimSpace(strings.ToLower(response))
+
+	// Default to Yes if user just hits Enter, or explicitly says yes
+	if response == "" || response == "y" || response == "yes" {
+		fmt.Println("  Telemetry enabled. Thank you for helping improve TaskWing!")
+		fmt.Println()
+		return true
+	}
+
+	fmt.Println("  Telemetry disabled. You can enable it later with: taskwing config telemetry enable")
+	fmt.Println()
+	return false
 }
 
 // closeTelemetry flushes and closes the telemetry client.
