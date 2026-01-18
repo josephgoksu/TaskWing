@@ -78,11 +78,11 @@ func renderContextInternal(query string, scored []knowledge.ScoredNode, answer s
 func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, verbose bool) {
 	// Styles
 	var (
-		headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)  // Cyan for headers
-		metaStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))            // Dim for metadata
-		contentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))            // Light for content
-		barFull      = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))             // Green
-		barEmpty     = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))            // Dark gray
+		headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true) // Cyan for headers
+		metaStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))           // Dim for metadata
+		contentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))           // Light for content
+		barFull      = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))            // Green
+		barEmpty     = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))           // Dark gray
 		panelBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(scoreToColor(s.Score, maxScore)).Padding(0, 1).MarginTop(1)
 	)
 

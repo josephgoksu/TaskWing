@@ -54,8 +54,6 @@ func init() {
 	// NOTE: SSE transport (--port) intentionally removed. Stdio is the standard.
 }
 
-
-
 // mcpMarkdownResponse wraps Markdown content in an MCP tool result.
 // Use this instead of mcpJSONResponse for token-efficient LLM responses.
 // The presenter package provides formatting functions for common response types.
@@ -184,7 +182,6 @@ func runMCPServer(ctx context.Context) error {
 	mcpsdk.AddTool(server, rememberTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.RememberParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		return handleRemember(ctx, repo, params.Arguments)
 	})
-
 
 	// === Unified Tools (consolidated from multiple single-purpose tools) ===
 
@@ -319,5 +316,3 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params mcppres
 	// Return token-efficient Markdown instead of verbose JSON
 	return mcpMarkdownResponse(mcppresenter.FormatRemember(result))
 }
-
-

@@ -152,8 +152,8 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Styles for colored output
-	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)   // Cyan, bold
-	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))          // White
+	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true) // Cyan, bold
+	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))        // White
 	scopeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Italic(true)
 	subtle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 

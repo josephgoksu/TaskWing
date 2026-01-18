@@ -109,7 +109,7 @@ var validExtensions = map[string]bool{
 // commonWords that should not be treated as paths even if they match patterns
 var commonWords = map[string]bool{
 	"error.go": true, "main.go": true, // too generic without directory
-	"test.go":  true, "doc.go": true,
+	"test.go": true, "doc.go": true,
 }
 
 // ExtractPaths extracts file paths and directory references from text.
@@ -430,7 +430,7 @@ func (v *PlanVerifier) CorrectGoTestCommand(ctx context.Context, command string)
 
 	// Find go test command with package path
 	match := goTestRegex.FindStringSubmatch(command)
-	if match == nil || len(match) < 3 {
+	if len(match) < 3 {
 		return result // Not a go test command with path
 	}
 

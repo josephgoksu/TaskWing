@@ -10,6 +10,10 @@ func TestGetScopeConfig_Defaults(t *testing.T) {
 	// Reset for clean test state
 	ResetScopeConfig()
 	viper.Reset()
+	t.Cleanup(func() {
+		ResetScopeConfig()
+		viper.Reset()
+	})
 
 	cfg := GetScopeConfig()
 
@@ -41,6 +45,10 @@ func TestGetScopeConfig_CustomScopes(t *testing.T) {
 	// Reset for clean test state
 	ResetScopeConfig()
 	viper.Reset()
+	t.Cleanup(func() {
+		ResetScopeConfig()
+		viper.Reset()
+	})
 
 	// Configure custom scopes
 	viper.Set("task.scopes", map[string][]string{
@@ -76,6 +84,10 @@ func TestGetScopeConfig_CustomLimits(t *testing.T) {
 	// Reset for clean test state
 	ResetScopeConfig()
 	viper.Reset()
+	t.Cleanup(func() {
+		ResetScopeConfig()
+		viper.Reset()
+	})
 
 	// Configure custom limits
 	viper.Set("task.maxKeywords", 20)
@@ -95,6 +107,10 @@ func TestScopeConfig_InferScope(t *testing.T) {
 	// Reset for clean test state
 	ResetScopeConfig()
 	viper.Reset()
+	t.Cleanup(func() {
+		ResetScopeConfig()
+		viper.Reset()
+	})
 
 	cfg := GetScopeConfig()
 
@@ -144,6 +160,10 @@ func TestEnrichAIFields_UsesConfigurableScopes(t *testing.T) {
 	// Reset for clean test state
 	ResetScopeConfig()
 	viper.Reset()
+	t.Cleanup(func() {
+		ResetScopeConfig()
+		viper.Reset()
+	})
 
 	// Add custom scope
 	viper.Set("task.scopes", map[string][]string{

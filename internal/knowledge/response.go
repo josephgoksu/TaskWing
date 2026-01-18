@@ -147,11 +147,11 @@ type DebugRetrievalResult struct {
 	Content string `json:"content,omitempty"` // Full content (truncated in display)
 
 	// Scoring (all normalized to 0-1 range)
-	FTSScore        float32 `json:"fts_score"`        // BM25 keyword match score
-	VectorScore     float32 `json:"vector_score"`     // Cosine similarity score
-	CombinedScore   float32 `json:"combined_score"`   // Weighted combination
-	RerankScore     float32 `json:"rerank_score"`     // After reranking (0 if not reranked)
-	IsExactMatch    bool    `json:"is_exact_match"`   // True if matched by exact ID
+	FTSScore        float32 `json:"fts_score"`         // BM25 keyword match score
+	VectorScore     float32 `json:"vector_score"`      // Cosine similarity score
+	CombinedScore   float32 `json:"combined_score"`    // Weighted combination
+	RerankScore     float32 `json:"rerank_score"`      // After reranking (0 if not reranked)
+	IsExactMatch    bool    `json:"is_exact_match"`    // True if matched by exact ID
 	IsGraphExpanded bool    `json:"is_graph_expanded"` // True if added via graph expansion
 
 	// Evidence references

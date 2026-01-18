@@ -426,8 +426,8 @@ func (s *SQLiteStore) initSchema() error {
 		// Debt Classification columns (v2.2+) - distinguishes essential from accidental complexity
 		// See: Jake Nations "The Infinite Software Crisis" - AI treats all patterns the same,
 		// but technical debt shouldn't be propagated.
-		{"debt_score", "ALTER TABLE nodes ADD COLUMN debt_score REAL DEFAULT 0.0"},    // 0.0 = clean, 1.0 = pure debt
-		{"debt_reason", "ALTER TABLE nodes ADD COLUMN debt_reason TEXT DEFAULT ''"},   // Why this is considered debt
+		{"debt_score", "ALTER TABLE nodes ADD COLUMN debt_score REAL DEFAULT 0.0"},      // 0.0 = clean, 1.0 = pure debt
+		{"debt_reason", "ALTER TABLE nodes ADD COLUMN debt_reason TEXT DEFAULT ''"},     // Why this is considered debt
 		{"refactor_hint", "ALTER TABLE nodes ADD COLUMN refactor_hint TEXT DEFAULT ''"}, // How to eliminate the debt
 	}
 
@@ -482,7 +482,7 @@ func (s *SQLiteStore) initSchema() error {
 		{"files_modified", "ALTER TABLE tasks ADD COLUMN files_modified TEXT"},                     // JSON array of modified files
 		{"block_reason", "ALTER TABLE tasks ADD COLUMN block_reason TEXT"},                         // Reason if task is blocked
 		{"expected_files", "ALTER TABLE tasks ADD COLUMN expected_files TEXT"},                     // JSON array of expected files (for Sentinel)
-		{"git_baseline", "ALTER TABLE tasks ADD COLUMN git_baseline TEXT"},                        // JSON array of files already modified at task start
+		{"git_baseline", "ALTER TABLE tasks ADD COLUMN git_baseline TEXT"},                         // JSON array of files already modified at task start
 	}
 
 	for _, m := range taskMigrations {

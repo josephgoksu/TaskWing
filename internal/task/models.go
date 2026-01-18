@@ -117,11 +117,7 @@ type Plan struct {
 	LastAuditReport string `json:"lastAuditReport,omitempty"` // JSON-serialized AuditReport
 }
 
-// scopeKeywords is DEPRECATED - use GetScopeConfig().GetScopes() instead.
-// Kept for backward compatibility with any direct references.
-// New code should use the configurable scope system in scope_config.go.
-//
-// To customize scopes, add to .taskwing.yaml or ~/.taskwing/config.yaml:
+// Scope customization is available via .taskwing.yaml or ~/.taskwing/config.yaml:
 //
 //	task:
 //	  scopes:
@@ -130,7 +126,8 @@ type Plan struct {
 //	      - keyword2
 //	  maxKeywords: 15  # default: 10
 //	  minWordLength: 4 # default: 3
-var scopeKeywords = defaultScopeKeywords
+//
+// See scope_config.go for the implementation.
 
 // stopWords are common words to exclude from keyword extraction
 var stopWords = map[string]bool{

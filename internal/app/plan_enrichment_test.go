@@ -56,7 +56,7 @@ func TestPlanEnrichment_ContextSummaryPopulated(t *testing.T) {
 			return "", nil
 		}
 		// Return enriched context based on queries
-		return "## Architectural Context\n- **Test Pattern** (pattern): Use dependency injection for testability\n- **SQLite Constraint** (constraint): SQLite is the single source of truth", nil
+		return "## Relevant Architecture Context\n- **Test Pattern** (pattern): Use dependency injection for testability\n- **SQLite Constraint** (constraint): SQLite is the single source of truth", nil
 	}
 
 	// Mock clarifier that returns ready-to-plan
@@ -151,7 +151,7 @@ func TestPlanEnrichment_ContextSummaryPopulated(t *testing.T) {
 		if tsk.ContextSummary == "" {
 			t.Errorf("Task %d (%s) has empty ContextSummary", i, tsk.Title)
 		}
-		if !strings.Contains(tsk.ContextSummary, "Architectural Context") {
+		if !strings.Contains(tsk.ContextSummary, "Relevant Architecture Context") {
 			t.Errorf("Task %d ContextSummary doesn't contain expected content: %s", i, tsk.ContextSummary)
 		}
 	}

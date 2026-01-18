@@ -155,7 +155,7 @@ if t.ContextSummary != "" {
 ### Mitigations
 
 1. **Staleness**: Late binding fallback can be used if context needs refresh (future enhancement)
-2. **Storage**: Content truncated to reasonable limits (200 chars in storage, 300 chars in display)
+2. **Storage**: Content truncated to 300 characters consistently across early and late binding
 3. **Complexity**: Clear separation - `models.go` for enrichment, `presentation.go` for display
 
 ---

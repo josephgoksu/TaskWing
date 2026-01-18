@@ -98,10 +98,10 @@ func TestHandleCodeTool_ActionRouting(t *testing.T) {
 	// Test actions that have validation before hitting the repo
 	// (search, explain, callers, impact all require query/symbol_id)
 	tests := []struct {
-		action         CodeAction
-		name           string
-		expectError    bool
-		errorContains  string
+		action        CodeAction
+		name          string
+		expectError   bool
+		errorContains string
 	}{
 		{CodeActionSearch, "search", true, "query is required"},
 		{CodeActionExplain, "explain", true, "query or symbol_id is required"},
@@ -215,7 +215,7 @@ func TestHandleTaskTool_ActionRouting(t *testing.T) {
 		name        string
 		expectError bool
 	}{
-		{TaskActionStart, "start", true},    // missing task_id
+		{TaskActionStart, "start", true},       // missing task_id
 		{TaskActionComplete, "complete", true}, // missing task_id
 	}
 

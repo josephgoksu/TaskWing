@@ -26,8 +26,8 @@ func NewGitVerifier(repoRoot string) *GitVerifier {
 
 // VerificationResult contains the comparison between reported and actual files.
 type VerificationResult struct {
-	ReportedFiles   []string `json:"reported_files"`            // What the agent claimed to modify
-	ActualFiles     []string `json:"actual_files"`              // What git says was modified
+	ReportedFiles   []string `json:"reported_files"`             // What the agent claimed to modify
+	ActualFiles     []string `json:"actual_files"`               // What git says was modified
 	UnreportedFiles []string `json:"unreported_files,omitempty"` // In git but not reported (agent lied/forgot)
 	OverReported    []string `json:"over_reported,omitempty"`    // Reported but not in git (agent hallucinated)
 	IsVerified      bool     `json:"is_verified"`                // Whether git verification succeeded

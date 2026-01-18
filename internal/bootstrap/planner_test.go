@@ -210,11 +210,11 @@ func TestDecidePlan_Modes(t *testing.T) {
 // TestDecidePlan_Actions tests action selection logic
 func TestDecidePlan_Actions(t *testing.T) {
 	tests := []struct {
-		name           string
-		snapshot       *Snapshot
-		flags          Flags
-		expectActions  []Action
-		expectSkipped  bool // Check that skipped actions are populated
+		name          string
+		snapshot      *Snapshot
+		flags         Flags
+		expectActions []Action
+		expectSkipped bool // Check that skipped actions are populated
 	}{
 		{
 			name: "first time - all init actions",
@@ -378,9 +378,9 @@ func TestDecidePlan_RequiresLLMConfig(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		flags     Flags
-		wantLLM   bool
+		name    string
+		flags   Flags
+		wantLLM bool
 	}{
 		{
 			name:    "no analyze - no LLM required",
@@ -864,9 +864,9 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			expectStatus: HealthOK, // Cursor doesn't need hooks
 		},
 		{
-			name:   "unknown - unsupported",
-			aiName: "unknown-ai",
-			setup:  func(dir string) {},
+			name:         "unknown - unsupported",
+			aiName:       "unknown-ai",
+			setup:        func(dir string) {},
 			expectStatus: HealthUnsupported,
 		},
 	}
@@ -898,9 +898,9 @@ func TestDecidePlan_RepairMode_LocalPartialWithoutGlobalMCP(t *testing.T) {
 			"claude": {
 				Name:              "claude",
 				Status:            HealthPartial,
-				CommandsDirExists: true,                                     // Has local config
-				CommandFilesCount: 3,                                        // But incomplete
-				GlobalMCPExists:   false,                                    // NO global MCP
+				CommandsDirExists: true,  // Has local config
+				CommandFilesCount: 3,     // But incomplete
+				GlobalMCPExists:   false, // NO global MCP
 				Reason:            "only 3/7 command files present",
 			},
 		},

@@ -55,7 +55,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		Preview:     getBoolFlag(cmd, "preview"),
 		SkipInit:    getBoolFlag(cmd, "skip-init"),
 		SkipIndex:   getBoolFlag(cmd, "skip-index"),
-		Force:  getBoolFlag(cmd, "force"),
+		Force:       getBoolFlag(cmd, "force"),
 		Analyze:     getBoolFlag(cmd, "analyze"),
 		Trace:       getBoolFlag(cmd, "trace"),
 		TraceStdout: getBoolFlag(cmd, "trace-stdout"),
@@ -560,97 +560,6 @@ func checkAgentFailures(agents []*ui.AgentState) error {
 		}
 		return fmt.Errorf("bootstrap failed: %d agent(s) errored", len(failedAgents))
 	}
-	return nil
-}
-
-// promptAdditionalModels shows existing config or offers to configure query model, embedding, and reranking
-func promptAdditionalModels() error {
-	// Check what's already configured
-	queryModel := viper.GetString("llm.models.query")
-	embeddingProvider := viper.GetString("llm.embedding_provider")
-	embeddingModel := viper.GetString("llm.embedding_model")
-	rerankingEnabled := viper.GetBool("retrieval.reranking.enabled")
-	rerankingURL := viper.GetString("retrieval.reranking.base_url")
-
-	// Count configured items
-	configured := 0
-	if queryModel != "" {
-		configured++
-	}
-	if embeddingModel != "" {
-		configured++
-	}
-	if rerankingEnabled {
-		configured++
-	}
-
-	// If all configured, just show status
-	if configured == 3 {
-		fmt.Println("📋 Model Configuration (from config file)")
-		fmt.Printf("   ✓ Query model: %s\n", queryModel)
-		fmt.Printf("   ✓ Embedding: %s (%s)\n", embeddingModel, embeddingProvider)
-		fmt.Printf("   ✓ Reranking: enabled (%s)\n", rerankingURL)
-		fmt.Println()
-		return nil
-	}
-
-	// If some configured, show status and offer to configure missing
-	if configured > 0 {
-		fmt.Println("📋 Model Configuration")
-		if queryModel != "" {
-			fmt.Printf("   ✓ Query model: %s\n", queryModel)
-		}
-		if embeddingModel != "" {
-			fmt.Printf("   ✓ Embedding: %s (%s)\n", embeddingModel, embeddingProvider)
-		}
-		if rerankingEnabled {
-			fmt.Printf("   ✓ Reranking: enabled (%s)\n", rerankingURL)
-		}
-		fmt.Println()
-	} else {
-		fmt.Println("📋 Additional Model Configuration")
-		fmt.Println("   You can configure these now or later via 'tw config'")
-		fmt.Println()
-	}
-
-	var input string
-
-	// Query model - only prompt if not configured
-	if queryModel == "" {
-		fmt.Print("   Configure fast query model? (for cheap/fast lookups) [y/N]: ")
-		_, _ = fmt.Scanln(&input)
-		if input == "y" || input == "Y" || input == "yes" {
-			if err := configureQueryModel(); err != nil {
-				fmt.Printf("   ⚠️  Skipped: %v\n", err)
-			}
-			fmt.Println()
-		}
-	}
-
-	// Embedding model - only prompt if not configured
-	if embeddingModel == "" {
-		fmt.Print("   Configure embedding model? (for semantic search) [y/N]: ")
-		_, _ = fmt.Scanln(&input)
-		if input == "y" || input == "Y" || input == "yes" {
-			if err := configureEmbedding(); err != nil {
-				fmt.Printf("   ⚠️  Skipped: %v\n", err)
-			}
-			fmt.Println()
-		}
-	}
-
-	// Reranking - only prompt if not configured
-	if !rerankingEnabled {
-		fmt.Print("   Configure reranking? (optional, improves search quality) [y/N]: ")
-		_, _ = fmt.Scanln(&input)
-		if input == "y" || input == "Y" || input == "yes" {
-			if err := configureReranking(); err != nil {
-				fmt.Printf("   ⚠️  Skipped: %v\n", err)
-			}
-			fmt.Println()
-		}
-	}
-
 	return nil
 }
 

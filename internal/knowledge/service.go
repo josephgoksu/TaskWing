@@ -744,13 +744,13 @@ func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*De
 
 	// Track individual scores per node
 	type nodeScores struct {
-		node        *memory.Node
-		ftsScore    float32
-		vectorScore float32
-		combined    float32
-		rerankScore float32
-		isExact     bool
-		isExpanded  bool
+		node         *memory.Node
+		ftsScore     float32
+		vectorScore  float32
+		combined     float32
+		rerankScore  float32
+		isExact      bool
+		isExpanded   bool
 		expandedFrom string
 	}
 	scoreMap := make(map[string]*nodeScores)
@@ -881,9 +881,9 @@ func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*De
 					ns.isExpanded = true
 				} else {
 					scoreMap[sn.Node.ID] = &nodeScores{
-						node:       sn.Node,
-						combined:   sn.Score,
-						isExpanded: true,
+						node:         sn.Node,
+						combined:     sn.Score,
+						isExpanded:   true,
 						expandedFrom: sn.ExpandedFrom,
 					}
 				}

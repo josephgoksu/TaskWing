@@ -232,4 +232,3 @@ func symbolKindPriority(kind codeintel.SymbolKind) int {
 		return 0
 	}
 }
-

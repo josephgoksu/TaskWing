@@ -84,6 +84,16 @@ coverage:
 lint:
 	@echo "🔍 Running linting and formatting..."
 	$(GO) fmt $(CORE_PKGS)
+	@echo "🔍 Running go vet..."
+	$(GO) vet ./...
+	@echo "🔍 Running staticcheck..."
+	@if command -v staticcheck >/dev/null 2>&1; then \
+		staticcheck ./...; \
+	else \
+		echo "⚠️  staticcheck not installed, installing..."; \
+		go install honnef.co/go/tools/cmd/staticcheck@latest; \
+		staticcheck ./...; \
+	fi
 	@if [ -n "$(SKIP_GOLANGCI)" ]; then \
 		echo "⏭️  SKIP_GOLANGCI set; skipping golangci-lint"; \
 	elif command -v golangci-lint >/dev/null 2>&1; then \

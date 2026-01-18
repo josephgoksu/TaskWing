@@ -21,9 +21,9 @@ import (
 //
 // If no custom config is provided, defaultScopeKeywords is used.
 type ScopeConfig struct {
-	mu       sync.RWMutex
-	scopes   map[string][]string
-	maxKw    int
+	mu         sync.RWMutex
+	scopes     map[string][]string
+	maxKw      int
 	minWordLen int
 }
 

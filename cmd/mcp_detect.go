@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"context"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -96,74 +95,4 @@ func detectCodexMCP() bool {
 		return false
 	}
 	return strings.Contains(string(output), "taskwing-mcp")
-}
-
-// aiConfigDirs maps AI names to their local config directory names
-var aiConfigDirs = map[string]string{
-	"claude":  ".claude",
-	"codex":   ".codex",
-	"gemini":  ".gemini",
-	"cursor":  ".cursor",
-	"copilot": ".github", // Copilot uses .github/copilot-instructions
-}
-
-// aiConfigFiles maps AI names to their required config files (relative to config dir).
-// Used to validate that a config directory has valid TaskWing configuration.
-var aiConfigFiles = map[string][]string{
-	"claude":  {"commands/taskwing.md"},
-	"codex":   {"commands/taskwing.md"},
-	"gemini":  {"commands/taskwing.toml"},
-	"cursor":  {"rules/taskwing.md", "mcp.json"}, // Either slash command or MCP config
-	"copilot": {"copilot-instructions.md"},       // Main instructions file
-}
-
-// hasValidAIConfig checks if the AI config directory has valid TaskWing config files.
-// Returns true if at least one expected config file exists.
-func hasValidAIConfig(basePath string, ai string) bool {
-	dir, ok := aiConfigDirs[ai]
-	if !ok {
-		return false
-	}
-
-	files, ok := aiConfigFiles[ai]
-	if !ok {
-		// No specific files defined, fall back to directory existence
-		configPath := basePath + "/" + dir
-		_, err := os.Stat(configPath)
-		return err == nil
-	}
-
-	// Check if ANY of the expected files exist
-	for _, file := range files {
-		filePath := basePath + "/" + dir + "/" + file
-		if _, err := os.Stat(filePath); err == nil {
-			return true
-		}
-	}
-	return false
-}
-
-// findMissingAIConfigs checks which AI assistants are missing valid local config.
-// It compares against the provided list of AIs (typically from global MCP detection).
-// Returns a list of AI names that have global MCP but missing/invalid local configs.
-func findMissingAIConfigs(basePath string, aiList []string) []string {
-	var missing []string
-	for _, ai := range aiList {
-		if !hasValidAIConfig(basePath, ai) {
-			missing = append(missing, ai)
-		}
-	}
-	return missing
-}
-
-// findExistingAIConfigs checks which AI configs have valid TaskWing configuration locally.
-// Returns a list of AI names that have valid local config files present.
-func findExistingAIConfigs(basePath string) []string {
-	var existing []string
-	for ai := range aiConfigDirs {
-		if hasValidAIConfig(basePath, ai) {
-			existing = append(existing, ai)
-		}
-	}
-	return existing
 }

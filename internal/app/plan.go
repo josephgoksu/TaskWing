@@ -162,9 +162,10 @@ func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (st
 			var parts []string
 			for _, node := range result.Results {
 				// Format: "- **Summary** (type): Content preview"
+				// Truncate to 300 chars (consistent with presentation.go)
 				content := node.Content
-				if len(content) > 200 {
-					content = content[:197] + "..."
+				if len(content) > 300 {
+					content = content[:297] + "..."
 				}
 				parts = append(parts, fmt.Sprintf("- **%s** (%s): %s", node.Summary, node.Type, content))
 			}
@@ -178,7 +179,8 @@ func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (st
 		return "", nil
 	}
 
-	return "## Architectural Context\n" + strings.Join(contextParts, "\n"), nil
+	// Header matches presentation.go late binding for consistency
+	return "## Relevant Architecture Context\n" + strings.Join(contextParts, "\n"), nil
 }
 
 // Clarify refines a development goal by asking clarifying questions.

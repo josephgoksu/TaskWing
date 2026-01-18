@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // RecallSearchFunc is the signature for a context/recall search function.
@@ -39,7 +40,8 @@ func FormatRichContext(ctx context.Context, t *Task, p *Plan, searchFn RecallSea
 		}
 
 		if len(allResults) > 0 {
-			recallContext = "\n## Relevant Architecture Context\n"
+			var sb strings.Builder
+			sb.WriteString("\n## Relevant Architecture Context\n")
 			seen := make(map[string]bool) // Dedupe by summary
 			for _, r := range allResults {
 				if seen[r.Summary] {
@@ -47,13 +49,14 @@ func FormatRichContext(ctx context.Context, t *Task, p *Plan, searchFn RecallSea
 				}
 				seen[r.Summary] = true
 
-				// Truncate content for display (increased from 100 to 300)
+				// Truncate content for display (consistent with early binding at 300 chars)
 				content := r.Content
 				if len(content) > 300 {
 					content = content[:297] + "..."
 				}
-				recallContext += fmt.Sprintf("- **%s** (%s): %s\n", r.Summary, r.Type, content)
+				sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", r.Summary, r.Type, content))
 			}
+			recallContext = sb.String()
 		}
 	}
 

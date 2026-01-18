@@ -12,12 +12,12 @@ import (
 type BootstrapMode string
 
 const (
-	ModeFirstTime   BootstrapMode = "first_time"   // Nothing exists, full setup
-	ModeRepair      BootstrapMode = "repair"       // Partial setup, fix missing pieces
-	ModeReconfigure BootstrapMode = "reconfigure"  // Exists but needs AI config changes
-	ModeRun         BootstrapMode = "run"          // Everything configured, just run indexing/analysis
-	ModeNoOp        BootstrapMode = "noop"         // Nothing to do
-	ModeError       BootstrapMode = "error"        // Invalid state or flag combination
+	ModeFirstTime   BootstrapMode = "first_time"  // Nothing exists, full setup
+	ModeRepair      BootstrapMode = "repair"      // Partial setup, fix missing pieces
+	ModeReconfigure BootstrapMode = "reconfigure" // Exists but needs AI config changes
+	ModeRun         BootstrapMode = "run"         // Everything configured, just run indexing/analysis
+	ModeNoOp        BootstrapMode = "noop"        // Nothing to do
+	ModeError       BootstrapMode = "error"       // Invalid state or flag combination
 )
 
 // Action represents a discrete action the bootstrap can take.
@@ -93,13 +93,13 @@ type Snapshot struct {
 
 // Flags captures all CLI flags in a structured way.
 type Flags struct {
-	Preview     bool   `json:"preview"`       // Dry-run, no writes
-	SkipInit    bool   `json:"skip_init"`     // Skip initialization phase
-	SkipIndex   bool   `json:"skip_index"`    // Skip code indexing
-	Force       bool   `json:"force"`         // Force index even on large codebases (--force flag)
-	Analyze     bool   `json:"analyze"`       // Run LLM analysis
-	Trace       bool   `json:"trace"`         // Enable tracing
-	TraceStdout bool   `json:"trace_stdout"`  // Trace to stdout instead of file
+	Preview     bool   `json:"preview"`      // Dry-run, no writes
+	SkipInit    bool   `json:"skip_init"`    // Skip initialization phase
+	SkipIndex   bool   `json:"skip_index"`   // Skip code indexing
+	Force       bool   `json:"force"`        // Force index even on large codebases (--force flag)
+	Analyze     bool   `json:"analyze"`      // Run LLM analysis
+	Trace       bool   `json:"trace"`        // Enable tracing
+	TraceStdout bool   `json:"trace_stdout"` // Trace to stdout instead of file
 	TraceFile   string `json:"trace_file,omitempty"`
 	Verbose     bool   `json:"verbose"`
 	Quiet       bool   `json:"quiet"`
