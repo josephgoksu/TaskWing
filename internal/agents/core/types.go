@@ -31,6 +31,30 @@ type Finding struct {
 	VerificationStatus VerificationStatus
 	VerificationResult *VerificationResult
 	Metadata           map[string]any
+
+	// Debt Classification - distinguishes essential from accidental complexity
+	// See: Jake Nations "The Infinite Software Crisis" - AI treats all patterns the same,
+	// but technical debt shouldn't be propagated.
+	DebtScore    float64 `json:"debt_score,omitempty"`    // 0.0 = clean, 1.0 = pure technical debt
+	DebtReason   string  `json:"debt_reason,omitempty"`   // Why this is considered debt
+	RefactorHint string  `json:"refactor_hint,omitempty"` // How to eliminate the debt
+}
+
+// DebtLevel returns human-readable debt classification.
+func (f *Finding) DebtLevel() string {
+	switch {
+	case f.DebtScore >= 0.7:
+		return "high" // Do not propagate
+	case f.DebtScore >= 0.4:
+		return "medium" // Consider alternatives
+	default:
+		return "low" // Clean pattern
+	}
+}
+
+// IsDebt returns true if this finding represents technical debt that shouldn't be propagated.
+func (f *Finding) IsDebt() bool {
+	return f.DebtScore >= 0.7
 }
 
 // Evidence represents verifiable proof for a Finding.

@@ -29,11 +29,18 @@ type NodeResponse struct {
 	VerificationStatus string        `json:"verificationStatus,omitempty"`
 	MatchScore         float32       `json:"matchScore,omitempty"` // Semantic similarity (0-1)
 	Evidence           []EvidenceRef `json:"evidence,omitempty"`   // File:line references
+
+	// Debt Classification - distinguishes essential from accidental complexity
+	// When DebtScore >= 0.7, this pattern represents technical debt that shouldn't be propagated
+	DebtScore    float64 `json:"debtScore,omitempty"`    // 0.0 = clean, 1.0 = pure debt
+	DebtReason   string  `json:"debtReason,omitempty"`   // Why this is considered debt
+	RefactorHint string  `json:"refactorHint,omitempty"` // How to eliminate the debt
+	DebtWarning  string  `json:"debtWarning,omitempty"`  // Human/AI-readable warning (auto-generated)
 }
 
 // NodeToResponse converts a memory.Node to a token-efficient NodeResponse.
 func NodeToResponse(n memory.Node, matchScore float32) NodeResponse {
-	return NodeResponse{
+	resp := NodeResponse{
 		ID:                 n.ID,
 		Type:               n.Type,
 		Summary:            n.Summary,
@@ -42,7 +49,15 @@ func NodeToResponse(n memory.Node, matchScore float32) NodeResponse {
 		VerificationStatus: n.VerificationStatus,
 		MatchScore:         matchScore,
 		Evidence:           parseEvidence(n.Evidence),
+		DebtScore:          n.DebtScore,
+		DebtReason:         n.DebtReason,
+		RefactorHint:       n.RefactorHint,
 	}
+
+	// Generate debt warning for AI consumption
+	resp.DebtWarning = n.DebtWarning()
+
+	return resp
 }
 
 // ScoredNodeToResponse converts a ScoredNode to NodeResponse.

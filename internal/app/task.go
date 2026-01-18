@@ -36,6 +36,9 @@ type TaskResult struct {
 	AuditTriggered  bool            `json:"audit_triggered,omitempty"`
 	AuditStatus     string          `json:"audit_status,omitempty"`
 	AuditPlanStatus task.PlanStatus `json:"audit_plan_status,omitempty"`
+
+	// Sentinel fields - deviation detection between plan and execution
+	SentinelReport *task.SentinelReport `json:"sentinel_report,omitempty"`
 }
 
 // TaskNextOptions configures the behavior of getting the next task.
@@ -149,6 +152,17 @@ func (a *TaskApp) Next(ctx context.Context, opts TaskNextOptions) (*TaskResult, 
 				Hint:    "Try again to get the next available task.",
 			}, nil
 		}
+
+		// Capture git baseline for accurate deviation detection
+		workDir, _ := os.Getwd()
+		if task.IsGitRepo(workDir) {
+			verifier := task.NewGitVerifier(workDir)
+			baseline, baselineErr := verifier.GetActualModifications(ctx)
+			if baselineErr == nil && len(baseline) > 0 {
+				_ = repo.SetGitBaseline(nextTask.ID, baseline)
+			}
+		}
+
 		// Re-fetch to get accurate ClaimedAt timestamp
 		nextTask, err = repo.GetTask(nextTask.ID)
 		if err != nil {
@@ -259,6 +273,18 @@ func (a *TaskApp) Start(ctx context.Context, opts TaskStartOptions) (*TaskResult
 		}, nil
 	}
 
+	// Capture git baseline for accurate deviation detection
+	// This records what files were already modified before task execution
+	workDir, _ := os.Getwd()
+	if task.IsGitRepo(workDir) {
+		verifier := task.NewGitVerifier(workDir)
+		baseline, err := verifier.GetActualModifications(ctx)
+		if err == nil && len(baseline) > 0 {
+			// Save baseline - ignore errors, this is best-effort
+			_ = repo.SetGitBaseline(opts.TaskID, baseline)
+		}
+	}
+
 	// Return the updated task
 	startedTask, err := repo.GetTask(opts.TaskID)
 	if err != nil {
@@ -341,6 +367,14 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		return nil, fmt.Errorf("get completed task: %w", err)
 	}
 
+	// Get working directory for git operations and sentinel verification
+	workDir, _ := os.Getwd()
+
+	// Run Sentinel analysis with git verification to detect deviations from plan
+	// Git verification catches cases where an agent lies about what files it modified
+	sentinel := task.NewSentinel()
+	sentinelReport := sentinel.AnalyzeWithVerification(ctx, completedTask, workDir)
+
 	// Check if there are more pending tasks
 	plan, err := repo.GetPlan(completedTask.PlanID)
 	if err != nil {
@@ -352,7 +386,6 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 	var gitCommitApplied bool
 	var gitPushApplied bool
 
-	workDir, _ := os.Getwd()
 	gitClient := git.NewClient(workDir)
 
 	if gitClient.IsRepository() {
@@ -489,6 +522,14 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		message += " PR created."
 	}
 
+	// Add Sentinel deviation warning to message and hint
+	if sentinelReport.HasDeviations() {
+		message += fmt.Sprintf(" Sentinel: %s", sentinelReport.Summary)
+		if sentinelReport.HasCriticalDeviations() {
+			hint += " WARNING: Critical deviations detected - review before proceeding."
+		}
+	}
+
 	return &TaskResult{
 		Success:            true,
 		Message:            message,
@@ -502,6 +543,7 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		AuditTriggered:     auditTriggered,
 		AuditStatus:        auditStatus,
 		AuditPlanStatus:    auditPlanStatus,
+		SentinelReport:     sentinelReport,
 	}, nil
 }
 

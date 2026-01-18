@@ -73,3 +73,54 @@ func NewFindingWithEvidence(
 		Metadata:           metadata,
 	}
 }
+
+// DebtInfo holds debt classification data parsed from LLM responses.
+type DebtInfo struct {
+	DebtScore    any    `json:"debt_score"`    // 0.0-1.0 (can be float or int from JSON)
+	DebtReason   string `json:"debt_reason"`   // Why this is considered debt
+	RefactorHint string `json:"refactor_hint"` // How to eliminate the debt
+}
+
+// ParseDebtScore handles both numeric and missing debt score values.
+func ParseDebtScore(raw any) float64 {
+	switch v := raw.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	default:
+		return 0.0 // Default: clean pattern (no debt)
+	}
+}
+
+// NewFindingWithDebt creates a Finding with debt classification fields.
+// This is the preferred constructor for code analysis agents that identify
+// technical debt alongside patterns and decisions.
+func NewFindingWithDebt(
+	findingType FindingType,
+	title, description, why, tradeoffs string,
+	confidence any,
+	evidence []EvidenceJSON,
+	sourceAgent string,
+	metadata map[string]any,
+	debt DebtInfo,
+) Finding {
+	confidenceScore, confidenceLabel := ParseConfidence(confidence)
+	return Finding{
+		Type:               findingType,
+		Title:              title,
+		Description:        description,
+		Why:                why,
+		Tradeoffs:          tradeoffs,
+		ConfidenceScore:    confidenceScore,
+		Confidence:         confidenceLabel,
+		Evidence:           ConvertEvidence(evidence),
+		VerificationStatus: VerificationStatusPending,
+		SourceAgent:        sourceAgent,
+		Metadata:           metadata,
+		// Debt classification
+		DebtScore:    ParseDebtScore(debt.DebtScore),
+		DebtReason:   debt.DebtReason,
+		RefactorHint: debt.RefactorHint,
+	}
+}

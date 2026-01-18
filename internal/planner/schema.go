@@ -82,6 +82,10 @@ type LLMTaskSchema struct {
 
 	// Keywords for semantic search
 	Keywords []string `json:"keywords,omitempty"`
+
+	// ExpectedFiles lists files the task is expected to create, modify, or delete
+	// Used by Sentinel to detect deviations from plan
+	ExpectedFiles []string `json:"expected_files,omitempty"`
 }
 
 // LLMClarificationResponse represents the expected JSON structure from goal clarification.

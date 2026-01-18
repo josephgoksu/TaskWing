@@ -42,207 +42,347 @@ Use --analyze for deep LLM-powered analysis (slower, requires API key):
   • Analyzes code patterns and architecture
   • Extracts decisions from git history
   • Understands WHY decisions were made`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		preview, _ := cmd.Flags().GetBool("preview")
-		skipInit, _ := cmd.Flags().GetBool("skip-init")
-		skipIndex, _ := cmd.Flags().GetBool("skip-index")
-		forceIndex, _ := cmd.Flags().GetBool("force")
-		analyze, _ := cmd.Flags().GetBool("analyze")
-		trace, _ := cmd.Flags().GetBool("trace")
-		traceFile, _ := cmd.Flags().GetString("trace-file")
-		traceStdout, _ := cmd.Flags().GetBool("trace-stdout")
+	RunE: runBootstrap,
+}
 
-		cwd, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("get current directory: %w", err)
-		}
+// runBootstrap is the main bootstrap command handler.
+// It follows a three-phase architecture: Probe → Plan → Execute
+func runBootstrap(cmd *cobra.Command, args []string) error {
+	// ═══════════════════════════════════════════════════════════════════════
+	// PHASE 0: Parse and Validate Flags
+	// ═══════════════════════════════════════════════════════════════════════
+	flags := bootstrap.Flags{
+		Preview:     getBoolFlag(cmd, "preview"),
+		SkipInit:    getBoolFlag(cmd, "skip-init"),
+		SkipIndex:   getBoolFlag(cmd, "skip-index"),
+		Force:  getBoolFlag(cmd, "force"),
+		Analyze:     getBoolFlag(cmd, "analyze"),
+		Trace:       getBoolFlag(cmd, "trace"),
+		TraceStdout: getBoolFlag(cmd, "trace-stdout"),
+		TraceFile:   getStringFlag(cmd, "trace-file"),
+		Verbose:     viper.GetBool("verbose"),
+		Quiet:       viper.GetBool("quiet"),
+	}
 
-		// Track user input for crash logging
-		logger.SetLastInput(fmt.Sprintf("bootstrap (analyze=%v, dir=%s)", analyze, cwd))
+	// Validate flags early - fail fast on contradictions
+	if err := bootstrap.ValidateFlags(flags); err != nil {
+		return fmt.Errorf("invalid flags: %w", err)
+	}
 
-		// Load LLM config - only required for --analyze mode
-		var llmCfg llm.Config
-		if analyze {
-			llmCfg, err = getLLMConfigForRole(cmd, llm.RoleBootstrap)
-			if err != nil {
-				return err
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get current directory: %w", err)
+	}
+
+	// Track user input for crash logging
+	logger.SetLastInput(fmt.Sprintf("bootstrap (analyze=%v, dir=%s)", flags.Analyze, cwd))
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// PHASE 1: Probe Environment (no side effects)
+	// ═══════════════════════════════════════════════════════════════════════
+	snapshot, err := bootstrap.ProbeEnvironment(cwd)
+	if err != nil {
+		return fmt.Errorf("probe environment: %w", err)
+	}
+
+	// Enhance snapshot with global MCP detection (uses existing helper)
+	existingGlobalAIs := detectExistingMCPConfigs()
+	if len(existingGlobalAIs) > 0 {
+		snapshot.HasAnyGlobalMCP = true
+		snapshot.GlobalMCPAIs = existingGlobalAIs
+		// Update AI health with global MCP info
+		for _, ai := range existingGlobalAIs {
+			if health, ok := snapshot.AIHealth[ai]; ok {
+				health.GlobalMCPExists = true
+				snapshot.AIHealth[ai] = health
 			}
 		}
+	}
 
-		// Initialize Service
-		svc := bootstrap.NewService(cwd, llmCfg)
+	// ═══════════════════════════════════════════════════════════════════════
+	// PHASE 2: Decide Plan (pure function, deterministic)
+	// ═══════════════════════════════════════════════════════════════════════
+	plan := bootstrap.DecidePlan(snapshot, flags)
 
-		// Determine project state - check three independent concerns:
-		// 1. Project memory (.taskwing/) - stores knowledge base
-		// 2. AI configs (.claude/, .codex/, .gemini/) - slash commands, hooks
-		// 3. Global MCP registration (via AI CLIs) - tool availability
-		taskwingDir := filepath.Join(cwd, ".taskwing")
-		taskwingExists := true
-		if _, err := os.Stat(taskwingDir); os.IsNotExist(err) {
-			taskwingExists = false
+	// Always show plan summary (even in quiet mode, single line)
+	fmt.Print(bootstrap.FormatPlanSummary(plan, flags.Quiet))
+
+	// Handle error mode
+	if plan.Mode == bootstrap.ModeError {
+		return plan.Error
+	}
+
+	// Handle preview mode - show plan and exit
+	if flags.Preview {
+		fmt.Println("\n💡 Preview mode - no changes made.")
+		return nil
+	}
+
+	// Handle NoOp mode
+	if plan.Mode == bootstrap.ModeNoOp {
+		if !flags.Quiet {
+			fmt.Println("\n✅ Nothing to do - configuration is up to date.")
 		}
+		return nil
+	}
 
-		// Check for existing global MCP configurations
-		existingGlobalAIs := detectExistingMCPConfigs()
-		hasGlobalMCP := len(existingGlobalAIs) > 0
+	// ═══════════════════════════════════════════════════════════════════════
+	// PHASE 3: Execute Plan
+	// ═══════════════════════════════════════════════════════════════════════
 
-		// Determine which AI configs exist locally (check against global AIs if any, else all known AIs)
-		var checkAIs []string
-		if hasGlobalMCP {
-			checkAIs = existingGlobalAIs
-		} else {
-			checkAIs = []string{"claude", "codex", "gemini", "cursor", "copilot"}
+	// Load LLM config only if plan requires it
+	var llmCfg llm.Config
+	if plan.RequiresLLMConfig {
+		llmCfg, err = getLLMConfigForRole(cmd, llm.RoleBootstrap)
+		if err != nil {
+			return fmt.Errorf("LLM config required for --analyze: %w", err)
 		}
-		missingLocalAIs := findMissingAIConfigs(cwd, checkAIs)
-		existingLocalAIs := findExistingAIConfigs(cwd)
-		hasAnyLocalAI := len(existingLocalAIs) > 0
-		needsAISetup := len(missingLocalAIs) > 0 && hasGlobalMCP // Only auto-detect if global MCP exists
+	}
 
-		// Determine if we need to run initialization
-		needsInit := !taskwingExists || needsAISetup || (taskwingExists && !hasAnyLocalAI && !hasGlobalMCP)
+	// Initialize Service
+	svc := bootstrap.NewService(cwd, llmCfg)
 
-		if !skipInit && needsInit {
-			var selectedAIs []string
-			skipMCPRegistration := false
+	// Execute actions in order
+	for _, action := range plan.Actions {
+		if err := executeAction(cmd.Context(), action, svc, cwd, flags, plan, llmCfg); err != nil {
+			return err
+		}
+	}
 
-			// Scenario 1: Nothing exists - true first time setup
-			if !taskwingExists && !hasGlobalMCP {
-				fmt.Println("🚀 First time setup - no existing configuration found")
-				fmt.Println()
-				fmt.Println("🤖 Which AI assistant(s) do you use?")
-				fmt.Println()
-				selectedAIs = promptAISelection()
+	// Final success message
+	if !flags.Quiet {
+		fmt.Println()
+		fmt.Println("✅ Bootstrap complete!")
+		if !flags.Analyze {
+			fmt.Println()
+			fmt.Println("💡 Tip: Use 'tw bootstrap --analyze' for deep LLM-powered analysis")
+		}
+	}
 
-				// Scenario 2: Global MCP exists but no local project
-			} else if !taskwingExists && hasGlobalMCP {
-				fmt.Println("📋 Setting up local project (global MCP config found)")
-				fmt.Println()
-				fmt.Printf("🔍 Found TaskWing registered globally for: %s\n", strings.Join(existingGlobalAIs, ", "))
-				fmt.Println()
-				fmt.Println("🤖 Which AI assistant(s) do you want to use?")
-				fmt.Printf("   (Detected %s pre-selected)\n", strings.Join(existingGlobalAIs, ", "))
-				fmt.Println()
-				selectedAIs = promptAISelection(existingGlobalAIs...)
-				// Note: MCP registration will be handled below - only for AIs not already registered
+	return nil
+}
 
-				// Scenario 3: .taskwing exists but some AI configs missing (recovery with global MCP)
-			} else if taskwingExists && needsAISetup {
+// executeAction executes a single bootstrap action.
+func executeAction(ctx context.Context, action bootstrap.Action, svc *bootstrap.Service, cwd string, flags bootstrap.Flags, plan *bootstrap.Plan, llmCfg llm.Config) error {
+	switch action {
+	case bootstrap.ActionInitProject:
+		return executeInitProject(svc, flags, plan)
+
+	case bootstrap.ActionGenerateAIConfigs:
+		return executeGenerateAIConfigs(svc, flags, plan)
+
+	case bootstrap.ActionInstallMCP:
+		return executeInstallMCP(cwd, flags, plan)
+
+	case bootstrap.ActionIndexCode:
+		return executeIndexCode(ctx, cwd, flags)
+
+	case bootstrap.ActionExtractMetadata:
+		return executeExtractMetadata(ctx, svc, flags)
+
+	case bootstrap.ActionLLMAnalyze:
+		return executeLLMAnalyze(ctx, svc, cwd, flags, llmCfg)
+
+	default:
+		return fmt.Errorf("unknown action: %s", action)
+	}
+}
+
+// executeInitProject handles project initialization with user prompts.
+func executeInitProject(svc *bootstrap.Service, flags bootstrap.Flags, plan *bootstrap.Plan) error {
+	var selectedAIs []string
+
+	if plan.RequiresUserInput {
+		// Show appropriate prompt based on mode
+		switch plan.Mode {
+		case bootstrap.ModeFirstTime:
+			if len(plan.SuggestedAIs) > 0 {
+				fmt.Println("📋 Setting up local project")
+				fmt.Printf("🔍 Detected global config for: %s\n", strings.Join(plan.SuggestedAIs, ", "))
+			} else {
+				fmt.Println("🚀 First time setup")
+			}
+			fmt.Println()
+			fmt.Println("🤖 Which AI assistant(s) do you use?")
+			fmt.Println()
+			selectedAIs = promptAISelection(plan.SuggestedAIs...)
+
+		case bootstrap.ModeRepair:
+			if len(plan.AIsNeedingRepair) > 0 {
 				fmt.Println("🔧 Restoring missing AI configurations")
-				fmt.Println()
-				fmt.Printf("   Missing local configs for: %s\n", strings.Join(missingLocalAIs, ", "))
-				fmt.Printf("   Global MCP registered for: %s\n", strings.Join(existingGlobalAIs, ", "))
-				fmt.Print("   Restore missing configs? [Y/n]: ")
+				fmt.Printf("   Missing: %s\n", strings.Join(plan.AIsNeedingRepair, ", "))
+				fmt.Print("   Restore? [Y/n]: ")
 				var input string
 				_, _ = fmt.Scanln(&input)
 				input = strings.TrimSpace(strings.ToLower(input))
 				if input == "" || input == "y" || input == "yes" {
-					selectedAIs = missingLocalAIs // Only restore MISSING, not all
-					skipMCPRegistration = true    // Already registered globally
-					fmt.Println("   ✓ Will restore missing configs only")
-					fmt.Println()
+					selectedAIs = plan.AIsNeedingRepair
 				} else {
 					fmt.Println()
 					fmt.Println("🤖 Which AI assistant(s) do you want to set up?")
-					fmt.Println()
-					selectedAIs = promptAISelection(existingGlobalAIs...)
-				}
-
-				// Scenario 4: .taskwing exists but NO AI configs and NO global MCP (reconfigure)
-			} else if taskwingExists && !hasAnyLocalAI && !hasGlobalMCP {
-				fmt.Println("🔧 No AI configurations found - let's set them up")
-				fmt.Println()
-				fmt.Println("🤖 Which AI assistant(s) do you use?")
-				fmt.Println()
-				selectedAIs = promptAISelection()
-			}
-
-			// Only proceed if user selected something
-			if len(selectedAIs) > 0 {
-				// Initialize/update project
-				if err := svc.InitializeProject(viper.GetBool("verbose"), selectedAIs); err != nil {
-					return fmt.Errorf("initialization failed: %w", err)
-				}
-
-				// Only run CLI registration if needed (and only for AIs not already registered)
-				if !skipMCPRegistration {
-					// Filter out AIs already registered globally
-					var aisNeedingRegistration []string
-					globalSet := make(map[string]bool)
-					for _, ai := range existingGlobalAIs {
-						globalSet[ai] = true
-					}
-					for _, ai := range selectedAIs {
-						if !globalSet[ai] {
-							aisNeedingRegistration = append(aisNeedingRegistration, ai)
-						}
-					}
-					if len(aisNeedingRegistration) > 0 {
-						installMCPServers(cwd, aisNeedingRegistration)
-					}
-				}
-
-				fmt.Println("\n✓ TaskWing initialized!")
-				fmt.Println()
-
-				// Prompt for additional model configuration
-				if err := promptAdditionalModels(); err != nil {
-					fmt.Printf("⚠️  Additional model config skipped: %v\n", err)
-				}
-			} else {
-				fmt.Println("\n⚠️  No AI assistants selected - skipping initialization")
-				fmt.Println()
-			}
-		}
-
-		// Detect workspace type
-		ws, err := project.DetectWorkspace(cwd)
-		if err != nil {
-			return fmt.Errorf("detect workspace: %w", err)
-		}
-
-		// Run code indexing FIRST (enables symbol-based context)
-		// This is fast (~2-5s) and doesn't require LLM calls
-		if !skipIndex && !preview {
-			if err := runCodeIndexing(cmd.Context(), cwd, forceIndex, viper.GetBool("quiet")); err != nil {
-				// Non-fatal: continue with fallback context gathering
-				if !viper.GetBool("quiet") {
-					fmt.Fprintf(os.Stderr, "⚠️  Code indexing failed: %v\n", err)
+					selectedAIs = promptAISelection(plan.SuggestedAIs...)
 				}
 			}
-		}
 
-		// Run deterministic metadata extraction (git stats, docs)
-		// This is fast and always succeeds
-		if !preview {
-			if err := svc.RunDeterministicBootstrap(cmd.Context(), viper.GetBool("quiet")); err != nil {
-				if !viper.GetBool("quiet") {
-					fmt.Fprintf(os.Stderr, "⚠️  Metadata extraction failed: %v\n", err)
-				}
-			}
-		}
-
-		// Only run LLM analysis if --analyze flag is set
-		if analyze {
-			// Handle multi-repo workspaces
-			if ws.IsMultiRepo() {
-				if err := runMultiRepoBootstrap(cmd.Context(), svc, ws, preview); err != nil {
-					return err
-				}
-			} else {
-				// Run agent TUI flow with LLM analysis
-				if err := runAgentTUI(cmd.Context(), svc, cwd, llmCfg, trace, traceFile, traceStdout, preview); err != nil {
-					return err
-				}
-			}
-		} else if !viper.GetBool("quiet") {
+		case bootstrap.ModeReconfigure:
+			fmt.Println("🔧 No AI configurations found - let's set them up")
 			fmt.Println()
-			fmt.Println("✅ Bootstrap complete!")
+			fmt.Println("🤖 Which AI assistant(s) do you use?")
 			fmt.Println()
-			fmt.Println("💡 Tip: Use 'tw bootstrap --analyze' for deep LLM-powered analysis (slower, requires API key)")
+			selectedAIs = promptAISelection()
 		}
 
+		if len(selectedAIs) == 0 {
+			fmt.Println("\n⚠️  No AI assistants selected - skipping initialization")
+			return nil
+		}
+	}
+
+	// Store selected AIs in plan for subsequent actions
+	plan.SelectedAIs = selectedAIs
+
+	// Initialize project
+	if err := svc.InitializeProject(flags.Verbose, selectedAIs); err != nil {
+		return fmt.Errorf("initialization failed: %w", err)
+	}
+
+	fmt.Println("✓ Project initialized")
+	return nil
+}
+
+// executeGenerateAIConfigs generates AI slash commands and hooks.
+// This runs standalone when ActionInitProject isn't in the plan (e.g., ModeRepair with healthy project).
+func executeGenerateAIConfigs(svc *bootstrap.Service, flags bootstrap.Flags, plan *bootstrap.Plan) error {
+	// Determine which AIs to configure
+	var targetAIs []string
+	if len(plan.SelectedAIs) > 0 {
+		// User already selected AIs (from executeInitProject or previous step)
+		targetAIs = plan.SelectedAIs
+	} else if len(plan.AIsNeedingRepair) > 0 {
+		// In repair mode, use the AIs that need repair
+		targetAIs = plan.AIsNeedingRepair
+	}
+
+	if len(targetAIs) == 0 {
+		// No AIs to configure - this is a no-op
 		return nil
-	},
+	}
+
+	// Generate configs for each target AI
+	if !flags.Quiet {
+		fmt.Printf("🔧 Regenerating AI configurations for: %s\n", strings.Join(targetAIs, ", "))
+	}
+
+	if err := svc.RegenerateAIConfigs(flags.Verbose, targetAIs); err != nil {
+		return fmt.Errorf("regenerate AI configs failed: %w", err)
+	}
+
+	if !flags.Quiet {
+		fmt.Println("✓ AI configurations regenerated")
+	}
+	return nil
+}
+
+// executeInstallMCP registers MCP servers with AI CLIs.
+func executeInstallMCP(cwd string, flags bootstrap.Flags, plan *bootstrap.Plan) error {
+	// Determine which AIs need MCP registration
+	var targetAIs []string
+	if len(plan.SelectedAIs) > 0 {
+		targetAIs = plan.SelectedAIs
+	} else if len(plan.SuggestedAIs) > 0 {
+		targetAIs = plan.SuggestedAIs
+	}
+
+	if len(targetAIs) == 0 {
+		return nil
+	}
+
+	// Build set of AIs that already have global MCP configured
+	globalSet := make(map[string]bool)
+	existingGlobalAIs := detectExistingMCPConfigs()
+	for _, ai := range existingGlobalAIs {
+		globalSet[ai] = true
+	}
+
+	// Filter to only AIs that need registration
+	var aisNeedingRegistration []string
+	for _, ai := range targetAIs {
+		if !globalSet[ai] {
+			aisNeedingRegistration = append(aisNeedingRegistration, ai)
+		}
+	}
+
+	if len(aisNeedingRegistration) == 0 {
+		if !flags.Quiet && len(existingGlobalAIs) > 0 {
+			fmt.Printf("✓ MCP already configured globally for: %s\n", strings.Join(existingGlobalAIs, ", "))
+		}
+		return nil
+	}
+
+	if !flags.Quiet {
+		fmt.Printf("🔌 Installing MCP servers for: %s\n", strings.Join(aisNeedingRegistration, ", "))
+	}
+
+	installMCPServers(cwd, aisNeedingRegistration)
+
+	if !flags.Quiet {
+		fmt.Println("✓ MCP servers installed")
+	}
+	return nil
+}
+
+// executeIndexCode runs code symbol indexing.
+func executeIndexCode(ctx context.Context, cwd string, flags bootstrap.Flags) error {
+	if err := runCodeIndexing(ctx, cwd, flags.Force, flags.Quiet); err != nil {
+		// Non-fatal: log and continue
+		if !flags.Quiet {
+			fmt.Fprintf(os.Stderr, "⚠️  Code indexing failed: %v\n", err)
+		}
+	}
+	return nil
+}
+
+// executeExtractMetadata runs deterministic metadata extraction.
+func executeExtractMetadata(ctx context.Context, svc *bootstrap.Service, flags bootstrap.Flags) error {
+	result, err := svc.RunDeterministicBootstrap(ctx, flags.Quiet)
+	if err != nil {
+		if !flags.Quiet {
+			fmt.Fprintf(os.Stderr, "⚠️  Metadata extraction failed: %v\n", err)
+		}
+	} else if result != nil && len(result.Warnings) > 0 && flags.Verbose {
+		for _, w := range result.Warnings {
+			fmt.Fprintf(os.Stderr, "   [warn] %s\n", w)
+		}
+	}
+	return nil
+}
+
+// executeLLMAnalyze runs LLM-powered deep analysis.
+func executeLLMAnalyze(ctx context.Context, svc *bootstrap.Service, cwd string, flags bootstrap.Flags, llmCfg llm.Config) error {
+	// Detect workspace type
+	ws, err := project.DetectWorkspace(cwd)
+	if err != nil {
+		return fmt.Errorf("detect workspace: %w", err)
+	}
+
+	// Handle multi-repo workspaces
+	if ws.IsMultiRepo() {
+		return runMultiRepoBootstrap(ctx, svc, ws, flags.Preview)
+	}
+
+	// Run agent TUI flow with LLM analysis
+	return runAgentTUI(ctx, svc, cwd, llmCfg, flags.Trace, flags.TraceFile, flags.TraceStdout, flags.Preview)
+}
+
+// Helper functions for flag parsing
+func getBoolFlag(cmd *cobra.Command, name string) bool {
+	val, _ := cmd.Flags().GetBool(name)
+	return val
+}
+
+func getStringFlag(cmd *cobra.Command, name string) string {
+	val, _ := cmd.Flags().GetString(name)
+	return val
 }
 
 func init() {
@@ -275,7 +415,8 @@ func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg
 	stream := core.NewStreamingOutput(100)
 	defer stream.Close()
 
-	setupTrace(stream, trace, traceFile, traceStdout, cwd)
+	traceCleanup := setupTrace(stream, trace, traceFile, traceStdout, cwd)
+	defer traceCleanup()
 
 	// Run TUI
 	tuiModel := ui.NewBootstrapModel(ctx, input, agentsList, stream)
@@ -354,26 +495,29 @@ func installMCPServers(basePath string, selectedAIs []string) {
 	}
 }
 
-// setupTrace configures trace logging
-func setupTrace(stream *core.StreamingOutput, trace bool, traceFile string, traceStdout bool, cwd string) {
+// setupTrace configures trace logging and returns a cleanup function.
+// The cleanup function should be deferred to close the trace file handle.
+func setupTrace(stream *core.StreamingOutput, trace bool, traceFile string, traceStdout bool, cwd string) func() {
 	if !trace {
-		return
+		return func() {} // No-op cleanup
 	}
 	if traceFile == "" {
 		traceFile = filepath.Join(cwd, ".taskwing", "logs", "bootstrap.trace.jsonl")
 	}
 	var out *os.File
+	var cleanup func()
 	if traceStdout {
 		out = os.Stderr
+		cleanup = func() {} // Don't close stderr
 	} else {
 		_ = os.MkdirAll(filepath.Dir(traceFile), 0755)
 		f, err := os.OpenFile(traceFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to open trace file: %v\n", err)
-			return
+			return func() {}
 		}
 		out = f
-		// Note: file closing is loose here, relying on process exit
+		cleanup = func() { _ = f.Close() }
 		if !viper.GetBool("quiet") {
 			fmt.Fprintf(os.Stderr, "🧾 Trace: %s\n", traceFile)
 		}
@@ -394,6 +538,8 @@ func setupTrace(stream *core.StreamingOutput, trace bool, traceFile string, trac
 			mu.Unlock()
 		}
 	})
+
+	return cleanup
 }
 
 func checkAgentFailures(agents []*ui.AgentState) error {

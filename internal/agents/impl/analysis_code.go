@@ -123,13 +123,16 @@ func (a *ReactAgent) Run(ctx context.Context, input core.Input) (core.Output, er
 
 type reactParseResult struct {
 	Decisions []struct {
-		Title      string              `json:"title"`
-		Component  string              `json:"component"`
-		What       string              `json:"what"`
-		Why        string              `json:"why"`
-		Tradeoffs  string              `json:"tradeoffs"`
-		Confidence any                 `json:"confidence"`
-		Evidence   []core.EvidenceJSON `json:"evidence"`
+		Title        string              `json:"title"`
+		Component    string              `json:"component"`
+		What         string              `json:"what"`
+		Why          string              `json:"why"`
+		Tradeoffs    string              `json:"tradeoffs"`
+		Confidence   any                 `json:"confidence"`
+		Evidence     []core.EvidenceJSON `json:"evidence"`
+		DebtScore    any                 `json:"debt_score"`    // Debt classification
+		DebtReason   string              `json:"debt_reason"`   // Why this is considered debt
+		RefactorHint string              `json:"refactor_hint"` // How to eliminate the debt
 	} `json:"decisions"`
 	Patterns []struct {
 		Name         string              `json:"name"`
@@ -138,6 +141,9 @@ type reactParseResult struct {
 		Consequences string              `json:"consequences"`
 		Confidence   any                 `json:"confidence"`
 		Evidence     []core.EvidenceJSON `json:"evidence"`
+		DebtScore    any                 `json:"debt_score"`    // Debt classification
+		DebtReason   string              `json:"debt_reason"`   // Why this is considered debt
+		RefactorHint string              `json:"refactor_hint"` // How to eliminate the debt
 	} `json:"patterns"`
 }
 
@@ -149,20 +155,22 @@ func (a *ReactAgent) parseFindings(response string) ([]core.Finding, error) {
 
 	var findings []core.Finding
 	for _, d := range parsed.Decisions {
-		findings = append(findings, core.NewFindingWithEvidence(
+		findings = append(findings, core.NewFindingWithDebt(
 			core.FindingTypeDecision,
 			d.Title, d.What, d.Why, d.Tradeoffs,
 			d.Confidence, d.Evidence, a.Name(),
 			map[string]any{"component": d.Component},
+			core.DebtInfo{DebtScore: d.DebtScore, DebtReason: d.DebtReason, RefactorHint: d.RefactorHint},
 		))
 	}
 
 	for _, p := range parsed.Patterns {
-		findings = append(findings, core.NewFindingWithEvidence(
+		findings = append(findings, core.NewFindingWithDebt(
 			core.FindingTypePattern,
 			p.Name, p.Context, "", p.Consequences,
 			p.Confidence, p.Evidence, a.Name(),
 			map[string]any{"context": p.Context, "solution": p.Solution, "consequences": p.Consequences},
+			core.DebtInfo{DebtScore: p.DebtScore, DebtReason: p.DebtReason, RefactorHint: p.RefactorHint},
 		))
 	}
 

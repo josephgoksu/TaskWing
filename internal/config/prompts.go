@@ -349,6 +349,30 @@ For each finding:
 - Identify which component/layer this belongs to
 - For configuration values, include ACTUAL VALUES (e.g., "timeout is 30s" not just "uses timeouts")
 
+## CRITICAL: DEBT CLASSIFICATION
+For EVERY pattern and decision, you MUST assess its DEBT LEVEL. This distinguishes
+ESSENTIAL complexity (business requirements) from ACCIDENTAL complexity (tech debt).
+
+**Debt Score (0.0-1.0):**
+- 0.0-0.3: Clean pattern - essential, well-designed, should be propagated
+- 0.4-0.6: Moderate debt - works but has known issues or could be improved
+- 0.7-1.0: High debt - accidental complexity, workaround, or legacy code
+
+**Indicators of Technical Debt (HIGH debt_score):**
+- Workarounds for framework/library limitations
+- Compatibility shims between old and new systems
+- Defensive code that shouldn't be necessary
+- TODO/FIXME/HACK comments indicating known issues
+- Abstractions that exist only for historical reasons
+- Code duplicating functionality available elsewhere
+- Overly complex solutions to simple problems
+- Patterns marked "legacy" or "deprecated" in comments
+
+**Why This Matters:**
+When AI agents recall these patterns, high-debt items will include warnings like:
+"⚠️ TECHNICAL DEBT: Consider not propagating this pattern."
+This prevents AI from accidentally spreading tech debt across the codebase.
+
 RESPOND IN JSON:
 {
   "decisions": [
@@ -359,6 +383,9 @@ RESPOND IN JSON:
       "why": "Why this choice was made",
       "tradeoffs": "What tradeoffs this implies",
       "confidence": 0.85,
+      "debt_score": 0.2,
+      "debt_reason": "",
+      "refactor_hint": "",
       "evidence": [
         {
           "file_path": "internal/api/handler.go",
@@ -376,6 +403,9 @@ RESPOND IN JSON:
       "solution": "How it solves the problem",
       "consequences": "Benefits and drawbacks",
       "confidence": 0.75,
+      "debt_score": 0.7,
+      "debt_reason": "Legacy shim between old auth system and new OAuth provider",
+      "refactor_hint": "Migrate callers directly to OAuth client in internal/auth/oauth.go",
       "evidence": [
         {
           "file_path": "internal/repo/base.go",

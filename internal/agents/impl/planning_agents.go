@@ -192,6 +192,7 @@ type PlanningTask struct {
 	Complexity         string   `json:"complexity"`   // "low", "medium", "high"
 	Scope              string   `json:"scope,omitempty"`
 	Keywords           []string `json:"keywords,omitempty"`
+	ExpectedFiles      []string `json:"expected_files,omitempty"` // Files expected to be created/modified/deleted
 }
 
 // PlanningOutput defines the structured response from the LLM.

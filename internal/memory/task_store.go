@@ -32,6 +32,7 @@ func insertTaskTx(tx txExecutor, t *task.Task) error {
 	keywordsJSON, _ := json.Marshal(t.Keywords)
 	queriesJSON, _ := json.Marshal(t.SuggestedRecallQueries)
 	filesJSON, _ := json.Marshal(t.FilesModified)
+	expectedFilesJSON, _ := json.Marshal(t.ExpectedFiles)
 
 	var parentID interface{}
 	if t.ParentTaskID != "" {
@@ -44,14 +45,14 @@ func insertTaskTx(tx txExecutor, t *task.Task) error {
 			acceptance_criteria, validation_steps,
 			status, priority, complexity, assigned_agent, parent_task_id, context_summary,
 			scope, keywords, suggested_recall_queries,
-			claimed_by, claimed_at, completed_at, completion_summary, files_modified,
+			claimed_by, claimed_at, completed_at, completion_summary, files_modified, expected_files,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, t.ID, t.PlanID, t.Title, t.Description,
 		string(acJSON), string(vsJSON),
 		t.Status, t.Priority, t.Complexity, t.AssignedAgent, parentID, t.ContextSummary,
 		t.Scope, string(keywordsJSON), string(queriesJSON),
-		t.ClaimedBy, nullTimeString(t.ClaimedAt), nullTimeString(t.CompletedAt), t.CompletionSummary, string(filesJSON),
+		t.ClaimedBy, nullTimeString(t.ClaimedAt), nullTimeString(t.CompletedAt), t.CompletionSummary, string(filesJSON), string(expectedFilesJSON),
 		t.CreatedAt.Format(time.RFC3339), t.UpdatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("insert task %s: %w", t.Title, err)
@@ -332,14 +333,14 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	var desc, acJSON, vsJSON sql.NullString
 	var parentID sql.NullString
 	var scope, keywordsJSON, queriesJSON, complexity sql.NullString
-	var claimedBy, claimedAt, completedAt, completionSummary, filesJSON sql.NullString
+	var claimedBy, claimedAt, completedAt, completionSummary, filesJSON, expectedFilesJSON, gitBaselineJSON sql.NullString
 	var createdAt, updatedAt string
 
 	err := row.Scan(
 		&t.ID, &t.PlanID, &t.Title, &desc, &acJSON, &vsJSON,
 		&t.Status, &t.Priority, &complexity, &t.AssignedAgent, &parentID, &t.ContextSummary,
 		&scope, &keywordsJSON, &queriesJSON,
-		&claimedBy, &claimedAt, &completedAt, &completionSummary, &filesJSON,
+		&claimedBy, &claimedAt, &completedAt, &completionSummary, &filesJSON, &expectedFilesJSON, &gitBaselineJSON,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -377,6 +378,12 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	if filesJSON.Valid && filesJSON.String != "" {
 		_ = json.Unmarshal([]byte(filesJSON.String), &t.FilesModified)
 	}
+	if expectedFilesJSON.Valid && expectedFilesJSON.String != "" {
+		_ = json.Unmarshal([]byte(expectedFilesJSON.String), &t.ExpectedFiles)
+	}
+	if gitBaselineJSON.Valid && gitBaselineJSON.String != "" {
+		_ = json.Unmarshal([]byte(gitBaselineJSON.String), &t.GitBaseline)
+	}
 
 	return t, nil
 }
@@ -384,7 +391,7 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 const taskSelectColumns = `id, plan_id, title, description, acceptance_criteria, validation_steps,
        status, priority, complexity, assigned_agent, parent_task_id, context_summary,
        scope, keywords, suggested_recall_queries,
-       claimed_by, claimed_at, completed_at, completion_summary, files_modified,
+       claimed_by, claimed_at, completed_at, completion_summary, files_modified, expected_files, git_baseline,
        created_at, updated_at`
 
 // GetTask retrieves a task by ID.
@@ -722,6 +729,33 @@ func (s *SQLiteStore) ClaimTask(taskID, sessionID string) error {
 			return fmt.Errorf("task not found: %s", taskID)
 		}
 		return fmt.Errorf("cannot claim task: current status is %s (must be pending)", status)
+	}
+
+	return nil
+}
+
+// SetGitBaseline records the git state when a task was claimed.
+// This allows accurate comparison of what changed during task execution.
+func (s *SQLiteStore) SetGitBaseline(taskID string, baseline []string) error {
+	if taskID == "" {
+		return fmt.Errorf("task id is required")
+	}
+
+	baselineJSON, err := json.Marshal(baseline)
+	if err != nil {
+		return fmt.Errorf("marshal git baseline: %w", err)
+	}
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+
+	_, err = s.db.Exec(`
+		UPDATE tasks
+		SET git_baseline = ?, updated_at = ?
+		WHERE id = ?
+	`, string(baselineJSON), nowStr, taskID)
+
+	if err != nil {
+		return fmt.Errorf("set git baseline: %w", err)
 	}
 
 	return nil

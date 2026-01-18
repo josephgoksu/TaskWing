@@ -28,6 +28,11 @@ type HookSession struct {
 	TasksStarted   int       `json:"tasks_started"`
 	CurrentTaskID  string    `json:"current_task_id,omitempty"`
 	PlanID         string    `json:"plan_id,omitempty"`
+
+	// Sentinel tracking for deviation circuit breaker
+	LastTaskHadCriticalDeviation bool   `json:"last_task_had_critical_deviation,omitempty"`
+	LastDeviationSummary         string `json:"last_deviation_summary,omitempty"`
+	TotalDeviationsDetected      int    `json:"total_deviations_detected,omitempty"`
 }
 
 // HookResponse is the JSON response format for Claude Code Stop hooks.
@@ -183,6 +188,17 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 		})
 	}
 
+	// Circuit breaker 3: Critical deviation detected in last task
+	if session.LastTaskHadCriticalDeviation {
+		// Clear the flag for next check (human has been notified)
+		session.LastTaskHadCriticalDeviation = false
+		_ = saveHookSession(session)
+
+		return outputHookResponse(HookResponse{
+			Reason: fmt.Sprintf("Sentinel circuit breaker: Critical deviation detected in previous task. %s\n\nReview the changes before proceeding. Use /tw-next to continue after review.", session.LastDeviationSummary),
+		})
+	}
+
 	// Open repository
 	repo, err := openRepo()
 	if err != nil {
@@ -244,6 +260,23 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	// Update session state
 	if currentTask != nil && currentTask.Status == task.StatusCompleted {
 		session.TasksCompleted++
+
+		// Run Sentinel analysis with git verification on the just-completed task
+		// Git verification catches cases where an agent lies about what files it modified
+		workDir, _ := os.Getwd()
+		sentinel := task.NewSentinel()
+		report := sentinel.AnalyzeWithVerification(context.Background(), currentTask, workDir)
+
+		// Track deviations in session
+		if report.HasDeviations() {
+			session.TotalDeviationsDetected += len(report.Deviations)
+			session.LastDeviationSummary = report.Summary
+
+			// Set critical flag for next continue-check to handle
+			if report.HasCriticalDeviations() {
+				session.LastTaskHadCriticalDeviation = true
+			}
+		}
 	}
 	session.CurrentTaskID = nextTask.ID
 	session.PlanID = activePlan.ID

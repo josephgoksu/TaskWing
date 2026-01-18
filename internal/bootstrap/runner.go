@@ -29,8 +29,16 @@ func (r *Runner) Close() {
 	core.CloseAgents(r.agents)
 }
 
-// Run executes all agents in parallel and returns raw agent outputs
+// Run executes all agents in parallel and returns raw agent outputs.
+// Respects context cancellation - returns early if context is cancelled.
 func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Output, error) {
+	// Check for early cancellation before starting any work
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	input := core.Input{
 		BasePath:    projectPath,
 		ProjectName: filepath.Base(projectPath),
@@ -47,6 +55,16 @@ func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Output, er
 		wg.Add(1)
 		go func(a core.Agent) {
 			defer wg.Done()
+
+			// Check for cancellation before running agent
+			select {
+			case <-ctx.Done():
+				mu.Lock()
+				errs = append(errs, fmt.Errorf("agent %s cancelled: %w", a.Name(), ctx.Err()))
+				mu.Unlock()
+				return
+			default:
+			}
 
 			// Run agent
 			start := time.Now()
@@ -72,6 +90,11 @@ func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Output, er
 	}
 
 	wg.Wait()
+
+	// Check if context was cancelled during execution
+	if ctx.Err() != nil {
+		return results, ctx.Err() // Return partial results with cancellation error
+	}
 
 	if len(results) == 0 && len(errs) > 0 {
 		return nil, fmt.Errorf("all agents failed: %v", errs)

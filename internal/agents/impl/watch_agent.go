@@ -309,8 +309,12 @@ func (w *WatchAgent) addWatchRecursive(dir string) error {
 
 		name := d.Name()
 
-		// Skip ignored directories
-		ignoreDirs := []string{"node_modules", "vendor", ".git", "dist", "build", "__pycache__", ".next"}
+		// Skip ignored directories (build caches, dependencies, generated files)
+		ignoreDirs := []string{
+			"node_modules", "vendor", ".git", "dist", "build", "__pycache__", ".next",
+			"test-results", "tmp", "go-build", ".taskwing", "coverage", ".cache",
+			"target", "bin", "obj", ".pytest_cache", ".mypy_cache", ".tox",
+		}
 		for _, ig := range ignoreDirs {
 			if name == ig {
 				return filepath.SkipDir

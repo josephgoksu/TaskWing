@@ -17,6 +17,15 @@ func NewInitializer(basePath string) *Initializer {
 	return &Initializer{basePath: basePath}
 }
 
+// ValidAINames returns the list of supported AI assistant names.
+func ValidAINames() []string {
+	names := make([]string, 0, len(aiHelpers))
+	for name := range aiHelpers {
+		names = append(names, name)
+	}
+	return names
+}
+
 // Run executes the initialization process.
 func (i *Initializer) Run(verbose bool, selectedAIs []string) error {
 	// 1. Create directory structure
@@ -29,18 +38,43 @@ func (i *Initializer) Run(verbose bool, selectedAIs []string) error {
 	}
 
 	// 2. Setup AI integrations
-	// Note: We need access to aiConfigs from `install_helpers.go` (if we moved it)
-	// OR we need to replicate that logic.
-	// For now, assuming the caller passes the AI keys directly or we move helper logic here.
-	// The CLI `cmd/mcp_install.go` has installation logic. The `cmd/bootstrap.go` has slash command creation.
-	// We should move `createSlashCommands` and the `aiConfig` struct here or make them shared.
+	return i.setupAIIntegrations(verbose, selectedAIs, true)
+}
 
-	// Since we can't easily move `aiConfig` from `cmd` without refactoring `cmd/mcp_install.go` too,
-	// let's define the necessary config here for slash commands.
+// RegenerateConfigs regenerates AI configurations without creating directory structure.
+// Used in repair mode when project structure is healthy but AI configs need repair.
+func (i *Initializer) RegenerateConfigs(verbose bool, targetAIs []string) error {
+	if len(targetAIs) == 0 {
+		return nil
+	}
+	return i.setupAIIntegrations(verbose, targetAIs, false)
+}
 
-	fmt.Printf("🔧 Setting up AI integrations for: %s\n", strings.Join(selectedAIs, ", "))
-
+// setupAIIntegrations creates slash commands and hooks for selected AIs.
+// If showHeader is true, prints the "Setting up AI integrations" message.
+func (i *Initializer) setupAIIntegrations(verbose bool, selectedAIs []string, showHeader bool) error {
+	// Validate AI names and filter unknown ones
+	var validAIs []string
 	for _, ai := range selectedAIs {
+		if _, ok := aiHelpers[ai]; ok {
+			validAIs = append(validAIs, ai)
+		} else if verbose {
+			fmt.Fprintf(os.Stderr, "⚠️  Unknown AI assistant '%s' (skipping)\n", ai)
+		}
+	}
+
+	if len(validAIs) == 0 {
+		if verbose {
+			fmt.Println("⚠️  No valid AI assistants specified")
+		}
+		return nil
+	}
+
+	if showHeader {
+		fmt.Printf("🔧 Setting up AI integrations for: %s\n", strings.Join(validAIs, ", "))
+	}
+
+	for _, ai := range validAIs {
 		// Create slash commands
 		if err := i.createSlashCommands(ai, verbose); err != nil {
 			return err
@@ -51,18 +85,15 @@ func (i *Initializer) Run(verbose bool, selectedAIs []string) error {
 			fmt.Fprintf(os.Stderr, "⚠️  Failed to install hooks for %s: %v\n", ai, err)
 		}
 
-		fmt.Printf("   ✓ Created local config for %s\n", ai)
+		if showHeader {
+			fmt.Printf("   ✓ Created local config for %s\n", ai)
+		}
 	}
 
 	// Update agent docs once (applies to all: CLAUDE.md, GEMINI.md, AGENTS.md)
 	if err := i.updateAgentDocs(verbose); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠️  Failed to update agent docs: %v\n", err)
 	}
-
-	// Note: Actual MCP installation (binary copy) is handled by `cmd/mcp_install.go`.
-	// Bootstrap calls it via `installClaude`, etc.
-	// Those are currently CLI helpers. A full refactor would move them to `internal/install`.
-	// For this step, we'll focus on the config/file generation parts handled by bootstrap.
 
 	return nil
 }
@@ -104,12 +135,7 @@ var aiHelpers = map[string]aiHelperConfig{
 func (i *Initializer) createSlashCommands(aiName string, verbose bool) error {
 	cfg, ok := aiHelpers[aiName]
 	if !ok {
-		// Fallback or skip if unknown (Copilot handles differently in old code?)
-		if aiName == "copilot" {
-			// Copilot logic was specific in bootstrap.go?
-			// Checking previous file content... it was handled generally if in the map.
-			return nil
-		}
+		// Unknown AI - skip silently (user may have specified an unsupported AI)
 		return nil
 	}
 
@@ -198,16 +224,22 @@ func (i *Initializer) InstallHooksConfig(aiName string, verbose bool) error {
 
 	if content, err := os.ReadFile(settingsPath); err == nil {
 		var existing map[string]any
-		if err := json.Unmarshal(content, &existing); err == nil {
-			if _, hasHooks := existing["hooks"]; hasHooks {
-				if verbose {
-					fmt.Printf("  ℹ️  Hooks already configured in %s\n", settingsPath)
-				}
-				return nil
+		if err := json.Unmarshal(content, &existing); err != nil {
+			// File exists but contains invalid JSON - don't overwrite, warn user
+			return fmt.Errorf("existing %s contains invalid JSON (please fix manually): %w", settingsPath, err)
+		}
+		if _, hasHooks := existing["hooks"]; hasHooks {
+			if verbose {
+				fmt.Printf("  ℹ️  Hooks already configured in %s\n", settingsPath)
 			}
+			return nil
 		}
 	}
 
+	// Hook timeout values (in seconds):
+	// - SessionStart (10s): Quick initialization, only creates session file
+	// - Stop (15s): May need to query plan state, fetch next task context
+	// Users can adjust these in the generated settings.json if needed.
 	config := HooksConfig{
 		Hooks: map[string][]HookMatcher{
 			"SessionStart": {

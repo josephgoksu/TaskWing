@@ -423,6 +423,12 @@ func (s *SQLiteStore) initSchema() error {
 		{"evidence", "ALTER TABLE nodes ADD COLUMN evidence TEXT"},                       // JSON blob of []Evidence
 		{"verification_result", "ALTER TABLE nodes ADD COLUMN verification_result TEXT"}, // JSON blob of VerificationResult
 		{"confidence_score", "ALTER TABLE nodes ADD COLUMN confidence_score REAL DEFAULT 0.5"},
+		// Debt Classification columns (v2.2+) - distinguishes essential from accidental complexity
+		// See: Jake Nations "The Infinite Software Crisis" - AI treats all patterns the same,
+		// but technical debt shouldn't be propagated.
+		{"debt_score", "ALTER TABLE nodes ADD COLUMN debt_score REAL DEFAULT 0.0"},    // 0.0 = clean, 1.0 = pure debt
+		{"debt_reason", "ALTER TABLE nodes ADD COLUMN debt_reason TEXT DEFAULT ''"},   // Why this is considered debt
+		{"refactor_hint", "ALTER TABLE nodes ADD COLUMN refactor_hint TEXT DEFAULT ''"}, // How to eliminate the debt
 	}
 
 	for _, m := range migrations {
@@ -475,6 +481,8 @@ func (s *SQLiteStore) initSchema() error {
 		{"completion_summary", "ALTER TABLE tasks ADD COLUMN completion_summary TEXT"},             // AI-generated summary on completion
 		{"files_modified", "ALTER TABLE tasks ADD COLUMN files_modified TEXT"},                     // JSON array of modified files
 		{"block_reason", "ALTER TABLE tasks ADD COLUMN block_reason TEXT"},                         // Reason if task is blocked
+		{"expected_files", "ALTER TABLE tasks ADD COLUMN expected_files TEXT"},                     // JSON array of expected files (for Sentinel)
+		{"git_baseline", "ALTER TABLE tasks ADD COLUMN git_baseline TEXT"},                        // JSON array of files already modified at task start
 	}
 
 	for _, m := range taskMigrations {
@@ -1049,10 +1057,12 @@ func (s *SQLiteStore) CreateNode(n *Node) error {
 
 	_, err := s.db.Exec(`
 		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at,
-		                   evidence, verification_status, verification_result, confidence_score)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                   evidence, verification_status, verification_result, confidence_score,
+		                   debt_score, debt_reason, refactor_hint)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
-		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore)
+		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
+		n.DebtScore, n.DebtReason, n.RefactorHint)
 
 	if err != nil {
 		return fmt.Errorf("insert node: %w", err)
@@ -1067,15 +1077,18 @@ func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 	var createdAt string
 	var nodeType, summary, sourceAgent sql.NullString
 	var evidence, verificationStatus, verificationResult sql.NullString
-	var confidenceScore sql.NullFloat64
+	var confidenceScore, debtScore sql.NullFloat64
+	var debtReason, refactorHint sql.NullString
 	var embeddingBytes []byte
 
 	err := s.db.QueryRow(`
 		SELECT id, content, type, summary, source_agent, embedding, created_at,
-		       evidence, verification_status, verification_result, confidence_score
+		       evidence, verification_status, verification_result, confidence_score,
+		       debt_score, debt_reason, refactor_hint
 		FROM nodes WHERE id = ?
 	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt,
-		&evidence, &verificationStatus, &verificationResult, &confidenceScore)
+		&evidence, &verificationStatus, &verificationResult, &confidenceScore,
+		&debtScore, &debtReason, &refactorHint)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("node not found: %s", id)
@@ -1100,6 +1113,17 @@ func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 		n.ConfidenceScore = confidenceScore.Float64
 	}
 
+	// Populate debt classification fields
+	if debtScore.Valid {
+		n.DebtScore = debtScore.Float64
+	}
+	if debtReason.Valid {
+		n.DebtReason = debtReason.String
+	}
+	if refactorHint.Valid {
+		n.RefactorHint = refactorHint.String
+	}
+
 	return &n, nil
 }
 
@@ -1111,13 +1135,15 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 	if nodeType != "" {
 		rows, err = s.db.Query(`
 			SELECT id, content, type, summary, source_agent, created_at,
-			       evidence, verification_status, verification_result, confidence_score
+			       evidence, verification_status, verification_result, confidence_score,
+			       debt_score, debt_reason, refactor_hint
 			FROM nodes WHERE type = ? ORDER BY created_at DESC
 		`, nodeType)
 	} else {
 		rows, err = s.db.Query(`
 			SELECT id, content, type, summary, source_agent, created_at,
-			       evidence, verification_status, verification_result, confidence_score
+			       evidence, verification_status, verification_result, confidence_score,
+			       debt_score, debt_reason, refactor_hint
 			FROM nodes ORDER BY created_at DESC
 		`)
 	}
@@ -1133,10 +1159,12 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 		var createdAt string
 		var nodeTypeStr, summary, sourceAgent sql.NullString
 		var evidence, verificationStatus, verificationResult sql.NullString
-		var confidenceScore sql.NullFloat64
+		var confidenceScore, debtScore sql.NullFloat64
+		var debtReason, refactorHint sql.NullString
 
 		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &createdAt,
-			&evidence, &verificationStatus, &verificationResult, &confidenceScore); err != nil {
+			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
+			&debtScore, &debtReason, &refactorHint); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, createdAt, nil)
@@ -1153,6 +1181,17 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 		}
 		if confidenceScore.Valid {
 			n.ConfidenceScore = confidenceScore.Float64
+		}
+
+		// Populate debt classification fields
+		if debtScore.Valid {
+			n.DebtScore = debtScore.Float64
+		}
+		if debtReason.Valid {
+			n.DebtReason = debtReason.String
+		}
+		if refactorHint.Valid {
+			n.RefactorHint = refactorHint.String
 		}
 
 		nodes = append(nodes, n)
@@ -1329,9 +1368,12 @@ func (s *SQLiteStore) GetNodesByFiles(agentName string, filePaths []string) ([]N
 		return nil, nil
 	}
 
-	// 1. Get all nodes for this agent
-	// Note: We select * to reconstruct the Node
-	rows, err := s.db.Query(`SELECT id, content, type, summary, source_agent, embedding, created_at, evidence FROM nodes WHERE source_agent = ?`, agentName)
+	// 1. Get all nodes for this agent (including debt classification columns)
+	rows, err := s.db.Query(`
+		SELECT id, content, type, summary, source_agent, embedding, created_at, evidence,
+		       verification_status, verification_result, confidence_score,
+		       debt_score, debt_reason, refactor_hint
+		FROM nodes WHERE source_agent = ?`, agentName)
 	if err != nil {
 		return nil, fmt.Errorf("query nodes: %w", err)
 	}
@@ -1345,11 +1387,15 @@ func (s *SQLiteStore) GetNodesByFiles(agentName string, filePaths []string) ([]N
 
 	for rows.Next() {
 		var n Node
-		var evidenceJSON sql.NullString
-		var embeddingBytes []byte // temp for blob
+		var evidenceJSON, verificationStatus, verificationResult sql.NullString
+		var confidenceScore, debtScore sql.NullFloat64
+		var debtReason, refactorHint sql.NullString
+		var embeddingBytes []byte
 
 		// Scan matching the SELECT columns
-		if err := rows.Scan(&n.ID, &n.Content, &n.Type, &n.Summary, &n.SourceAgent, &embeddingBytes, &n.CreatedAt, &evidenceJSON); err != nil {
+		if err := rows.Scan(&n.ID, &n.Content, &n.Type, &n.Summary, &n.SourceAgent, &embeddingBytes, &n.CreatedAt, &evidenceJSON,
+			&verificationStatus, &verificationResult, &confidenceScore,
+			&debtScore, &debtReason, &refactorHint); err != nil {
 			continue // skip errors
 		}
 
@@ -1357,6 +1403,28 @@ func (s *SQLiteStore) GetNodesByFiles(agentName string, filePaths []string) ([]N
 			continue
 		}
 		n.Evidence = evidenceJSON.String
+
+		// Populate verification fields
+		if verificationStatus.Valid {
+			n.VerificationStatus = verificationStatus.String
+		}
+		if verificationResult.Valid {
+			n.VerificationResult = verificationResult.String
+		}
+		if confidenceScore.Valid {
+			n.ConfidenceScore = confidenceScore.Float64
+		}
+
+		// Populate debt classification fields
+		if debtScore.Valid {
+			n.DebtScore = debtScore.Float64
+		}
+		if debtReason.Valid {
+			n.DebtReason = debtReason.String
+		}
+		if refactorHint.Valid {
+			n.RefactorHint = refactorHint.String
+		}
 
 		// Simple heuristics to filter
 		if !strings.Contains(n.Evidence, "file_path") {
@@ -1446,13 +1514,15 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 	`, n.Summary, n.SourceAgent).Scan(&existingID)
 
 	if err == nil && existingID != "" {
-		// Update existing node with exact match (including evidence columns)
+		// Update existing node with exact match (including evidence and debt columns)
 		_, err = tx.Exec(`
 			UPDATE nodes SET content = ?, type = ?, embedding = ?,
-			       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?
+			       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?,
+			       debt_score = ?, debt_reason = ?, refactor_hint = ?
 			WHERE id = ?
 		`, n.Content, n.Type, embeddingBytes,
-			n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore, existingID)
+			n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
+			n.DebtScore, n.DebtReason, n.RefactorHint, existingID)
 		if err != nil {
 			return fmt.Errorf("update existing node: %w", err)
 		}
@@ -1478,21 +1548,25 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 		sim := textSimilarity(n.Summary, existingSummary)
 		if sim >= textSimilarityThreshold {
 			_ = rows.Close() // Close before executing update
-			// Found a similar node - update it instead of inserting new (including evidence columns)
+			// Found a similar node - update it instead of inserting new (including evidence and debt columns)
 			if n.Content != similarContent {
 				_, err = tx.Exec(`
 					UPDATE nodes SET content = ?, type = ?, embedding = ?, summary = ?,
-					       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?
+					       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?,
+					       debt_score = ?, debt_reason = ?, refactor_hint = ?
 					WHERE id = ?
 				`, n.Content, n.Type, embeddingBytes, n.Summary,
-					n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore, similarID)
+					n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
+					n.DebtScore, n.DebtReason, n.RefactorHint, similarID)
 			} else {
 				_, err = tx.Exec(`
 					UPDATE nodes SET type = ?, embedding = ?, summary = ?,
-					       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?
+					       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?,
+					       debt_score = ?, debt_reason = ?, refactor_hint = ?
 					WHERE id = ?
 				`, n.Type, embeddingBytes, n.Summary,
-					n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore, similarID)
+					n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
+					n.DebtScore, n.DebtReason, n.RefactorHint, similarID)
 			}
 			if err != nil {
 				return fmt.Errorf("update similar node: %w", err)
@@ -1502,13 +1576,15 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 	}
 	_ = rows.Close()
 
-	// No similar node found - insert new node (including evidence columns)
+	// No similar node found - insert new node (including evidence and debt columns)
 	_, err = tx.Exec(`
 		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at,
-		                   evidence, verification_status, verification_result, confidence_score)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                   evidence, verification_status, verification_result, confidence_score,
+		                   debt_score, debt_reason, refactor_hint)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
-		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore)
+		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
+		n.DebtScore, n.DebtReason, n.RefactorHint)
 
 	if err != nil {
 		return fmt.Errorf("insert node: %w", err)
@@ -1632,7 +1708,8 @@ type FTSResult struct {
 func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 	rows, err := s.db.Query(`
 		SELECT id, content, type, summary, source_agent, embedding, created_at,
-		       evidence, verification_status, verification_result, confidence_score
+		       evidence, verification_status, verification_result, confidence_score,
+		       debt_score, debt_reason, refactor_hint
 		FROM nodes WHERE embedding IS NOT NULL
 		ORDER BY created_at DESC
 	`)
@@ -1648,10 +1725,12 @@ func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 		var nodeType, summary, sourceAgent sql.NullString
 		var embeddingBytes []byte
 		var evidence, verificationStatus, verificationResult sql.NullString
-		var confidenceScore sql.NullFloat64
+		var confidenceScore, debtScore sql.NullFloat64
+		var debtReason, refactorHint sql.NullString
 
 		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt,
-			&evidence, &verificationStatus, &verificationResult, &confidenceScore); err != nil {
+			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
+			&debtScore, &debtReason, &refactorHint); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
@@ -1668,6 +1747,17 @@ func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 		}
 		if confidenceScore.Valid {
 			n.ConfidenceScore = confidenceScore.Float64
+		}
+
+		// Populate debt classification fields
+		if debtScore.Valid {
+			n.DebtScore = debtScore.Float64
+		}
+		if debtReason.Valid {
+			n.DebtReason = debtReason.String
+		}
+		if refactorHint.Valid {
+			n.RefactorHint = refactorHint.String
 		}
 
 		nodes = append(nodes, n)

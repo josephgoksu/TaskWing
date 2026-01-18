@@ -73,6 +73,11 @@ func (r *Repository) ClaimTask(taskID, sessionID string) error {
 	return r.db.ClaimTask(taskID, sessionID)
 }
 
+// SetGitBaseline records the git state when a task was claimed.
+func (r *Repository) SetGitBaseline(taskID string, baseline []string) error {
+	return r.db.SetGitBaseline(taskID, baseline)
+}
+
 // CompleteTask marks a task as completed with summary and files modified.
 func (r *Repository) CompleteTask(taskID, summary string, filesModified []string) error {
 	return r.db.CompleteTask(taskID, summary, filesModified)

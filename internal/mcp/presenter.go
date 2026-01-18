@@ -17,6 +17,7 @@ import (
 
 // FormatRecall converts a RecallResult into token-efficient Markdown.
 // Structure: Answer (if present) -> Knowledge -> Symbols
+// Includes debt warnings for patterns/decisions marked as technical debt.
 func FormatRecall(result *app.RecallResult) string {
 	if result == nil {
 		return "No results found."
@@ -44,6 +45,10 @@ func FormatRecall(result *app.RecallResult) string {
 					preview := truncate(content, 150)
 					sb.WriteString(fmt.Sprintf("\n   %s", preview))
 				}
+			}
+			// Add debt warning if this is technical debt
+			if node.DebtWarning != "" {
+				sb.WriteString(fmt.Sprintf("\n   %s", node.DebtWarning))
 			}
 			sb.WriteString("\n")
 		}
@@ -799,6 +804,7 @@ func scoreToBar(score float32) string {
 }
 
 // FormatNodeResponse formats a single knowledge node response.
+// Includes debt warning if the node is classified as technical debt.
 func FormatNodeResponse(node knowledge.NodeResponse) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("**%s** (%s)", node.Summary, node.Type))
@@ -808,6 +814,10 @@ func FormatNodeResponse(node knowledge.NodeResponse) string {
 			preview := truncate(content, 150)
 			sb.WriteString(fmt.Sprintf("\n%s", preview))
 		}
+	}
+	// Add debt warning if this is technical debt
+	if node.DebtWarning != "" {
+		sb.WriteString(fmt.Sprintf("\n%s", node.DebtWarning))
 	}
 	return sb.String()
 }

@@ -60,7 +60,11 @@ type Task struct {
 
 	// Completion tracking
 	CompletionSummary string   `json:"completionSummary,omitempty"` // AI-generated summary on completion
-	FilesModified     []string `json:"filesModified,omitempty"`     // Files touched during task
+	FilesModified     []string `json:"filesModified,omitempty"`     // Files touched during task (actual)
+
+	// Sentinel tracking - for deviation detection
+	ExpectedFiles []string `json:"expectedFiles,omitempty"` // Files plan says should be modified (predicted)
+	GitBaseline   []string `json:"gitBaseline,omitempty"`   // Files already modified when task started (for accurate diff)
 
 	// Computed/Joined fields (not in tasks table directly)
 	Dependencies []string `json:"dependencies"` // IDs of tasks

@@ -24,6 +24,13 @@ type Service struct {
 	initializer *Initializer
 }
 
+// BootstrapResult contains the outcome of a bootstrap operation including warnings.
+type BootstrapResult struct {
+	FindingsCount int      `json:"findings_count"`
+	Warnings      []string `json:"warnings,omitempty"` // Non-fatal issues encountered
+	Errors        []string `json:"errors,omitempty"`   // Fatal errors (if any)
+}
+
 // NewService creates a new bootstrap service.
 func NewService(basePath string, llmCfg llm.Config) *Service {
 	return &Service{
@@ -38,6 +45,12 @@ func (s *Service) InitializeProject(verbose bool, selectedAIs []string) error {
 	return s.initializer.Run(verbose, selectedAIs)
 }
 
+// RegenerateAIConfigs regenerates AI slash commands and hooks for specified AIs.
+// This is used in repair mode when the project structure is healthy but AI configs need repair.
+func (s *Service) RegenerateAIConfigs(verbose bool, targetAIs []string) error {
+	return s.initializer.RegenerateConfigs(verbose, targetAIs)
+}
+
 // RunMultiRepoAnalysis executes analysis for all services in a workspace.
 func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.WorkspaceInfo) ([]core.Finding, []core.Relationship, []string, error) {
 	var allFindings []core.Finding
@@ -47,9 +60,12 @@ func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.Workspac
 	for _, serviceName := range ws.Services {
 		servicePath := ws.GetServicePath(serviceName)
 		runner := NewRunner(s.llmCfg, servicePath)
-		defer runner.Close()
 
 		results, err := runner.Run(ctx, servicePath)
+		// Close runner immediately after use - NOT deferred in loop!
+		// Deferring in a loop keeps all resources open until function exit.
+		runner.Close()
+
 		if err != nil {
 			serviceErrors = append(serviceErrors, fmt.Sprintf("%s: %s", serviceName, err.Error()))
 			continue
@@ -182,15 +198,18 @@ func (s *Service) generateOverviewIfNeeded(ctx context.Context, repo *memory.Rep
 // RunDeterministicBootstrap collects project metadata without LLM calls.
 // This is the default bootstrap mode - fast, reliable, and always succeeds.
 // It extracts: git statistics, documentation files, and stores them for RAG.
-func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) error {
+// Returns a BootstrapResult with warnings for any non-fatal issues encountered.
+func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (*BootstrapResult, error) {
+	result := &BootstrapResult{}
+
 	memoryPath, err := config.GetMemoryBasePath()
 	if err != nil {
-		return fmt.Errorf("get memory path: %w", err)
+		return nil, fmt.Errorf("get memory path: %w", err)
 	}
 
 	repo, err := memory.NewDefaultRepository(memoryPath)
 	if err != nil {
-		return fmt.Errorf("open memory repo: %w", err)
+		return nil, fmt.Errorf("open memory repo: %w", err)
 	}
 	defer func() { _ = repo.Close() }()
 
@@ -210,6 +229,8 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) e
 	gitParser := NewGitStatParser(s.basePath)
 	gitStats, err := gitParser.Parse()
 	if err != nil {
+		// Track warning instead of silently swallowing
+		result.Warnings = append(result.Warnings, fmt.Sprintf("git stats: %v", err))
 		if !isQuiet {
 			fmt.Printf(" skipped (%v)\n", err)
 		}
@@ -238,6 +259,8 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) e
 	docLoader := NewDocLoader(s.basePath)
 	docs, err := docLoader.Load()
 	if err != nil {
+		// Track warning instead of silently swallowing
+		result.Warnings = append(result.Warnings, fmt.Sprintf("doc loader: %v", err))
 		if !isQuiet {
 			fmt.Printf(" failed (%v)\n", err)
 		}
@@ -278,7 +301,8 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) e
 		if !isQuiet {
 			fmt.Println("   ⚠️  No metadata extracted (not a git repo or no docs)")
 		}
-		return nil
+		result.Warnings = append(result.Warnings, "no metadata extracted (not a git repo or no docs)")
+		return result, nil
 	}
 
 	// 3. Ingest findings to knowledge graph
@@ -293,7 +317,7 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) e
 		if !isQuiet {
 			fmt.Println(" failed")
 		}
-		return fmt.Errorf("ingest metadata: %w", err)
+		return nil, fmt.Errorf("ingest metadata: %w", err)
 	}
 
 	elapsed := time.Since(startTime).Round(time.Millisecond)
@@ -302,7 +326,8 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) e
 		fmt.Printf("\n   ✅ Extracted %d items in %v\n", len(findings), elapsed)
 	}
 
-	return nil
+	result.FindingsCount = len(findings)
+	return result, nil
 }
 
 // joinMax joins up to n strings with commas.

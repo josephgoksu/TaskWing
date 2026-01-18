@@ -293,7 +293,8 @@ Generate a structured plan as JSON with the following schema:
       "validation_steps": ["optional CLI commands to verify"],
       "depends_on": [0-based indices of dependent tasks],
       "scope": "optional category",
-      "keywords": ["optional search keywords"]
+      "keywords": ["optional search keywords"],
+      "expected_files": ["files this task will create/modify/delete"]
     }
   ]
 }
@@ -304,6 +305,7 @@ RULES:
 - Use 0-based indices for depends_on references
 - Priority: 0=critical, 50=normal, 100=nice-to-have
 - assigned_agent: coder (implementation), qa (testing), architect (design), researcher (analysis)
+- expected_files: List files that will be created, modified, or deleted (e.g., "internal/auth/handler.go", "tests/auth_test.go")
 - Output ONLY valid JSON, no markdown or explanation
 
 Generate the plan JSON now:`

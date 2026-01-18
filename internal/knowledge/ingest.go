@@ -219,6 +219,11 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 			node.ConfidenceScore = 0.5 // Default
 		}
 
+		// Store debt classification (distinguishes essential from accidental complexity)
+		node.DebtScore = f.DebtScore
+		node.DebtReason = f.DebtReason
+		node.RefactorHint = f.RefactorHint
+
 		// Serialize evidence to JSON
 		if len(f.Evidence) > 0 {
 			if evidenceJSON, err := json.Marshal(f.Evidence); err == nil {

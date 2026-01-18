@@ -84,6 +84,55 @@ type Node struct {
 
 	// ConfidenceScore is numeric confidence (0.0-1.0) adjusted by verification
 	ConfidenceScore float64 `json:"confidenceScore,omitempty"`
+
+	// Debt Classification fields (v2.2+)
+	// Distinguishes essential complexity from accidental complexity (technical debt).
+	// When AI recalls context, high-debt patterns include warnings to prevent propagation.
+
+	// DebtScore indicates how much this represents technical debt (0.0 = clean, 1.0 = pure debt)
+	DebtScore float64 `json:"debtScore,omitempty"`
+
+	// DebtReason explains why this is considered technical debt
+	DebtReason string `json:"debtReason,omitempty"`
+
+	// RefactorHint provides guidance on how to eliminate this debt
+	RefactorHint string `json:"refactorHint,omitempty"`
+}
+
+// DebtLevel returns human-readable debt classification for a node.
+func (n *Node) DebtLevel() string {
+	switch {
+	case n.DebtScore >= 0.7:
+		return "high" // Do not propagate
+	case n.DebtScore >= 0.4:
+		return "medium" // Consider alternatives
+	default:
+		return "low" // Clean pattern
+	}
+}
+
+// IsDebt returns true if this node represents technical debt that shouldn't be propagated.
+func (n *Node) IsDebt() bool {
+	return n.DebtScore >= 0.7
+}
+
+// DebtWarning returns a warning string if this node is technical debt, empty otherwise.
+func (n *Node) DebtWarning() string {
+	if n.DebtScore >= 0.7 {
+		warning := "⚠️ TECHNICAL DEBT: This is accidental complexity. Consider not propagating this pattern."
+		if n.RefactorHint != "" {
+			warning += " " + n.RefactorHint
+		}
+		return warning
+	}
+	if n.DebtScore >= 0.4 {
+		warning := "⚡ MODERATE DEBT: This pattern works but has known issues."
+		if n.DebtReason != "" {
+			warning += " " + n.DebtReason
+		}
+		return warning
+	}
+	return ""
 }
 
 // NodeEdge represents a relationship between two nodes.

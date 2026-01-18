@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -99,6 +100,10 @@ type TaskPlanner interface {
 	Close() error
 }
 
+// TaskContextEnricher executes recall queries and returns aggregated context for a task.
+// This is used during task creation to populate ContextSummary.
+type TaskContextEnricher func(ctx context.Context, queries []string) (string, error)
+
 // PlanApp provides plan lifecycle operations.
 // This is THE implementation - CLI and MCP both call these methods.
 type PlanApp struct {
@@ -107,11 +112,14 @@ type PlanApp struct {
 	ClarifierFactory func(llm.Config) GoalsClarifier
 	PlannerFactory   func(llm.Config) TaskPlanner
 	ContextRetriever func(ctx context.Context, ks *knowledge.Service, goal, memoryPath string) (impl.SearchStrategyResult, error)
+	// TaskEnricher executes recall queries to populate task ContextSummary.
+	// If nil, tasks will not have embedded context (legacy behavior).
+	TaskEnricher TaskContextEnricher
 }
 
 // NewPlanApp creates a new plan application service.
 func NewPlanApp(ctx *Context) *PlanApp {
-	return &PlanApp{
+	pa := &PlanApp{
 		ctx:  ctx,
 		Repo: ctx.Repo,
 		ClarifierFactory: func(cfg llm.Config) GoalsClarifier {
@@ -122,6 +130,54 @@ func NewPlanApp(ctx *Context) *PlanApp {
 		},
 		ContextRetriever: impl.RetrieveContext,
 	}
+	// Initialize default TaskEnricher using RecallApp
+	pa.TaskEnricher = pa.defaultTaskEnricher
+	return pa
+}
+
+// defaultTaskEnricher executes all recall queries and aggregates results into a context summary.
+// This is the production implementation; tests can override TaskEnricher for mocking.
+func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (string, error) {
+	if len(queries) == 0 {
+		return "", nil
+	}
+
+	recallApp := NewRecallApp(a.ctx)
+	var contextParts []string
+
+	for _, query := range queries {
+		result, err := recallApp.Query(ctx, query, RecallOptions{
+			Limit:          3, // 3 results per query
+			GenerateAnswer: false,
+			IncludeSymbols: false, // Keep context focused on knowledge, not symbols
+			NoRewrite:      true,  // Skip rewriting for speed
+		})
+		if err != nil {
+			slog.Debug("task enrichment query failed", "query", query, "error", err)
+			continue
+		}
+
+		if len(result.Results) > 0 {
+			var parts []string
+			for _, node := range result.Results {
+				// Format: "- **Summary** (type): Content preview"
+				content := node.Content
+				if len(content) > 200 {
+					content = content[:197] + "..."
+				}
+				parts = append(parts, fmt.Sprintf("- **%s** (%s): %s", node.Summary, node.Type, content))
+			}
+			if len(parts) > 0 {
+				contextParts = append(contextParts, strings.Join(parts, "\n"))
+			}
+		}
+	}
+
+	if len(contextParts) == 0 {
+		return "", nil
+	}
+
+	return "## Architectural Context\n" + strings.Join(contextParts, "\n"), nil
 }
 
 // Clarify refines a development goal by asking clarifying questions.
@@ -741,6 +797,7 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 				Complexity:         pt.Complexity,
 				Scope:              pt.Scope,
 				Keywords:           pt.Keywords,
+				ExpectedFiles:      pt.ExpectedFiles,
 			}
 			t.EnrichAIFields()
 			tasks = append(tasks, t)
@@ -797,6 +854,15 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 					}
 				}
 
+				var expectedFiles []string
+				if ef, ok := tm["expected_files"].([]any); ok {
+					for _, f := range ef {
+						if fs, ok := f.(string); ok {
+							expectedFiles = append(expectedFiles, fs)
+						}
+					}
+				}
+
 				id := genID()
 				newTask := task.Task{
 					ID:                 id,
@@ -810,6 +876,7 @@ func parseTasksFromMetadata(metadata map[string]any) []task.Task {
 					Complexity:         complexity,
 					Scope:              scope,
 					Keywords:           keywords,
+					ExpectedFiles:      expectedFiles,
 				}
 				newTask.EnrichAIFields()
 				tasks = append(tasks, newTask)
