@@ -83,6 +83,7 @@ coverage:
 .PHONY: lint
 lint:
 	@echo "🔍 Running linting and formatting..."
+	mkdir -p $(TEST_DIR) $(TEST_DIR)/go-build $(TEST_DIR)/tmp
 	$(GO) fmt $(CORE_PKGS)
 	@echo "🔍 Running go vet..."
 	$(GO) vet ./...
