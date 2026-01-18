@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -58,6 +59,7 @@ type AIHealth struct {
 	Name              string       `json:"name"`
 	Status            HealthStatus `json:"status"`
 	CommandsDirExists bool         `json:"commands_dir_exists"`
+	MarkerFileExists  bool         `json:"marker_file_exists"` // True if TaskWing created this directory
 	CommandFilesCount int          `json:"command_files_count"`
 	HooksConfigExists bool         `json:"hooks_config_exists"` // Only for claude/codex
 	HooksConfigValid  bool         `json:"hooks_config_valid"`  // JSON parseable?
@@ -93,16 +95,18 @@ type Snapshot struct {
 
 // Flags captures all CLI flags in a structured way.
 type Flags struct {
-	Preview     bool   `json:"preview"`      // Dry-run, no writes
-	SkipInit    bool   `json:"skip_init"`    // Skip initialization phase
-	SkipIndex   bool   `json:"skip_index"`   // Skip code indexing
-	SkipAnalyze bool   `json:"skip_analyze"` // Skip LLM analysis (for CI/testing)
-	Force       bool   `json:"force"`        // Force index even on large codebases (--force flag)
-	Trace       bool   `json:"trace"`        // Enable tracing
-	TraceStdout bool   `json:"trace_stdout"` // Trace to stdout instead of file
-	TraceFile   string `json:"trace_file,omitempty"`
-	Verbose     bool   `json:"verbose"`
-	Quiet       bool   `json:"quiet"`
+	Preview     bool     `json:"preview"`      // Dry-run, no writes
+	SkipInit    bool     `json:"skip_init"`    // Skip initialization phase
+	SkipIndex   bool     `json:"skip_index"`   // Skip code indexing
+	SkipAnalyze bool     `json:"skip_analyze"` // Skip LLM analysis (for CI/testing)
+	Force       bool     `json:"force"`        // Force index even on large codebases (--force flag)
+	Resume      bool     `json:"resume"`       // Resume from last checkpoint (skip completed agents)
+	OnlyAgents  []string `json:"only_agents"`  // Run only specified agents
+	Trace       bool     `json:"trace"`        // Enable tracing
+	TraceStdout bool     `json:"trace_stdout"` // Trace to stdout instead of file
+	TraceFile   string   `json:"trace_file,omitempty"`
+	Verbose     bool     `json:"verbose"`
+	Quiet       bool     `json:"quiet"`
 }
 
 // Plan captures the decisions about what to do.
@@ -313,7 +317,7 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 	// LLM analysis runs by default unless --skip-analyze is set
 	if !flags.SkipAnalyze {
 		plan.RequiresLLMConfig = true
-		if !containsAction(plan.Actions, ActionLLMAnalyze) {
+		if !slices.Contains(plan.Actions, ActionLLMAnalyze) {
 			plan.Actions = append(plan.Actions, ActionLLMAnalyze)
 		}
 	}
@@ -383,14 +387,15 @@ func decideActions(snap *Snapshot, flags Flags, mode BootstrapMode) []Action {
 }
 
 // hasAIsNeedingRepair checks if any existing AI integration needs repair.
-// An AI needs repair ONLY if it has local config that was started but is incomplete.
-// We do NOT repair based on GlobalMCPExists alone - the user may have global MCP
-// registered but never selected that AI for this project.
+// An AI needs repair ONLY if TaskWing created the directory (marker file exists)
+// and the configuration is incomplete.
+// We do NOT repair directories that exist but weren't created by TaskWing.
 func hasAIsNeedingRepair(snap *Snapshot) bool {
 	for _, health := range snap.AIHealth {
-		// Only repair if local config directory exists but is incomplete/invalid
-		// This proves the user actually selected this AI for this project
-		if health.CommandsDirExists && (health.Status == HealthPartial || health.Status == HealthInvalid) {
+		// Only repair if:
+		// 1. Marker file exists (proves TaskWing created this directory)
+		// 2. Status is Partial or Invalid (configuration is incomplete)
+		if health.MarkerFileExists && (health.Status == HealthPartial || health.Status == HealthInvalid) {
 			return true
 		}
 	}
@@ -398,14 +403,14 @@ func hasAIsNeedingRepair(snap *Snapshot) bool {
 }
 
 // getAIsNeedingRepair returns the list of AI integrations that need repair.
-// Only returns AIs where the user started local config but it's incomplete.
+// Only returns AIs where TaskWing created the directory but config is incomplete.
 func getAIsNeedingRepair(snap *Snapshot) []string {
 	var ais []string
 	for name, health := range snap.AIHealth {
-		// Only repair if local config directory exists but is incomplete/invalid
-		// This proves the user actually selected this AI for this project
-		// We do NOT repair based on GlobalMCPExists alone
-		if health.CommandsDirExists && (health.Status == HealthPartial || health.Status == HealthInvalid) {
+		// Only repair if:
+		// 1. Marker file exists (proves TaskWing created this directory)
+		// 2. Status is Partial or Invalid (configuration is incomplete)
+		if health.MarkerFileExists && (health.Status == HealthPartial || health.Status == HealthInvalid) {
 			ais = append(ais, name)
 		}
 	}
@@ -516,11 +521,22 @@ func probeAIHealth(basePath, aiName string) AIHealth {
 		return health
 	}
 
+	// Handle single-file mode (e.g., GitHub Copilot)
+	if cfg.singleFile {
+		return probeSingleFileAIHealth(basePath, aiName, cfg)
+	}
+
 	commandsDir := filepath.Join(basePath, cfg.commandsDir)
 
 	// Check commands directory
 	if info, err := os.Stat(commandsDir); err == nil && info.IsDir() {
 		health.CommandsDirExists = true
+
+		// Check for TaskWing marker file to verify we created this directory
+		markerPath := filepath.Join(commandsDir, TaskWingManagedFile)
+		if _, err := os.Stat(markerPath); err == nil {
+			health.MarkerFileExists = true
+		}
 
 		// Count command files
 		entries, _ := os.ReadDir(commandsDir)
@@ -548,7 +564,8 @@ func probeAIHealth(basePath, aiName string) AIHealth {
 	health.GlobalMCPExists = checkGlobalMCPForAI(aiName)
 
 	// Determine overall status
-	expectedCommands := 7 // taskwing, tw-next, tw-done, tw-context, tw-status, tw-block, tw-plan
+	// Use dynamic command count from the SlashCommands manifest
+	expectedCommands := ExpectedCommandCount()
 
 	if !health.CommandsDirExists {
 		health.Status = HealthMissing
@@ -566,6 +583,48 @@ func probeAIHealth(basePath, aiName string) AIHealth {
 		}
 	} else {
 		health.Status = HealthOK
+	}
+
+	return health
+}
+
+// probeSingleFileAIHealth handles health checking for AIs that use a single instructions file
+// (like GitHub Copilot's .github/copilot-instructions.md) instead of a directory of slash commands.
+func probeSingleFileAIHealth(basePath, aiName string, cfg aiHelperConfig) AIHealth {
+	health := AIHealth{Name: aiName}
+
+	// Get the expected filename from config (extensible for future single-file AIs)
+	instructionsFile := filepath.Join(basePath, cfg.commandsDir, cfg.singleFileName)
+
+	// Check if the instructions file exists
+	content, err := os.ReadFile(instructionsFile)
+	if err != nil {
+		health.Status = HealthMissing
+		health.Reason = fmt.Sprintf("%s file missing", cfg.singleFileName)
+		return health
+	}
+
+	// File exists
+	health.CommandsDirExists = true
+
+	// Check if TaskWing manages this file by looking for our marker comment
+	contentStr := string(content)
+	if strings.Contains(contentStr, "<!-- TASKWING_MANAGED -->") {
+		health.MarkerFileExists = true
+		health.CommandFilesCount = 1 // Only count as "ours" if we manage it
+	}
+
+	// Check global MCP registration
+	health.GlobalMCPExists = checkGlobalMCPForAI(aiName)
+
+	// Determine status
+	if health.MarkerFileExists {
+		health.Status = HealthOK
+	} else {
+		// File exists but not managed by TaskWing - user owns it, treat as OK
+		// We won't overwrite user files, so this is a healthy state (user chose their own config)
+		health.Status = HealthOK
+		health.Reason = fmt.Sprintf("%s exists but managed by user (will not overwrite)", cfg.singleFileName)
 	}
 
 	return health
@@ -689,14 +748,6 @@ func countSourceFiles(basePath string) int {
 	return count
 }
 
-func containsAction(actions []Action, target Action) bool {
-	for _, a := range actions {
-		if a == target {
-			return true
-		}
-	}
-	return false
-}
 
 // FormatPlanSummary returns a human-readable summary of the plan.
 // Always shown, even in quiet mode.
@@ -704,51 +755,51 @@ func FormatPlanSummary(plan *Plan, quiet bool) string {
 	var sb strings.Builder
 
 	// Always show single-line status
-	sb.WriteString(fmt.Sprintf("Bootstrap: mode=%s", plan.Mode))
+	fmt.Fprintf(&sb, "Bootstrap: mode=%s", plan.Mode)
 
 	if len(plan.Actions) > 0 {
 		actionNames := make([]string, len(plan.Actions))
 		for i, a := range plan.Actions {
 			actionNames[i] = string(a)
 		}
-		sb.WriteString(fmt.Sprintf(" actions=[%s]", strings.Join(actionNames, ",")))
+		fmt.Fprintf(&sb, " actions=[%s]", strings.Join(actionNames, ","))
 	}
 
 	if len(plan.Warnings) > 0 {
-		sb.WriteString(fmt.Sprintf(" warnings=%d", len(plan.Warnings)))
+		fmt.Fprintf(&sb, " warnings=%d", len(plan.Warnings))
 	}
 
 	sb.WriteString("\n")
 
 	// Detailed output (not in quiet mode)
 	if !quiet {
-		sb.WriteString(fmt.Sprintf("\nDetected: %s\n", plan.DetectedState))
+		fmt.Fprintf(&sb, "\nDetected: %s\n", plan.DetectedState)
 
 		if len(plan.Actions) > 0 {
 			sb.WriteString("\nActions:\n")
 			for _, summary := range plan.ActionSummary {
-				sb.WriteString(fmt.Sprintf("  • %s\n", summary))
+				fmt.Fprintf(&sb, "  • %s\n", summary)
 			}
 		}
 
 		if len(plan.SkippedActions) > 0 {
 			sb.WriteString("\nSkipped:\n")
 			for _, skipped := range plan.SkippedActions {
-				sb.WriteString(fmt.Sprintf("  ⊘ %s\n", skipped))
+				fmt.Fprintf(&sb, "  ⊘ %s\n", skipped)
 			}
 		}
 
 		if len(plan.Warnings) > 0 {
 			sb.WriteString("\nWarnings:\n")
 			for _, warning := range plan.Warnings {
-				sb.WriteString(fmt.Sprintf("  ⚠️  %s\n", warning))
+				fmt.Fprintf(&sb, "  ⚠️  %s\n", warning)
 			}
 		}
 
 		if len(plan.Reasons) > 0 {
 			sb.WriteString("\nWhy:\n")
 			for _, reason := range plan.Reasons {
-				sb.WriteString(fmt.Sprintf("  → %s\n", reason))
+				fmt.Fprintf(&sb, "  → %s\n", reason)
 			}
 		}
 	}

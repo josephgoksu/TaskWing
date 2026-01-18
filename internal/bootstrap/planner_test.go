@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -126,6 +127,7 @@ func TestDecidePlan_Modes(t *testing.T) {
 						Name:              "claude",
 						Status:            HealthPartial,
 						CommandsDirExists: true, // User started setup but didn't finish
+						MarkerFileExists:  true, // TaskWing created this directory
 						GlobalMCPExists:   true,
 						Reason:            "only 3/7 command files present",
 					},
@@ -340,28 +342,14 @@ func TestDecidePlan_Actions(t *testing.T) {
 
 			// Check expected actions are present
 			for _, expected := range tt.expectActions {
-				found := false
-				for _, actual := range plan.Actions {
-					if actual == expected {
-						found = true
-						break
-					}
-				}
-				if !found {
+				if !slices.Contains(plan.Actions, expected) {
 					t.Errorf("DecidePlan() missing expected action %v, got %v", expected, plan.Actions)
 				}
 			}
 
 			// Check no unexpected actions
 			for _, actual := range plan.Actions {
-				found := false
-				for _, expected := range tt.expectActions {
-					if actual == expected {
-						found = true
-						break
-					}
-				}
-				if !found {
+				if !slices.Contains(tt.expectActions, actual) {
 					t.Errorf("DecidePlan() has unexpected action %v", actual)
 				}
 			}
@@ -690,28 +678,6 @@ func TestProbeEnvironment(t *testing.T) {
 	}
 }
 
-// TestContainsAction tests the containsAction helper
-func TestContainsAction(t *testing.T) {
-	actions := []Action{ActionInitProject, ActionGenerateAIConfigs, ActionIndexCode}
-
-	tests := []struct {
-		target Action
-		want   bool
-	}{
-		{ActionInitProject, true},
-		{ActionIndexCode, true},
-		{ActionLLMAnalyze, false},
-		{ActionExtractMetadata, false},
-	}
-
-	for _, tt := range tests {
-		got := containsAction(actions, tt.target)
-		if got != tt.want {
-			t.Errorf("containsAction(%v) = %v, want %v", tt.target, got, tt.want)
-		}
-	}
-}
-
 // TestDetectProjectRoot tests project root detection
 func TestDetectProjectRoot(t *testing.T) {
 	// Create a temp dir with .git
@@ -824,13 +790,37 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			name:   "copilot - ok",
 			aiName: "copilot",
 			setup: func(dir string) {
-				cmdDir := filepath.Join(dir, ".github", "copilot-instructions")
-				os.MkdirAll(cmdDir, 0755)
-				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan"} {
-					os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
-				}
+				// Copilot uses a single file: .github/copilot-instructions.md (not a directory)
+				githubDir := filepath.Join(dir, ".github")
+				os.MkdirAll(githubDir, 0755)
+				// Write the instructions file with TaskWing marker
+				content := "# Instructions\n<!-- TASKWING_MANAGED -->\ntest content"
+				os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(content), 0644)
 			},
 			expectStatus: HealthOK,
+		},
+		{
+			name:   "copilot - user-managed (no marker)",
+			aiName: "copilot",
+			setup: func(dir string) {
+				// User created their own copilot-instructions.md without TaskWing marker
+				githubDir := filepath.Join(dir, ".github")
+				os.MkdirAll(githubDir, 0755)
+				content := "# My Custom Instructions\nDo this, not that."
+				os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(content), 0644)
+			},
+			expectStatus: HealthOK, // User-managed = OK (we won't touch it)
+		},
+		{
+			name:   "copilot - empty file",
+			aiName: "copilot",
+			setup: func(dir string) {
+				// Empty file exists
+				githubDir := filepath.Join(dir, ".github")
+				os.MkdirAll(githubDir, 0755)
+				os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(""), 0644)
+			},
+			expectStatus: HealthOK, // Empty file = user-managed (no marker)
 		},
 		{
 			name:   "codex - partial (commands ok, hooks missing)",
@@ -905,6 +895,7 @@ func TestDecidePlan_RepairMode_LocalPartialWithoutGlobalMCP(t *testing.T) {
 				Name:              "claude",
 				Status:            HealthPartial,
 				CommandsDirExists: true,  // Has local config
+				MarkerFileExists:  true,  // TaskWing created this directory
 				CommandFilesCount: 3,     // But incomplete
 				GlobalMCPExists:   false, // NO global MCP
 				Reason:            "only 3/7 command files present",
@@ -924,14 +915,7 @@ func TestDecidePlan_RepairMode_LocalPartialWithoutGlobalMCP(t *testing.T) {
 	}
 
 	// Should have claude in AIsNeedingRepair
-	found := false
-	for _, ai := range plan.AIsNeedingRepair {
-		if ai == "claude" {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !slices.Contains(plan.AIsNeedingRepair, "claude") {
 		t.Errorf("DecidePlan() AIsNeedingRepair = %v, should contain 'claude'", plan.AIsNeedingRepair)
 	}
 }

@@ -278,3 +278,159 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+// TestCopilotSingleFile tests Copilot single-file generation
+func TestCopilotSingleFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	err := init.createSlashCommands("copilot", false)
+	if err != nil {
+		t.Fatalf("createSlashCommands(copilot) failed: %v", err)
+	}
+
+	// Verify single file created (not a directory of files)
+	filePath := filepath.Join(tmpDir, ".github", "copilot-instructions.md")
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("Failed to read copilot-instructions.md: %v", err)
+	}
+
+	// Verify marker is present
+	if !contains(string(content), "<!-- TASKWING_MANAGED -->") {
+		t.Error("Missing TASKWING_MANAGED marker in copilot-instructions.md")
+	}
+
+	// Verify version is present
+	if !contains(string(content), "<!-- Version:") {
+		t.Error("Missing Version comment in copilot-instructions.md")
+	}
+}
+
+// TestCopilotUserFilePreservation tests that user-owned files are not overwritten (T4)
+func TestCopilotUserFilePreservation(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	// Create user-owned copilot-instructions.md (no TaskWing marker)
+	githubDir := filepath.Join(tmpDir, ".github")
+	if err := os.MkdirAll(githubDir, 0755); err != nil {
+		t.Fatalf("Failed to create .github dir: %v", err)
+	}
+
+	userContent := "# My Custom Instructions\nDo this, not that."
+	userFilePath := filepath.Join(githubDir, "copilot-instructions.md")
+	if err := os.WriteFile(userFilePath, []byte(userContent), 0644); err != nil {
+		t.Fatalf("Failed to write user file: %v", err)
+	}
+
+	// Run createSlashCommands - should NOT overwrite user file
+	err := init.createSlashCommands("copilot", true)
+	if err != nil {
+		t.Fatalf("createSlashCommands failed: %v", err)
+	}
+
+	// Verify user content is preserved
+	content, err := os.ReadFile(userFilePath)
+	if err != nil {
+		t.Fatalf("Failed to read file: %v", err)
+	}
+
+	if string(content) != userContent {
+		t.Errorf("User file was overwritten!\nExpected: %s\nGot: %s", userContent, string(content))
+	}
+}
+
+// TestCopilotLegacyDirectoryCleanup tests cleanup of old directory-based config (T3)
+func TestCopilotLegacyDirectoryCleanup(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	// Create legacy directory structure (old TaskWing format)
+	legacyDir := filepath.Join(tmpDir, ".github", "copilot-instructions")
+	if err := os.MkdirAll(legacyDir, 0755); err != nil {
+		t.Fatalf("Failed to create legacy dir: %v", err)
+	}
+
+	// Add marker file to indicate TaskWing created it
+	markerPath := filepath.Join(legacyDir, TaskWingManagedFile)
+	if err := os.WriteFile(markerPath, []byte("# TaskWing managed"), 0644); err != nil {
+		t.Fatalf("Failed to write marker: %v", err)
+	}
+
+	// Add some legacy files
+	legacyFiles := []string{"tw-next.md", "tw-done.md", "taskwing.md"}
+	for _, f := range legacyFiles {
+		if err := os.WriteFile(filepath.Join(legacyDir, f), []byte("test"), 0644); err != nil {
+			t.Fatalf("Failed to write legacy file: %v", err)
+		}
+	}
+
+	// Run createSlashCommands
+	err := init.createSlashCommands("copilot", true)
+	if err != nil {
+		t.Fatalf("createSlashCommands failed: %v", err)
+	}
+
+	// Verify legacy directory was cleaned up
+	if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
+		t.Error("Legacy directory should have been removed")
+	}
+
+	// Verify new single file was created
+	newFilePath := filepath.Join(tmpDir, ".github", "copilot-instructions.md")
+	if _, err := os.Stat(newFilePath); os.IsNotExist(err) {
+		t.Error("New copilot-instructions.md should have been created")
+	}
+}
+
+// TestCopilotLegacyDirectoryWithoutMarker tests that legacy dirs without markers are detected (T4 variant)
+func TestCopilotLegacyDirectoryWithoutMarker(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	// Create legacy directory structure WITHOUT marker (old old format)
+	legacyDir := filepath.Join(tmpDir, ".github", "copilot-instructions")
+	if err := os.MkdirAll(legacyDir, 0755); err != nil {
+		t.Fatalf("Failed to create legacy dir: %v", err)
+	}
+
+	// Add tw-* files (pattern that indicates it's ours even without marker)
+	legacyFiles := []string{"tw-next.md", "tw-done.md"}
+	for _, f := range legacyFiles {
+		if err := os.WriteFile(filepath.Join(legacyDir, f), []byte("test"), 0644); err != nil {
+			t.Fatalf("Failed to write legacy file: %v", err)
+		}
+	}
+
+	// Run createSlashCommands
+	err := init.createSlashCommands("copilot", true)
+	if err != nil {
+		t.Fatalf("createSlashCommands failed: %v", err)
+	}
+
+	// Verify legacy directory was cleaned up (detected by tw-* pattern)
+	if _, err := os.Stat(legacyDir); !os.IsNotExist(err) {
+		t.Error("Legacy directory with tw-* files should have been removed")
+	}
+}
+
+// TestVersionHashIncludesSingleFile tests that version hash changes when singleFile flag changes (T5)
+func TestVersionHashIncludesSingleFile(t *testing.T) {
+	// Get version for copilot (singleFile=true)
+	copilotVersion := AIToolConfigVersion("copilot")
+
+	// Get version for claude (singleFile=false)
+	claudeVersion := AIToolConfigVersion("claude")
+
+	// Versions should be different due to singleFile difference
+	if copilotVersion == claudeVersion {
+		t.Error("Copilot and Claude should have different version hashes due to singleFile difference")
+	}
+
+	// Verify version is deterministic
+	copilotVersion2 := AIToolConfigVersion("copilot")
+	if copilotVersion != copilotVersion2 {
+		t.Error("Version hash should be deterministic")
+	}
+}
