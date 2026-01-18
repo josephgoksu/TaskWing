@@ -13,6 +13,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/telemetry"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -45,6 +46,48 @@ var configGetCmd = &cobra.Command{
 	},
 }
 
+// Telemetry subcommands
+var configTelemetryCmd = &cobra.Command{
+	Use:   "telemetry",
+	Short: "Manage telemetry settings",
+	Long: `View and manage anonymous usage telemetry settings.
+
+TaskWing collects anonymous usage data to improve the product:
+  - Command names and execution duration
+  - Success/failure status
+  - OS and architecture
+  - CLI version
+
+No code, file paths, or personal data is ever collected.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runTelemetryStatus()
+	},
+}
+
+var configTelemetryStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show current telemetry status",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runTelemetryStatus()
+	},
+}
+
+var configTelemetryEnableCmd = &cobra.Command{
+	Use:   "enable",
+	Short: "Enable anonymous telemetry",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runTelemetryEnable()
+	},
+}
+
+var configTelemetryDisableCmd = &cobra.Command{
+	Use:   "disable",
+	Short: "Disable anonymous telemetry",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runTelemetryDisable()
+	},
+}
+
 // configCmd is the parent config command
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -66,6 +109,12 @@ func init() {
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configGetCmd)
+
+	// Add telemetry subcommand with its subcommands
+	configCmd.AddCommand(configTelemetryCmd)
+	configTelemetryCmd.AddCommand(configTelemetryStatusCmd)
+	configTelemetryCmd.AddCommand(configTelemetryEnableCmd)
+	configTelemetryCmd.AddCommand(configTelemetryDisableCmd)
 }
 
 // HooksSettings represents the hooks configuration in a user-friendly format
@@ -660,5 +709,100 @@ func writeConfig() error {
 			}
 		}
 	}
+	return nil
+}
+
+// runTelemetryStatus displays the current telemetry configuration.
+func runTelemetryStatus() error {
+	cfg, err := telemetry.Load()
+	if err != nil {
+		return fmt.Errorf("load telemetry config: %w", err)
+	}
+
+	configPath, _ := telemetry.GetConfigPath()
+
+	if isJSON() {
+		return printJSON(map[string]any{
+			"enabled":       cfg.IsEnabled(),
+			"consent_asked": !cfg.NeedsConsent(),
+			"anonymous_id":  cfg.AnonymousID,
+			"config_path":   configPath,
+		})
+	}
+
+	fmt.Println("Telemetry Configuration")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	status := "Disabled"
+	statusIcon := "❌"
+	if cfg.IsEnabled() {
+		status = "Enabled"
+		statusIcon = "✅"
+	}
+
+	fmt.Printf("  Status:       %s %s\n", statusIcon, status)
+	fmt.Printf("  Anonymous ID: %s\n", cfg.AnonymousID)
+	fmt.Printf("  Config file:  %s\n", configPath)
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  taskwing config telemetry enable   Enable telemetry")
+	fmt.Println("  taskwing config telemetry disable  Disable telemetry")
+	fmt.Println()
+
+	return nil
+}
+
+// runTelemetryEnable enables telemetry and saves the config.
+func runTelemetryEnable() error {
+	cfg, err := telemetry.Load()
+	if err != nil {
+		return fmt.Errorf("load telemetry config: %w", err)
+	}
+
+	cfg.Enable()
+
+	if err := cfg.Save(); err != nil {
+		return fmt.Errorf("save telemetry config: %w", err)
+	}
+
+	if isJSON() {
+		return printJSON(map[string]any{
+			"enabled": true,
+			"message": "Telemetry enabled",
+		})
+	}
+
+	fmt.Println("✅ Telemetry enabled")
+	fmt.Println()
+	fmt.Println("Thank you for helping improve TaskWing!")
+	fmt.Println("We collect: command names, duration, success/failure, OS, CLI version")
+	fmt.Println("We never collect: code, file paths, or personal data")
+	return nil
+}
+
+// runTelemetryDisable disables telemetry and saves the config.
+func runTelemetryDisable() error {
+	cfg, err := telemetry.Load()
+	if err != nil {
+		return fmt.Errorf("load telemetry config: %w", err)
+	}
+
+	cfg.Disable()
+
+	if err := cfg.Save(); err != nil {
+		return fmt.Errorf("save telemetry config: %w", err)
+	}
+
+	if isJSON() {
+		return printJSON(map[string]any{
+			"enabled": false,
+			"message": "Telemetry disabled",
+		})
+	}
+
+	fmt.Println("✅ Telemetry disabled")
+	fmt.Println()
+	fmt.Println("You can re-enable anytime with: taskwing config telemetry enable")
 	return nil
 }
