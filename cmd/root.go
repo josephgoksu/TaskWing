@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/logger"
@@ -24,6 +25,10 @@ var (
 	// telemetryClient is the global telemetry client instance.
 	// Initialized in PersistentPreRunE, closed in PersistentPostRunE.
 	telemetryClient telemetry.Client
+
+	// commandStartTime tracks when the current command started.
+	// Used to calculate command duration for telemetry.
+	commandStartTime time.Time
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -165,6 +170,9 @@ func GetVersion() string {
 // 4. First-run consent prompt (if needed)
 // 5. User's telemetry config preference
 func initTelemetry(cmd *cobra.Command, args []string) error {
+	// Capture start time for duration tracking (do this first)
+	commandStartTime = time.Now()
+
 	// Check if telemetry is explicitly disabled via flag
 	if viper.GetBool("no-telemetry") {
 		telemetryClient = telemetry.NewNoopClient()
@@ -263,13 +271,62 @@ func promptTelemetryConsent() bool {
 	return false
 }
 
-// closeTelemetry flushes and closes the telemetry client.
+// closeTelemetry tracks command execution and flushes the telemetry client.
 func closeTelemetry(cmd *cobra.Command, args []string) error {
 	if telemetryClient != nil {
+		// Track command execution
+		// Note: PersistentPostRunE runs after successful command execution
+		// Errors would cause an early exit before reaching here
+		trackCommandExecution(cmd, args, true)
+
+		// Flush pending events and close
 		// Ignore errors - telemetry should never affect CLI exit status
 		_ = telemetryClient.Close()
 	}
 	return nil
+}
+
+// trackCommandExecution tracks a command execution event.
+// Properties include: command path, duration, success, and arg count (NOT arg values for PII protection).
+func trackCommandExecution(cmd *cobra.Command, args []string, success bool) {
+	if telemetryClient == nil {
+		return
+	}
+
+	// Calculate duration in milliseconds
+	durationMs := time.Since(commandStartTime).Milliseconds()
+
+	// Get full command path (e.g., "plan new", "task list")
+	commandPath := getCommandPath(cmd)
+
+	// Track the event
+	// Note: We only track arg COUNT, never arg VALUES (to avoid PII)
+	telemetryClient.Track("command_executed", telemetry.Properties{
+		"command":     commandPath,
+		"duration_ms": durationMs,
+		"success":     success,
+		"args_count":  len(args),
+	})
+}
+
+// getCommandPath returns the full command path (e.g., "plan new", "task list").
+func getCommandPath(cmd *cobra.Command) string {
+	if cmd == nil {
+		return "unknown"
+	}
+
+	// Build path from command to root
+	var parts []string
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Name() != "" && c.Name() != "taskwing" {
+			parts = append([]string{c.Name()}, parts...)
+		}
+	}
+
+	if len(parts) == 0 {
+		return "root"
+	}
+	return strings.Join(parts, " ")
 }
 
 // isCI returns true if running in a CI environment.
