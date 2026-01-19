@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -162,9 +163,17 @@ deny contains msg if {
 			}
 
 			if !tt.expectSuccess && tt.expectMessage != "" {
-				if result.Message == "" || !contains(result.Message, tt.expectMessage) {
+				if result.Message == "" || !strings.Contains(result.Message, tt.expectMessage) {
 					t.Errorf("expected message to contain %q, got %q", tt.expectMessage, result.Message)
 				}
+			}
+
+			// Verify PolicyViolation flag is set correctly
+			if !tt.expectSuccess && !result.PolicyViolation {
+				t.Errorf("expected PolicyViolation=true for blocked task, got false")
+			}
+			if tt.expectSuccess && result.PolicyViolation {
+				t.Errorf("expected PolicyViolation=false for allowed task, got true")
 			}
 
 			// Verify task status in database
@@ -186,16 +195,3 @@ deny contains msg if {
 	}
 }
 
-// contains checks if s contains substr (case-sensitive).
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

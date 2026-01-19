@@ -157,17 +157,17 @@ func FormatTaskCompletionBlocked(result *app.TaskResult) string {
 		sb.WriteString(fmt.Sprintf("**Status**: %s (unchanged)\n\n", result.Task.Status))
 	}
 
-	// Reason/Message - format as violations if it contains the policy violation pattern
-	if result.Message != "" {
-		if strings.Contains(result.Message, "Policy violations") {
-			sb.WriteString("### Policy Violations\n\n")
-			sb.WriteString("The following policy rules blocked task completion:\n\n")
-			// The message already contains formatted violations from TaskApp.Complete
-			sb.WriteString(result.Message)
-		} else {
-			sb.WriteString("### Reason\n\n")
-			sb.WriteString(result.Message)
+	// Reason/Message - use structured PolicyViolation field for reliable detection
+	if result.PolicyViolation && len(result.PolicyErrors) > 0 {
+		sb.WriteString("### Policy Violations\n\n")
+		sb.WriteString("The following policy rules blocked task completion:\n\n")
+		for i, err := range result.PolicyErrors {
+			sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, err))
 		}
+		sb.WriteString("\n")
+	} else if result.Message != "" {
+		sb.WriteString("### Reason\n\n")
+		sb.WriteString(result.Message)
 		sb.WriteString("\n\n")
 	}
 
