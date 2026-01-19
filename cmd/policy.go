@@ -142,14 +142,22 @@ Examples:
 
 // policyTestCmd runs OPA policy tests
 var policyTestCmd = &cobra.Command{
-	Use:   "test",
-	Short: "Run policy tests",
-	Long: `Run OPA policy tests.
+	Use:   "test [files...]",
+	Short: "Run policy tests or dry-run validation",
+	Long: `Run OPA policy tests or validate hypothetical files against policies.
 
-Looks for *_test.rego files in .taskwing/policies/ and executes them.
-Tests follow OPA's testing conventions.
+Without arguments, runs *_test.rego unit tests in .taskwing/policies/.
 
-Example test file (.taskwing/policies/default_test.rego):
+With file arguments, performs a dry-run policy check against the specified
+file paths. Files don't need to exist - this is useful for testing what
+would happen if you modified certain files.
+
+Examples:
+  taskwing policy test                      # Run OPA unit tests
+  taskwing policy test .env secrets/key.pem # Dry-run check (files need not exist)
+  taskwing policy test --task-id T1 src/api.go  # Include task context in check
+
+Test file example (.taskwing/policies/default_test.rego):
   package taskwing.policy
 
   test_deny_env_file {
@@ -159,6 +167,8 @@ Example test file (.taskwing/policies/default_test.rego):
 }
 
 var policyCheckStaged bool
+var policyTestTaskID string
+var policyTestPlanID string
 
 func init() {
 	rootCmd.AddCommand(policyCmd)
@@ -169,6 +179,10 @@ func init() {
 	policyCmd.AddCommand(policyTestCmd)
 
 	policyCheckCmd.Flags().BoolVar(&policyCheckStaged, "staged", false, "Check git staged files")
+
+	// Flags for policy test dry-run mode
+	policyTestCmd.Flags().StringVar(&policyTestTaskID, "task-id", "", "Task ID to include in policy context")
+	policyTestCmd.Flags().StringVar(&policyTestPlanID, "plan-id", "", "Plan ID to include in policy context")
 }
 
 func runPolicyInit(cmd *cobra.Command, args []string) error {
@@ -356,6 +370,103 @@ func runPolicyTest(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get project root: %w", err)
 	}
 
+	// If file arguments are provided, run dry-run policy validation
+	if len(args) > 0 {
+		return runPolicyTestDryRun(cmd, projectRoot, args)
+	}
+
+	// Otherwise, run OPA unit tests
+	return runPolicyTestOPA(cmd, projectRoot)
+}
+
+// runPolicyTestDryRun validates hypothetical files against policies without database writes.
+// This is a dry-run mode - files don't need to exist.
+func runPolicyTestDryRun(cmd *cobra.Command, projectRoot string, files []string) error {
+	// Create policy engine
+	engine, err := policy.NewEngine(policy.EngineConfig{
+		WorkDir: projectRoot,
+	})
+	if err != nil {
+		return fmt.Errorf("create policy engine: %w", err)
+	}
+
+	if engine.PolicyCount() == 0 {
+		if isJSON() {
+			return printJSON(map[string]any{
+				"status":  "success",
+				"message": "No policies loaded - all files allowed",
+				"mode":    "dry-run",
+				"files":   files,
+			})
+		}
+		cmd.Println("No policies loaded - all files allowed by default.")
+		cmd.Println("Run 'taskwing policy init' to create the default policy.")
+		return nil
+	}
+
+	// Build policy input with optional task/plan context
+	// This is a dry-run, so we use hypothetical file paths
+	inputBuilder := policy.NewContextBuilder(projectRoot).
+		WithTask(policyTestTaskID, "").
+		WithTaskFiles(files, nil).
+		WithPlan(policyTestPlanID, "")
+
+	// Evaluate against policies
+	ctx := context.Background()
+	decision, err := engine.Evaluate(ctx, inputBuilder.Build())
+	if err != nil {
+		return fmt.Errorf("evaluate policies: %w", err)
+	}
+
+	if isJSON() {
+		return printJSON(map[string]any{
+			"status":      decision.Result,
+			"mode":        "dry-run",
+			"decision_id": decision.DecisionID,
+			"files":       files,
+			"violations":  decision.Violations,
+			"task_id":     policyTestTaskID,
+			"plan_id":     policyTestPlanID,
+		})
+	}
+
+	// Display results
+	cmd.Println("Policy Dry-Run Validation")
+	cmd.Println("=========================")
+	cmd.Printf("Checking %d hypothetical file(s) against %d policy file(s)...\n\n", len(files), engine.PolicyCount())
+
+	cmd.Println("Files to validate:")
+	for _, f := range files {
+		cmd.Printf("  • %s\n", f)
+	}
+	cmd.Println()
+
+	if policyTestTaskID != "" {
+		cmd.Printf("Task context: %s\n", policyTestTaskID)
+	}
+	if policyTestPlanID != "" {
+		cmd.Printf("Plan context: %s\n", policyTestPlanID)
+	}
+	if policyTestTaskID != "" || policyTestPlanID != "" {
+		cmd.Println()
+	}
+
+	if decision.IsAllowed() {
+		cmd.Println("✓ All files would pass policy checks")
+		return nil
+	}
+
+	cmd.Println("✗ Policy violations detected:")
+	for _, v := range decision.Violations {
+		cmd.Printf("  %s\n", v)
+	}
+
+	// Return error to signal failure
+	return fmt.Errorf("dry-run failed: %d policy violation(s)", len(decision.Violations))
+}
+
+// runPolicyTestOPA runs OPA unit tests from *_test.rego files.
+func runPolicyTestOPA(cmd *cobra.Command, projectRoot string) error {
 	policiesDir := policy.GetPoliciesPath(projectRoot)
 
 	// Check if policies directory exists
