@@ -395,12 +395,18 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		// Enforce policies
 		result := enforcer.Enforce(ctx, taskForPolicy, plan.Goal)
 		if !result.Allowed {
-			violationMsg := "Policy violations detected"
-			if len(result.Violations) > 0 {
-				violationMsg = fmt.Sprintf("Policy violations: %v", result.Violations)
-			}
+			var violationMsg string
 			if result.Error != nil {
 				violationMsg = fmt.Sprintf("Policy evaluation error: %v", result.Error)
+			} else if len(result.Violations) > 0 {
+				// Format violations as a readable list
+				violationMsg = "Policy violations blocked task completion:\n"
+				for i, v := range result.Violations {
+					violationMsg += fmt.Sprintf("  %d. %s\n", i+1, v)
+				}
+				violationMsg += "\nTask remains in_progress. Fix the violations and retry."
+			} else {
+				violationMsg = "Policy violations detected (no details provided)"
 			}
 			return &TaskResult{
 				Success: false,
