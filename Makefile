@@ -9,6 +9,10 @@ COVERAGE_FILE=$(TEST_DIR)/coverage.out
 COVERAGE_HTML=$(TEST_DIR)/coverage.html
 CORE_PKGS=./ ./cmd/... ./internal/...
 
+# Version from git tags (falls back to "dev" if not in a git repo)
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS := -s -w -X github.com/josephgoksu/TaskWing/cmd.version=$(VERSION)
+
 # Use local workspace cache/temp to work in sandboxed environments
 GOENV := GOCACHE=$(PWD)/$(TEST_DIR)/go-build GOTMPDIR=$(PWD)/$(TEST_DIR)/tmp
 GO := env $(GOENV) go
@@ -20,11 +24,11 @@ all: clean build test
 # Build the TaskWing binary
 .PHONY: build
 build:
-	@echo "🔨 Building TaskWing..."
+	@echo "🔨 Building TaskWing ($(VERSION))..."
 	mkdir -p $(TEST_DIR) $(TEST_DIR)/go-build $(TEST_DIR)/tmp
 	$(GO) generate $(CORE_PKGS)
-	$(GO) build -o $(BINARY_NAME) main.go
-	@echo "✅ Build complete: $(BINARY_NAME)"
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) main.go
+	@echo "✅ Build complete: $(BINARY_NAME) ($(VERSION))"
 
 # Clean build artifacts
 .PHONY: clean
@@ -143,7 +147,7 @@ release-snapshot: clean lint test-all
 	@if command -v goreleaser >/dev/null 2>&1; then \
 		goreleaser build --snapshot --clean; \
 	else \
-		go build -ldflags="-s -w" -o $(BINARY_NAME) main.go; \
+		go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) main.go; \
 	fi
 	@echo "✅ Release snapshot complete"
 

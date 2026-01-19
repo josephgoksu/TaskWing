@@ -20,7 +20,9 @@ import (
 
 var (
 	// version is the application version.
-	version = "1.13.3"
+	// Set via ldflags at build time: -ldflags "-X github.com/josephgoksu/TaskWing/cmd.version=1.0.0"
+	// Defaults to "dev" for local development builds.
+	version = "dev"
 
 	// postHogAPIKey is the PostHog project API key.
 	// Set via ldflags at build time: -ldflags "-X github.com/josephgoksu/TaskWing/cmd.postHogAPIKey=phc_xxx"

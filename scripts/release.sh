@@ -8,8 +8,10 @@
 # 2. Runs tests
 # 3. Prompts for version bump type
 # 4. Opens editor for release notes
-# 5. Creates annotated tag
-# 6. Pushes to trigger CI/CD
+# 5. Creates annotated tag and pushes to trigger CI/CD
+#
+# Note: Version is derived from git tags at build time (ldflags).
+# No source files are modified during release.
 #
 set -e
 
@@ -194,23 +196,6 @@ EOF
     echo "$tmpfile"
 }
 
-# Update version in cmd/root.go
-update_version_file() {
-    local version=$1
-    local version_num=${version#v}  # Remove 'v' prefix
-
-    info "Updating version in cmd/root.go..."
-
-    sed -i.bak "s/version = \".*\"/version = \"$version_num\"/" cmd/root.go
-    rm -f cmd/root.go.bak
-
-    # Commit the version change
-    git add cmd/root.go
-    git commit -m "chore: bump version to $version"
-
-    success "Version updated to $version"
-}
-
 # Create and push tag
 create_and_push_tag() {
     local version=$1
@@ -224,15 +209,14 @@ create_and_push_tag() {
     read -rp "Push now? [y/N]: " confirm
 
     if [[ $confirm =~ ^[Yy]$ ]]; then
-        info "Pushing to origin..."
-        git push origin main
+        info "Pushing tag to origin..."
         git push origin "$version"
         success "Released $version!"
         echo ""
         info "GitHub Actions will now build and publish the release."
     else
         warn "Tag created locally but not pushed."
-        warn "To push later: git push origin main && git push origin $version"
+        warn "To push later: git push origin $version"
     fi
 
     # Cleanup
@@ -260,7 +244,6 @@ main() {
 
     notes_file=$(get_release_notes "$new_version")
 
-    update_version_file "$new_version"
     create_and_push_tag "$new_version" "$notes_file"
 
     echo ""

@@ -156,13 +156,14 @@ When user says "let's release", "create a release", or similar:
 
 5. **Execute release**:
    ```bash
-   # Update version in cmd/root.go
-   # Commit: "chore: bump version to vX.Y.Z"
-   # Create annotated tag with release notes
+   # Create annotated tag with release notes (no source file changes needed)
    git tag -a vX.Y.Z -m "Release notes here..."
-   # Push commit and tag
-   git push origin main && git push origin vX.Y.Z
+   # Push tag to trigger CI/CD
+   git push origin vX.Y.Z
    ```
+
+   Note: Version is injected via ldflags at build time from the git tag.
+   No need to edit `cmd/root.go` - GoReleaser handles versioning automatically.
 
 ### Manual Release (Standalone)
 
@@ -170,7 +171,7 @@ When user says "let's release", "create a release", or similar:
 make release
 ```
 
-Interactive script that prompts for version, opens editor for notes, and pushes.
+Interactive script that prompts for version, opens editor for notes, creates tag, and pushes.
 
 ### Rules
 
