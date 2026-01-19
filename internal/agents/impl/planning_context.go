@@ -43,8 +43,8 @@ func loadArchitectureMD(basePath string) string {
 
 // PolicyConstraint represents a constraint extracted from a policy file.
 type PolicyConstraint struct {
-	Name        string // Policy file name
-	Description string // Extracted description from comments
+	Name        string   // Policy file name
+	Description string   // Extracted description from comments
 	Rules       []string // Rule names (deny, warn)
 }
 

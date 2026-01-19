@@ -34,12 +34,12 @@ type SimplifyChange struct {
 
 // SimplifyOutput defines the structured response from the LLM.
 type SimplifyOutput struct {
-	SimplifiedCode       string           `json:"simplified_code"`
-	OriginalLines        int              `json:"original_lines"`
-	SimplifiedLines      int              `json:"simplified_lines"`
-	ReductionPercentage  int              `json:"reduction_percentage"`
-	Changes              []SimplifyChange `json:"changes"`
-	RiskAssessment       string           `json:"risk_assessment"`
+	SimplifiedCode      string           `json:"simplified_code"`
+	OriginalLines       int              `json:"original_lines"`
+	SimplifiedLines     int              `json:"simplified_lines"`
+	ReductionPercentage int              `json:"reduction_percentage"`
+	Changes             []SimplifyChange `json:"changes"`
+	RiskAssessment      string           `json:"risk_assessment"`
 }
 
 // NewSimplifyAgent creates a new agent for code simplification.

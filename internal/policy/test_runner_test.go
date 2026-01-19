@@ -169,9 +169,9 @@ test_should_fail if {
 
 func TestTestSummary_FormatSummary(t *testing.T) {
 	summary := &TestSummary{
-		Total:  5,
-		Passed: 3,
-		Failed: 1,
+		Total:   5,
+		Passed:  3,
+		Failed:  1,
 		Errored: 1,
 	}
 

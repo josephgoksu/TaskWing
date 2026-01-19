@@ -748,7 +748,6 @@ func countSourceFiles(basePath string) int {
 	return count
 }
 
-
 // FormatPlanSummary returns a human-readable summary of the plan.
 // Always shown, even in quiet mode.
 func FormatPlanSummary(plan *Plan, quiet bool) string {

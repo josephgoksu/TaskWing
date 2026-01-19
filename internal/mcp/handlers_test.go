@@ -490,8 +490,8 @@ func TestValidateAndResolvePath_DirectoryRejection(t *testing.T) {
 func TestHandleCodeTool_SimplifyMissingInput(t *testing.T) {
 	params := CodeToolParams{
 		Action:   CodeActionSimplify,
-		Code:     "",     // missing
-		FilePath: "",     // missing
+		Code:     "", // missing
+		FilePath: "", // missing
 	}
 
 	result, err := HandleCodeTool(context.Background(), nil, params)

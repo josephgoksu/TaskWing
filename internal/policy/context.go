@@ -141,28 +141,28 @@ func DetectProjectType(workDir string) string {
 func DetectProjectTypeWithFs(workDir string, fs afero.Fs) string {
 	// Check for various project markers
 	markers := map[string]string{
-		"composer.json":   "php",
-		"package.json":    "node",
-		"go.mod":          "go",
-		"Cargo.toml":      "rust",
+		"composer.json":    "php",
+		"package.json":     "node",
+		"go.mod":           "go",
+		"Cargo.toml":       "rust",
 		"requirements.txt": "python",
-		"pyproject.toml":  "python",
-		"Gemfile":         "ruby",
-		"pom.xml":         "java",
-		"build.gradle":    "java",
+		"pyproject.toml":   "python",
+		"Gemfile":          "ruby",
+		"pom.xml":          "java",
+		"build.gradle":     "java",
 	}
 
 	// Check for specific frameworks
 	frameworkMarkers := map[string]string{
-		"core/modules":         "drupal",
-		"artisan":              "laravel",
-		"next.config.js":       "nextjs",
-		"next.config.mjs":      "nextjs",
-		"nuxt.config.js":       "nuxt",
-		"nuxt.config.ts":       "nuxt",
-		"angular.json":         "angular",
-		"vue.config.js":        "vue",
-		".taskwing":            "taskwing",
+		"core/modules":    "drupal",
+		"artisan":         "laravel",
+		"next.config.js":  "nextjs",
+		"next.config.mjs": "nextjs",
+		"nuxt.config.js":  "nuxt",
+		"nuxt.config.ts":  "nuxt",
+		"angular.json":    "angular",
+		"vue.config.js":   "vue",
+		".taskwing":       "taskwing",
 	}
 
 	// Check framework markers first (more specific)

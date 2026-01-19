@@ -54,10 +54,10 @@ deny contains msg if {
 	engine := NewEngineWithPolicies("/project", []*PolicyFile{policy})
 
 	tests := []struct {
-		name         string
-		input        map[string]any
-		wantResult   string
-		wantViolate  bool
+		name        string
+		input       map[string]any
+		wantResult  string
+		wantViolate bool
 	}{
 		{
 			name: "allow non-core file",

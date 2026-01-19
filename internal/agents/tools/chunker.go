@@ -15,8 +15,8 @@ import (
 
 // ChunkConfig configures the chunking behavior.
 type ChunkConfig struct {
-	MaxTokensPerChunk int  // Target tokens per chunk (default: 30000)
-	MaxFilesPerChunk  int  // Max files per chunk (default: 50)
+	MaxTokensPerChunk  int  // Target tokens per chunk (default: 30000)
+	MaxFilesPerChunk   int  // Max files per chunk (default: 50)
 	IncludeLineNumbers bool // Add line numbers to file content
 }
 
@@ -31,11 +31,11 @@ func DefaultChunkConfig() ChunkConfig {
 
 // FileChunk represents a group of files to be analyzed together.
 type FileChunk struct {
-	Index       int          // Chunk index (0-based)
-	Files       []ChunkFile  // Files in this chunk
-	Content     string       // Formatted content ready for LLM
-	TokenCount  int          // Estimated token count
-	Description string       // Human-readable description of chunk contents
+	Index       int         // Chunk index (0-based)
+	Files       []ChunkFile // Files in this chunk
+	Content     string      // Formatted content ready for LLM
+	TokenCount  int         // Estimated token count
+	Description string      // Human-readable description of chunk contents
 }
 
 // ChunkFile represents a single file in a chunk.

@@ -10,15 +10,15 @@ import (
 // PolicyDecision represents the outcome of evaluating a policy against some input.
 // This is stored in the policy_decisions table for audit trail and compliance.
 type PolicyDecision struct {
-	ID          int64     `json:"id"`                    // Auto-increment primary key
-	DecisionID  string    `json:"decisionId"`            // UUID for referencing
-	PolicyPath  string    `json:"policyPath"`            // Rego package path (e.g., "taskwing.policy")
-	Result      string    `json:"result"`                // "allow" or "deny"
-	Violations  []string  `json:"violations,omitempty"`  // Deny messages from OPA
-	Input       any       `json:"input"`                 // The input that was evaluated
-	TaskID      string    `json:"taskId,omitempty"`      // Optional task context
-	SessionID   string    `json:"sessionId,omitempty"`   // Optional session context
-	EvaluatedAt time.Time `json:"evaluatedAt"`           // When the evaluation occurred
+	ID          int64     `json:"id"`                   // Auto-increment primary key
+	DecisionID  string    `json:"decisionId"`           // UUID for referencing
+	PolicyPath  string    `json:"policyPath"`           // Rego package path (e.g., "taskwing.policy")
+	Result      string    `json:"result"`               // "allow" or "deny"
+	Violations  []string  `json:"violations,omitempty"` // Deny messages from OPA
+	Input       any       `json:"input"`                // The input that was evaluated
+	TaskID      string    `json:"taskId,omitempty"`     // Optional task context
+	SessionID   string    `json:"sessionId,omitempty"`  // Optional session context
+	EvaluatedAt time.Time `json:"evaluatedAt"`          // When the evaluation occurred
 }
 
 // PolicyResult constants.

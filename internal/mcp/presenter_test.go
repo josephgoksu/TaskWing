@@ -222,8 +222,8 @@ func TestFormatSimplifyResult_WithJSONStyleData(t *testing.T) {
 			Description: "Simplified error handling",
 			Metadata: map[string]any{
 				"simplified_code":      "return err",
-				"original_lines":      float64(10), // JSON numbers are float64
-				"simplified_lines":    float64(3),
+				"original_lines":       float64(10), // JSON numbers are float64
+				"simplified_lines":     float64(3),
 				"reduction_percentage": float64(70),
 				"risk_assessment":      "low",
 				"changes": []interface{}{

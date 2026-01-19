@@ -2194,12 +2194,12 @@ func (s *SQLiteStore) GetEmbeddingStats() (*EmbeddingStats, error) {
 
 // BootstrapState represents the status of a bootstrap component.
 type BootstrapState struct {
-	Component    string            `json:"component"`     // Agent name or operation
-	Status       string            `json:"status"`        // pending, in_progress, completed, failed
-	LastUpdated  time.Time         `json:"last_updated"`
-	Checksum     string            `json:"checksum,omitempty"`      // Hash for change detection
-	ErrorMessage string            `json:"error_message,omitempty"` // Error details if failed
-	Metadata     map[string]any    `json:"metadata,omitempty"`      // Additional context
+	Component    string         `json:"component"` // Agent name or operation
+	Status       string         `json:"status"`    // pending, in_progress, completed, failed
+	LastUpdated  time.Time      `json:"last_updated"`
+	Checksum     string         `json:"checksum,omitempty"`      // Hash for change detection
+	ErrorMessage string         `json:"error_message,omitempty"` // Error details if failed
+	Metadata     map[string]any `json:"metadata,omitempty"`      // Additional context
 }
 
 // BootstrapStateStatus constants

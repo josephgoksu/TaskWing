@@ -105,7 +105,7 @@ func RegisterBuiltins(ctx *BuiltinContext) []string {
 	fileImports := &rego.Function{
 		Name: "taskwing.file_imports",
 		Decl: types.NewFunction(
-			types.Args(types.S),                 // path
+			types.Args(types.S),          // path
 			types.NewArray(nil, types.S), // returns array of strings
 		),
 		Memoize: true,
@@ -302,14 +302,14 @@ func symbolExistsImpl(ctx *BuiltinContext, path, symbolName string) bool {
 
 	// Look for common symbol definition patterns
 	patterns := []string{
-		`\bfunc\s+` + regexp.QuoteMeta(symbolName) + `\s*\(`,           // Go function
+		`\bfunc\s+` + regexp.QuoteMeta(symbolName) + `\s*\(`,             // Go function
 		`\bfunc\s*\([^)]*\)\s*` + regexp.QuoteMeta(symbolName) + `\s*\(`, // Go method
-		`\btype\s+` + regexp.QuoteMeta(symbolName) + `\s+`,              // Go type
-		`\bvar\s+` + regexp.QuoteMeta(symbolName) + `\b`,               // Go var
-		`\bconst\s+` + regexp.QuoteMeta(symbolName) + `\b`,             // Go const
-		`\bclass\s+` + regexp.QuoteMeta(symbolName) + `\b`,             // JS/TS class
-		`\bfunction\s+` + regexp.QuoteMeta(symbolName) + `\s*\(`,       // JS function
-		`\bdef\s+` + regexp.QuoteMeta(symbolName) + `\s*\(`,            // Python function
+		`\btype\s+` + regexp.QuoteMeta(symbolName) + `\s+`,               // Go type
+		`\bvar\s+` + regexp.QuoteMeta(symbolName) + `\b`,                 // Go var
+		`\bconst\s+` + regexp.QuoteMeta(symbolName) + `\b`,               // Go const
+		`\bclass\s+` + regexp.QuoteMeta(symbolName) + `\b`,               // JS/TS class
+		`\bfunction\s+` + regexp.QuoteMeta(symbolName) + `\s*\(`,         // JS function
+		`\bdef\s+` + regexp.QuoteMeta(symbolName) + `\s*\(`,              // Python function
 	}
 
 	for _, pattern := range patterns {

@@ -286,7 +286,7 @@ func TestHookSessionAllFieldsSerialization(t *testing.T) {
 
 	// Check all fields
 	checks := []struct {
-		name     string
+		name      string
 		got, want any
 	}{
 		{"SessionID", decoded.SessionID, original.SessionID},
