@@ -138,6 +138,48 @@ func FormatTask(result *app.TaskResult) string {
 	return strings.TrimSpace(sb.String())
 }
 
+// FormatTaskCompletionBlocked formats a blocked task completion (e.g., policy violations) into Markdown.
+// This provides AI agents with clear, actionable information about why completion was blocked.
+func FormatTaskCompletionBlocked(result *app.TaskResult) string {
+	if result == nil {
+		return FormatError("No task result available.")
+	}
+
+	var sb strings.Builder
+
+	// Error header
+	sb.WriteString("## ❌ Task Completion Blocked\n\n")
+
+	// Task info if available
+	if result.Task != nil {
+		sb.WriteString(fmt.Sprintf("**Task**: %s\n", result.Task.Title))
+		sb.WriteString(fmt.Sprintf("**ID**: `%s`\n", result.Task.ID))
+		sb.WriteString(fmt.Sprintf("**Status**: %s (unchanged)\n\n", result.Task.Status))
+	}
+
+	// Reason/Message - format as violations if it contains the policy violation pattern
+	if result.Message != "" {
+		if strings.Contains(result.Message, "Policy violations") {
+			sb.WriteString("### Policy Violations\n\n")
+			sb.WriteString("The following policy rules blocked task completion:\n\n")
+			// The message already contains formatted violations from TaskApp.Complete
+			sb.WriteString(result.Message)
+		} else {
+			sb.WriteString("### Reason\n\n")
+			sb.WriteString(result.Message)
+		}
+		sb.WriteString("\n\n")
+	}
+
+	// Next steps hint
+	sb.WriteString("### Next Steps\n\n")
+	sb.WriteString("1. Review the violations above\n")
+	sb.WriteString("2. Remove or modify the blocked files from your changes\n")
+	sb.WriteString("3. Retry task completion with `task_complete`\n")
+
+	return strings.TrimSpace(sb.String())
+}
+
 // FormatPlan converts a Plan into concise Markdown.
 func FormatPlan(plan *task.Plan) string {
 	if plan == nil {

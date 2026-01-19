@@ -650,6 +650,14 @@ func handleTaskComplete(ctx context.Context, repo *memory.Repository, params Tas
 		}, nil
 	}
 
+	// Check for policy violations (task not completed successfully)
+	if !result.Success {
+		return &TaskToolResult{
+			Action:  "complete",
+			Content: FormatTaskCompletionBlocked(result),
+		}, nil
+	}
+
 	return &TaskToolResult{
 		Action:  "complete",
 		Content: FormatTask(result),
