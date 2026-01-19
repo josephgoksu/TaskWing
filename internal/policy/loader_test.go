@@ -257,7 +257,7 @@ func TestNewOsLoader(t *testing.T) {
 	// Just verify it can be created without panicking
 	loader := NewOsLoader("/tmp/test-policies")
 	if loader == nil {
-		t.Error("NewOsLoader() returned nil")
+		t.Fatal("NewOsLoader() returned nil")
 	}
 	if loader.baseDir != "/tmp/test-policies" {
 		t.Errorf("baseDir = %v, want /tmp/test-policies", loader.baseDir)

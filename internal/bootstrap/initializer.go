@@ -322,7 +322,7 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 			}
 			// Clean up backup since we're not proceeding
 			if legacyBackup != "" {
-				os.Rename(legacyBackup, legacyDir) // Restore backup
+				_ = os.Rename(legacyBackup, legacyDir) // Restore backup
 			}
 			return nil
 		}
@@ -369,14 +369,14 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 	if err := os.WriteFile(filePath, []byte(sb.String()), 0644); err != nil {
 		// Rollback: restore legacy backup if write fails
 		if legacyBackup != "" {
-			os.Rename(legacyBackup, legacyDir)
+			_ = os.Rename(legacyBackup, legacyDir)
 		}
 		return fmt.Errorf("create %s: %w", cfg.singleFileName, err)
 	}
 
 	// Success - now safe to remove backup
 	if legacyBackup != "" {
-		os.RemoveAll(legacyBackup)
+		_ = os.RemoveAll(legacyBackup)
 		if verbose {
 			fmt.Printf("  ✓ Removed legacy %s/ directory\n", legacyDirName)
 		}

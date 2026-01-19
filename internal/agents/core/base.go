@@ -71,13 +71,16 @@ func (b *BaseAgent) Generate(ctx context.Context, messages []*schema.Message) (s
 func formatMessagesForLogging(messages []*schema.Message) string {
 	var parts []string
 	for _, m := range messages {
-		role := "unknown"
-		if m.Role == schema.User {
+		var role string
+		switch m.Role {
+		case schema.User:
 			role = "user"
-		} else if m.Role == schema.Assistant {
+		case schema.Assistant:
 			role = "assistant"
-		} else if m.Role == schema.System {
+		case schema.System:
 			role = "system"
+		default:
+			role = "unknown"
 		}
 		parts = append(parts, fmt.Sprintf("[%s]: %s", role, m.Content))
 	}

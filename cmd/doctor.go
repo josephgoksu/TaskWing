@@ -68,9 +68,10 @@ func runDoctor() error {
 	// Check 1: TaskWing initialized
 	check := checkTaskWingInit(cwd)
 	checks = append(checks, check)
-	if check.Status == "fail" {
+	switch check.Status {
+	case "fail":
 		hasErrors = true
-	} else if check.Status == "warn" {
+	case "warn":
 		hasWarnings = true
 	}
 
@@ -82,9 +83,10 @@ func runDoctor() error {
 	hookChecks := checkHooksConfig(cwd)
 	checks = append(checks, hookChecks...)
 	for _, c := range hookChecks {
-		if c.Status == "fail" {
+		switch c.Status {
+		case "fail":
 			hasErrors = true
-		} else if c.Status == "warn" {
+		case "warn":
 			hasWarnings = true
 		}
 	}

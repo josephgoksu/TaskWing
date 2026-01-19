@@ -93,7 +93,7 @@ func TestGitVerifier_Verify_NotGitRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	verifier := NewGitVerifier(dir)
 	result := verifier.Verify(context.Background(), []string{"test.go"})
@@ -250,7 +250,7 @@ func TestIsGitRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(nonGitDir)
+	defer func() { _ = os.RemoveAll(nonGitDir) }()
 
 	if IsGitRepo(nonGitDir) {
 		t.Error("expected IsGitRepo to return false for non-git directory")
@@ -267,7 +267,7 @@ func setupTestGitRepo(t *testing.T) string {
 	}
 
 	t.Cleanup(func() {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 	})
 
 	// Initialize git repo
@@ -280,11 +280,11 @@ func setupTestGitRepo(t *testing.T) string {
 	// Configure git user for commits
 	cmd = exec.Command("git", "config", "user.email", "test@test.com")
 	cmd.Dir = dir
-	cmd.Run()
+	_ = cmd.Run()
 
 	cmd = exec.Command("git", "config", "user.name", "Test")
 	cmd.Dir = dir
-	cmd.Run()
+	_ = cmd.Run()
 
 	// Create initial commit so HEAD exists
 	readmeFile := filepath.Join(dir, "README.md")
@@ -294,11 +294,11 @@ func setupTestGitRepo(t *testing.T) string {
 
 	cmd = exec.Command("git", "add", ".")
 	cmd.Dir = dir
-	cmd.Run()
+	_ = cmd.Run()
 
 	cmd = exec.Command("git", "commit", "-m", "initial")
 	cmd.Dir = dir
-	cmd.Run()
+	_ = cmd.Run()
 
 	return dir
 }

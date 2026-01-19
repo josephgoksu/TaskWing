@@ -475,23 +475,3 @@ func getStagedFiles(projectRoot string) ([]string, error) {
 	}
 	return files, nil
 }
-
-// findPolicyTestFiles finds all *_test.rego files in the policies directory.
-func findPolicyTestFiles(policiesDir string) ([]string, error) {
-	var testFiles []string
-
-	err := filepath.Walk(policiesDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(info.Name(), "_test.rego") {
-			testFiles = append(testFiles, path)
-		}
-		return nil
-	})
-
-	return testFiles, err
-}

@@ -842,11 +842,14 @@ func FormatDebugResult(findings []agentcore.Finding) string {
 			if len(hypotheses) > 0 {
 				sb.WriteString("### Hypotheses\n")
 				for i, h := range hypotheses {
-					icon := "🔵"
-					if h.Likelihood == "high" {
+					var icon string
+					switch h.Likelihood {
+					case "high":
 						icon = "🔴"
-					} else if h.Likelihood == "medium" {
+					case "medium":
 						icon = "🟡"
+					default:
+						icon = "🔵"
 					}
 					sb.WriteString(fmt.Sprintf("\n%d. %s **%s** (%s)\n", i+1, icon, h.Cause, h.Likelihood))
 					sb.WriteString(fmt.Sprintf("   %s\n", h.Reasoning))

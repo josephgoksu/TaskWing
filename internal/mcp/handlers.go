@@ -313,7 +313,7 @@ func handleCodeSimplify(ctx context.Context, repo *memory.Repository, params Cod
 		}, nil
 	}
 	agent := agentimpl.NewSimplifyAgent(llmCfg)
-	defer agent.Close()
+	defer func() { _ = agent.Close() }()
 
 	input := agentcore.Input{
 		ExistingContext: map[string]any{
@@ -466,7 +466,7 @@ func HandleDebugTool(ctx context.Context, repo *memory.Repository, params DebugT
 		}, nil
 	}
 	agent := agentimpl.NewDebugAgent(llmCfg)
-	defer agent.Close()
+	defer func() { _ = agent.Close() }()
 
 	input := agentcore.Input{
 		ExistingContext: map[string]any{

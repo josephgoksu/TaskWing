@@ -111,7 +111,7 @@ func (s *AuditStore) ListDecisions(opts ListDecisionsOptions) ([]*PolicyDecision
 	if err != nil {
 		return nil, fmt.Errorf("query policy decisions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var decisions []*PolicyDecision
 	for rows.Next() {

@@ -179,7 +179,7 @@ func fileLineCountImpl(ctx *BuiltinContext, path string) int {
 	if err != nil {
 		return -1 // File doesn't exist or can't be read
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	count := 0

@@ -473,22 +473,22 @@ func TestProbeProjectHealth(t *testing.T) {
 		{
 			name: "partial - only taskwing dir",
 			setup: func(dir string) {
-				os.MkdirAll(filepath.Join(dir, ".taskwing"), 0755)
+				_ = os.MkdirAll(filepath.Join(dir, ".taskwing"), 0755)
 			},
 			expectStatus: HealthPartial,
 		},
 		{
 			name: "partial - missing plans",
 			setup: func(dir string) {
-				os.MkdirAll(filepath.Join(dir, ".taskwing", "memory"), 0755)
+				_ = os.MkdirAll(filepath.Join(dir, ".taskwing", "memory"), 0755)
 			},
 			expectStatus: HealthPartial,
 		},
 		{
 			name: "ok - all directories present",
 			setup: func(dir string) {
-				os.MkdirAll(filepath.Join(dir, ".taskwing", "memory"), 0755)
-				os.MkdirAll(filepath.Join(dir, ".taskwing", "plans"), 0755)
+				_ = os.MkdirAll(filepath.Join(dir, ".taskwing", "memory"), 0755)
+				_ = os.MkdirAll(filepath.Join(dir, ".taskwing", "plans"), 0755)
 			},
 			expectStatus: HealthOK,
 		},
@@ -526,7 +526,7 @@ func TestProbeAIHealth(t *testing.T) {
 			name:   "partial - directory exists but no files",
 			aiName: "claude",
 			setup: func(dir string) {
-				os.MkdirAll(filepath.Join(dir, ".claude", "commands"), 0755)
+				_ = os.MkdirAll(filepath.Join(dir, ".claude", "commands"), 0755)
 			},
 			expectStatus: HealthPartial,
 		},
@@ -535,9 +535,9 @@ func TestProbeAIHealth(t *testing.T) {
 			aiName: "claude",
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".claude", "commands")
-				os.MkdirAll(cmdDir, 0755)
-				os.WriteFile(filepath.Join(cmdDir, "taskwing.md"), []byte("test"), 0644)
-				os.WriteFile(filepath.Join(cmdDir, "tw-next.md"), []byte("test"), 0644)
+				_ = os.MkdirAll(cmdDir, 0755)
+				_ = os.WriteFile(filepath.Join(cmdDir, "taskwing.md"), []byte("test"), 0644)
+				_ = os.WriteFile(filepath.Join(cmdDir, "tw-next.md"), []byte("test"), 0644)
 			},
 			expectStatus: HealthPartial,
 		},
@@ -546,10 +546,10 @@ func TestProbeAIHealth(t *testing.T) {
 			aiName: "claude",
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".claude", "commands")
-				os.MkdirAll(cmdDir, 0755)
+				_ = os.MkdirAll(cmdDir, 0755)
 				// Create all 7 command files
 				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
-					os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
+					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 			},
 			expectStatus: HealthPartial, // Hooks missing
@@ -559,13 +559,13 @@ func TestProbeAIHealth(t *testing.T) {
 			aiName: "claude",
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".claude", "commands")
-				os.MkdirAll(cmdDir, 0755)
+				_ = os.MkdirAll(cmdDir, 0755)
 				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
-					os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
+					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 				// Add settings.json with valid JSON
-				os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
-				os.WriteFile(filepath.Join(dir, ".claude", "settings.json"), []byte(`{"hooks":{}}`), 0644)
+				_ = os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
+				_ = os.WriteFile(filepath.Join(dir, ".claude", "settings.json"), []byte(`{"hooks":{}}`), 0644)
 			},
 			expectStatus: HealthOK,
 		},
@@ -574,12 +574,12 @@ func TestProbeAIHealth(t *testing.T) {
 			aiName: "claude",
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".claude", "commands")
-				os.MkdirAll(cmdDir, 0755)
+				_ = os.MkdirAll(cmdDir, 0755)
 				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
-					os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
+					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
-				os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
-				os.WriteFile(filepath.Join(dir, ".claude", "settings.json"), []byte(`{invalid json`), 0644)
+				_ = os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
+				_ = os.WriteFile(filepath.Join(dir, ".claude", "settings.json"), []byte(`{invalid json`), 0644)
 			},
 			expectStatus: HealthInvalid,
 		},
@@ -588,9 +588,9 @@ func TestProbeAIHealth(t *testing.T) {
 			aiName: "gemini",
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".gemini", "commands")
-				os.MkdirAll(cmdDir, 0755)
+				_ = os.MkdirAll(cmdDir, 0755)
 				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
-					os.WriteFile(filepath.Join(cmdDir, name+".toml"), []byte("test"), 0644)
+					_ = os.WriteFile(filepath.Join(cmdDir, name+".toml"), []byte("test"), 0644)
 				}
 			},
 			expectStatus: HealthOK, // Gemini doesn't need hooks
@@ -646,16 +646,16 @@ func TestProbeEnvironment(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Setup a realistic project
-	os.MkdirAll(filepath.Join(tmpDir, ".taskwing", "memory"), 0755)
-	os.MkdirAll(filepath.Join(tmpDir, ".taskwing", "plans"), 0755)
-	os.MkdirAll(filepath.Join(tmpDir, ".git"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, ".taskwing", "memory"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, ".taskwing", "plans"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, ".git"), 0755)
 
 	cmdDir := filepath.Join(tmpDir, ".claude", "commands")
-	os.MkdirAll(cmdDir, 0755)
+	_ = os.MkdirAll(cmdDir, 0755)
 	for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
-		os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
+		_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 	}
-	os.WriteFile(filepath.Join(tmpDir, ".claude", "settings.json"), []byte(`{"hooks":{}}`), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, ".claude", "settings.json"), []byte(`{"hooks":{}}`), 0644)
 
 	snap, err := ProbeEnvironment(tmpDir)
 	if err != nil {
@@ -683,11 +683,11 @@ func TestDetectProjectRoot(t *testing.T) {
 	// Create a temp dir with .git
 	tmpDir := t.TempDir()
 	gitDir := filepath.Join(tmpDir, ".git")
-	os.MkdirAll(gitDir, 0755)
+	_ = os.MkdirAll(gitDir, 0755)
 
 	// Create a nested directory
 	nestedDir := filepath.Join(tmpDir, "src", "pkg", "deep")
-	os.MkdirAll(nestedDir, 0755)
+	_ = os.MkdirAll(nestedDir, 0755)
 
 	tests := []struct {
 		name     string
@@ -720,7 +720,7 @@ func TestDetectProjectRoot(t *testing.T) {
 func TestIsGitRepository(t *testing.T) {
 	// Create temp dirs
 	gitRepo := t.TempDir()
-	os.MkdirAll(filepath.Join(gitRepo, ".git"), 0755)
+	_ = os.MkdirAll(filepath.Join(gitRepo, ".git"), 0755)
 
 	nonGitDir := t.TempDir()
 
@@ -748,20 +748,20 @@ func TestCountSourceFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create some source files
-	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "util.go"), []byte("package main"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# README"), 0644) // Not a source file
+	_ = os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "util.go"), []byte("package main"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("# README"), 0644) // Not a source file
 
 	// Create nested source files
 	srcDir := filepath.Join(tmpDir, "src")
-	os.MkdirAll(srcDir, 0755)
-	os.WriteFile(filepath.Join(srcDir, "app.ts"), []byte("export {}"), 0644)
-	os.WriteFile(filepath.Join(srcDir, "index.js"), []byte("module.exports = {}"), 0644)
+	_ = os.MkdirAll(srcDir, 0755)
+	_ = os.WriteFile(filepath.Join(srcDir, "app.ts"), []byte("export {}"), 0644)
+	_ = os.WriteFile(filepath.Join(srcDir, "index.js"), []byte("module.exports = {}"), 0644)
 
 	// Create node_modules (should be skipped)
 	nodeModules := filepath.Join(tmpDir, "node_modules", "pkg")
-	os.MkdirAll(nodeModules, 0755)
-	os.WriteFile(filepath.Join(nodeModules, "index.js"), []byte("module.exports = {}"), 0644)
+	_ = os.MkdirAll(nodeModules, 0755)
+	_ = os.WriteFile(filepath.Join(nodeModules, "index.js"), []byte("module.exports = {}"), 0644)
 
 	count := countSourceFiles(tmpDir)
 
@@ -792,10 +792,10 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			setup: func(dir string) {
 				// Copilot uses a single file: .github/copilot-instructions.md (not a directory)
 				githubDir := filepath.Join(dir, ".github")
-				os.MkdirAll(githubDir, 0755)
+				_ = os.MkdirAll(githubDir, 0755)
 				// Write the instructions file with TaskWing marker
 				content := "# Instructions\n<!-- TASKWING_MANAGED -->\ntest content"
-				os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(content), 0644)
+				_ = os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(content), 0644)
 			},
 			expectStatus: HealthOK,
 		},
@@ -805,9 +805,9 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			setup: func(dir string) {
 				// User created their own copilot-instructions.md without TaskWing marker
 				githubDir := filepath.Join(dir, ".github")
-				os.MkdirAll(githubDir, 0755)
+				_ = os.MkdirAll(githubDir, 0755)
 				content := "# My Custom Instructions\nDo this, not that."
-				os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(content), 0644)
+				_ = os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(content), 0644)
 			},
 			expectStatus: HealthOK, // User-managed = OK (we won't touch it)
 		},
@@ -817,8 +817,8 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			setup: func(dir string) {
 				// Empty file exists
 				githubDir := filepath.Join(dir, ".github")
-				os.MkdirAll(githubDir, 0755)
-				os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(""), 0644)
+				_ = os.MkdirAll(githubDir, 0755)
+				_ = os.WriteFile(filepath.Join(githubDir, "copilot-instructions.md"), []byte(""), 0644)
 			},
 			expectStatus: HealthOK, // Empty file = user-managed (no marker)
 		},
@@ -827,9 +827,9 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			aiName: "codex",
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".codex", "commands")
-				os.MkdirAll(cmdDir, 0755)
+				_ = os.MkdirAll(cmdDir, 0755)
 				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
-					os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
+					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 			},
 			expectStatus: HealthPartial, // Hooks missing
@@ -839,11 +839,11 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			aiName: "codex",
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".codex", "commands")
-				os.MkdirAll(cmdDir, 0755)
+				_ = os.MkdirAll(cmdDir, 0755)
 				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
-					os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
+					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
-				os.WriteFile(filepath.Join(dir, ".codex", "settings.json"), []byte(`{"hooks":{}}`), 0644)
+				_ = os.WriteFile(filepath.Join(dir, ".codex", "settings.json"), []byte(`{"hooks":{}}`), 0644)
 			},
 			expectStatus: HealthOK,
 		},
@@ -852,9 +852,9 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			aiName: "cursor",
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".cursor", "rules")
-				os.MkdirAll(cmdDir, 0755)
+				_ = os.MkdirAll(cmdDir, 0755)
 				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
-					os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
+					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 			},
 			expectStatus: HealthOK, // Cursor doesn't need hooks
@@ -930,7 +930,7 @@ func TestProbeEnvironment_InvalidPath(t *testing.T) {
 
 	// File instead of directory
 	tmpFile := filepath.Join(t.TempDir(), "file.txt")
-	os.WriteFile(tmpFile, []byte("test"), 0644)
+	_ = os.WriteFile(tmpFile, []byte("test"), 0644)
 	_, err = ProbeEnvironment(tmpFile)
 	if err == nil {
 		t.Error("ProbeEnvironment() should return error for file path")

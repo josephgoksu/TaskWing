@@ -106,7 +106,7 @@ func (l *Loader) loadFile(path string) (*PolicyFile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	content, err := io.ReadAll(file)
 	if err != nil {

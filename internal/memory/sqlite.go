@@ -58,13 +58,8 @@ func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
 
-	// Migrations
-	if _, err := db.Exec(`ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'medium'`); err != nil {
-		// Ignore if column already exists
-		if !strings.Contains(err.Error(), "duplicate column name") {
-			// fmt.Printf("Migration warning (complexity): %v\n", err)
-		}
-	}
+	// Migrations - ignore errors for columns that already exist
+	_, _ = db.Exec(`ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'medium'`)
 
 	return store, nil
 }
