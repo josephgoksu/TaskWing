@@ -9,6 +9,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/git"
+	"github.com/josephgoksu/TaskWing/internal/policy"
 	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
@@ -615,4 +616,42 @@ func (a *TaskApp) buildRichContext(ctx context.Context, t *task.Task, plan *task
 	}
 
 	return task.FormatRichContext(ctx, t, plan, searchFunc)
+}
+
+// === Policy Input Conversion Helpers ===
+// These functions convert internal Task/Plan models to OPA-compatible PolicyInput.
+
+// TaskToPolicyInput converts a task.Task to policy.TaskInput for OPA evaluation.
+// It maps the internal task model fields to the OPA input structure.
+func TaskToPolicyInput(t *task.Task) *policy.TaskInput {
+	if t == nil {
+		return nil
+	}
+	return &policy.TaskInput{
+		ID:            t.ID,
+		Title:         t.Title,
+		FilesModified: t.FilesModified,
+		FilesCreated:  []string{}, // We don't track files_created separately yet
+	}
+}
+
+// PlanToPolicyInput converts a task.Plan to policy.PlanInput for OPA evaluation.
+// It maps the internal plan model fields to the OPA input structure.
+func PlanToPolicyInput(p *task.Plan) *policy.PlanInput {
+	if p == nil {
+		return nil
+	}
+	return &policy.PlanInput{
+		ID:   p.ID,
+		Goal: p.Goal,
+	}
+}
+
+// BuildPolicyInput constructs the complete PolicyInput from Task and Plan.
+// This is the primary entry point for creating OPA-compatible input during task completion.
+func BuildPolicyInput(t *task.Task, p *task.Plan) *policy.PolicyInput {
+	return &policy.PolicyInput{
+		Task: TaskToPolicyInput(t),
+		Plan: PlanToPolicyInput(p),
+	}
 }

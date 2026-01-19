@@ -208,3 +208,77 @@ This allowed `../../../etc/passwd` to escape the project root via path traversal
 **Key insight**: Any file reading handler exposed via MCP needs strict path validation. MCP tools are exposed to potentially untrusted input.
 
 ---
+
+
+from another conversation
+
+⏺ taskwing-mcp - plan (MCP)(action: "clarify", goal: "Implement automatic policy enforcement during task completion - when an AI agent completes a task via /tw-done, the PolicyEnforcer should
+                           evaluate the files_modified against loaded OPA policies and block completion if violations are detected")
+  ⎿  ## 🔍 Clarification Needed
+
+     **Goal**: Add OPA-based policy enforcement to block task completion on policy violations.
+     … +8 lines (ctrl+o to expand)
+
+⏺ Good questions from TaskWing. Let me provide answers and continue clarifying.
+
+⏺ taskwing-mcp - plan (MCP)(action: "clarify", goal: "Implement automatic policy enforcement during task completion - when an AI agent completes a task via /tw-done, the PolicyEnforcer should
+                           evaluate the files_modified against loaded OPA policies and block completion if violations are detected", history: "Q1: Policies already reside in
+                           .taskwing/policies/*.rego - we have a default policy created via 'taskwing policy init'. Q2: No bypass mechanism - if policies are violated, completion should fail and
+                            task should remain in_progress. The user can update the policy if needed. Q3: Pass task ID, task title, files_modified, files_created (empty for now), plan ID, and
+                           plan goal - this matches the existing PolicyEvaluator interface in internal/task/sentinel.go.")
+  ⎿  ## ✅ Ready to Generate Plan
+
+     **Goal**: Implement OPA-based policy enforcement during the /tw-done completion flow.
+     … +34 lines (ctrl+o to expand)
+
+⏺ The spec looks solid. Let me generate the plan with tasks.
+
+⏺ taskwing-mcp - plan (MCP)(action: "generate", enriched_goal: "Technical Specification: Automated Policy Enforcement Hook\n\n1. **Objective**: Integrate Open Policy Agent (OPA) into the task
+                           completion lifecycle to validate file modifications against project-defined policies before a task is transitioned to 'completed'.\n\n2. **Architecture
+                           Integration**:\n    - **Trigger**: Modify `TaskApp.Complete` in `internal/app/task.go`. The enforcement must occur AFTER the agent provides the `files_modified` list
+                           but BEFORE the SQLite transaction updates the task status.\n    - **Service**: Use existing `PolicyEnforcer` in `internal/task/sentinel.go` and
+                           `PolicyEvaluatorAdapter` in `internal/policy/engine.go`. Create the policy engine and adapter in TaskApp.Complete.\n    - **Input Data**: The OPA input object must
+                           include:\n        - `task`: {id, title, description, files_modified, files_created}\n        - `plan`: {id, goal}\n\n3. **Logic Flow**:\n    - Create PolicyEngine from
+                            .taskwing/policies/ directory\n    - Create PolicyEvaluatorAdapter wrapping the engine\n    - Create PolicyEnforcer with the adapter\n    - Call
+                           `PolicyEnforcer.Enforce(ctx, task, planGoal)`.\n    - If result.Allowed is false:\n        - Return error with violations list.\n        - Task status remains
+                           `in_progress` in SQLite (don't call repo.CompleteTask).\n    - If allowed, proceed to existing completion flow.\n\n4. **Failure Handling**:\n    - MCP response should
+                           include policy violations in the error message\n    - Format violations clearly so AI agent can understand what files caused the block\n\n5. **Dependencies**: Use
+                           existing `github.com/open-policy-agent/opa/v1/rego` already in the project.", save: true)
+  ⎿  Error: ## ❌ Error
+
+     **Details**: goal is required for generate action
+
+⏺ taskwing-mcp - plan (MCP)(action: "generate", goal: "Technical Specification: Automated Policy Enforcement Hook\n\n1. **Objective**: Integrate Open Policy Agent (OPA) into the task completion
+                           lifecycle to validate file modifications against project-defined policies before a task is transitioned to 'completed'.\n\n2. **Architecture Integration**:\n    -
+                           **Trigger**: Modify `TaskApp.Complete` in `internal/app/task.go`. The enforcement must occur AFTER the agent provides the `files_modified` list but BEFORE the SQLite
+                           transaction updates the task status.\n    - **Service**: Use existing `PolicyEnforcer` in `internal/task/sentinel.go` and `PolicyEvaluatorAdapter` in
+                           `internal/policy/engine.go`. Create the policy engine and adapter in TaskApp.Complete.\n    - **Input Data**: The OPA input object must include:\n        - `task`:
+                           {id, title, description, files_modified, files_created}\n        - `plan`: {id, goal}\n\n3. **Logic Flow**:\n    - Create PolicyEngine from .taskwing/policies/
+                           directory\n    - Create PolicyEvaluatorAdapter wrapping the engine\n    - Create PolicyEnforcer with the adapter\n    - Call `PolicyEnforcer.Enforce(ctx, task,
+                           planGoal)`.\n    - If result.Allowed is false:\n        - Return error with violations list.\n        - Task status remains `in_progress` in SQLite (don't call
+                           repo.CompleteTask).\n    - If allowed, proceed to existing completion flow.\n\n4. **Failure Handling**:\n    - MCP response should include policy violations in the
+                           error message\n    - Format violations clearly so AI agent can understand what files caused the block\n\n5. **Dependencies**: Use existing
+                           `github.com/open-policy-agent/opa/v1/rego` already in the project.", save: true)
+  ⎿  Error: ## ❌ Error
+
+     **Details**: enriched_goal is required for generate action
+
+⏺ taskwing-mcp - plan (MCP)(action: "generate", goal: "Implement automatic policy enforcement during task completion", enriched_goal: "Technical Specification: Automated Policy Enforcement
+                           Hook\n\n1. **Objective**: Integrate Open Policy Agent (OPA) into the task completion lifecycle to validate file modifications against project-defined policies before a
+                            task is transitioned to 'completed'.\n\n2. **Architecture Integration**:\n    - **Trigger**: Modify `TaskApp.Complete` in `internal/app/task.go`. The enforcement must
+                            occur AFTER the agent provides the `files_modified` list but BEFORE the SQLite transaction updates the task status.\n    - **Service**: Use existing `PolicyEnforcer`
+                           in `internal/task/sentinel.go` and `PolicyEvaluatorAdapter` in `internal/policy/engine.go`. Create the policy engine and adapter in TaskApp.Complete.\n    - **Input
+                           Data**: The OPA input object must include:\n        - `task`: {id, title, description, files_modified, files_created}\n        - `plan`: {id, goal}\n\n3. **Logic
+                           Flow**:\n    - Create PolicyEngine from .taskwing/policies/ directory\n    - Create PolicyEvaluatorAdapter wrapping the engine\n    - Create PolicyEnforcer with the
+                           adapter\n    - Call `PolicyEnforcer.Enforce(ctx, task, planGoal)`.\n    - If result.Allowed is false:\n        - Return error with violations list.\n        - Task
+                           status remains `in_progress` in SQLite (don't call repo.CompleteTask).\n    - If allowed, proceed to existing completion flow.\n\n4. **Failure Handling**:\n    - MCP
+                           response should include policy violations in the error message\n    - Format violations clearly so AI agent can understand what files caused the block\n\n5.
+                           **Dependencies**: Use existing `github.com/open-policy-agent/opa/v1/rego` already in the project.", save: true)
+
+✻ Transmuting… (ctrl+c to interrupt · 1m 33s · ↓ 2.2k tokens)
+  ⎿  Tip: ┌──────────┐
+           ) CC ✻ ┊ (  You have free guest passes
+          └──────────┘ /passes to share
+
+
+it keeps failing on these actions and wastes a lot of tokens bc of that
