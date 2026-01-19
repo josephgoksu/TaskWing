@@ -282,3 +282,78 @@ from another conversation
 
 
 it keeps failing on these actions and wastes a lot of tokens bc of that
+
+
+----  
+
+❯ By the way, during this whole session, how was your experience with Taskwing CLI and MCP tools Could you give me some feedbacks So I can document them, and later I can use them for
+  improvements
+
+⏺ Honest Feedback on TaskWing Experience
+
+  What Worked Well
+  ┌──────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │           Feature            │                                                                        Experience                                                                         │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Plan generation              │ The plan clarify → plan generate flow produced a well-structured 5-task plan with clear acceptance criteria. The priority ordering (P100→P60) made sense. │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Task context                 │ Each task came with relevant architecture context from the knowledge graph. The "Relevant Architecture Context" section was genuinely useful.             │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Auto-commit on task complete │ Loved that /tw-done automatically committed and pushed. Reduced friction significantly.                                                                   │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Sentinel report              │ The deviation detection ("1 unexpected file") caught real discrepancies between what I reported vs. what git showed.                                      │
+  ├──────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Policy MCP tool              │ mcp__taskwing-mcp__policy check worked exactly as expected. Clear pass/fail output.                                                                       │
+  └──────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  Pain Points & Friction
+  ┌────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────────────────────────────┐
+  │                 Issue                  │                                          Impact                                           │                       Suggestion                        │
+  ├────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ No way to add tasks to existing plan   │ I tried tw task add --plan but flag doesn't exist. Had to work around it.                 │ Add tw task add "title" --plan <id>                     │
+  │ via CLI                                │                                                                                           │                                                         │
+  ├────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ Plan with 0 tasks after --offline      │ Created plan but couldn't add tasks to test policy enforcement manually.                  │ Allow tw task create for manual task creation           │
+  ├────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ Session ID management is invisible     │ I had to guess/track session IDs. Not clear when a session expires or how to resume.      │ Show session ID in prompt or status bar                 │
+  ├────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ task_complete requires exact task_id   │ Had to copy-paste IDs. Error-prone.                                                       │ Support task_complete --current to complete the         │
+  │                                        │                                                                                           │ in-progress task                                        │
+  ├────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ No --dry-run for task complete         │ Couldn't preview what policy check would say before actually completing.                  │ Add tw task complete --dry-run                          │
+  ├────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┤
+  │ Recall queries in task hints are       │ The suggested queries like "general patterns constraints decisions" weren't specific      │ Generate more targeted queries based on task content    │
+  │ generic                                │ enough to be useful.                                                                      │                                                         │
+  └────────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────────┘
+  MCP Tool Specific Issues
+  ┌───────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │     Tool      │                                                               Issue                                                                │
+  ├───────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ plan generate │ Required both goal AND enriched_goal but error messages were confusing. First said "goal required", then "enriched_goal required". │
+  ├───────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ task start    │ Worked fine, but the double output (task details printed twice) was redundant.                                                     │
+  ├───────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ policy check  │ Excellent. No complaints.                                                                                                          │
+  ├───────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ recall        │ Didn't use much this session, but in past sessions the results were sometimes too verbose.                                         │
+  └───────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  Missing Features I Wanted
+
+  1. tw policy test - Run policy against hypothetical files without needing a real task
+  2. tw task current --json - Get current task ID programmatically for scripts
+  3. tw plan status - Quick view of plan progress (X/Y tasks done) without full task list
+  4. Policy dry-run in MCP - policy check works, but would be nice to have it integrated into task complete --preview
+
+  Documentation Gaps
+
+  - No docs on how policy enforcement integrates with task completion flow
+  - The CLAUDE.md mentions PolicyEnforcer exists but not how to use it
+  - Error messages like "Policy violations blocked task completion" are good but could link to docs
+
+  Overall Rating
+
+  7.5/10 - The core workflow (plan → tasks → complete → auto-commit) is solid and genuinely useful. The friction points are all solvable UX issues, not fundamental architectural problems. The
+  policy enforcement feature we just built fills a real gap.
+
+  Biggest win: The stop hook auto-continuation through tasks is genuinely productive. I completed 5 tasks without manually invoking next each time.
+
+  Biggest gap: Task management is plan-centric but sometimes you need ad-hoc tasks. No escape hatch for that.
