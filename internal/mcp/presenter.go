@@ -129,11 +129,10 @@ func FormatTask(result *app.TaskResult) string {
 		sb.WriteString(fmt.Sprintf("\n> **Hint**: %s\n", result.Hint))
 	}
 
-	// Context (already Markdown)
-	if result.Context != "" {
-		sb.WriteString("\n---\n")
-		sb.WriteString(result.Context)
-	}
+	// Note: We intentionally do NOT include result.Context here.
+	// FormatTask already shows task details (title, ID, description, etc.)
+	// The rich context from buildRichContext would duplicate this info.
+	// For MCP, the task details above are sufficient.
 
 	return strings.TrimSpace(sb.String())
 }
