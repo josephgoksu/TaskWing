@@ -363,6 +363,54 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		}, nil
 	}
 
+	// Get plan early - needed for policy enforcement
+	plan, err := repo.GetPlan(taskBeforeComplete.PlanID)
+	if err != nil {
+		return nil, fmt.Errorf("get plan: %w", err)
+	}
+
+	// Get working directory for policy engine and git operations
+	workDir, _ := os.Getwd()
+
+	// === Policy Enforcement (BEFORE database write) ===
+	// Create a task object with the files_modified from completion options
+	taskForPolicy := &task.Task{
+		ID:            taskBeforeComplete.ID,
+		Title:         taskBeforeComplete.Title,
+		Description:   taskBeforeComplete.Description,
+		FilesModified: opts.FilesModified,
+	}
+
+	// Create policy engine from .taskwing/policies/
+	policyEngine, policyErr := policy.NewEngine(policy.EngineConfig{
+		WorkDir: workDir,
+	})
+
+	// Only enforce if policies are loaded (no error and policies exist)
+	if policyErr == nil && policyEngine.PolicyCount() > 0 {
+		// Create the adapter and enforcer
+		adapter := policy.NewPolicyEvaluatorAdapter(policyEngine, nil, "")
+		enforcer := task.NewPolicyEnforcer(adapter, "")
+
+		// Enforce policies
+		result := enforcer.Enforce(ctx, taskForPolicy, plan.Goal)
+		if !result.Allowed {
+			violationMsg := "Policy violations detected"
+			if len(result.Violations) > 0 {
+				violationMsg = fmt.Sprintf("Policy violations: %v", result.Violations)
+			}
+			if result.Error != nil {
+				violationMsg = fmt.Sprintf("Policy evaluation error: %v", result.Error)
+			}
+			return &TaskResult{
+				Success: false,
+				Message: violationMsg,
+				Task:    taskBeforeComplete,
+			}, nil
+		}
+	}
+	// === End Policy Enforcement ===
+
 	// Complete the task in SQLite
 	if err := repo.CompleteTask(opts.TaskID, opts.Summary, opts.FilesModified); err != nil {
 		return &TaskResult{
@@ -377,19 +425,10 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		return nil, fmt.Errorf("get completed task: %w", err)
 	}
 
-	// Get working directory for git operations and sentinel verification
-	workDir, _ := os.Getwd()
-
 	// Run Sentinel analysis with git verification to detect deviations from plan
 	// Git verification catches cases where an agent lies about what files it modified
 	sentinel := task.NewSentinel()
 	sentinelReport := sentinel.AnalyzeWithVerification(ctx, completedTask, workDir)
-
-	// Check if there are more pending tasks
-	plan, err := repo.GetPlan(completedTask.PlanID)
-	if err != nil {
-		return nil, fmt.Errorf("get plan: %w", err)
-	}
 
 	// Git auto-commit and push
 	var gitBranch string
