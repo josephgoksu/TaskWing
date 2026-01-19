@@ -530,9 +530,22 @@ var planStartCmd = &cobra.Command{
 var planStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show the current active plan and progress",
+	Long: `Show the status of the current active plan including progress.
+
+Displays the plan goal, task counts, and completion percentage.
+
+Examples:
+  taskwing plan status
+  taskwing plan status --json`,
 	RunE: runWithService(func(svc *task.Service, cmd *cobra.Command, args []string) error {
 		planID, err := svc.GetActivePlanID()
 		if err != nil || planID == "" {
+			if isJSON() {
+				return printJSON(map[string]any{
+					"success": false,
+					"message": "No active plan",
+				})
+			}
 			fmt.Println("No active plan. Set one with: tw plan start <plan-id>")
 			return nil
 		}
@@ -540,13 +553,70 @@ var planStatusCmd = &cobra.Command{
 		plan, err := svc.GetPlanWithTasks(planID)
 		if err != nil {
 			_ = svc.ClearActivePlan()
+			if isJSON() {
+				return printJSON(map[string]any{
+					"success": false,
+					"message": fmt.Sprintf("Active plan %s no longer exists", planID),
+				})
+			}
 			fmt.Printf("Active plan %s no longer exists. Cleared.\n", planID)
 			return nil
+		}
+
+		if isJSON() {
+			return printPlanStatusJSON(plan)
 		}
 
 		printStatus(plan)
 		return nil
 	}),
+}
+
+// PlanStatusResponse is the JSON response for plan status
+type PlanStatusResponse struct {
+	Success     bool   `json:"success"`
+	PlanID      string `json:"plan_id"`
+	Goal        string `json:"goal"`
+	Status      string `json:"status"`
+	Total       int    `json:"total_tasks"`
+	Completed   int    `json:"completed_tasks"`
+	Pending     int    `json:"pending_tasks"`
+	InProgress  int    `json:"in_progress_tasks"`
+	ProgressPct int    `json:"progress_percent"`
+}
+
+func printPlanStatusJSON(plan *task.Plan) error {
+	completed := 0
+	inProgress := 0
+	pending := 0
+	for _, t := range plan.Tasks {
+		switch t.Status {
+		case task.StatusCompleted:
+			completed++
+		case task.StatusInProgress:
+			inProgress++
+		default:
+			pending++
+		}
+	}
+
+	total := len(plan.Tasks)
+	progressPct := 0
+	if total > 0 {
+		progressPct = completed * 100 / total
+	}
+
+	return printJSON(PlanStatusResponse{
+		Success:     true,
+		PlanID:      plan.ID,
+		Goal:        plan.Goal,
+		Status:      string(plan.Status),
+		Total:       total,
+		Completed:   completed,
+		Pending:     pending,
+		InProgress:  inProgress,
+		ProgressPct: progressPct,
+	})
 }
 
 func printStatus(plan *task.Plan) {

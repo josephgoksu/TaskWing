@@ -708,6 +708,11 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 		return &PlanToolResult{
 			Action: "clarify",
 			Error:  "goal is required for clarify action",
+			Content: FormatMultiValidationError(
+				"clarify",
+				[]string{"goal"},
+				"Provide a development goal describing what you want to build or accomplish.",
+			),
 		}, nil
 	}
 
@@ -735,19 +740,27 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 
 // handlePlanGenerate implements the 'generate' action - create a plan with tasks.
 func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
-	// Validate required fields
+	// Validate ALL required fields at once to avoid sequential error frustration
 	goal := strings.TrimSpace(params.Goal)
-	if goal == "" {
-		return &PlanToolResult{
-			Action: "generate",
-			Error:  "goal is required for generate action",
-		}, nil
-	}
 	enrichedGoal := strings.TrimSpace(params.EnrichedGoal)
+
+	var missingFields []string
+	if goal == "" {
+		missingFields = append(missingFields, "goal")
+	}
 	if enrichedGoal == "" {
+		missingFields = append(missingFields, "enriched_goal")
+	}
+
+	if len(missingFields) > 0 {
 		return &PlanToolResult{
 			Action: "generate",
-			Error:  "enriched_goal is required for generate action",
+			Error:  fmt.Sprintf("missing required fields: %v", missingFields),
+			Content: FormatMultiValidationError(
+				"generate",
+				missingFields,
+				"First call `plan clarify` to refine your goal into an enriched specification, then pass both `goal` (original) and `enriched_goal` (specification from clarify) to generate.",
+			),
 		}, nil
 	}
 
