@@ -568,6 +568,22 @@ func FormatValidationError(field, message string) string {
 	return fmt.Sprintf("## ❌ Validation Error\n\n**Field**: `%s`\n**Details**: %s", field, message)
 }
 
+// FormatMultiValidationError returns a Markdown error for multiple validation failures.
+// This helps LLMs understand all required fields at once rather than failing sequentially.
+func FormatMultiValidationError(action string, missingFields []string, guidance string) string {
+	var sb strings.Builder
+	sb.WriteString("## ❌ Validation Error\n\n")
+	fmt.Fprintf(&sb, "**Action**: `%s`\n\n", action)
+	sb.WriteString("**Missing Required Fields**:\n")
+	for _, f := range missingFields {
+		fmt.Fprintf(&sb, "- `%s`\n", f)
+	}
+	if guidance != "" {
+		fmt.Fprintf(&sb, "\n**Guidance**: %s", guidance)
+	}
+	return sb.String()
+}
+
 // === Summary Formatter ===
 
 // FormatSummary converts a ProjectSummary into token-efficient Markdown.
