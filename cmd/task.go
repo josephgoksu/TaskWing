@@ -722,7 +722,7 @@ func init() {
 	taskNextCmd.Flags().StringVar(&taskNextPlanID, "plan", "", "Specific plan ID (defaults to active plan)")
 	taskNextCmd.Flags().StringVar(&taskNextSessionID, "session", "", "Session ID for auto-start")
 	taskNextCmd.Flags().BoolVar(&taskNextAutoStart, "auto-start", false, "Automatically claim the task")
-	taskNextCmd.Flags().BoolVar(&taskNextCreateBranch, "create-branch", false, "Create a new git branch for this plan")
+	taskNextCmd.Flags().BoolVar(&taskNextCreateBranch, "create-branch", true, "Create a new git branch for this plan")
 	taskNextCmd.Flags().BoolVar(&taskNextSkipUnpushedCheck, "skip-unpushed-check", false, "Proceed despite unpushed commits (only with --create-branch)")
 
 	// Task current flags

@@ -46,8 +46,8 @@ type TaskNextOptions struct {
 	PlanID            string // Optional: specific plan ID (defaults to active)
 	SessionID         string // Required for auto-start: unique session ID
 	AutoStart         bool   // If true, automatically claim the task
-	CreateBranch      bool   // If true, create a new git branch for this plan (default: false, work on current branch)
-	SkipUnpushedCheck bool   // If true, proceed despite unpushed commits (only relevant if CreateBranch=true)
+	CreateBranch      bool   // Create a new git branch for this plan (default: true)
+	SkipUnpushedCheck bool   // If true, proceed despite unpushed commits
 }
 
 // TaskStartOptions configures the behavior of starting a task.
@@ -117,8 +117,8 @@ func (a *TaskApp) Next(ctx context.Context, opts TaskNextOptions) (*TaskResult, 
 		}, nil
 	}
 
-	// Git workflow - only runs if explicitly requested via CreateBranch
-	// Default is NO branch creation (user must opt-in)
+	// Git workflow - creates feature branch by default
+	// Set CreateBranch=false to skip branch creation
 	var gitBranch string
 	var gitWorkflowApplied bool
 
@@ -134,6 +134,15 @@ func (a *TaskApp) Next(ctx context.Context, opts TaskNextOptions) (*TaskResult, 
 					Hint:               "Push your commits first, or use skip_unpushed_check option.",
 					GitUnpushedCommits: true,
 					GitUnpushedBranch:  unpushedErr.Branch,
+				}, nil
+			}
+			// Check for unrelated branch error
+			if git.IsUnrelatedBranchError(gitErr) {
+				unrelatedErr := gitErr.(*git.UnrelatedBranchError)
+				return &TaskResult{
+					Success: false,
+					Message: fmt.Sprintf("You are on branch %q which is unrelated to this plan. Switch to %q or %q first, or set create_branch=false to work on current branch.", unrelatedErr.CurrentBranch, "main", unrelatedErr.ExpectedBranch),
+					Hint:    "Run: git checkout main, or set create_branch=false to stay on current branch.",
 				}, nil
 			}
 			// For other git errors, continue (git workflow is optional)

@@ -161,8 +161,8 @@ type TaskToolParams struct {
 	AutoStart bool `json:"auto_start,omitempty"`
 
 	// CreateBranch creates a new git branch for this plan.
-	// Optional for: next (default: false)
-	CreateBranch bool `json:"create_branch,omitempty"`
+	// Optional for: next (default: true)
+	CreateBranch *bool `json:"create_branch,omitempty"`
 
 	// SkipUnpushedCheck proceeds despite unpushed commits.
 	// Optional for: next (only if create_branch=true)

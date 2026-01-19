@@ -34,6 +34,22 @@ func IsUnpushedCommitsError(err error) bool {
 	return ok
 }
 
+// UnrelatedBranchError is returned when user is on a feature branch unrelated to the plan.
+type UnrelatedBranchError struct {
+	CurrentBranch  string
+	ExpectedBranch string
+}
+
+func (e *UnrelatedBranchError) Error() string {
+	return fmt.Sprintf("currently on branch %q which is unrelated to plan branch %q", e.CurrentBranch, e.ExpectedBranch)
+}
+
+// IsUnrelatedBranchError checks if an error is an UnrelatedBranchError.
+func IsUnrelatedBranchError(err error) bool {
+	_, ok := err.(*UnrelatedBranchError)
+	return ok
+}
+
 // StartPlanWorkflow orchestrates the git context switch for starting a new plan.
 // It handles:
 // 1. Auto-stashing dirty changes
@@ -100,7 +116,7 @@ func (c *Client) StartPlanWorkflow(planID, planTitle string, skipUnpushedCheck b
 		}
 	}
 
-	// Step 3: Detect and checkout default branch
+	// Step 3: Detect default branch and check if on unrelated branch
 	defaultBranch, err := c.DefaultBranch()
 	if err != nil {
 		if result.WasStashed {
@@ -110,7 +126,27 @@ func (c *Client) StartPlanWorkflow(planID, planTitle string, skipUnpushedCheck b
 	}
 	result.DefaultBranch = defaultBranch
 
-	// Only checkout if not already on default branch
+	// Check if user is on an unrelated feature branch (not default, not the plan's branch)
+	expectedBranch := GenerateBranchName(planID, planTitle)
+	if currentBranch != defaultBranch && currentBranch != expectedBranch {
+		// Restore stash before returning - let caller decide what to do
+		if result.WasStashed {
+			_ = c.StashPop()
+			result.WasStashed = false
+		}
+		return nil, &UnrelatedBranchError{
+			CurrentBranch:  currentBranch,
+			ExpectedBranch: expectedBranch,
+		}
+	}
+
+	// If already on expected branch, just return success
+	if currentBranch == expectedBranch {
+		result.BranchName = currentBranch
+		return result, nil
+	}
+
+	// We're on default branch - checkout default to ensure we're there, then pull
 	if currentBranch != defaultBranch {
 		if err := c.Checkout(defaultBranch); err != nil {
 			if result.WasStashed {
@@ -147,28 +183,30 @@ func (c *Client) StartPlanWorkflow(planID, planTitle string, skipUnpushedCheck b
 }
 
 // GenerateBranchName creates a sanitized branch name from plan ID and title.
-// Format: feat/plan-{id}-{slug}
+// Format: feat/{slug}-{short-id} to ensure uniqueness across plans with similar goals.
 func GenerateBranchName(planID, planTitle string) string {
 	slug := Slugify(planTitle)
 
+	// Extract short ID (last 6 chars) for uniqueness without clutter
+	shortID := planID
+	if len(planID) > 6 {
+		shortID = planID[len(planID)-6:]
+	}
+
 	// Truncate slug if too long - keep branch names concise
-	const maxSlugLen = 20
+	// Reserve space for "-" + shortID (7 chars)
+	const maxSlugLen = 43
 	if len(slug) > maxSlugLen {
 		slug = slug[:maxSlugLen]
 		// Don't end with a hyphen
 		slug = strings.TrimSuffix(slug, "-")
 	}
 
-	// Extract short ID (last 8 chars if it's a longer ID)
-	shortID := planID
-	if len(planID) > 8 {
-		shortID = planID[len(planID)-8:]
-	}
-
+	// Fallback to just ID if title is empty
 	if slug == "" {
-		return fmt.Sprintf("feat/plan-%s", shortID)
+		return fmt.Sprintf("feat/%s", shortID)
 	}
-	return fmt.Sprintf("feat/plan-%s-%s", shortID, slug)
+	return fmt.Sprintf("feat/%s-%s", slug, shortID)
 }
 
 // Slugify converts a string to a URL/branch-safe slug.

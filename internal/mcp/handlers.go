@@ -539,11 +539,17 @@ func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToo
 	appCtx := app.NewContext(repo)
 	taskApp := app.NewTaskApp(appCtx)
 
+	// Default CreateBranch to true if not explicitly provided
+	createBranch := true
+	if params.CreateBranch != nil {
+		createBranch = *params.CreateBranch
+	}
+
 	result, err := taskApp.Next(ctx, app.TaskNextOptions{
 		PlanID:            params.PlanID,
 		SessionID:         params.SessionID,
 		AutoStart:         params.AutoStart,
-		CreateBranch:      params.CreateBranch,
+		CreateBranch:      createBranch,
 		SkipUnpushedCheck: params.SkipUnpushedCheck,
 	})
 	if err != nil {
