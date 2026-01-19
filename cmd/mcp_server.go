@@ -266,6 +266,25 @@ func runMCPServer(ctx context.Context) error {
 		return mcpMarkdownResponse(result.Content)
 	})
 
+	// Register 'policy' tool - OPA-powered policy enforcement for enterprise guardrails
+	policyTool := &mcpsdk.Tool{
+		Name: "policy",
+		Description: `Evaluate code changes against OPA policies for enterprise compliance.
+- check: Evaluate files against loaded Rego policies
+- list: List all loaded policy files
+- explain: Show policy rules and their purpose`,
+	}
+	mcpsdk.AddTool(server, policyTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.PolicyToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		result, err := mcppresenter.HandlePolicyTool(ctx, params.Arguments)
+		if err != nil {
+			return mcpErrorResponse(err)
+		}
+		if result.Error != "" {
+			return mcpFormattedErrorResponse(mcppresenter.FormatError(result.Error))
+		}
+		return mcpMarkdownResponse(result.Content)
+	})
+
 	// Run the server (stdio transport only)
 	if err := server.Run(ctx, mcpsdk.NewStdioTransport()); err != nil {
 		return fmt.Errorf("MCP server failed: %w", err)

@@ -237,3 +237,58 @@ type PlanToolParams struct {
 	// Optional for: audit (default: true)
 	AutoFix *bool `json:"auto_fix,omitempty"`
 }
+
+// PolicyAction defines the valid actions for the unified policy tool.
+type PolicyAction string
+
+const (
+	PolicyActionCheck   PolicyAction = "check"
+	PolicyActionList    PolicyAction = "list"
+	PolicyActionExplain PolicyAction = "explain"
+)
+
+// ValidPolicyActions returns all valid policy actions.
+func ValidPolicyActions() []PolicyAction {
+	return []PolicyAction{PolicyActionCheck, PolicyActionList, PolicyActionExplain}
+}
+
+// IsValid checks if the action is a valid policy action.
+func (a PolicyAction) IsValid() bool {
+	switch a {
+	case PolicyActionCheck, PolicyActionList, PolicyActionExplain:
+		return true
+	}
+	return false
+}
+
+// PolicyToolParams defines the parameters for the unified policy tool.
+// Consolidates: policy check, policy list, policy explain
+type PolicyToolParams struct {
+	// Action specifies which operation to perform.
+	// Required. One of: check, list, explain
+	Action PolicyAction `json:"action"`
+
+	// Files is a list of file paths to check against policies.
+	// Required for: check
+	Files []string `json:"files,omitempty"`
+
+	// TaskID is the task context for policy evaluation.
+	// Optional for: check (provides task metadata to policies)
+	TaskID string `json:"task_id,omitempty"`
+
+	// TaskTitle is the task title for policy evaluation.
+	// Optional for: check
+	TaskTitle string `json:"task_title,omitempty"`
+
+	// PlanID is the plan context for policy evaluation.
+	// Optional for: check
+	PlanID string `json:"plan_id,omitempty"`
+
+	// PlanGoal is the plan goal for policy evaluation.
+	// Optional for: check
+	PlanGoal string `json:"plan_goal,omitempty"`
+
+	// PolicyName is the name of a specific policy to explain.
+	// Optional for: explain (if not provided, lists all rules)
+	PolicyName string `json:"policy_name,omitempty"`
+}

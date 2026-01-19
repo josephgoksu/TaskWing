@@ -256,6 +256,9 @@ func (m BootstrapModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if allDone {
+			// Close the stream to unblock any pending listenForEvents commands
+			// before quitting. This prevents the TUI from hanging.
+			m.ResultsChan.Close()
 			return m, tea.Quit
 		}
 	}

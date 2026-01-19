@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/policy"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -33,6 +35,11 @@ type HookSession struct {
 	LastTaskHadCriticalDeviation bool   `json:"last_task_had_critical_deviation,omitempty"`
 	LastDeviationSummary         string `json:"last_deviation_summary,omitempty"`
 	TotalDeviationsDetected      int    `json:"total_deviations_detected,omitempty"`
+
+	// Policy tracking for policy circuit breaker
+	LastTaskHadPolicyViolation bool     `json:"last_task_had_policy_violation,omitempty"`
+	LastPolicyViolations       []string `json:"last_policy_violations,omitempty"`
+	TotalPolicyViolations      int      `json:"total_policy_violations,omitempty"`
 }
 
 // HookResponse is the JSON response format for Claude Code Stop hooks.
@@ -199,6 +206,20 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 		})
 	}
 
+	// Circuit breaker 4: Policy violation detected in last task
+	if session.LastTaskHadPolicyViolation {
+		// Clear the flag for next check (human has been notified)
+		violations := session.LastPolicyViolations
+		session.LastTaskHadPolicyViolation = false
+		session.LastPolicyViolations = nil
+		_ = saveHookSession(session)
+
+		violationSummary := strings.Join(violations, "\n- ")
+		return outputHookResponse(HookResponse{
+			Reason: fmt.Sprintf("Policy circuit breaker: Task violated the following policies:\n- %s\n\nReview the changes before proceeding. The task may need to be reverted.", violationSummary),
+		})
+	}
+
 	// Open repository
 	repo, err := openRepo()
 	if err != nil {
@@ -276,6 +297,14 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 			if report.HasCriticalDeviations() {
 				session.LastTaskHadCriticalDeviation = true
 			}
+		}
+
+		// Run policy evaluation on completed task
+		policyResult := evaluateTaskPolicy(context.Background(), currentTask, activePlan.Goal, session.SessionID, workDir)
+		if policyResult != nil && !policyResult.Allowed {
+			session.TotalPolicyViolations += len(policyResult.Violations)
+			session.LastPolicyViolations = policyResult.Violations
+			session.LastTaskHadPolicyViolation = true
 		}
 	}
 	session.CurrentTaskID = nextTask.ID
@@ -456,4 +485,46 @@ func outputHookResponse(resp HookResponse) error {
 // Uses config.LoadLLMConfigForRole - single source of truth.
 func getLLMConfigFromViper() (llm.Config, error) {
 	return config.LoadLLMConfigForRole(llm.RoleQuery)
+}
+
+// evaluateTaskPolicy runs policy evaluation on a completed task.
+// Returns the enforcement result or nil if policies aren't configured.
+func evaluateTaskPolicy(ctx context.Context, t *task.Task, planGoal, sessionID, workDir string) *task.PolicyEnforcementResult {
+	if t == nil {
+		return nil
+	}
+
+	// Try to load policy engine
+	policiesDir := policy.GetPoliciesPath(workDir)
+	engine, err := policy.NewEngine(policy.EngineConfig{
+		WorkDir:     workDir,
+		PoliciesDir: policiesDir,
+	})
+	if err != nil {
+		// Log but don't fail - policies are optional
+		if viper.GetBool("verbose") {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Could not load policy engine: %v\n", err)
+		}
+		return nil
+	}
+
+	// If no policies loaded, skip evaluation
+	if engine.PolicyCount() == 0 {
+		return nil
+	}
+
+	// Create audit store if we have a database connection
+	var auditStore *policy.AuditStore
+	repo, err := openRepo()
+	if err == nil {
+		defer func() { _ = repo.Close() }()
+		auditStore = policy.NewAuditStore(repo.GetDB().DB())
+	}
+
+	// Create policy evaluator adapter
+	adapter := policy.NewPolicyEvaluatorAdapter(engine, auditStore, sessionID)
+
+	// Create enforcer and evaluate
+	enforcer := task.NewPolicyEnforcer(adapter, sessionID)
+	return enforcer.Enforce(ctx, t, planGoal)
 }

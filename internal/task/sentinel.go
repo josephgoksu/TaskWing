@@ -413,3 +413,128 @@ func (s *Sentinel) generateSummaryWithVerification(report *SentinelReport) strin
 
 	return summary
 }
+
+// PolicyEnforcementResult contains the result of policy enforcement.
+type PolicyEnforcementResult struct {
+	Allowed    bool     `json:"allowed"`
+	Violations []string `json:"violations,omitempty"`
+	DecisionID string   `json:"decision_id,omitempty"`
+	Error      error    `json:"error,omitempty"`
+}
+
+// PolicyTaskInput is the data structure passed to policy evaluators.
+type PolicyTaskInput struct {
+	ID            string   `json:"id"`
+	Title         string   `json:"title"`
+	Description   string   `json:"description"`
+	FilesModified []string `json:"files_modified"`
+	FilesCreated  []string `json:"files_created"`
+}
+
+// PolicyPlanInput is optional plan context for policy evaluation.
+type PolicyPlanInput struct {
+	ID   string `json:"id"`
+	Goal string `json:"goal"`
+}
+
+// PolicyEvaluator is the interface for evaluating tasks against policies.
+// This is implemented by policy.PolicyEvaluatorAdapter but defined here to avoid import cycles.
+// Uses primitive types to prevent import cycles between task and policy packages.
+type PolicyEvaluator interface {
+	// EvaluateTaskPolicy evaluates a task against loaded policies.
+	// Returns whether allowed, any violations, and the decision ID.
+	EvaluateTaskPolicy(ctx context.Context, taskID, taskTitle, taskDescription string, filesModified, filesCreated []string, planID, planGoal string) (allowed bool, violations []string, decisionID string, err error)
+	// EvaluateFilesPolicy checks if file modifications are allowed.
+	EvaluateFilesPolicy(ctx context.Context, filesModified, filesCreated []string) (allowed bool, violations []string, decisionID string, err error)
+	// PolicyCount returns the number of loaded policies.
+	PolicyCount() int
+}
+
+// PolicyEnforcer enforces OPA policies on task completion.
+// It evaluates tasks against loaded policies and records decisions.
+type PolicyEnforcer struct {
+	evaluator PolicyEvaluator
+	sessionID string
+}
+
+// NewPolicyEnforcer creates a new PolicyEnforcer with the given evaluator.
+// If evaluator is nil, all tasks will be allowed by default.
+func NewPolicyEnforcer(evaluator PolicyEvaluator, sessionID string) *PolicyEnforcer {
+	return &PolicyEnforcer{
+		evaluator: evaluator,
+		sessionID: sessionID,
+	}
+}
+
+// Enforce evaluates the task against loaded policies.
+// Returns the enforcement result indicating whether the task is allowed to proceed.
+// If the result indicates denial, the task should be transitioned to 'failed' status.
+func (pe *PolicyEnforcer) Enforce(ctx context.Context, t *Task, planGoal string) *PolicyEnforcementResult {
+	if pe.evaluator == nil {
+		// No policy evaluator configured - allow by default
+		return &PolicyEnforcementResult{
+			Allowed: true,
+		}
+	}
+
+	// Evaluate against policies using primitives (avoids import cycle)
+	allowed, violations, decisionID, err := pe.evaluator.EvaluateTaskPolicy(
+		ctx,
+		t.ID,
+		t.Title,
+		t.Description,
+		t.FilesModified,
+		[]string{}, // filesCreated - we don't track this separately
+		t.PlanID,
+		planGoal,
+	)
+	if err != nil {
+		return &PolicyEnforcementResult{
+			Allowed: false,
+			Error:   fmt.Errorf("policy evaluation failed: %w", err),
+		}
+	}
+
+	return &PolicyEnforcementResult{
+		Allowed:    allowed,
+		Violations: violations,
+		DecisionID: decisionID,
+	}
+}
+
+// EnforceFiles is a convenience method for checking if file modifications are allowed.
+// This can be called during task execution to pre-validate file changes.
+func (pe *PolicyEnforcer) EnforceFiles(ctx context.Context, filesModified, filesCreated []string) *PolicyEnforcementResult {
+	if pe.evaluator == nil {
+		return &PolicyEnforcementResult{
+			Allowed: true,
+		}
+	}
+
+	allowed, violations, decisionID, err := pe.evaluator.EvaluateFilesPolicy(ctx, filesModified, filesCreated)
+	if err != nil {
+		return &PolicyEnforcementResult{
+			Allowed: false,
+			Error:   fmt.Errorf("policy evaluation failed: %w", err),
+		}
+	}
+
+	return &PolicyEnforcementResult{
+		Allowed:    allowed,
+		Violations: violations,
+		DecisionID: decisionID,
+	}
+}
+
+// HasPolicies returns true if the enforcer has policies loaded.
+func (pe *PolicyEnforcer) HasPolicies() bool {
+	return pe.evaluator != nil && pe.evaluator.PolicyCount() > 0
+}
+
+// PolicyCount returns the number of loaded policies.
+func (pe *PolicyEnforcer) PolicyCount() int {
+	if pe.evaluator == nil {
+		return 0
+	}
+	return pe.evaluator.PolicyCount()
+}

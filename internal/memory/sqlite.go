@@ -344,6 +344,28 @@ func (s *SQLiteStore) initSchema() error {
 		content='symbols',
 		content_rowid='id'
 	);
+
+	-- === Policy-as-Code (OPA) Tables ===
+	-- These tables support enterprise policy enforcement via embedded OPA engine.
+	-- Policies are defined in .taskwing/policies/*.rego files and evaluated locally.
+
+	-- Policy decisions audit trail (compliance logging)
+	CREATE TABLE IF NOT EXISTS policy_decisions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		decision_id TEXT UNIQUE NOT NULL,   -- UUID for referencing in logs
+		policy_path TEXT NOT NULL,          -- Rego package path (e.g., "taskwing.policy")
+		result TEXT NOT NULL,               -- "allow" or "deny"
+		violations TEXT,                    -- JSON array of deny messages
+		input_json TEXT NOT NULL,           -- Full OPA input for replay/audit
+		task_id TEXT,                       -- Optional: task that triggered evaluation
+		session_id TEXT,                    -- Optional: session context
+		evaluated_at TEXT NOT NULL          -- ISO8601 timestamp
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_policy_decisions_task ON policy_decisions(task_id);
+	CREATE INDEX IF NOT EXISTS idx_policy_decisions_session ON policy_decisions(session_id);
+	CREATE INDEX IF NOT EXISTS idx_policy_decisions_result ON policy_decisions(result);
+	CREATE INDEX IF NOT EXISTS idx_policy_decisions_evaluated_at ON policy_decisions(evaluated_at);
 	`
 
 	// Execute main schema

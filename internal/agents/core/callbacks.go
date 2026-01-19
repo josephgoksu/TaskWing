@@ -189,6 +189,7 @@ type StreamingOutput struct {
 	done      chan struct{}
 	observers []func(StreamEvent)
 	mu        sync.RWMutex
+	closeOnce sync.Once
 }
 
 // StreamEvent represents a single event in the agent execution stream
@@ -256,10 +257,12 @@ func (s *StreamingOutput) Emit(eventType StreamEventType, agent, content string,
 	}
 }
 
-// Close closes the streaming output
+// Close closes the streaming output. Safe to call multiple times.
 func (s *StreamingOutput) Close() {
-	close(s.done)
-	close(s.Events)
+	s.closeOnce.Do(func() {
+		close(s.done)
+		close(s.Events)
+	})
 }
 
 // AddObserver registers a callback that receives all events.

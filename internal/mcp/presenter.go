@@ -12,6 +12,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/policy"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -1079,4 +1080,116 @@ func getIntFromMetadata(m map[string]any, key string) int {
 		return v
 	}
 	return 0
+}
+
+// === Policy Formatters ===
+
+// FormatPolicyCheckResult formats policy check results into Markdown.
+func FormatPolicyCheckResult(decision *policy.PolicyDecision, files []string) string {
+	if decision == nil {
+		return FormatError("No policy decision available.")
+	}
+
+	var sb strings.Builder
+
+	// Status header
+	if decision.IsAllowed() {
+		sb.WriteString("## ✅ Policy Check Passed\n\n")
+	} else {
+		sb.WriteString("## ❌ Policy Violations Detected\n\n")
+	}
+
+	// Files checked
+	sb.WriteString(fmt.Sprintf("**Files checked**: %d\n", len(files)))
+	sb.WriteString(fmt.Sprintf("**Decision ID**: `%s`\n\n", decision.DecisionID))
+
+	// List files
+	if len(files) > 0 {
+		sb.WriteString("### Files\n")
+		for _, f := range files {
+			sb.WriteString(fmt.Sprintf("- %s\n", f))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Violations
+	if len(decision.Violations) > 0 {
+		sb.WriteString("### Violations\n")
+		for _, v := range decision.Violations {
+			sb.WriteString(fmt.Sprintf("- %s\n", v))
+		}
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatPolicyList formats a list of policies into Markdown.
+func FormatPolicyList(policies []*policy.PolicyFile, policiesDir string) string {
+	var sb strings.Builder
+
+	sb.WriteString("## OPA Policies\n\n")
+	sb.WriteString(fmt.Sprintf("**Directory**: `%s`\n", policiesDir))
+	sb.WriteString(fmt.Sprintf("**Count**: %d policy file(s)\n\n", len(policies)))
+
+	if len(policies) == 0 {
+		sb.WriteString("No policies loaded.\n")
+		sb.WriteString("Run `tw policy init` to create the default policy.\n")
+		return sb.String()
+	}
+
+	sb.WriteString("### Loaded Policies\n")
+	for _, p := range policies {
+		sb.WriteString(fmt.Sprintf("- **%s** (`%s`)\n", p.Name, p.Path))
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatPolicyExplain formats a single policy explanation into Markdown.
+func FormatPolicyExplain(p *policy.PolicyFile) string {
+	if p == nil {
+		return FormatError("No policy available.")
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("## Policy: %s\n\n", p.Name))
+	sb.WriteString(fmt.Sprintf("**Path**: `%s`\n\n", p.Path))
+	sb.WriteString("### Source\n")
+	sb.WriteString("```rego\n")
+	sb.WriteString(p.Content)
+	sb.WriteString("\n```\n")
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatPoliciesExplain formats multiple policy explanations into Markdown.
+func FormatPoliciesExplain(policies []*policy.PolicyFile) string {
+	if len(policies) == 0 {
+		return "No policies loaded.\nRun `tw policy init` to create the default policy."
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("## OPA Policies (%d)\n\n", len(policies)))
+
+	for i, p := range policies {
+		if i > 0 {
+			sb.WriteString("\n---\n\n")
+		}
+		sb.WriteString(fmt.Sprintf("### %s\n\n", p.Name))
+		sb.WriteString(fmt.Sprintf("**Path**: `%s`\n\n", p.Path))
+		sb.WriteString("```rego\n")
+		// Limit to first 50 lines for token efficiency
+		lines := strings.Split(p.Content, "\n")
+		if len(lines) > 50 {
+			sb.WriteString(strings.Join(lines[:50], "\n"))
+			sb.WriteString(fmt.Sprintf("\n// ...%d more lines\n", len(lines)-50))
+		} else {
+			sb.WriteString(p.Content)
+		}
+		sb.WriteString("\n```\n")
+	}
+
+	return strings.TrimSpace(sb.String())
 }

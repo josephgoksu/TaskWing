@@ -178,8 +178,9 @@ func repairJSON(input string) string {
 	return result
 }
 
-// sanitizeControlChars escapes literal control characters inside JSON strings.
-// LLMs often output raw tabs, newlines, etc. which are invalid in JSON.
+// sanitizeControlChars escapes literal control characters and invalid escape sequences
+// inside JSON strings. LLMs often output raw tabs, newlines, and regex patterns like
+// \s, \d, \w which are invalid in JSON (only \", \\, \/, \b, \f, \n, \r, \t, \uXXXX are valid).
 func sanitizeControlChars(input string) string {
 	var result strings.Builder
 	result.Grow(len(input))
@@ -191,7 +192,22 @@ func sanitizeControlChars(input string) string {
 		c := input[i]
 
 		if escaped {
-			result.WriteByte(c)
+			// We just saw a backslash inside a string.
+			// Check if this is a valid JSON escape sequence.
+			// Valid: " \ / b f n r t u
+			switch c {
+			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
+				// Valid escape, write as-is
+				result.WriteByte(c)
+			case 'u':
+				// Unicode escape \uXXXX - write and let JSON parser validate the hex digits
+				result.WriteByte(c)
+			default:
+				// Invalid escape sequence (e.g., \s, \d, \w from regex patterns)
+				// Double the backslash to make it a literal backslash in JSON: \s -> \\s
+				result.WriteByte('\\')
+				result.WriteByte(c)
+			}
 			escaped = false
 			continue
 		}
