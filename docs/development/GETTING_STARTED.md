@@ -196,8 +196,23 @@ Now when you ask AI about your code, it has full project context with semantic s
 |---------|-------------|
 | `tw bootstrap` | Auto-generate from repo with LLM |
 | `tw bootstrap --preview` | Preview without saving |
+| `tw bootstrap --timeout=10m` | Set custom LLM timeout (default: 5m) |
 | `tw memory check` | Validate integrity |
 | `tw memory repair` | Fix integrity issues |
+
+**Environment Variables for Bootstrap:**
+
+| Variable | Description |
+|----------|-------------|
+| `TASKWING_LLM_TIMEOUT` | LLM request timeout (e.g., `5m`, `10m`). Overridden by `--timeout` flag. Default: 5m |
+
+```bash
+# For large codebases that may need longer analysis
+TASKWING_LLM_TIMEOUT=10m tw bootstrap
+
+# Or use the flag directly
+tw bootstrap --timeout=10m
+```
 
 ### MCP Server
 
