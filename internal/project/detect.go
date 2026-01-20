@@ -62,23 +62,34 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 		// Check for markers at current directory
 		marker := d.findMarkerAt(current)
 
-		// If .taskwing found, return immediately (highest priority)
-		if marker == MarkerTaskWing {
-			// Before returning, check if there's a .git at current or above
-			if gitRoot == "" {
-				gitRoot = d.findGitRoot(current)
-			}
-			return &Context{
-				RootPath:   current,
-				MarkerType: MarkerTaskWing,
-				GitRoot:    gitRoot,
-				IsMonorepo: gitRoot != "" && gitRoot != current,
-			}, nil
-		}
-
-		// Always check for .git to track git root (even if another marker was found first)
+		// Always check for .git to track git root FIRST (before .taskwing check)
+		// This is critical: we need to know if we've passed a .git before considering
+		// .taskwing directories that are above it.
 		if gitRoot == "" && d.hasGit(current) {
 			gitRoot = current
+		}
+
+		// If .taskwing found, check if it's a valid project marker
+		if marker == MarkerTaskWing {
+			// CRITICAL FIX: If we've already found a .git directory below this .taskwing,
+			// don't use this .taskwing as the project root. It's likely global config
+			// or belongs to a different project (e.g., ~/.taskwing).
+			// A valid project .taskwing should be AT or BELOW the git root, not above it.
+			if gitRoot != "" && gitRoot != current {
+				// .taskwing is above gitRoot - skip it, continue looking for language manifests
+				// or fall back to gitRoot
+			} else {
+				// .taskwing is at or below gitRoot (or no git found yet) - use it
+				if gitRoot == "" {
+					gitRoot = d.findGitRoot(current)
+				}
+				return &Context{
+					RootPath:   current,
+					MarkerType: MarkerTaskWing,
+					GitRoot:    gitRoot,
+					IsMonorepo: gitRoot != "" && gitRoot != current,
+				}, nil
+			}
 		}
 
 		// Track language manifest as candidate (but continue upward looking for .taskwing)

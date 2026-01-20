@@ -73,7 +73,7 @@ func TestExtractAndParseJSON_InvalidEscapeSequences(t *testing.T) {
 		},
 		{
 			name:    "nested invalid escapes in code snippet",
-			input:   `{"name": "code", "pattern": "func match(s string) bool {\n\treturn regexp.MustCompile(`+"`"+`\s+`+"`"+`).MatchString(s)\n}", "description": "code with regex"}`,
+			input:   `{"name": "code", "pattern": "func match(s string) bool {\n\treturn regexp.MustCompile(` + "`" + `\s+` + "`" + `).MatchString(s)\n}", "description": "code with regex"}`,
 			wantErr: false,
 		},
 	}
@@ -110,61 +110,61 @@ func TestExtractAndParseJSON_InvalidEscapeSequences(t *testing.T) {
 // of invalid JSON escape sequences.
 func TestSanitizeControlChars_InvalidEscapes(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  string
-		want   string
+		name  string
+		input string
+		want  string
 	}{
 		{
-			name:   "backslash-c inside string",
-			input:  `{"key": "value\c"}`,
-			want:   `{"key": "value\\c"}`,
+			name:  "backslash-c inside string",
+			input: `{"key": "value\c"}`,
+			want:  `{"key": "value\\c"}`,
 		},
 		{
-			name:   "backslash-s inside string",
-			input:  `{"key": "\s+"}`,
-			want:   `{"key": "\\s+"}`,
+			name:  "backslash-s inside string",
+			input: `{"key": "\s+"}`,
+			want:  `{"key": "\\s+"}`,
 		},
 		{
-			name:   "backslash-d inside string",
-			input:  `{"key": "\d{3}"}`,
-			want:   `{"key": "\\d{3}"}`,
+			name:  "backslash-d inside string",
+			input: `{"key": "\d{3}"}`,
+			want:  `{"key": "\\d{3}"}`,
 		},
 		{
-			name:   "backslash-w inside string",
-			input:  `{"key": "\w*"}`,
-			want:   `{"key": "\\w*"}`,
+			name:  "backslash-w inside string",
+			input: `{"key": "\w*"}`,
+			want:  `{"key": "\\w*"}`,
 		},
 		{
-			name:   "valid escapes preserved",
-			input:  `{"key": "line1\nline2\ttab"}`,
-			want:   `{"key": "line1\nline2\ttab"}`,
+			name:  "valid escapes preserved",
+			input: `{"key": "line1\nline2\ttab"}`,
+			want:  `{"key": "line1\nline2\ttab"}`,
 		},
 		{
-			name:   "mixed valid and invalid",
-			input:  `{"key": "\n\s\t\d"}`,
-			want:   `{"key": "\n\\s\t\\d"}`,
+			name:  "mixed valid and invalid",
+			input: `{"key": "\n\s\t\d"}`,
+			want:  `{"key": "\n\\s\t\\d"}`,
 		},
 		{
-			name:   "backslash outside string unchanged",
-			input:  `{"key": "value"}\extra`,
-			want:   `{"key": "value"}\extra`,
+			name:  "backslash outside string unchanged",
+			input: `{"key": "value"}\extra`,
+			want:  `{"key": "value"}\extra`,
 		},
 		{
 			// Note: \t is a valid JSON escape for tab, so it's preserved.
 			// The actual fix for Windows paths happens in the full repair pipeline.
-			name:   "Windows path - partial (t is valid escape)",
-			input:  `{"path": "C:\code\test"}`,
-			want:   `{"path": "C:\\code\test"}`,
+			name:  "Windows path - partial (t is valid escape)",
+			input: `{"path": "C:\code\test"}`,
+			want:  `{"path": "C:\\code\test"}`,
 		},
 		{
-			name:   "escaped backslash preserved",
-			input:  `{"key": "path\\to\\file"}`,
-			want:   `{"key": "path\\to\\file"}`,
+			name:  "escaped backslash preserved",
+			input: `{"key": "path\\to\\file"}`,
+			want:  `{"key": "path\\to\\file"}`,
 		},
 		{
-			name:   "escaped quote preserved",
-			input:  `{"key": "say \"hello\""}`,
-			want:   `{"key": "say \"hello\""}`,
+			name:  "escaped quote preserved",
+			input: `{"key": "say \"hello\""}`,
+			want:  `{"key": "say \"hello\""}`,
 		},
 	}
 
@@ -203,7 +203,7 @@ func TestRepairJSON_InvalidEscapes(t *testing.T) {
 		},
 		{
 			name:      "complex code snippet with escapes",
-			input:     `{"code": "if match, _ := regexp.MatchString(`+"`"+`\s+`+"`"+`, s); match {\n\tfmt.Println(\"found\")\n}"}`,
+			input:     `{"code": "if match, _ := regexp.MatchString(` + "`" + `\s+` + "`" + `, s); match {\n\tfmt.Println(\"found\")\n}"}`,
 			wantValid: true,
 		},
 	}
@@ -332,7 +332,7 @@ func TestExtractAndParseJSON_LLMCodeAnalysis(t *testing.T) {
 			"evidence": [{
 				"file_path": "internal/utils/parser.go",
 				"start_line": 15,
-				"snippet": "regexp.MustCompile(`+"`"+`^\s*(\w+)\s*=\s*(.*)$`+"`"+`)"
+				"snippet": "regexp.MustCompile(` + "`" + `^\s*(\w+)\s*=\s*(.*)$` + "`" + `)"
 			}]
 		}]
 	}`

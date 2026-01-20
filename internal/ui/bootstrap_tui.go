@@ -241,6 +241,13 @@ func (m BootstrapModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					state.Status = StatusError
 					state.Err = msg.Err
 					state.Message = fmt.Sprintf("Error: %v", msg.Err)
+				} else if msg.Output != nil && msg.Output.Error != nil {
+					// Task 3: Agent returned successfully but with an embedded error/warning
+					// This happens when agent processes data but finds nothing meaningful
+					state.Status = StatusDone // Show as done (not error) since agent completed
+					state.Result = msg.Output
+					state.Message = fmt.Sprintf("Warning: %v", msg.Output.Error)
+					m.Results = append(m.Results, *msg.Output)
 				} else {
 					state.Status = StatusDone
 					state.Result = msg.Output
