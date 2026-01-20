@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	geminiEmbed "github.com/cloudwego/eino-ext/components/embedding/gemini"
@@ -21,7 +23,33 @@ import (
 )
 
 // DefaultRequestTimeout is the default timeout for LLM chat requests.
-const DefaultRequestTimeout = 2 * time.Minute
+// Increased from 2 minutes to 5 minutes to support bootstrap analysis of large codebases.
+const DefaultRequestTimeout = 5 * time.Minute
+
+// TimeoutEnvVar is the environment variable name for overriding the LLM request timeout.
+const TimeoutEnvVar = "TASKWING_LLM_TIMEOUT"
+
+// GetEffectiveTimeout returns the timeout to use for LLM requests.
+// Priority: 1) cfg.Timeout if set, 2) TASKWING_LLM_TIMEOUT env var, 3) DefaultRequestTimeout
+func GetEffectiveTimeout(cfg *Config) time.Duration {
+	// 1. If config explicitly sets a timeout, use it
+	if cfg != nil && cfg.Timeout > 0 {
+		return cfg.Timeout
+	}
+
+	// 2. Check environment variable
+	if envVal := os.Getenv(TimeoutEnvVar); envVal != "" {
+		if d, err := time.ParseDuration(envVal); err == nil {
+			return d
+		}
+		// Log warning but don't fail - fall back to default
+		log.Printf("Warning: invalid %s value %q (expected duration like '5m' or '300s'), using default %v",
+			TimeoutEnvVar, envVal, DefaultRequestTimeout)
+	}
+
+	// 3. Default timeout
+	return DefaultRequestTimeout
+}
 
 // Provider identifies the LLM provider to use.
 type Provider string
@@ -86,10 +114,7 @@ func (g *genaiClientCloser) Close() error {
 // NewCloseableChatModel creates a ChatModel with proper resource management.
 // Callers MUST call Close() when done to release resources.
 func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel, error) {
-	timeout := cfg.Timeout
-	if timeout == 0 {
-		timeout = DefaultRequestTimeout
-	}
+	timeout := GetEffectiveTimeout(&cfg)
 
 	switch cfg.Provider {
 	case ProviderOpenAI:
