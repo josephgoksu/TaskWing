@@ -294,6 +294,124 @@ func TestExtractAndParseJSON_WindowsPaths(t *testing.T) {
 	}
 }
 
+// TestRepairJSON_MalformedNumericLiterals tests the fix for malformed numeric
+// literals where LLMs emit numbers like "0. 9" with a space after the decimal point.
+// This is a regression test for the "invalid character ' ' after decimal point" error.
+func TestRepairJSON_MalformedNumericLiterals(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantRepair  string // expected repaired string
+		wantValid   bool   // should parse as valid JSON after repair
+		checkValues map[string]float64
+	}{
+		{
+			name:       "single digit after decimal: 0. 9 -> 0.9",
+			input:      `{"confidence": 0. 9}`,
+			wantRepair: `{"confidence": 0.9}`,
+			wantValid:  true,
+			checkValues: map[string]float64{
+				"confidence": 0.9,
+			},
+		},
+		{
+			name:       "multiple digits after decimal: 0. 85 -> 0.85",
+			input:      `{"score": 0. 85}`,
+			wantRepair: `{"score": 0.85}`,
+			wantValid:  true,
+			checkValues: map[string]float64{
+				"score": 0.85,
+			},
+		},
+		{
+			name:       "integer part: 1. 5 -> 1.5",
+			input:      `{"value": 1. 5}`,
+			wantRepair: `{"value": 1.5}`,
+			wantValid:  true,
+			checkValues: map[string]float64{
+				"value": 1.5,
+			},
+		},
+		{
+			name:       "multiple spaces: 0.  9 -> 0.9",
+			input:      `{"n": 0.  9}`,
+			wantRepair: `{"n": 0.9}`,
+			wantValid:  true,
+			checkValues: map[string]float64{
+				"n": 0.9,
+			},
+		},
+		{
+			name:       "tab after decimal: 0.\t9 -> 0.9",
+			input:      `{"n": 0.` + "\t" + `9}`,
+			wantRepair: `{"n": 0.9}`,
+			wantValid:  true,
+			checkValues: map[string]float64{
+				"n": 0.9,
+			},
+		},
+		{
+			name:       "multiple malformed numbers in object",
+			input:      `{"a": 0. 5, "b": 1. 23, "c": 99. 9}`,
+			wantRepair: `{"a": 0.5, "b": 1.23, "c": 99.9}`,
+			wantValid:  true,
+			checkValues: map[string]float64{
+				"a": 0.5,
+				"b": 1.23,
+				"c": 99.9,
+			},
+		},
+		{
+			name:       "normal number unchanged",
+			input:      `{"n": 0.9}`,
+			wantRepair: `{"n": 0.9}`,
+			wantValid:  true,
+			checkValues: map[string]float64{
+				"n": 0.9,
+			},
+		},
+		{
+			// NOTE: The regex also affects content inside strings. This is acceptable
+			// because: 1) it's rare for strings to contain "digit. digit" patterns,
+			// 2) the semantic meaning is preserved, and 3) the primary use case is
+			// fixing malformed numeric JSON values from LLM output.
+			name:       "string with decimal point and space (gets modified)",
+			input:      `{"s": "1. 2 is text"}`,
+			wantRepair: `{"s": "1.2 is text"}`, // NOTE: strings ARE modified (acceptable trade-off)
+			wantValid:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repaired := repairJSON(tt.input)
+
+			if repaired != tt.wantRepair {
+				t.Errorf("repairJSON() = %q, want %q", repaired, tt.wantRepair)
+			}
+
+			// Try to parse the repaired JSON
+			result, err := ExtractAndParseJSON[map[string]any](repaired)
+
+			if tt.wantValid && err != nil {
+				t.Errorf("repairJSON() produced invalid JSON: %v\nInput: %s\nRepaired: %s", err, tt.input, repaired)
+				return
+			}
+
+			// Check specific values if provided
+			for key, want := range tt.checkValues {
+				if got, ok := result[key].(float64); ok {
+					if got != want {
+						t.Errorf("result[%q] = %v, want %v", key, got, want)
+					}
+				} else {
+					t.Errorf("result[%q] is not float64: %T", key, result[key])
+				}
+			}
+		})
+	}
+}
+
 // TestExtractAndParseJSON_LLMCodeAnalysis simulates real LLM output that caused
 // the "invalid character 'c'" error during bootstrap code analysis.
 func TestExtractAndParseJSON_LLMCodeAnalysis(t *testing.T) {

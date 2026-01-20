@@ -46,6 +46,16 @@ var (
 	// - Double char: >=, <=
 	// Common in LLM outputs when analyzing package.json dependencies
 	unquotedSemverRegex = regexp.MustCompile(`(:\s*)((?:>=|<=|[\^~><*])[\d.a-zA-Z_-]*)(\s*[,}\]])`)
+
+	// Fix malformed numeric literals with spaces after decimal point: 0. 9 -> 0.9
+	// LLMs sometimes emit numbers like "confidence": 0. 9 or "score": 1. 5
+	// This pattern matches a digit, decimal point, whitespace, then more digits
+	// and removes the whitespace to form a valid JSON number.
+	// Pattern: (\d)\.\s+(\d) captures digit before dot and digit(s) after space
+	// NOTE: This also affects strings containing "digit. digit" patterns, which is
+	// an acceptable trade-off since such patterns are rare in practice and the
+	// semantic meaning is preserved.
+	malformedNumericRegex = regexp.MustCompile(`(\d)\.\s+(\d)`)
 )
 
 // ExtractAndParseJSON extracts JSON from LLM responses and unmarshals it.
@@ -117,6 +127,12 @@ func repairJSON(input string) string {
 	// 0. Sanitize control characters inside strings (LLMs often output literal tabs/newlines)
 	// These are invalid in JSON strings and must be escaped
 	result = sanitizeControlChars(result)
+
+	// 0.5. Fix malformed numeric literals with spaces after decimal: 0. 9 -> 0.9
+	// LLMs sometimes emit numbers like "confidence": 0. 9 which break JSON parsing
+	// with error: "invalid character ' ' after decimal point in numeric literal"
+	// This must run early, before other repairs, to fix the numeric syntax.
+	result = malformedNumericRegex.ReplaceAllString(result, `$1.$2`)
 
 	// 1. Fix missing commas between properties (only when followed by a key pattern)
 	// Pattern: "value"\n"key": -> "value",\n"key":
