@@ -679,4 +679,3 @@ func (a *TaskApp) buildRichContext(ctx context.Context, t *task.Task, plan *task
 
 	return task.FormatRichContext(ctx, t, plan, searchFunc)
 }
-

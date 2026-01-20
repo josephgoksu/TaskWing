@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"strings"
 	"time"
@@ -107,6 +108,8 @@ func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 
 		parsed, _, _, err := a.chain.Invoke(ctx, chainInput)
 		if err != nil {
+			// Log the error for debugging (Task 1: Error logging for chunk failures)
+			log.Printf("[git] chunk %d/%d parse failed: %v", i+1, chunksToProcess, err)
 			chunksFailed++
 			continue // Skip failed chunks, don't abort entirely
 		}
@@ -130,6 +133,20 @@ func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 		return core.Output{
 			AgentName: a.Name(),
 			Error:     fmt.Errorf("all %d chunks failed to process", chunksFailed),
+			Duration:  duration,
+		}, nil
+	}
+
+	// Task 4: Log processing summary for debugging
+	log.Printf("[git] Processed %d/%d chunks (%d failed), found %d milestones from %d commits",
+		chunksProcessed, chunksToProcess, chunksFailed, len(allFindings), totalCommits)
+
+	// Task 2: Defensive check for empty results (similar to doc agent)
+	// Warn if we processed chunks but found nothing
+	if len(allFindings) == 0 && chunksProcessed > 0 {
+		return core.Output{
+			AgentName: a.Name(),
+			Error:     fmt.Errorf("analyzed %d commits across %d chunks but found no significant milestones (commit messages may lack conventional format or architectural decisions)", totalCommits, chunksProcessed),
 			Duration:  duration,
 		}, nil
 	}
@@ -216,6 +233,15 @@ func gatherGitChunks(basePath string) ([]string, string) {
 	// In that case, git commands run without path scoping (full repo analysis)
 	scopePath := getGitScopePath(projectCtx)
 
+	// Task 6: Log input parameters for debugging
+	if projectCtx != nil {
+		log.Printf("[git] gatherGitChunks called: basePath=%q, projectCtx.RootPath=%q, projectCtx.GitRoot=%q, projectCtx.IsMonorepo=%v, scopePath=%q",
+			basePath, projectCtx.RootPath, projectCtx.GitRoot, projectCtx.IsMonorepo, scopePath)
+	} else {
+		log.Printf("[git] gatherGitChunks called: basePath=%q, projectCtx=nil, scopePath=%q",
+			basePath, scopePath)
+	}
+
 	// Build git log command with optional path scoping
 	args := []string{"log", "--format=%h %ad %s", "--date=short", fmt.Sprintf("-%d", gitMaxCommits)}
 	if scopePath != "" {
@@ -224,9 +250,17 @@ func gatherGitChunks(basePath string) ([]string, string) {
 	}
 
 	cmd := exec.Command("git", args...)
-	cmd.Dir = getGitWorkDir(projectCtx, basePath)
+	workDir := getGitWorkDir(projectCtx, basePath)
+	cmd.Dir = workDir
+
+	// Task 5: Add error logging when git command fails
 	out, err := cmd.Output()
-	if err != nil || len(out) == 0 {
+	if err != nil {
+		log.Printf("[git] git log command failed: %v (dir=%s, args=%v)", err, workDir, args)
+		return nil, ""
+	}
+	if len(out) == 0 {
+		log.Printf("[git] git log returned empty output (dir=%s, args=%v)", workDir, args)
 		return nil, ""
 	}
 
@@ -264,6 +298,14 @@ func getGitScopePath(ctx *project.Context) string {
 		// Use the relative path from git root to project root
 		rel := ctx.RelativeGitPath()
 		if rel != "." && rel != "" {
+			// DEFENSIVE: A path starting with ".." indicates GitRoot is BELOW RootPath,
+			// which is impossible for a valid git repository. This means the project
+			// context is corrupted. Fall back to full repo analysis.
+			if strings.HasPrefix(rel, "..") {
+				log.Printf("[git] WARNING: Invalid scopePath %q (GitRoot=%q, RootPath=%q) - context appears corrupted, falling back to full repo analysis",
+					rel, ctx.GitRoot, ctx.RootPath)
+				return ""
+			}
 			return rel
 		}
 	}

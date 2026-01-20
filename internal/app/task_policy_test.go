@@ -194,4 +194,3 @@ deny contains msg if {
 		})
 	}
 }
-

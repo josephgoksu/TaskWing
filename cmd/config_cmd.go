@@ -210,12 +210,15 @@ func runConfigSet(key, value string) error {
 		return setHooksMaxMinutes(cwd, maxMinutes)
 
 	case "llm.provider", "llm.model":
-		fmt.Println("Use 'taskwing llm use <provider/model>' instead.")
-		fmt.Println("Example: taskwing llm use openai/gpt-5-mini")
+		fmt.Println("Use 'taskwing config' (interactive menu) to configure LLM settings.")
+		fmt.Println("Or set environment variables:")
+		fmt.Println("  TASKWING_LLM_PROVIDER=ollama")
+		fmt.Println("  TASKWING_LLM_MODEL=llama3.2")
+		fmt.Println("Or edit ~/.taskwing/config.yaml directly.")
 		return nil
 
 	default:
-		return fmt.Errorf("unknown config key: %s\n\nAvailable keys:\n  hooks.enabled\n  hooks.max-tasks\n  hooks.max-minutes\n\nFor LLM config, use: taskwing llm use <provider/model>", key)
+		return fmt.Errorf("unknown config key: %s\n\nAvailable keys:\n  hooks.enabled\n  hooks.max-tasks\n  hooks.max-minutes\n\nFor LLM config, run: taskwing config", key)
 	}
 }
 

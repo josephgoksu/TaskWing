@@ -17,6 +17,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -65,6 +66,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		TraceFile:   getStringFlag(cmd, "trace-file"),
 		Verbose:     viper.GetBool("verbose"),
 		Quiet:       viper.GetBool("quiet"),
+		Debug:       getBoolFlag(cmd, "debug"),
 	}
 
 	// Validate flags early - fail fast on contradictions
@@ -79,6 +81,42 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 
 	// Track user input for crash logging
 	logger.SetLastInput(fmt.Sprintf("bootstrap (skip-analyze=%v, dir=%s)", flags.SkipAnalyze, cwd))
+
+	// Debug mode: dump diagnostic info early
+	if flags.Debug {
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "╭─────────────────────────────────────────────────────────────╮")
+		fmt.Fprintln(os.Stderr, "│                    DEBUG MODE ENABLED                       │")
+		fmt.Fprintln(os.Stderr, "╰─────────────────────────────────────────────────────────────╯")
+		fmt.Fprintf(os.Stderr, "[debug] cwd: %s\n", cwd)
+
+		// Dump fresh project detection (what SHOULD be used)
+		fmt.Fprintln(os.Stderr, "[debug] --- Fresh project.Detect(cwd) ---")
+		freshCtx, _ := project.Detect(cwd)
+		if freshCtx != nil {
+			fmt.Fprintf(os.Stderr, "[debug] fresh.RootPath: %s\n", freshCtx.RootPath)
+			fmt.Fprintf(os.Stderr, "[debug] fresh.GitRoot: %s\n", freshCtx.GitRoot)
+			fmt.Fprintf(os.Stderr, "[debug] fresh.MarkerType: %s\n", freshCtx.MarkerType)
+			fmt.Fprintf(os.Stderr, "[debug] fresh.IsMonorepo: %v\n", freshCtx.IsMonorepo)
+			fmt.Fprintf(os.Stderr, "[debug] fresh.RelativeGitPath(): %s\n", freshCtx.RelativeGitPath())
+		} else {
+			fmt.Fprintln(os.Stderr, "[debug] fresh.Detect() returned nil")
+		}
+
+		// Dump cached config.GetProjectContext() (what agents ACTUALLY use)
+		fmt.Fprintln(os.Stderr, "[debug] --- Cached config.GetProjectContext() ---")
+		cachedCtx := config.GetProjectContext()
+		if cachedCtx != nil {
+			fmt.Fprintf(os.Stderr, "[debug] cached.RootPath: %s\n", cachedCtx.RootPath)
+			fmt.Fprintf(os.Stderr, "[debug] cached.GitRoot: %s\n", cachedCtx.GitRoot)
+			fmt.Fprintf(os.Stderr, "[debug] cached.MarkerType: %s\n", cachedCtx.MarkerType)
+			fmt.Fprintf(os.Stderr, "[debug] cached.IsMonorepo: %v\n", cachedCtx.IsMonorepo)
+			fmt.Fprintf(os.Stderr, "[debug] cached.RelativeGitPath(): %s\n", cachedCtx.RelativeGitPath())
+		} else {
+			fmt.Fprintln(os.Stderr, "[debug] cached.GetProjectContext() returned nil")
+		}
+		fmt.Fprintln(os.Stderr, "")
+	}
 
 	// ═══════════════════════════════════════════════════════════════════════
 	// PHASE 1: Probe Environment (no side effects)
@@ -395,6 +433,7 @@ func init() {
 	bootstrapCmd.Flags().Bool("trace", false, "Emit JSON event stream to stderr")
 	bootstrapCmd.Flags().String("trace-file", "", "Write JSON event stream to file (default: .taskwing/logs/bootstrap.trace.jsonl)")
 	bootstrapCmd.Flags().Bool("trace-stdout", false, "Emit JSON event stream to stderr (overrides trace file)")
+	bootstrapCmd.Flags().Bool("debug", false, "Enable debug logging (dumps project context, git paths, agent inputs)")
 
 	// Hide --skip-analyze from main help (documented in CLAUDE.md)
 	_ = bootstrapCmd.Flags().MarkHidden("skip-analyze")

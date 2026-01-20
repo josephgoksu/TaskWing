@@ -131,7 +131,7 @@ Graph traversal uses recursive CTEs for GetDependencies/GetDependents.
 
 Uses CloudWeGo Eino for multi-provider support:
 - OpenAI: Set `OPENAI_API_KEY` or `TASKWING_LLM_APIKEY`
-- Ollama: Set `TASKWING_LLM_PROVIDER=ollama` and `TASKWING_LLM_MODELNAME=<model>`
+- Ollama: Set `TASKWING_LLM_PROVIDER=ollama` and `TASKWING_LLM_MODEL=<model>`
 
 **Bootstrap requires an LLM API key by default** to analyze architecture. Use `--skip-analyze` for CI/testing without LLM (hidden flag, deterministic mode only).
 
