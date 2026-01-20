@@ -74,6 +74,17 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid flags: %w", err)
 	}
 
+	// Handle --timeout flag: set TASKWING_LLM_TIMEOUT env var to override default
+	// This must be done before LLM client creation to ensure the timeout is picked up
+	if timeout, _ := cmd.Flags().GetDuration("timeout"); timeout > 0 {
+		if err := os.Setenv("TASKWING_LLM_TIMEOUT", timeout.String()); err != nil {
+			return fmt.Errorf("set timeout env var: %w", err)
+		}
+		if flags.Debug {
+			fmt.Fprintf(os.Stderr, "[debug] LLM timeout set to %v via --timeout flag\n", timeout)
+		}
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current directory: %w", err)
@@ -434,6 +445,7 @@ func init() {
 	bootstrapCmd.Flags().String("trace-file", "", "Write JSON event stream to file (default: .taskwing/logs/bootstrap.trace.jsonl)")
 	bootstrapCmd.Flags().Bool("trace-stdout", false, "Emit JSON event stream to stderr (overrides trace file)")
 	bootstrapCmd.Flags().Bool("debug", false, "Enable debug logging (dumps project context, git paths, agent inputs)")
+	bootstrapCmd.Flags().Duration("timeout", 0, "LLM request timeout (e.g., 5m, 10m). Overrides TASKWING_LLM_TIMEOUT env var. Default: 5m")
 
 	// Hide --skip-analyze from main help (documented in CLAUDE.md)
 	_ = bootstrapCmd.Flags().MarkHidden("skip-analyze")
