@@ -37,7 +37,8 @@ var (
 	// Fix unquoted string values: {"key": value} -> {"key": "value"}
 	// Only matches simple identifiers (letters, numbers, underscores, hyphens)
 	// Excludes: numbers, true, false, null, nested objects/arrays
-	unquotedValueRegex = regexp.MustCompile(`(:\s*)([a-zA-Z][a-zA-Z0-9_-]*)(\s*[,}\]])`)
+	// Captures preceding context to detect if we're inside a string (preceded by \")
+	unquotedValueRegex = regexp.MustCompile(`(.?)(:\s*)([a-zA-Z][a-zA-Z0-9_-]*)(\s*[,}\]])`)
 
 	// Fix unquoted semver values: {"version": ^1.0.0} -> {"version": "^1.0.0"}
 	// Matches values starting with semver range prefixes:
@@ -154,17 +155,28 @@ func repairJSON(input string) string {
 
 	// 7. Fix unquoted string values: {"key": value} -> {"key": "value"}
 	// Skip known JSON literals (true, false, null are valid unquoted)
+	// Also skip if this looks like content inside a string (preceded by \")
 	result = unquotedValueRegex.ReplaceAllStringFunc(result, func(match string) string {
 		parts := unquotedValueRegex.FindStringSubmatch(match)
-		if len(parts) != 4 {
+		if len(parts) != 5 {
 			return match
 		}
-		value := parts[2]
+		precedingChar := parts[1] // Character before the colon
+		colonPart := parts[2]     // ": " or similar
+		value := parts[3]         // The unquoted value
+		suffix := parts[4]        // Closing bracket/brace
+
 		// Don't quote JSON literals
 		if value == "true" || value == "false" || value == "null" {
 			return match
 		}
-		return parts[1] + `"` + value + `"` + parts[3]
+		// Don't quote if preceded by a quote (indicates we're inside a JSON string context)
+		// This detects patterns like: \"key\": value (inside a string) vs "key": value (at JSON level)
+		// If preceded by backslash or quote, we're likely inside a string
+		if precedingChar == "\\" || precedingChar == "\"" {
+			return match
+		}
+		return precedingChar + colonPart + `"` + value + `"` + suffix
 	})
 
 	// 8. Fix unquoted semver values: {"version": ^1.0.0} -> {"version": "^1.0.0"}
@@ -200,8 +212,17 @@ func sanitizeControlChars(input string) string {
 				// Valid escape, write as-is
 				result.WriteByte(c)
 			case 'u':
-				// Unicode escape \uXXXX - write and let JSON parser validate the hex digits
-				result.WriteByte(c)
+				// Unicode escape \uXXXX - but only if followed by 4 valid hex digits
+				// Otherwise, it's likely a path like \users or \utils
+				if i+4 < len(input) && isValidHexSequence(input[i+1:i+5]) {
+					// Valid unicode escape, write as-is
+					result.WriteByte(c)
+				} else {
+					// Invalid unicode escape (e.g., \users, \utils in file paths)
+					// Double the backslash: \u -> \\u
+					result.WriteByte('\\')
+					result.WriteByte(c)
+				}
 			default:
 				// Invalid escape sequence (e.g., \s, \d, \w from regex patterns)
 				// Double the backslash to make it a literal backslash in JSON: \s -> \\s
@@ -251,6 +272,20 @@ func sanitizeControlChars(input string) string {
 	}
 
 	return result.String()
+}
+
+// isValidHexSequence checks if the string contains exactly 4 valid hex digits.
+func isValidHexSequence(s string) bool {
+	if len(s) < 4 {
+		return false
+	}
+	for i := 0; i < 4; i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // fixTruncatedJSON attempts to fix JSON that was truncated mid-string.
