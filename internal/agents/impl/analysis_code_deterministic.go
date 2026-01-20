@@ -79,6 +79,18 @@ func (a *CodeAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 	gatherer := tools.NewContextGatherer(basePath)
 	dirTree := gatherer.ListDirectoryTree(5)
 
+	// Truncate dirTree if it's too large (max ~5k tokens = ~20k chars)
+	const maxDirTreeChars = 20000
+	if len(dirTree) > maxDirTreeChars {
+		dirTree = dirTree[:maxDirTreeChars] + "\n... (truncated)"
+	}
+
+	// Truncate existingKnowledge if too large (max ~2k tokens = ~8k chars)
+	const maxExistingKnowledgeChars = 8000
+	if len(existingKnowledgeStr) > maxExistingKnowledgeChars {
+		existingKnowledgeStr = existingKnowledgeStr[:maxExistingKnowledgeChars] + "\n... (truncated)"
+	}
+
 	// Route to appropriate analysis strategy
 	if isIncremental {
 		return a.runIncrementalAnalysis(ctx, input, basePath, dirTree, existingKnowledgeStr)
@@ -181,6 +193,22 @@ func (a *CodeAgent) runChunkedAnalysis(ctx context.Context, input core.Input, ba
 			AgentName: a.Name(),
 			Error:     fmt.Errorf("no source code found to analyze"),
 		}, nil
+	}
+
+	// Calculate max chunks based on model's token limit
+	// Reserve overhead for system prompt (~5k), dirTree (~3k), and safety margin (~2k)
+	const overheadTokens = 10000
+	const tokensPerChunk = 30000
+	modelLimit := llm.GetMaxInputTokens(a.LLMConfig().Model)
+
+	// Cap at MaxSafeContextBudget to stay within practical API limits
+	effectiveLimit := min(modelLimit, tools.MaxSafeContextBudget)
+
+	maxChunks := max(1, (effectiveLimit-overheadTokens)/tokensPerChunk)
+
+	// Limit chunks to prevent token overflow
+	if len(chunks) > maxChunks {
+		chunks = chunks[:maxChunks]
 	}
 
 	// Process each chunk and collect findings
