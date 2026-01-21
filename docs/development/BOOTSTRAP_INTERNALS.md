@@ -202,13 +202,57 @@ Examples:
 
 ---
 
+## Workspace Support (Monorepo)
+
+Bootstrap automatically detects monorepo structures and tags extracted knowledge with the appropriate workspace.
+
+### How It Works
+
+1. **Detection**: Bootstrap uses `project.DetectWorkspace()` to identify:
+   - **Single repo**: Standard project (all knowledge tagged as `root`)
+   - **Monorepo**: Single git root with multiple packages (identified by `go.mod`, `package.json`, etc.)
+   - **Multi-repo**: Directory containing multiple independent git repositories
+
+2. **Workspace Tagging**: When running in a monorepo:
+   - Knowledge extracted from service directories is tagged with the service name (e.g., `api`, `web`)
+   - Global/shared knowledge is tagged as `root`
+   - Agents respect workspace context and tag their findings consistently
+
+3. **Querying**: Use workspace filters to scope recall:
+   ```bash
+   # List knowledge from specific workspace + root
+   taskwing list --workspace=api
+
+   # Search within workspace context
+   taskwing context "authentication" --workspace=api
+
+   # List all detected workspaces
+   taskwing workspaces
+   taskwing workspaces --counts   # Show node counts per workspace
+   ```
+
+### MCP Integration
+
+The MCP `recall` tool supports workspace filtering:
+```json
+{"query": "api patterns", "workspace": "api"}           // api + root nodes
+{"query": "api patterns", "workspace": "api", "all": true}  // all workspaces
+```
+
+### Testing Workspace Features
+
+When developing workspace-related features, use `taskwing-local-dev-mcp` (not the production Homebrew binary) to test MCP changes. See CLAUDE.md for the local dev MCP workflow.
+
+---
+
 ## Edge Cases
 
 | Scenario | Handling |
 |----------|----------|
 | No git history | Directory structure only |
 | No conventional commits | Use folder names |
-| Monorepo | Scope to current directory |
+| Monorepo | Auto-detect services, tag knowledge by workspace |
+| Multi-repo | Each repo bootstrapped separately |
 | Very old repo | All history included |
 
 ---

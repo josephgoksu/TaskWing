@@ -195,11 +195,33 @@ taskwing mcp
 | Tool | Description |
 |------|-------------|
 | `recall` | Retrieve codebase architecture knowledge. Use `{"query":"search term"}` for semantic search, or omit for summary. |
+| `remember` | Add knowledge to project memory. Content is auto-classified by type. |
+| `code` | Unified code intelligence: find, search, explain, callers, impact, simplify. |
+| `task` | Task lifecycle: next, current, start, complete. |
+| `plan` | Plan management: clarify, generate, audit. |
+| `debug` | Diagnose issues systematically with AI-powered analysis. |
+| `policy` | Evaluate code changes against OPA policies. |
 
-### Example Request
+### Recall Tool Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `query` | string | Search query (omit for project summary) |
+| `answer` | boolean | Generate RAG answer using LLM (default: false) |
+| `workspace` | string | Filter by workspace name (e.g., `"api"`, `"web"`). Includes root nodes by default. |
+| `all` | boolean | Search all workspaces (ignores workspace filter) |
+
+### Example Requests
 
 ```json
+// Basic search
 {"jsonrpc":"2.0","method":"tools/call","params":{"name":"recall","arguments":{"query":"database"}},"id":1}
+
+// Workspace-scoped search (api + root nodes)
+{"jsonrpc":"2.0","method":"tools/call","params":{"name":"recall","arguments":{"query":"authentication","workspace":"api"}},"id":2}
+
+// Explicit all-workspace search
+{"jsonrpc":"2.0","method":"tools/call","params":{"name":"recall","arguments":{"query":"patterns","all":true}},"id":3}
 ```
 
 ---
@@ -303,3 +325,23 @@ When an AI tool calls `recall`, it receives:
 ```
 
 This gives the AI **context about your architecture** so it can make better suggestions.
+
+---
+
+## Development & Testing
+
+When developing or testing MCP features, use the local development binary instead of the production Homebrew binary:
+
+| MCP Server | Binary | Use Case |
+|------------|--------|----------|
+| `taskwing-mcp` | Production (`/usr/local/bin/taskwing`) | Stable features, production testing |
+| `taskwing-local-dev-mcp` | Development (`./bin/taskwing`) | Testing new/changed features |
+
+**Important:** The production MCP server uses the installed Homebrew binary. Code changes are NOT reflected until you rebuild and reinstall.
+
+For development testing:
+1. Run `air` to start hot-reload dev server (creates `./bin/taskwing`)
+2. Use the `taskwing-local-dev-mcp` tools in Claude Code
+3. Verify with `go run . mcp` for direct testing
+
+See `CLAUDE.md` in the repository for the complete development workflow.
