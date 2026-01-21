@@ -1682,6 +1682,21 @@ func (s *SQLiteStore) UpdateNodeEmbedding(id string, embedding []float32) error 
 	return nil
 }
 
+// UpdateNodeWorkspace updates the workspace field for a node.
+func (s *SQLiteStore) UpdateNodeWorkspace(id, workspace string) error {
+	result, err := s.db.Exec("UPDATE nodes SET workspace = ? WHERE id = ?", workspace, id)
+	if err != nil {
+		return fmt.Errorf("update workspace: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("node not found: %s", id)
+	}
+
+	return nil
+}
+
 // LinkNodes creates a relationship between two nodes.
 func (s *SQLiteStore) LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error {
 	if confidence <= 0 {

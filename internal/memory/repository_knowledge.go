@@ -45,6 +45,10 @@ func (r *Repository) UpdateNodeEmbedding(id string, embedding []float32) error {
 	return r.db.UpdateNodeEmbedding(id, embedding)
 }
 
+func (r *Repository) UpdateNodeWorkspace(id, workspace string) error {
+	return r.db.UpdateNodeWorkspace(id, workspace)
+}
+
 func (r *Repository) DeleteNode(id string) error {
 	return r.db.DeleteNode(id)
 }
