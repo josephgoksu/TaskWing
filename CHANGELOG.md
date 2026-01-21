@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Workspace-Aware Knowledge Scoping**: Full monorepo support for knowledge management
+  - New `tw workspaces` command to list detected workspaces in a monorepo
+  - `--workspace` and `--all` flags for `tw list` and `tw context` commands
+  - `workspace` and `all` parameters for MCP `recall` tool
+  - Workspace badges in `tw list` output showing `[workspace]` for non-root nodes
+  - Auto-detection of current workspace from working directory
+  - Agents tag their findings with the appropriate workspace
+  - Database migration adds `workspace` column to nodes table
 - **Stricter LLM Judge**: Responses with wrong tech stack (e.g., TypeScript when repo uses Go) now score ≤3 regardless of structure
 - **Failure Details in Reports**: `tw eval report` now shows LLM judge reasoning for failed tasks
 - **Eval Comparison Script**: `run-eval-comparison.sh` runs parallel with/without context benchmarks
@@ -18,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Eval judge prompt now explicitly penalizes wrong programming language, file paths, and frameworks
 - Improved scoring rubric documentation with tech stack correctness requirements
+- Existing knowledge nodes default to `root` workspace (backward compatible)
 
 ### Fixed
 
