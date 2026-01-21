@@ -890,7 +890,7 @@ func detectWorkspaceForBackfill(basePath string) (*workspaceInfoCompat, error) {
 
 	return &workspaceInfoCompat{
 		Services: services,
-		Type:     func() workspaceTypeCompat {
+		Type: func() workspaceTypeCompat {
 			if len(services) > 1 {
 				return wsTypeMonorepo
 			}

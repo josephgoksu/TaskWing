@@ -267,11 +267,11 @@ func TestSearchFTSFiltered_Workspace(t *testing.T) {
 			wantMinimum: 3,
 		},
 		{
-			name:        "osprey workspace only",
-			query:       "authentication",
-			filter:      NodeFilter{Workspace: "osprey", IncludeRoot: false},
-			wantIDs:     []string{"n-osprey-auth"},
-			notWantIDs:  []string{"n-root-auth", "n-studio-auth"},
+			name:       "osprey workspace only",
+			query:      "authentication",
+			filter:     NodeFilter{Workspace: "osprey", IncludeRoot: false},
+			wantIDs:    []string{"n-osprey-auth"},
+			notWantIDs: []string{"n-root-auth", "n-studio-auth"},
 		},
 		{
 			name:        "osprey workspace with root",
@@ -282,11 +282,11 @@ func TestSearchFTSFiltered_Workspace(t *testing.T) {
 			notWantIDs:  []string{"n-studio-auth"},
 		},
 		{
-			name:        "root workspace only",
-			query:       "authentication",
-			filter:      NodeFilter{Workspace: "root", IncludeRoot: false},
-			wantIDs:     []string{"n-root-auth"},
-			notWantIDs:  []string{"n-osprey-auth", "n-studio-auth"},
+			name:       "root workspace only",
+			query:      "authentication",
+			filter:     NodeFilter{Workspace: "root", IncludeRoot: false},
+			wantIDs:    []string{"n-root-auth"},
+			notWantIDs: []string{"n-osprey-auth", "n-studio-auth"},
 		},
 		{
 			name:        "nonexistent workspace returns empty",
@@ -295,11 +295,11 @@ func TestSearchFTSFiltered_Workspace(t *testing.T) {
 			wantMinimum: 0,
 		},
 		{
-			name:        "nonexistent workspace with root returns root only",
-			query:       "authentication",
-			filter:      NodeFilter{Workspace: "nonexistent", IncludeRoot: true},
-			wantIDs:     []string{"n-root-auth"},
-			notWantIDs:  []string{"n-osprey-auth", "n-studio-auth"},
+			name:       "nonexistent workspace with root returns root only",
+			query:      "authentication",
+			filter:     NodeFilter{Workspace: "nonexistent", IncludeRoot: true},
+			wantIDs:    []string{"n-root-auth"},
+			notWantIDs: []string{"n-osprey-auth", "n-studio-auth"},
 		},
 	}
 
@@ -551,30 +551,30 @@ func TestListNodesWithEmbeddingsFiltered_Workspace(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		filter    NodeFilter
-		wantCount int
-		wantIDs   []string
+		name       string
+		filter     NodeFilter
+		wantCount  int
+		wantIDs    []string
 		notWantIDs []string
 	}{
 		{
-			name:      "no filter returns all with embeddings",
-			filter:    NodeFilter{},
-			wantCount: 3,
+			name:       "no filter returns all with embeddings",
+			filter:     NodeFilter{},
+			wantCount:  3,
 			notWantIDs: []string{"n-no-emb"},
 		},
 		{
-			name:      "osprey workspace only",
-			filter:    NodeFilter{Workspace: "osprey", IncludeRoot: false},
-			wantCount: 1,
-			wantIDs:   []string{"n-osprey-emb"},
+			name:       "osprey workspace only",
+			filter:     NodeFilter{Workspace: "osprey", IncludeRoot: false},
+			wantCount:  1,
+			wantIDs:    []string{"n-osprey-emb"},
 			notWantIDs: []string{"n-root-emb", "n-studio-emb", "n-no-emb"},
 		},
 		{
-			name:      "osprey workspace with root",
-			filter:    NodeFilter{Workspace: "osprey", IncludeRoot: true},
-			wantCount: 2,
-			wantIDs:   []string{"n-osprey-emb", "n-root-emb"},
+			name:       "osprey workspace with root",
+			filter:     NodeFilter{Workspace: "osprey", IncludeRoot: true},
+			wantCount:  2,
+			wantIDs:    []string{"n-osprey-emb", "n-root-emb"},
 			notWantIDs: []string{"n-studio-emb", "n-no-emb"},
 		},
 	}

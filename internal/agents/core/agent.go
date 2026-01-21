@@ -49,7 +49,7 @@ type Input struct {
 	ExistingContext map[string]any // Context from previous agents
 	MaxTokens       int
 	Verbose         bool
-	Workspace       string         // Workspace/service name for monorepo support ('root' for global, service name for scoped)
+	Workspace       string // Workspace/service name for monorepo support ('root' for global, service name for scoped)
 }
 
 // Output captures the results of an agent's analysis.
