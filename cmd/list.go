@@ -78,5 +78,15 @@ func runList(cmd *cobra.Command, args []string) error {
 	} else {
 		ui.RenderNodeList(nodes)
 	}
+
+	// Print version footer for human-readable output (not JSON, not quiet)
+	if !isQuiet() {
+		ver := version
+		if ver == "" {
+			ver = "dev"
+		}
+		fmt.Printf("TaskWing v%s\n", ver)
+	}
+
 	return nil
 }
