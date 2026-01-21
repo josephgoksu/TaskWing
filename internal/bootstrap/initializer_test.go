@@ -88,7 +88,7 @@ func TestInitializer_Run_CreateSlashCommands(t *testing.T) {
 
 	// Check slash command files were created
 	expectedFiles := []string{
-		".claude/commands/taskwing.md",
+		".claude/commands/tw-brief.md",
 		".claude/commands/tw-next.md",
 		".claude/commands/tw-done.md",
 	}
@@ -111,7 +111,7 @@ func TestInitializer_Run_GeminiTOML(t *testing.T) {
 	}
 
 	// Check TOML files were created for Gemini
-	tomlPath := filepath.Join(tmpDir, ".gemini/commands/taskwing.toml")
+	tomlPath := filepath.Join(tmpDir, ".gemini/commands/tw-brief.toml")
 	content, err := os.ReadFile(tomlPath)
 	if err != nil {
 		t.Fatalf("Failed to read TOML file: %v", err)
@@ -359,7 +359,7 @@ func TestCopilotLegacyDirectoryCleanup(t *testing.T) {
 	}
 
 	// Add some legacy files
-	legacyFiles := []string{"tw-next.md", "tw-done.md", "taskwing.md"}
+	legacyFiles := []string{"tw-next.md", "tw-done.md", "tw-brief.md"}
 	for _, f := range legacyFiles {
 		if err := os.WriteFile(filepath.Join(legacyDir, f), []byte("test"), 0644); err != nil {
 			t.Fatalf("Failed to write legacy file: %v", err)
