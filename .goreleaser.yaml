@@ -101,7 +101,7 @@ release:
 
     **Homebrew (macOS/Linux):**
     ```bash
-    brew install --cask josephgoksu/tap/taskwing
+    brew install josephgoksu/tap/taskwing
     ```
 
     **Manual Installation:**
@@ -121,8 +121,8 @@ release:
 
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser) 🚀
 
-# Homebrew cask (replaces deprecated brews config)
-homebrew_casks:
+# Homebrew formula
+brews:
   - name: taskwing
     description: "AI-Native Task Management - Generate context-aware dev tasks that match your architecture"
     homepage: "https://taskwing.app"
@@ -131,11 +131,11 @@ homebrew_casks:
       owner: josephgoksu
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Casks
+    directory: Formula
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
-    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }}"
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
 
 # Scoop bucket for Windows removed - focusing on Linux/macOS only
 
