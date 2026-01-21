@@ -1265,11 +1265,95 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 
 // ListNodesFiltered returns nodes matching the given filter criteria.
 // This is the preferred method for workspace-aware queries.
-// NOTE: Workspace filtering is a placeholder - actual filtering will be implemented in a later task.
+// Uses idx_nodes_workspace index for performant workspace filtering.
 func (s *SQLiteStore) ListNodesFiltered(filter NodeFilter) ([]Node, error) {
-	// For now, delegate to ListNodes with type filter only
-	// Workspace filtering will be implemented in task "Modify SearchFTS and SearchVector queries to filter by workspace"
-	return s.ListNodes(filter.Type)
+	// If no workspace filter, delegate to regular ListNodes
+	if filter.Workspace == "" {
+		return s.ListNodes(filter.Type)
+	}
+
+	// Build query with workspace filtering (uses idx_nodes_workspace index)
+	var query string
+	var args []any
+
+	baseSelect := `
+		SELECT id, content, type, summary, source_agent, workspace, created_at,
+		       evidence, verification_status, verification_result, confidence_score,
+		       debt_score, debt_reason, refactor_hint
+		FROM nodes WHERE `
+
+	// Build workspace condition
+	if filter.IncludeRoot {
+		// Include both specified workspace and root workspace
+		if filter.Type != "" {
+			query = baseSelect + `(workspace = ? OR workspace = 'root' OR workspace = '') AND type = ? ORDER BY created_at DESC`
+			args = []any{filter.Workspace, filter.Type}
+		} else {
+			query = baseSelect + `(workspace = ? OR workspace = 'root' OR workspace = '') ORDER BY created_at DESC`
+			args = []any{filter.Workspace}
+		}
+	} else {
+		// Only specified workspace
+		if filter.Type != "" {
+			query = baseSelect + `workspace = ? AND type = ? ORDER BY created_at DESC`
+			args = []any{filter.Workspace, filter.Type}
+		} else {
+			query = baseSelect + `workspace = ? ORDER BY created_at DESC`
+			args = []any{filter.Workspace}
+		}
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query nodes filtered: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var nodes []Node
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeTypeStr, summary, sourceAgent, workspace sql.NullString
+		var evidence, verificationStatus, verificationResult sql.NullString
+		var confidenceScore, debtScore sql.NullFloat64
+		var debtReason, refactorHint sql.NullString
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &workspace, &createdAt,
+			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
+			&debtScore, &debtReason, &refactorHint); err != nil {
+			return nil, fmt.Errorf("scan node: %w", err)
+		}
+		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, workspace, createdAt, nil)
+
+		// Populate evidence fields
+		if evidence.Valid {
+			n.Evidence = evidence.String
+		}
+		if verificationStatus.Valid {
+			n.VerificationStatus = verificationStatus.String
+		}
+		if verificationResult.Valid {
+			n.VerificationResult = verificationResult.String
+		}
+		if confidenceScore.Valid {
+			n.ConfidenceScore = confidenceScore.Float64
+		}
+
+		// Populate debt classification fields
+		if debtScore.Valid {
+			n.DebtScore = debtScore.Float64
+		}
+		if debtReason.Valid {
+			n.DebtReason = debtReason.String
+		}
+		if refactorHint.Valid {
+			n.RefactorHint = refactorHint.String
+		}
+
+		nodes = append(nodes, n)
+	}
+
+	return nodes, nil
 }
 
 // UpdateNode updates mutable node fields.
@@ -1854,11 +1938,86 @@ func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 }
 
 // ListNodesWithEmbeddingsFiltered returns nodes with embeddings matching the filter.
-// NOTE: Workspace filtering is a placeholder - actual filtering will be implemented in a later task.
+// Uses idx_nodes_workspace index for performant workspace filtering.
 func (s *SQLiteStore) ListNodesWithEmbeddingsFiltered(filter NodeFilter) ([]Node, error) {
-	// For now, delegate to ListNodesWithEmbeddings without workspace filter
-	// Workspace filtering will be implemented in task "Modify SearchFTS and SearchVector queries to filter by workspace"
-	return s.ListNodesWithEmbeddings()
+	// If no workspace filter, delegate to regular ListNodesWithEmbeddings
+	if filter.Workspace == "" {
+		return s.ListNodesWithEmbeddings()
+	}
+
+	// Build query with workspace filtering (uses idx_nodes_workspace index)
+	var query string
+	var args []any
+
+	baseSelect := `
+		SELECT id, content, type, summary, source_agent, workspace, embedding, created_at,
+		       evidence, verification_status, verification_result, confidence_score,
+		       debt_score, debt_reason, refactor_hint
+		FROM nodes WHERE embedding IS NOT NULL AND `
+
+	// Build workspace condition
+	if filter.IncludeRoot {
+		// Include both specified workspace and root workspace
+		query = baseSelect + `(workspace = ? OR workspace = 'root' OR workspace = '') ORDER BY created_at DESC`
+		args = []any{filter.Workspace}
+	} else {
+		// Only specified workspace
+		query = baseSelect + `workspace = ? ORDER BY created_at DESC`
+		args = []any{filter.Workspace}
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query nodes with embeddings filtered: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var nodes []Node
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeType, summary, sourceAgent, workspace sql.NullString
+		var embeddingBytes []byte
+		var evidence, verificationStatus, verificationResult sql.NullString
+		var confidenceScore, debtScore sql.NullFloat64
+		var debtReason, refactorHint sql.NullString
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt,
+			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
+			&debtScore, &debtReason, &refactorHint); err != nil {
+			return nil, fmt.Errorf("scan node: %w", err)
+		}
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
+
+		// Populate evidence fields
+		if evidence.Valid {
+			n.Evidence = evidence.String
+		}
+		if verificationStatus.Valid {
+			n.VerificationStatus = verificationStatus.String
+		}
+		if verificationResult.Valid {
+			n.VerificationResult = verificationResult.String
+		}
+		if confidenceScore.Valid {
+			n.ConfidenceScore = confidenceScore.Float64
+		}
+
+		// Populate debt classification fields
+		if debtScore.Valid {
+			n.DebtScore = debtScore.Float64
+		}
+		if debtReason.Valid {
+			n.DebtReason = debtReason.String
+		}
+		if refactorHint.Valid {
+			n.RefactorHint = refactorHint.String
+		}
+
+		nodes = append(nodes, n)
+	}
+
+	return nodes, nil
 }
 
 // sanitizeFTSQueryForNodes sanitizes a query for FTS5 knowledge node search.
@@ -1979,11 +2138,75 @@ func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 }
 
 // SearchFTSFiltered performs full-text search with workspace filtering.
-// NOTE: Workspace filtering is a placeholder - actual filtering will be implemented in a later task.
+// Uses idx_nodes_workspace for efficient filtering when workspace is specified.
 func (s *SQLiteStore) SearchFTSFiltered(query string, limit int, filter NodeFilter) ([]FTSResult, error) {
-	// For now, delegate to SearchFTS without workspace filter
-	// Workspace filtering will be implemented in task "Modify SearchFTS and SearchVector queries to filter by workspace"
-	return s.SearchFTS(query, limit)
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// If no workspace filter, delegate to regular SearchFTS
+	if filter.Workspace == "" {
+		return s.SearchFTS(query, limit)
+	}
+
+	// Sanitize query for FTS5
+	sanitizedQuery := sanitizeFTSQueryForNodes(query)
+	if sanitizedQuery == "" {
+		return nil, nil
+	}
+
+	// Build workspace filter clause
+	// Uses idx_nodes_workspace index for performance
+	var rows *sql.Rows
+	var err error
+
+	if filter.IncludeRoot {
+		// Include both specified workspace and root workspace
+		rows, err = s.db.Query(`
+			SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.workspace, n.embedding, n.created_at,
+			       bm25(nodes_fts) as rank
+			FROM nodes_fts f
+			JOIN nodes n ON f.id = n.id
+			WHERE nodes_fts MATCH ?
+			  AND (n.workspace = ? OR n.workspace = 'root' OR n.workspace = '')
+			ORDER BY rank
+			LIMIT ?
+		`, sanitizedQuery, filter.Workspace, limit)
+	} else {
+		// Only specified workspace
+		rows, err = s.db.Query(`
+			SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.workspace, n.embedding, n.created_at,
+			       bm25(nodes_fts) as rank
+			FROM nodes_fts f
+			JOIN nodes n ON f.id = n.id
+			WHERE nodes_fts MATCH ?
+			  AND n.workspace = ?
+			ORDER BY rank
+			LIMIT ?
+		`, sanitizedQuery, filter.Workspace, limit)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("FTS search filtered failed: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []FTSResult
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeType, summary, sourceAgent, workspace sql.NullString
+		var embeddingBytes []byte
+		var rank float64
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt, &rank); err != nil {
+			continue
+		}
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
+		results = append(results, FTSResult{Node: n, Rank: rank})
+	}
+
+	return results, nil
 }
 
 // RebuildFTS rebuilds the FTS5 index from existing nodes.
