@@ -49,10 +49,35 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-# Changelog generation - DISABLED for manual release notes
-# The release script (make release) handles manual notes via annotated tags
+# Changelog generation from conventional commits
 changelog:
-  disable: true
+  use: github
+  sort: asc
+  abbrev: -1
+  groups:
+    - title: "🚀 Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "🐛 Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "📚 Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "🧪 Tests"
+      regexp: '^.*?test(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: "🔧 Maintenance"
+      regexp: '^.*?(chore|refactor|style|perf|ci|build)(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: "Other Changes"
+      order: 999
+  filters:
+    exclude:
+      - "^Merge"
+      - "^merge"
+      - "^WIP"
+      - "^wip"
 
 # GitHub release configuration
 release:
@@ -67,7 +92,7 @@ release:
   header: |
     ## TaskWing {{.Tag}}
 
-    See release notes below for what's new in this version.
+    **Full Changelog**: https://github.com/josephgoksu/TaskWing/compare/{{.PreviousTag}}...{{.Tag}}
 
   footer: |
     ---
