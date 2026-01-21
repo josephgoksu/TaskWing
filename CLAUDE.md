@@ -332,8 +332,6 @@ taskwing hook session-end       # Cleanup session (SessionEnd hook)
 taskwing hook status            # View current session state
 ```
 
-**Note**: `session-init` auto-injects the project knowledge brief (same as `/tw-brief`) at session start.
-
 **Circuit breakers** prevent runaway execution:
 - `--max-tasks=5` - Stop after N tasks for human review
 - `--max-minutes=30` - Stop after N minutes
