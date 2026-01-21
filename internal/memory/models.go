@@ -67,6 +67,7 @@ type Node struct {
 	Type        string    `json:"type,omitempty"`        // AI-inferred: decision, feature, plan, note
 	Summary     string    `json:"summary,omitempty"`     // AI-extracted title/summary
 	SourceAgent string    `json:"sourceAgent,omitempty"` // Agent that created this node (doc, code, git, deps)
+	Workspace   string    `json:"workspace,omitempty"`   // Monorepo workspace/service name ('root' = global, e.g., 'osprey', 'studio')
 	Embedding   []float32 `json:"embedding,omitempty"`   // Vector for similarity search
 	CreatedAt   time.Time `json:"createdAt"`
 

@@ -1080,10 +1080,16 @@ func (s *SQLiteStore) DB() *sql.DB {
 
 // populateNodeFromScan populates a Node struct from scanned nullable fields.
 // This centralizes the repetitive null-handling and type conversion logic.
-func populateNodeFromScan(n *Node, nodeType, summary, sourceAgent sql.NullString, createdAt string, embeddingBytes []byte) {
+func populateNodeFromScan(n *Node, nodeType, summary, sourceAgent, workspace sql.NullString, createdAt string, embeddingBytes []byte) {
 	n.Type = nodeType.String
 	n.Summary = summary.String
 	n.SourceAgent = sourceAgent.String
+	// Default workspace to 'root' if not set (backward compatibility)
+	if workspace.Valid && workspace.String != "" {
+		n.Workspace = workspace.String
+	} else {
+		n.Workspace = "root"
+	}
 	n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	if len(embeddingBytes) > 0 {
 		n.Embedding = bytesToFloat32Slice(embeddingBytes)
@@ -1101,6 +1107,10 @@ func (s *SQLiteStore) CreateNode(n *Node) error {
 	if n.CreatedAt.IsZero() {
 		n.CreatedAt = time.Now().UTC()
 	}
+	// Default workspace to 'root' for global/root-level knowledge
+	if n.Workspace == "" {
+		n.Workspace = "root"
+	}
 
 	// Serialize embedding to bytes if present
 	var embeddingBytes []byte
@@ -1109,11 +1119,11 @@ func (s *SQLiteStore) CreateNode(n *Node) error {
 	}
 
 	_, err := s.db.Exec(`
-		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at,
+		INSERT INTO nodes (id, content, type, summary, source_agent, workspace, embedding, created_at,
 		                   evidence, verification_status, verification_result, confidence_score,
 		                   debt_score, debt_reason, refactor_hint)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, n.Workspace, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
 		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
 		n.DebtScore, n.DebtReason, n.RefactorHint)
 
@@ -1128,18 +1138,18 @@ func (s *SQLiteStore) CreateNode(n *Node) error {
 func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 	var n Node
 	var createdAt string
-	var nodeType, summary, sourceAgent sql.NullString
+	var nodeType, summary, sourceAgent, workspace sql.NullString
 	var evidence, verificationStatus, verificationResult sql.NullString
 	var confidenceScore, debtScore sql.NullFloat64
 	var debtReason, refactorHint sql.NullString
 	var embeddingBytes []byte
 
 	err := s.db.QueryRow(`
-		SELECT id, content, type, summary, source_agent, embedding, created_at,
+		SELECT id, content, type, summary, source_agent, workspace, embedding, created_at,
 		       evidence, verification_status, verification_result, confidence_score,
 		       debt_score, debt_reason, refactor_hint
 		FROM nodes WHERE id = ?
-	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt,
+	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt,
 		&evidence, &verificationStatus, &verificationResult, &confidenceScore,
 		&debtScore, &debtReason, &refactorHint)
 
@@ -1150,7 +1160,7 @@ func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 		return nil, fmt.Errorf("query node: %w", err)
 	}
 
-	populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+	populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
 
 	// Populate evidence and verification fields
 	if evidence.Valid {
@@ -1187,14 +1197,14 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 
 	if nodeType != "" {
 		rows, err = s.db.Query(`
-			SELECT id, content, type, summary, source_agent, created_at,
+			SELECT id, content, type, summary, source_agent, workspace, created_at,
 			       evidence, verification_status, verification_result, confidence_score,
 			       debt_score, debt_reason, refactor_hint
 			FROM nodes WHERE type = ? ORDER BY created_at DESC
 		`, nodeType)
 	} else {
 		rows, err = s.db.Query(`
-			SELECT id, content, type, summary, source_agent, created_at,
+			SELECT id, content, type, summary, source_agent, workspace, created_at,
 			       evidence, verification_status, verification_result, confidence_score,
 			       debt_score, debt_reason, refactor_hint
 			FROM nodes ORDER BY created_at DESC
@@ -1210,17 +1220,17 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 	for rows.Next() {
 		var n Node
 		var createdAt string
-		var nodeTypeStr, summary, sourceAgent sql.NullString
+		var nodeTypeStr, summary, sourceAgent, workspace sql.NullString
 		var evidence, verificationStatus, verificationResult sql.NullString
 		var confidenceScore, debtScore sql.NullFloat64
 		var debtReason, refactorHint sql.NullString
 
-		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &createdAt,
+		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &workspace, &createdAt,
 			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
 			&debtScore, &debtReason, &refactorHint); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
-		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, createdAt, nil)
+		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, workspace, createdAt, nil)
 
 		// Populate evidence fields
 		if evidence.Valid {
@@ -1631,11 +1641,11 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 
 	// No similar node found - insert new node (including evidence and debt columns)
 	_, err = tx.Exec(`
-		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at,
+		INSERT INTO nodes (id, content, type, summary, source_agent, workspace, embedding, created_at,
 		                   evidence, verification_status, verification_result, confidence_score,
 		                   debt_score, debt_reason, refactor_hint)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, n.Workspace, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
 		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
 		n.DebtScore, n.DebtReason, n.RefactorHint)
 
@@ -1760,7 +1770,7 @@ type FTSResult struct {
 // This fixes the N+1 query pattern in search - one query instead of 1+N.
 func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 	rows, err := s.db.Query(`
-		SELECT id, content, type, summary, source_agent, embedding, created_at,
+		SELECT id, content, type, summary, source_agent, workspace, embedding, created_at,
 		       evidence, verification_status, verification_result, confidence_score,
 		       debt_score, debt_reason, refactor_hint
 		FROM nodes WHERE embedding IS NOT NULL
@@ -1775,18 +1785,18 @@ func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 	for rows.Next() {
 		var n Node
 		var createdAt string
-		var nodeType, summary, sourceAgent sql.NullString
+		var nodeType, summary, sourceAgent, workspace sql.NullString
 		var embeddingBytes []byte
 		var evidence, verificationStatus, verificationResult sql.NullString
 		var confidenceScore, debtScore sql.NullFloat64
 		var debtReason, refactorHint sql.NullString
 
-		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt,
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt,
 			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
 			&debtScore, &debtReason, &refactorHint); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
-		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
 
 		// Populate evidence fields
 		if evidence.Valid {
@@ -1903,7 +1913,7 @@ func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 	}
 
 	rows, err := s.db.Query(`
-		SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.embedding, n.created_at,
+		SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.workspace, n.embedding, n.created_at,
 		       bm25(nodes_fts) as rank
 		FROM nodes_fts f
 		JOIN nodes n ON f.id = n.id
@@ -1922,14 +1932,14 @@ func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 	for rows.Next() {
 		var n Node
 		var createdAt string
-		var nodeType, summary, sourceAgent sql.NullString
+		var nodeType, summary, sourceAgent, workspace sql.NullString
 		var embeddingBytes []byte
 		var rank float64
 
-		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt, &rank); err != nil {
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt, &rank); err != nil {
 			continue
 		}
-		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
 		results = append(results, FTSResult{Node: n, Rank: rank})
 	}
 
