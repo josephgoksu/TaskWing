@@ -54,6 +54,10 @@ type RecallOptions struct {
 	DisableVector  bool      // Disable vector search (FTS-only, no embeddings)
 	DisableRerank  bool      // Disable reranking (skip TEI reranker)
 	StreamWriter   io.Writer // If set, stream RAG answer tokens to this writer
+
+	// Workspace filtering for monorepo support
+	Workspace   string // Filter by workspace ('root' for global, or service name like 'osprey')
+	IncludeRoot bool   // When Workspace is set, also include 'root' workspace nodes (default: true)
 }
 
 // DefaultRecallOptions returns sensible defaults for recall queries.
@@ -67,7 +71,25 @@ func DefaultRecallOptions() RecallOptions {
 		DisableVector:  false,
 		DisableRerank:  false,
 		StreamWriter:   nil,
+		Workspace:      "",   // Empty means all workspaces
+		IncludeRoot:    true, // Always include root/global knowledge by default
 	}
+}
+
+// ValidateWorkspace checks if a workspace string is valid.
+// Valid workspaces are: empty string (all), "root", or alphanumeric service names.
+func ValidateWorkspace(workspace string) error {
+	if workspace == "" || workspace == "root" {
+		return nil
+	}
+	// Allow alphanumeric, hyphens, underscores (common service naming conventions)
+	for _, r := range workspace {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return fmt.Errorf("invalid workspace name %q: only alphanumeric characters, hyphens, and underscores allowed", workspace)
+		}
+	}
+	return nil
 }
 
 // RecallApp provides knowledge retrieval operations.
