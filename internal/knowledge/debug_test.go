@@ -70,6 +70,41 @@ func (m *MockRepository) GetProjectOverview() (*memory.ProjectOverview, error) {
 	return nil, nil
 }
 
+// Workspace-filtered methods for monorepo support
+func (m *MockRepository) ListNodesFiltered(filter memory.NodeFilter) ([]memory.Node, error) {
+	if filter.Workspace == "" {
+		return m.nodes, nil
+	}
+	var filtered []memory.Node
+	for _, n := range m.nodes {
+		if n.Workspace == filter.Workspace {
+			filtered = append(filtered, n)
+		} else if filter.IncludeRoot && n.Workspace == "root" {
+			filtered = append(filtered, n)
+		}
+	}
+	return filtered, nil
+}
+
+func (m *MockRepository) ListNodesWithEmbeddingsFiltered(filter memory.NodeFilter) ([]memory.Node, error) {
+	return m.ListNodesFiltered(filter)
+}
+
+func (m *MockRepository) SearchFTSFiltered(_ string, _ int, filter memory.NodeFilter) ([]memory.FTSResult, error) {
+	if filter.Workspace == "" {
+		return m.ftsResult, nil
+	}
+	var filtered []memory.FTSResult
+	for _, r := range m.ftsResult {
+		if r.Node.Workspace == filter.Workspace {
+			filtered = append(filtered, r)
+		} else if filter.IncludeRoot && r.Node.Workspace == "root" {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered, nil
+}
+
 func TestDebugRetrieval_ExactIDMatch(t *testing.T) {
 	repo := NewMockRepository()
 
@@ -251,5 +286,149 @@ func TestDebugRetrievalResult_Fields(t *testing.T) {
 	}
 	if result.EmbeddingDimension != 1536 {
 		t.Error("EmbeddingDimension field not set correctly")
+	}
+}
+
+// === Workspace Scoping Tests ===
+
+func TestWorkspaceFiltering_ListNodesFiltered(t *testing.T) {
+	repo := NewMockRepository()
+
+	// Add nodes in different workspaces
+	repo.AddNode(memory.Node{ID: "n-root-1", Summary: "Root Decision", Workspace: "root"})
+	repo.AddNode(memory.Node{ID: "n-root-2", Summary: "Root Pattern", Workspace: "root"})
+	repo.AddNode(memory.Node{ID: "n-osprey-1", Summary: "Osprey Decision", Workspace: "osprey"})
+	repo.AddNode(memory.Node{ID: "n-studio-1", Summary: "Studio Decision", Workspace: "studio"})
+
+	tests := []struct {
+		name        string
+		filter      memory.NodeFilter
+		wantIDs     []string
+		wantCount   int
+		description string
+	}{
+		{
+			name:        "empty workspace returns all",
+			filter:      memory.NodeFilter{Workspace: ""},
+			wantCount:   4,
+			description: "Empty workspace should return all nodes",
+		},
+		{
+			name:        "workspace only",
+			filter:      memory.NodeFilter{Workspace: "osprey", IncludeRoot: false},
+			wantIDs:     []string{"n-osprey-1"},
+			wantCount:   1,
+			description: "Should return only osprey nodes",
+		},
+		{
+			name:        "workspace plus root",
+			filter:      memory.NodeFilter{Workspace: "osprey", IncludeRoot: true},
+			wantCount:   3, // osprey + 2 root nodes
+			description: "Should return osprey + root nodes",
+		},
+		{
+			name:        "root workspace only",
+			filter:      memory.NodeFilter{Workspace: "root", IncludeRoot: false},
+			wantIDs:     []string{"n-root-1", "n-root-2"},
+			wantCount:   2,
+			description: "Should return only root nodes",
+		},
+		{
+			name:        "nonexistent workspace",
+			filter:      memory.NodeFilter{Workspace: "nonexistent", IncludeRoot: false},
+			wantCount:   0,
+			description: "Should return no nodes for nonexistent workspace",
+		},
+		{
+			name:        "nonexistent workspace with root",
+			filter:      memory.NodeFilter{Workspace: "nonexistent", IncludeRoot: true},
+			wantCount:   2, // Only root nodes
+			description: "Should return root nodes even for nonexistent workspace",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodes, err := repo.ListNodesFiltered(tt.filter)
+			if err != nil {
+				t.Fatalf("ListNodesFiltered failed: %v", err)
+			}
+
+			if len(nodes) != tt.wantCount {
+				t.Errorf("%s: got %d nodes, want %d", tt.description, len(nodes), tt.wantCount)
+			}
+
+			if len(tt.wantIDs) > 0 {
+				gotIDs := make(map[string]bool)
+				for _, n := range nodes {
+					gotIDs[n.ID] = true
+				}
+				for _, wantID := range tt.wantIDs {
+					if !gotIDs[wantID] {
+						t.Errorf("Expected node %s not found", wantID)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestWorkspaceFiltering_SearchFTSFiltered(t *testing.T) {
+	repo := NewMockRepository()
+
+	// Add nodes for FTS
+	rootNode := memory.Node{ID: "n-root", Summary: "Auth Decision", Workspace: "root"}
+	ospreyNode := memory.Node{ID: "n-osprey", Summary: "Auth Pattern", Workspace: "osprey"}
+	repo.AddNode(rootNode)
+	repo.AddNode(ospreyNode)
+
+	// Setup FTS results
+	repo.SetFTSResults([]memory.FTSResult{
+		{Node: rootNode, Rank: -5.0},
+		{Node: ospreyNode, Rank: -4.0},
+	})
+
+	// Test: No filter returns all
+	results, err := repo.SearchFTSFiltered("auth", 10, memory.NodeFilter{})
+	if err != nil {
+		t.Fatalf("SearchFTSFiltered failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("No filter: expected 2 results, got %d", len(results))
+	}
+
+	// Test: Workspace filter with IncludeRoot=true
+	results, err = repo.SearchFTSFiltered("auth", 10, memory.NodeFilter{Workspace: "osprey", IncludeRoot: true})
+	if err != nil {
+		t.Fatalf("SearchFTSFiltered failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("Osprey+root: expected 2 results, got %d", len(results))
+	}
+
+	// Test: Workspace filter with IncludeRoot=false
+	results, err = repo.SearchFTSFiltered("auth", 10, memory.NodeFilter{Workspace: "osprey", IncludeRoot: false})
+	if err != nil {
+		t.Fatalf("SearchFTSFiltered failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("Osprey only: expected 1 result, got %d", len(results))
+	}
+	if len(results) > 0 && results[0].Node.ID != "n-osprey" {
+		t.Errorf("Expected osprey node, got %s", results[0].Node.ID)
+	}
+}
+
+func TestNodeFilter_DefaultValues(t *testing.T) {
+	filter := memory.DefaultNodeFilter()
+
+	if filter.Type != "" {
+		t.Errorf("Type = %q, want empty", filter.Type)
+	}
+	if filter.Workspace != "" {
+		t.Errorf("Workspace = %q, want empty", filter.Workspace)
+	}
+	if !filter.IncludeRoot {
+		t.Error("IncludeRoot = false, want true")
 	}
 }
