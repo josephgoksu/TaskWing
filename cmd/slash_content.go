@@ -200,7 +200,7 @@ Scope: [scope]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Commands:
   /tw-done    - Complete this task
-  /taskwing   - Fetch more context
+  /tw-brief   - Fetch more context
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` + "```" + `
 

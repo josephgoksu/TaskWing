@@ -293,7 +293,7 @@ Interactive script that prompts for version, opens editor for notes, creates tag
 TaskWing provides project memory for AI assistants via MCP tools and slash commands.
 
 ### Slash Commands
-- `/taskwing` - Fetch full project context (decisions, patterns, constraints)
+- `/tw-brief` - Get compact project knowledge brief (decisions, patterns, constraints)
 - `/tw-next` - Start next task with architecture context
 - `/tw-done` - Complete current task with summary
 - `/tw-plan` - Create development plan from goal
@@ -331,6 +331,8 @@ taskwing hook continue-check    # Check if should continue to next task (Stop ho
 taskwing hook session-end       # Cleanup session (SessionEnd hook)
 taskwing hook status            # View current session state
 ```
+
+**Note**: `session-init` auto-injects the project knowledge brief (same as `/tw-brief`) at session start.
 
 **Circuit breakers** prevent runaway execution:
 - `--max-tasks=5` - Stop after N tasks for human review
