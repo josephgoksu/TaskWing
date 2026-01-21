@@ -21,11 +21,11 @@ func captureStdout(fn func()) string {
 
 	fn()
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	return buf.String()
 }
 
@@ -154,7 +154,7 @@ func TestListFooterPrintsCorrectly(t *testing.T) {
 			ver = "dev"
 		}
 		// This mimics: fmt.Printf("TaskWing v%s\n", ver)
-		os.Stdout.WriteString("TaskWing v" + ver + "\n")
+		_, _ = os.Stdout.WriteString("TaskWing v" + ver + "\n")
 	})
 
 	expected := "TaskWing v1.0.0-test\n"
@@ -176,7 +176,7 @@ func TestListFooterDevFallback(t *testing.T) {
 		if ver == "" {
 			ver = "dev"
 		}
-		os.Stdout.WriteString("TaskWing v" + ver + "\n")
+		_, _ = os.Stdout.WriteString("TaskWing v" + ver + "\n")
 	})
 
 	if !strings.Contains(output, "TaskWing vdev") {
@@ -194,15 +194,15 @@ func TestListFooterAppearsOnce(t *testing.T) {
 
 	output := captureStdout(func() {
 		// Simulate multiple lines of output followed by footer
-		os.Stdout.WriteString("Node 1\n")
-		os.Stdout.WriteString("Node 2\n")
+		_, _ = os.Stdout.WriteString("Node 1\n")
+		_, _ = os.Stdout.WriteString("Node 2\n")
 
 		// Footer logic
 		ver := version
 		if ver == "" {
 			ver = "dev"
 		}
-		os.Stdout.WriteString("TaskWing v" + ver + "\n")
+		_, _ = os.Stdout.WriteString("TaskWing v" + ver + "\n")
 	})
 
 	count := strings.Count(output, "TaskWing v")
