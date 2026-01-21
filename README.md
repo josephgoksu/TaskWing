@@ -25,6 +25,11 @@ taskwing bootstrap   # Extract decisions, patterns, constraints
 taskwing mcp         # Expose to AI via MCP
 ```
 
+> **Upgrading?** If you installed before v1.12, run:
+> ```bash
+> brew uninstall taskwing && brew install --cask josephgoksu/tap/taskwing
+> ```
+
 Your AI now knows your architecture permanently.
 
 ## Results
