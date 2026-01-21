@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/config"
@@ -730,6 +731,339 @@ func formatPipeline(stages []string) string {
 	return result
 }
 
+// memoryBackfillWorkspaceCmd backfills workspace values for existing nodes
+var memoryBackfillWorkspaceCmd = &cobra.Command{
+	Use:   "backfill-workspace",
+	Short: "Backfill workspace values for existing nodes",
+	Long: `Infer and populate workspace values for nodes that don't have them.
+
+This is useful for:
+  • Migrating existing knowledge to workspace-aware storage
+  • Fixing nodes created before workspace support was added
+  • Ensuring monorepo knowledge is properly scoped
+
+Workspace inference uses:
+  1. SourceAgent metadata (if agent is service-specific)
+  2. File paths in node content (e.g., paths containing service names)
+  3. Defaults to 'root' if no workspace can be inferred
+
+Examples:
+  taskwing memory backfill-workspace --dry-run     # Preview changes without writing
+  taskwing memory backfill-workspace               # Apply workspace assignments
+  taskwing memory backfill-workspace --limit 10    # Process only first 10 nodes`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+		limit, _ := cmd.Flags().GetInt("limit")
+
+		if dryRun {
+			ui.RenderPageHeader("TaskWing Workspace Backfill", "Dry-run mode (no changes)")
+		} else {
+			ui.RenderPageHeader("TaskWing Workspace Backfill", "Inferring workspace values")
+		}
+
+		memoryPath, err := config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
+		repo, err := memory.NewDefaultRepository(memoryPath)
+		if err != nil {
+			return fmt.Errorf("open memory repo: %w", err)
+		}
+		defer func() { _ = repo.Close() }()
+
+		// Get all nodes
+		nodes, err := repo.ListNodes("")
+		if err != nil {
+			return fmt.Errorf("list nodes: %w", err)
+		}
+
+		// Apply limit if specified
+		if limit > 0 && limit < len(nodes) {
+			nodes = nodes[:limit]
+		}
+
+		// Detect workspace structure for inference
+		cwd, _ := os.Getwd()
+		wsInfo, _ := detectWorkspaceForBackfill(cwd)
+
+		if viper.GetBool("json") {
+			return runBackfillJSON(repo, nodes, wsInfo, dryRun)
+		}
+
+		// Show workspace detection results
+		if wsInfo != nil && len(wsInfo.Services) > 0 {
+			fmt.Printf("📂 Detected workspace: %s (%d services)\n", wsInfo.Type.String(), len(wsInfo.Services))
+			fmt.Printf("   Services: %v\n\n", wsInfo.Services)
+		} else {
+			fmt.Println("📂 No monorepo detected (single workspace mode)")
+			fmt.Println()
+		}
+
+		updated := 0
+		skipped := 0
+		unchanged := 0
+
+		for _, n := range nodes {
+			fullNode, err := repo.GetNode(n.ID)
+			if err != nil {
+				skipped++
+				continue
+			}
+
+			// Skip if workspace is already set and not 'root'
+			if fullNode.Workspace != "" && fullNode.Workspace != "root" {
+				unchanged++
+				continue
+			}
+
+			// Infer workspace from node content and metadata
+			inferredWS := inferWorkspace(fullNode, wsInfo)
+
+			// Skip if inference results in same value
+			if inferredWS == fullNode.Workspace {
+				unchanged++
+				continue
+			}
+
+			if dryRun {
+				fmt.Printf("PLANNED: %s → workspace=%q (was %q)\n", fullNode.ID, inferredWS, fullNode.Workspace)
+				updated++
+			} else {
+				// Update the node's workspace
+				if err := repo.UpdateNodeWorkspace(fullNode.ID, inferredWS); err != nil {
+					fmt.Printf("  ✗ %s: %v\n", fullNode.ID, err)
+					skipped++
+					continue
+				}
+				if !viper.GetBool("quiet") {
+					fmt.Printf("  ✓ %s → workspace=%q\n", fullNode.ID, inferredWS)
+				}
+				updated++
+			}
+		}
+
+		fmt.Println()
+		if dryRun {
+			fmt.Printf("📊 Dry-run summary: %d would be updated, %d unchanged, %d skipped\n", updated, unchanged, skipped)
+			fmt.Println("\nRun without --dry-run to apply changes.")
+		} else {
+			fmt.Printf("✓ Backfill complete: %d updated, %d unchanged, %d skipped\n", updated, unchanged, skipped)
+
+			// Regenerate markdown mirror if changes were made
+			if updated > 0 {
+				fmt.Println("Regenerating markdown mirror...")
+				if err := repo.RebuildFiles(); err != nil {
+					fmt.Printf("⚠  Warning: failed to rebuild markdown files: %v\n", err)
+				} else {
+					fmt.Println("✓ Markdown mirror updated")
+				}
+			}
+		}
+
+		return nil
+	},
+}
+
+// detectWorkspaceForBackfill wraps project.DetectWorkspace to import it
+func detectWorkspaceForBackfill(basePath string) (*workspaceInfoCompat, error) {
+	// Import the project package's workspace detection
+	// For now, we'll do a simple inline detection
+	entries, err := os.ReadDir(basePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var services []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name[0] == '.' || isSkippableBackfillDir(name) {
+			continue
+		}
+		dirPath := filepath.Join(basePath, name)
+		if isBackfillProjectDir(dirPath) {
+			services = append(services, name)
+		}
+	}
+
+	return &workspaceInfoCompat{
+		Services: services,
+		Type: func() workspaceTypeCompat {
+			if len(services) > 1 {
+				return wsTypeMonorepo
+			}
+			return wsTypeSingle
+		}(),
+	}, nil
+}
+
+type workspaceTypeCompat int
+
+const (
+	wsTypeSingle   workspaceTypeCompat = 0
+	wsTypeMonorepo workspaceTypeCompat = 1
+)
+
+func (t workspaceTypeCompat) String() string {
+	if t == wsTypeMonorepo {
+		return "monorepo"
+	}
+	return "single"
+}
+
+type workspaceInfoCompat struct {
+	Type     workspaceTypeCompat
+	Services []string
+}
+
+func isSkippableBackfillDir(name string) bool {
+	skip := map[string]bool{
+		"node_modules": true, "vendor": true, "dist": true, "build": true,
+		"out": true, "target": true, "bin": true, "__pycache__": true,
+		".next": true, "coverage": true, "test-results": true,
+	}
+	return skip[name]
+}
+
+func isBackfillProjectDir(path string) bool {
+	markers := []string{".git", "package.json", "go.mod", "pom.xml", "build.gradle", "Cargo.toml", "Dockerfile"}
+	for _, m := range markers {
+		if _, err := os.Stat(filepath.Join(path, m)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// inferWorkspace determines the workspace for a node based on content and metadata
+func inferWorkspace(n *memory.Node, wsInfo *workspaceInfoCompat) string {
+	if wsInfo == nil || len(wsInfo.Services) == 0 {
+		return "root"
+	}
+
+	// Check if node content contains service-specific paths
+	content := n.Content + " " + n.Summary
+	for _, svc := range wsInfo.Services {
+		// Look for patterns like "osprey/", "studio/src", etc.
+		patterns := []string{
+			svc + "/",
+			svc + "\\",
+			"/" + svc + "/",
+			"\\" + svc + "\\",
+		}
+		for _, p := range patterns {
+			if containsCaseInsensitive(content, p) {
+				return svc
+			}
+		}
+	}
+
+	// Check SourceAgent for service hints
+	if n.SourceAgent != "" {
+		for _, svc := range wsInfo.Services {
+			if containsCaseInsensitive(n.SourceAgent, svc) {
+				return svc
+			}
+		}
+	}
+
+	// Default to root (global workspace)
+	return "root"
+}
+
+func containsCaseInsensitive(s, substr string) bool {
+	return len(s) >= len(substr) &&
+		(s == substr || len(substr) > 0 &&
+			(containsLower(s, substr)))
+}
+
+func containsLower(s, substr string) bool {
+	s = strings.ToLower(s)
+	substr = strings.ToLower(substr)
+	return strings.Contains(s, substr)
+}
+
+// runBackfillJSON outputs backfill results as JSON
+func runBackfillJSON(repo *memory.Repository, nodes []memory.Node, wsInfo *workspaceInfoCompat, dryRun bool) error {
+	type backfillResult struct {
+		NodeID       string `json:"nodeId"`
+		OldWorkspace string `json:"oldWorkspace"`
+		NewWorkspace string `json:"newWorkspace"`
+		Status       string `json:"status"` // "planned", "updated", "unchanged", "error"
+	}
+
+	var results []backfillResult
+
+	for _, n := range nodes {
+		fullNode, err := repo.GetNode(n.ID)
+		if err != nil {
+			results = append(results, backfillResult{
+				NodeID: n.ID,
+				Status: "error",
+			})
+			continue
+		}
+
+		if fullNode.Workspace != "" && fullNode.Workspace != "root" {
+			results = append(results, backfillResult{
+				NodeID:       fullNode.ID,
+				OldWorkspace: fullNode.Workspace,
+				NewWorkspace: fullNode.Workspace,
+				Status:       "unchanged",
+			})
+			continue
+		}
+
+		inferredWS := inferWorkspace(fullNode, wsInfo)
+
+		if inferredWS == fullNode.Workspace {
+			results = append(results, backfillResult{
+				NodeID:       fullNode.ID,
+				OldWorkspace: fullNode.Workspace,
+				NewWorkspace: inferredWS,
+				Status:       "unchanged",
+			})
+			continue
+		}
+
+		if dryRun {
+			results = append(results, backfillResult{
+				NodeID:       fullNode.ID,
+				OldWorkspace: fullNode.Workspace,
+				NewWorkspace: inferredWS,
+				Status:       "planned",
+			})
+		} else {
+			if err := repo.UpdateNodeWorkspace(fullNode.ID, inferredWS); err != nil {
+				results = append(results, backfillResult{
+					NodeID:       fullNode.ID,
+					OldWorkspace: fullNode.Workspace,
+					NewWorkspace: inferredWS,
+					Status:       "error",
+				})
+			} else {
+				results = append(results, backfillResult{
+					NodeID:       fullNode.ID,
+					OldWorkspace: fullNode.Workspace,
+					NewWorkspace: inferredWS,
+					Status:       "updated",
+				})
+			}
+		}
+	}
+
+	output, _ := json.MarshalIndent(map[string]any{
+		"dryRun":   dryRun,
+		"total":    len(nodes),
+		"services": wsInfo.Services,
+		"results":  results,
+	}, "", "  ")
+	fmt.Println(string(output))
+	return nil
+}
+
 func init() {
 	rootCmd.AddCommand(memoryCmd)
 
@@ -742,10 +1076,13 @@ func init() {
 	memoryCmd.AddCommand(memoryResetCmd)
 	memoryCmd.AddCommand(memoryExportCmd)
 	memoryCmd.AddCommand(memoryInspectCmd)
+	memoryCmd.AddCommand(memoryBackfillWorkspaceCmd)
 
 	memoryResetCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 	memoryRebuildEmbeddingsCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
 	memoryExportCmd.Flags().StringP("name", "n", "", "Project name for the document header")
 	memoryInspectCmd.Flags().IntP("limit", "n", 10, "Maximum number of results")
 	memoryInspectCmd.Flags().BoolP("verbose", "v", false, "Show detailed scores and embedding dimensions")
+	memoryBackfillWorkspaceCmd.Flags().Bool("dry-run", false, "Preview changes without writing to database")
+	memoryBackfillWorkspaceCmd.Flags().IntP("limit", "n", 0, "Limit the number of nodes to process (0 = all)")
 }

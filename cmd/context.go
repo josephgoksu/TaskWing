@@ -30,10 +30,18 @@ Returns context optimized for AI consumption (~500-1000 tokens).
 
 Use --answer to get an LLM-generated answer based on the retrieved context.
 
+Workspace Filtering (monorepo support):
+  By default, searches all workspaces.
+  Use --workspace to filter results by a specific service/workspace.
+  Use --all to explicitly search all workspaces (ignores auto-detection).
+
+  Note: Nodes without a workspace are treated as 'root' (global knowledge).
+
 Examples:
   taskwing context "how does authentication work"
   taskwing context "why lancedb" --answer
-  taskwing context "what decisions were made about the API" --answer`,
+  taskwing context "what decisions were made about the API" --answer
+  taskwing context "api patterns" --workspace=osprey  # Only osprey + root`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runContext,
 }
@@ -45,6 +53,8 @@ var (
 	contextDeep      bool
 	contextDepth     int
 	contextOffline   bool
+	contextWorkspace string
+	contextAll       bool
 )
 
 func init() {
@@ -56,6 +66,8 @@ func init() {
 	contextCmd.Flags().IntVar(&contextDepth, "depth", 2, "Call graph traversal depth for --deep mode (1-5)")
 	contextCmd.Flags().BoolVar(&contextOffline, "offline", false, "Disable all LLM usage (FTS-only, no rewrite, no answer)")
 	contextCmd.Flags().BoolVar(&contextOffline, "no-llm", false, "Alias for --offline")
+	contextCmd.Flags().StringVarP(&contextWorkspace, "workspace", "w", "", "Filter by workspace name (e.g., 'osprey', 'api'). Includes 'root' nodes by default.")
+	contextCmd.Flags().BoolVar(&contextAll, "all", false, "Search all workspaces (ignores workspace auto-detection)")
 }
 
 func runContext(cmd *cobra.Command, args []string) error {
@@ -125,6 +137,18 @@ func runContext(cmd *cobra.Command, args []string) error {
 		streamWriter = os.Stdout
 	}
 
+	// Resolve workspace filtering
+	// --all overrides --workspace, empty string means all workspaces
+	var workspace string
+	if contextAll {
+		workspace = "" // Explicitly all workspaces
+	} else if contextWorkspace != "" {
+		if err := app.ValidateWorkspace(contextWorkspace); err != nil {
+			return err
+		}
+		workspace = contextWorkspace
+	}
+
 	// 6. Execute query via app layer (ALL business logic here)
 	result, err := recallApp.Query(ctx, query, app.RecallOptions{
 		Limit:          contextLimit,
@@ -135,6 +159,8 @@ func runContext(cmd *cobra.Command, args []string) error {
 		DisableVector:  contextOffline,
 		DisableRerank:  contextOffline,
 		StreamWriter:   streamWriter,
+		Workspace:      workspace,
+		IncludeRoot:    true, // Always include root knowledge when filtering by workspace
 	})
 	if err != nil {
 		if !isQuiet() && !willStream {

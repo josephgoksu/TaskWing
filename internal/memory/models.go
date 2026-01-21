@@ -67,6 +67,7 @@ type Node struct {
 	Type        string    `json:"type,omitempty"`        // AI-inferred: decision, feature, plan, note
 	Summary     string    `json:"summary,omitempty"`     // AI-extracted title/summary
 	SourceAgent string    `json:"sourceAgent,omitempty"` // Agent that created this node (doc, code, git, deps)
+	Workspace   string    `json:"workspace,omitempty"`   // Monorepo workspace/service name ('root' = global, e.g., 'osprey', 'studio')
 	Embedding   []float32 `json:"embedding,omitempty"`   // Vector for similarity search
 	CreatedAt   time.Time `json:"createdAt"`
 
@@ -185,4 +186,21 @@ type ProjectOverview struct {
 	LongDescription  string    `json:"long_description"`  // Detailed description (2-3 paragraphs)
 	GeneratedAt      time.Time `json:"generated_at"`      // When the overview was auto-generated
 	LastEditedAt     time.Time `json:"last_edited_at"`    // When manually edited (zero if never)
+}
+
+// NodeFilter specifies criteria for filtering node queries.
+// Used by ListNodes, SearchFTS, ListNodesWithEmbeddings, etc.
+type NodeFilter struct {
+	Type        string // Filter by node type (decision, feature, pattern, etc.)
+	Workspace   string // Filter by workspace ('root' for global, or service name)
+	IncludeRoot bool   // When workspace is set, also include 'root' workspace nodes
+}
+
+// DefaultNodeFilter returns a filter that matches all nodes.
+func DefaultNodeFilter() NodeFilter {
+	return NodeFilter{
+		Type:        "",
+		Workspace:   "",
+		IncludeRoot: true,
+	}
 }

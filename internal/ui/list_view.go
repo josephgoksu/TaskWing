@@ -72,8 +72,14 @@ func renderCompactList(byType map[string][]memory.Node, typeOrder []string) {
 				summary = utils.Truncate(n.Content, 60)
 			}
 
-			// Compact: just summary, no metadata
-			fmt.Printf(" • %s\n", StyleTitle.Render(summary))
+			// Add workspace badge if not root
+			workspaceBadge := ""
+			if n.Workspace != "" && n.Workspace != "root" {
+				workspaceBadge = StyleSubtle.Render(fmt.Sprintf(" [%s]", n.Workspace))
+			}
+
+			// Compact: summary with optional workspace badge
+			fmt.Printf(" • %s%s\n", StyleTitle.Render(summary), workspaceBadge)
 		}
 		fmt.Println()
 	}
@@ -90,14 +96,14 @@ func renderVerboseTable(byType map[string][]memory.Node, typeOrder []string) {
 		fmt.Println(StyleHeader.Render(fmt.Sprintf("%s %ss", TypeIcon(t), utils.ToTitle(t))))
 
 		table := &Table{
-			Headers:  []string{"ID", "Summary", "Created", "Agent"},
-			MaxWidth: 45,
+			Headers:  []string{"ID", "Summary", "Workspace", "Created", "Agent"},
+			MaxWidth: 40,
 		}
 
 		for _, n := range groupNodes {
 			summary := n.Summary
 			if summary == "" {
-				summary = utils.Truncate(n.Content, 45)
+				summary = utils.Truncate(n.Content, 40)
 			}
 
 			agent := n.SourceAgent
@@ -105,9 +111,15 @@ func renderVerboseTable(byType map[string][]memory.Node, typeOrder []string) {
 				agent = "-"
 			}
 
+			workspace := n.Workspace
+			if workspace == "" {
+				workspace = "root"
+			}
+
 			table.Rows = append(table.Rows, []string{
 				TruncateID(n.ID),
 				summary,
+				workspace,
 				n.CreatedAt.Format("Jan 02 15:04"),
 				agent,
 			})

@@ -206,6 +206,17 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 			CreatedAt:   time.Now().UTC(),
 		}
 
+		// Extract workspace from metadata (set by multi-repo/monorepo bootstrap)
+		if f.Metadata != nil {
+			if ws, ok := f.Metadata["service"].(string); ok && ws != "" {
+				node.Workspace = ws
+			}
+		}
+		// Default to root if no workspace specified
+		if node.Workspace == "" {
+			node.Workspace = "root"
+		}
+
 		// Store verification status
 		if f.VerificationStatus != "" {
 			node.VerificationStatus = string(f.VerificationStatus)

@@ -49,10 +49,35 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-# Changelog generation - DISABLED for manual release notes
-# The release script (make release) handles manual notes via annotated tags
+# Changelog generation from conventional commits
 changelog:
-  disable: true
+  use: github
+  sort: asc
+  abbrev: -1
+  groups:
+    - title: "🚀 Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "🐛 Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "📚 Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "🧪 Tests"
+      regexp: '^.*?test(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: "🔧 Maintenance"
+      regexp: '^.*?(chore|refactor|style|perf|ci|build)(\([[:word:]]+\))??!?:.+$'
+      order: 4
+    - title: "Other Changes"
+      order: 999
+  filters:
+    exclude:
+      - "^Merge"
+      - "^merge"
+      - "^WIP"
+      - "^wip"
 
 # GitHub release configuration
 release:
@@ -67,7 +92,7 @@ release:
   header: |
     ## TaskWing {{.Tag}}
 
-    See release notes below for what's new in this version.
+    **Full Changelog**: https://github.com/josephgoksu/TaskWing/compare/{{.PreviousTag}}...{{.Tag}}
 
   footer: |
     ---
@@ -76,8 +101,7 @@ release:
 
     **Homebrew (macOS/Linux):**
     ```bash
-    brew tap josephgoksu/tap
-    brew install taskwing
+    brew install --cask josephgoksu/tap/taskwing
     ```
 
     **Manual Installation:**
@@ -97,8 +121,8 @@ release:
 
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser) 🚀
 
-# Homebrew formula
-brews:
+# Homebrew cask (replaces deprecated brews config)
+homebrew_casks:
   - name: taskwing
     description: "AI-Native Task Management - Generate context-aware dev tasks that match your architecture"
     homepage: "https://taskwing.app"
@@ -107,15 +131,11 @@ brews:
       owner: josephgoksu
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
+    directory: Casks
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
-    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
-    install: |
-      bin.install "taskwing"
-    test: |
-      system "#{bin}/taskwing", "version"
+    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }}"
 
 # Scoop bucket for Windows removed - focusing on Linux/macOS only
 

@@ -173,8 +173,10 @@ type TaskToolParams struct {
 
 // ProjectContextParams defines the parameters for the recall tool.
 type ProjectContextParams struct {
-	Query  string `json:"query,omitempty"`
-	Answer bool   `json:"answer,omitempty"` // If true, generate RAG answer using LLM
+	Query     string `json:"query,omitempty"`
+	Answer    bool   `json:"answer,omitempty"`    // If true, generate RAG answer using LLM
+	Workspace string `json:"workspace,omitempty"` // Filter by workspace (e.g., 'osprey'). Empty = all workspaces.
+	All       bool   `json:"all,omitempty"`       // Explicitly search all workspaces (ignore auto-detection)
 }
 
 // RememberParams defines the parameters for the remember tool.

@@ -228,6 +228,14 @@ func updateConfigWithViperAndModel(path string, provider, model, key string) err
 // SaveAPIKeyForProvider saves only the API key for a specific provider without
 // changing the default provider or model. This is used when auto-detecting provider
 // from model name - we want to save the key but not change the user's preferred defaults.
+//
+// SECURITY NOTE: API keys are stored ONLY in the user's config file (~/.taskwing/config.yaml).
+// They must NEVER be written to:
+//   - memory.db (SQLite database)
+//   - features/*.md (markdown snapshots)
+//   - telemetry payloads
+//
+// This is a security constraint to prevent accidental key leakage.
 func SaveAPIKeyForProvider(provider, key string) error {
 	if provider == "" {
 		return fmt.Errorf("provider cannot be empty")
@@ -257,4 +265,81 @@ func SaveAPIKeyForProvider(provider, key string) error {
 	// Note: No longer writing to legacy llm.apiKey - read path handles migration
 
 	return v.WriteConfig()
+}
+
+// DeleteAPIKeyForProvider removes the API key for a specific provider from the config.
+// This allows users to clear stored keys through the interactive config UI.
+//
+// SECURITY NOTE: This function only affects the user's config file (~/.taskwing/config.yaml).
+// API keys are NEVER stored in memory.db, features/*.md, or telemetry, so deletion
+// only needs to target the config file.
+func DeleteAPIKeyForProvider(provider string) error {
+	if provider == "" {
+		return fmt.Errorf("provider cannot be empty")
+	}
+
+	configDir, err := GetGlobalConfigDir()
+	if err != nil {
+		return fmt.Errorf("failed to get config directory: %w", err)
+	}
+
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	// Check if config file exists
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		// No config file means no key to delete - this is not an error
+		return nil
+	}
+
+	// Read the file and remove the key line-by-line
+	// This is more reliable than Viper for deletion since Viper doesn't have a delete method
+	bytes, err := os.ReadFile(configFile)
+	if err != nil {
+		return fmt.Errorf("failed to read config: %w", err)
+	}
+
+	lines := strings.Split(string(bytes), "\n")
+	newLines := make([]string, 0, len(lines))
+	inAPIKeys := false
+	apiKeysIndent := ""
+	keyDeleted := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Track if we're in the apiKeys section
+		// Note: Viper normalizes keys to lowercase, so we check for both "apiKeys:" and "apikeys:"
+		if strings.HasPrefix(trimmed, "apiKeys:") || strings.HasPrefix(trimmed, "apikeys:") {
+			inAPIKeys = true
+			idx := strings.Index(strings.ToLower(line), "apikeys:")
+			apiKeysIndent = line[:idx]
+			newLines = append(newLines, line)
+			continue
+		}
+
+		// If we're in apiKeys and this is the provider key we want to delete
+		if inAPIKeys {
+			// Check if we're still in the apiKeys block (indented beyond apiKeys)
+			if strings.HasPrefix(line, apiKeysIndent+"  ") || strings.HasPrefix(line, apiKeysIndent+"\t") {
+				// Check if this is the provider key to delete
+				if strings.HasPrefix(trimmed, provider+":") {
+					keyDeleted = true
+					continue // Skip this line (delete it)
+				}
+				newLines = append(newLines, line)
+				continue
+			}
+			// Exited apiKeys block
+			inAPIKeys = false
+		}
+
+		newLines = append(newLines, line)
+	}
+
+	// Only write if we actually deleted something (optimization)
+	if !keyDeleted {
+		return nil
+	}
+
+	return os.WriteFile(configFile, []byte(strings.Join(newLines, "\n")), 0600)
 }

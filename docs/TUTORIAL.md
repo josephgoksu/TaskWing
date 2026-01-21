@@ -10,7 +10,7 @@ TaskWing extracts architectural knowledge from your codebase and exposes it to A
 
 ```bash
 # 1. Install
-brew install josephgoksu/tap/taskwing
+brew install --cask josephgoksu/tap/taskwing
 
 # 2. Bootstrap your project
 cd your-project

@@ -216,3 +216,90 @@ func TestWorkspaceInfoMethods(t *testing.T) {
 		t.Errorf("GetServicePath() = %v, want %v", got, expectedPath)
 	}
 }
+
+// === Workspace Auto-Detection Tests ===
+
+func TestExtractWorkspaceName(t *testing.T) {
+	tests := []struct {
+		name     string
+		relPath  string
+		expected string
+	}{
+		{"simple name", "osprey", "osprey"},
+		{"nested path", "services/osprey", "osprey"},
+		{"deeply nested", "apps/frontend/web", "web"},
+		{"empty path", "", ""},
+		{"dot path", ".", ""},
+		{"root slash", "/", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractWorkspaceName(tt.relPath)
+			if result != tt.expected {
+				t.Errorf("extractWorkspaceName(%q) = %q, want %q", tt.relPath, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDetectWorkspaceFromPath_SingleRepo(t *testing.T) {
+	// For a single repo (non-monorepo), should always return "root"
+	// Use a path that we know won't be detected as a monorepo
+	workspace, err := DetectWorkspaceFromPath("/nonexistent/path")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if workspace != "root" {
+		t.Errorf("DetectWorkspaceFromPath for nonexistent path = %q, want 'root'", workspace)
+	}
+}
+
+func TestAutoDetectWorkspace_FallbackToRoot(t *testing.T) {
+	// AutoDetectWorkspace should never return empty string
+	workspace, _ := DetectWorkspaceFromCwd()
+	// We can't predict the cwd, but it should either return "root" or a valid workspace name
+	if workspace == "" {
+		t.Error("DetectWorkspaceFromCwd returned empty string, expected 'root' or workspace name")
+	}
+}
+
+func TestDetectWorkspaceFromPath_WithMonorepoContext(t *testing.T) {
+	// This test documents the expected behavior for monorepo detection
+	// The actual detection depends on the file system structure
+	// We test the edge cases here
+
+	tests := []struct {
+		name            string
+		relPath         string
+		isMonorepo      bool
+		expectedDefault string
+	}{
+		{"at root", ".", false, "root"},
+		{"empty", "", false, "root"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// For non-monorepo or at root, should return "root"
+			ctx := &Context{
+				RootPath:   "/project",
+				GitRoot:    "/project",
+				IsMonorepo: tt.isMonorepo,
+			}
+
+			relPath := ctx.RelativeGitPath()
+			workspace := extractWorkspaceName(relPath)
+
+			// At root, RelativeGitPath returns ".", extractWorkspaceName returns ""
+			// which means we should fallback to "root"
+			if relPath == "." && workspace == "" {
+				workspace = "root"
+			}
+
+			if workspace != tt.expectedDefault {
+				t.Errorf("workspace = %q, want %q", workspace, tt.expectedDefault)
+			}
+		})
+	}
+}

@@ -12,6 +12,8 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/project"
 )
 
 // SymbolResponse represents a code symbol in search results.
@@ -54,6 +56,10 @@ type RecallOptions struct {
 	DisableVector  bool      // Disable vector search (FTS-only, no embeddings)
 	DisableRerank  bool      // Disable reranking (skip TEI reranker)
 	StreamWriter   io.Writer // If set, stream RAG answer tokens to this writer
+
+	// Workspace filtering for monorepo support
+	Workspace   string // Filter by workspace ('root' for global, or service name like 'osprey')
+	IncludeRoot bool   // When Workspace is set, also include 'root' workspace nodes (default: true)
 }
 
 // DefaultRecallOptions returns sensible defaults for recall queries.
@@ -67,7 +73,51 @@ func DefaultRecallOptions() RecallOptions {
 		DisableVector:  false,
 		DisableRerank:  false,
 		StreamWriter:   nil,
+		Workspace:      "",   // Empty means all workspaces
+		IncludeRoot:    true, // Always include root/global knowledge by default
 	}
+}
+
+// ValidateWorkspace checks if a workspace string is valid.
+// Valid workspaces are: empty string (all), "root", or alphanumeric service names.
+func ValidateWorkspace(workspace string) error {
+	if workspace == "" || workspace == "root" {
+		return nil
+	}
+	// Allow alphanumeric, hyphens, underscores (common service naming conventions)
+	for _, r := range workspace {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return fmt.Errorf("invalid workspace name %q: only alphanumeric characters, hyphens, and underscores allowed", workspace)
+		}
+	}
+	return nil
+}
+
+// AutoDetectWorkspace returns the workspace name detected from the current working directory.
+// Returns "root" if not in a monorepo subdirectory or if detection fails.
+func AutoDetectWorkspace() string {
+	ws, _ := project.DetectWorkspaceFromCwd()
+	return ws
+}
+
+// ResolveWorkspace resolves the effective workspace to use.
+// If explicitWorkspace is non-empty, it is validated and returned.
+// If explicitWorkspace is empty and autoDetect is true, it auto-detects from cwd.
+// Returns the resolved workspace or "root" as default.
+func ResolveWorkspace(explicitWorkspace string, autoDetect bool) (string, error) {
+	if explicitWorkspace != "" {
+		if err := ValidateWorkspace(explicitWorkspace); err != nil {
+			return "", err
+		}
+		return explicitWorkspace, nil
+	}
+
+	if autoDetect {
+		return AutoDetectWorkspace(), nil
+	}
+
+	return "", nil // Empty means all workspaces
 }
 
 // RecallApp provides knowledge retrieval operations.
@@ -205,9 +255,20 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 	}
 
 	// 3. Execute knowledge search (hybrid + rerank + graph expansion)
-	scored, err := ks.Search(ctx, searchQuery, opts.Limit)
-	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+	// Use workspace-aware search if workspace filter is specified
+	var scored []knowledge.ScoredNode
+	var searchErr error
+	if opts.Workspace != "" {
+		filter := memory.NodeFilter{
+			Workspace:   opts.Workspace,
+			IncludeRoot: opts.IncludeRoot,
+		}
+		scored, searchErr = ks.SearchWithFilter(ctx, searchQuery, opts.Limit, filter)
+	} else {
+		scored, searchErr = ks.Search(ctx, searchQuery, opts.Limit)
+	}
+	if searchErr != nil {
+		return nil, fmt.Errorf("search failed: %w", searchErr)
 	}
 
 	// 4. Convert results to response format (strips embeddings)

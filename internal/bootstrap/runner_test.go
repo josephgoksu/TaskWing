@@ -223,3 +223,138 @@ func TestRunner_Run_DurationTracking(t *testing.T) {
 		t.Errorf("Duration = %v, expected at least 10ms", results[0].Duration)
 	}
 }
+
+// === Workspace Tagging Tests ===
+
+func TestRunner_RunWithOptions_WorkspacePassed(t *testing.T) {
+	var receivedInput core.Input
+	agent := &mockAgent{
+		name: "workspace-agent",
+		runFunc: func(ctx context.Context, input core.Input) (core.Output, error) {
+			receivedInput = input
+			return core.Output{AgentName: "workspace-agent"}, nil
+		},
+	}
+
+	runner := &Runner{agents: []core.Agent{agent}}
+	defer runner.Close()
+
+	_, err := runner.RunWithOptions(context.Background(), "/test/path", RunOptions{Workspace: "osprey"})
+	if err != nil {
+		t.Fatalf("RunWithOptions failed: %v", err)
+	}
+
+	if receivedInput.Workspace != "osprey" {
+		t.Errorf("Input.Workspace = %q, want %q", receivedInput.Workspace, "osprey")
+	}
+}
+
+func TestRunner_RunWithOptions_DefaultsToRoot(t *testing.T) {
+	var receivedInput core.Input
+	agent := &mockAgent{
+		name: "workspace-agent",
+		runFunc: func(ctx context.Context, input core.Input) (core.Output, error) {
+			receivedInput = input
+			return core.Output{AgentName: "workspace-agent"}, nil
+		},
+	}
+
+	runner := &Runner{agents: []core.Agent{agent}}
+	defer runner.Close()
+
+	// Empty workspace should default to "root"
+	_, err := runner.RunWithOptions(context.Background(), "/test/path", RunOptions{Workspace: ""})
+	if err != nil {
+		t.Fatalf("RunWithOptions failed: %v", err)
+	}
+
+	if receivedInput.Workspace != "root" {
+		t.Errorf("Input.Workspace = %q, want %q (default)", receivedInput.Workspace, "root")
+	}
+}
+
+func TestRunner_Run_UsesRootWorkspace(t *testing.T) {
+	var receivedInput core.Input
+	agent := &mockAgent{
+		name: "workspace-agent",
+		runFunc: func(ctx context.Context, input core.Input) (core.Output, error) {
+			receivedInput = input
+			return core.Output{AgentName: "workspace-agent"}, nil
+		},
+	}
+
+	runner := &Runner{agents: []core.Agent{agent}}
+	defer runner.Close()
+
+	// Regular Run() should use "root" workspace
+	_, err := runner.Run(context.Background(), "/test/path")
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	if receivedInput.Workspace != "root" {
+		t.Errorf("Input.Workspace = %q, want %q", receivedInput.Workspace, "root")
+	}
+}
+
+func TestAgentsWorkspaceTagging(t *testing.T) {
+	// Test that agents receive workspace and can use it for tagging findings
+	tests := []struct {
+		name          string
+		workspace     string
+		wantWorkspace string
+	}{
+		{"explicit workspace", "osprey", "osprey"},
+		{"root workspace", "root", "root"},
+		{"empty defaults to root", "", "root"},
+		{"different service", "studio", "studio"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedWorkspace string
+			agent := &mockAgent{
+				name: "tagging-agent",
+				runFunc: func(ctx context.Context, input core.Input) (core.Output, error) {
+					capturedWorkspace = input.Workspace
+					// Agent can use input.Workspace to tag findings
+					return core.Output{
+						AgentName: "tagging-agent",
+						Findings: []core.Finding{
+							{
+								Type:        "decision",
+								Title:       "Test Decision",
+								Description: "A test decision",
+								Metadata: map[string]any{
+									"workspace": input.Workspace, // Agents can tag findings
+								},
+							},
+						},
+					}, nil
+				},
+			}
+
+			runner := &Runner{agents: []core.Agent{agent}}
+			defer runner.Close()
+
+			results, err := runner.RunWithOptions(context.Background(), "/test/path", RunOptions{Workspace: tt.workspace})
+			if err != nil {
+				t.Fatalf("RunWithOptions failed: %v", err)
+			}
+
+			if capturedWorkspace != tt.wantWorkspace {
+				t.Errorf("captured workspace = %q, want %q", capturedWorkspace, tt.wantWorkspace)
+			}
+
+			// Verify finding has workspace metadata
+			if len(results) > 0 && len(results[0].Findings) > 0 {
+				finding := results[0].Findings[0]
+				if ws, ok := finding.Metadata["workspace"].(string); ok {
+					if ws != tt.wantWorkspace {
+						t.Errorf("finding.Metadata[workspace] = %q, want %q", ws, tt.wantWorkspace)
+					}
+				}
+			}
+		})
+	}
+}

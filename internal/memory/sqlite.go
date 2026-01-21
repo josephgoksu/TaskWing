@@ -476,6 +476,9 @@ func (s *SQLiteStore) initSchema() error {
 		{"debt_score", "ALTER TABLE nodes ADD COLUMN debt_score REAL DEFAULT 0.0"},      // 0.0 = clean, 1.0 = pure debt
 		{"debt_reason", "ALTER TABLE nodes ADD COLUMN debt_reason TEXT DEFAULT ''"},     // Why this is considered debt
 		{"refactor_hint", "ALTER TABLE nodes ADD COLUMN refactor_hint TEXT DEFAULT ''"}, // How to eliminate the debt
+		// Workspace scoping (monorepo support) - enables filtering knowledge by service/workspace
+		// 'root' = global knowledge at repo root, service names (e.g., 'osprey', 'studio') for scoped knowledge
+		{"workspace", "ALTER TABLE nodes ADD COLUMN workspace TEXT DEFAULT 'root'"},
 	}
 
 	for _, m := range migrations {
@@ -512,6 +515,9 @@ func (s *SQLiteStore) initSchema() error {
 
 	// Add index for verification status queries (enables efficient filtering)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_nodes_verification_status ON nodes(verification_status)`)
+
+	// Add index for workspace queries (enables efficient monorepo/workspace filtering)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_nodes_workspace ON nodes(workspace)`)
 
 	// Migration: Add AI integration columns to tasks table for MCP tool support
 	// These columns enable task lifecycle management via slash commands
@@ -1074,10 +1080,16 @@ func (s *SQLiteStore) DB() *sql.DB {
 
 // populateNodeFromScan populates a Node struct from scanned nullable fields.
 // This centralizes the repetitive null-handling and type conversion logic.
-func populateNodeFromScan(n *Node, nodeType, summary, sourceAgent sql.NullString, createdAt string, embeddingBytes []byte) {
+func populateNodeFromScan(n *Node, nodeType, summary, sourceAgent, workspace sql.NullString, createdAt string, embeddingBytes []byte) {
 	n.Type = nodeType.String
 	n.Summary = summary.String
 	n.SourceAgent = sourceAgent.String
+	// Default workspace to 'root' if not set (backward compatibility)
+	if workspace.Valid && workspace.String != "" {
+		n.Workspace = workspace.String
+	} else {
+		n.Workspace = "root"
+	}
 	n.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	if len(embeddingBytes) > 0 {
 		n.Embedding = bytesToFloat32Slice(embeddingBytes)
@@ -1095,6 +1107,10 @@ func (s *SQLiteStore) CreateNode(n *Node) error {
 	if n.CreatedAt.IsZero() {
 		n.CreatedAt = time.Now().UTC()
 	}
+	// Default workspace to 'root' for global/root-level knowledge
+	if n.Workspace == "" {
+		n.Workspace = "root"
+	}
 
 	// Serialize embedding to bytes if present
 	var embeddingBytes []byte
@@ -1103,11 +1119,11 @@ func (s *SQLiteStore) CreateNode(n *Node) error {
 	}
 
 	_, err := s.db.Exec(`
-		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at,
+		INSERT INTO nodes (id, content, type, summary, source_agent, workspace, embedding, created_at,
 		                   evidence, verification_status, verification_result, confidence_score,
 		                   debt_score, debt_reason, refactor_hint)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, n.Workspace, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
 		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
 		n.DebtScore, n.DebtReason, n.RefactorHint)
 
@@ -1122,18 +1138,18 @@ func (s *SQLiteStore) CreateNode(n *Node) error {
 func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 	var n Node
 	var createdAt string
-	var nodeType, summary, sourceAgent sql.NullString
+	var nodeType, summary, sourceAgent, workspace sql.NullString
 	var evidence, verificationStatus, verificationResult sql.NullString
 	var confidenceScore, debtScore sql.NullFloat64
 	var debtReason, refactorHint sql.NullString
 	var embeddingBytes []byte
 
 	err := s.db.QueryRow(`
-		SELECT id, content, type, summary, source_agent, embedding, created_at,
+		SELECT id, content, type, summary, source_agent, workspace, embedding, created_at,
 		       evidence, verification_status, verification_result, confidence_score,
 		       debt_score, debt_reason, refactor_hint
 		FROM nodes WHERE id = ?
-	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt,
+	`, id).Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt,
 		&evidence, &verificationStatus, &verificationResult, &confidenceScore,
 		&debtScore, &debtReason, &refactorHint)
 
@@ -1144,7 +1160,7 @@ func (s *SQLiteStore) GetNode(id string) (*Node, error) {
 		return nil, fmt.Errorf("query node: %w", err)
 	}
 
-	populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+	populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
 
 	// Populate evidence and verification fields
 	if evidence.Valid {
@@ -1181,14 +1197,14 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 
 	if nodeType != "" {
 		rows, err = s.db.Query(`
-			SELECT id, content, type, summary, source_agent, created_at,
+			SELECT id, content, type, summary, source_agent, workspace, created_at,
 			       evidence, verification_status, verification_result, confidence_score,
 			       debt_score, debt_reason, refactor_hint
 			FROM nodes WHERE type = ? ORDER BY created_at DESC
 		`, nodeType)
 	} else {
 		rows, err = s.db.Query(`
-			SELECT id, content, type, summary, source_agent, created_at,
+			SELECT id, content, type, summary, source_agent, workspace, created_at,
 			       evidence, verification_status, verification_result, confidence_score,
 			       debt_score, debt_reason, refactor_hint
 			FROM nodes ORDER BY created_at DESC
@@ -1204,17 +1220,110 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 	for rows.Next() {
 		var n Node
 		var createdAt string
-		var nodeTypeStr, summary, sourceAgent sql.NullString
+		var nodeTypeStr, summary, sourceAgent, workspace sql.NullString
 		var evidence, verificationStatus, verificationResult sql.NullString
 		var confidenceScore, debtScore sql.NullFloat64
 		var debtReason, refactorHint sql.NullString
 
-		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &createdAt,
+		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &workspace, &createdAt,
 			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
 			&debtScore, &debtReason, &refactorHint); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
-		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, createdAt, nil)
+		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, workspace, createdAt, nil)
+
+		// Populate evidence fields
+		if evidence.Valid {
+			n.Evidence = evidence.String
+		}
+		if verificationStatus.Valid {
+			n.VerificationStatus = verificationStatus.String
+		}
+		if verificationResult.Valid {
+			n.VerificationResult = verificationResult.String
+		}
+		if confidenceScore.Valid {
+			n.ConfidenceScore = confidenceScore.Float64
+		}
+
+		// Populate debt classification fields
+		if debtScore.Valid {
+			n.DebtScore = debtScore.Float64
+		}
+		if debtReason.Valid {
+			n.DebtReason = debtReason.String
+		}
+		if refactorHint.Valid {
+			n.RefactorHint = refactorHint.String
+		}
+
+		nodes = append(nodes, n)
+	}
+
+	return nodes, nil
+}
+
+// ListNodesFiltered returns nodes matching the given filter criteria.
+// This is the preferred method for workspace-aware queries.
+// Uses idx_nodes_workspace index for performant workspace filtering.
+func (s *SQLiteStore) ListNodesFiltered(filter NodeFilter) ([]Node, error) {
+	// If no workspace filter, delegate to regular ListNodes
+	if filter.Workspace == "" {
+		return s.ListNodes(filter.Type)
+	}
+
+	// Build query with workspace filtering (uses idx_nodes_workspace index)
+	var query string
+	var args []any
+
+	baseSelect := `
+		SELECT id, content, type, summary, source_agent, workspace, created_at,
+		       evidence, verification_status, verification_result, confidence_score,
+		       debt_score, debt_reason, refactor_hint
+		FROM nodes WHERE `
+
+	// Build workspace condition
+	if filter.IncludeRoot {
+		// Include both specified workspace and root workspace
+		if filter.Type != "" {
+			query = baseSelect + `(workspace = ? OR workspace = 'root' OR workspace = '') AND type = ? ORDER BY created_at DESC`
+			args = []any{filter.Workspace, filter.Type}
+		} else {
+			query = baseSelect + `(workspace = ? OR workspace = 'root' OR workspace = '') ORDER BY created_at DESC`
+			args = []any{filter.Workspace}
+		}
+	} else {
+		// Only specified workspace
+		if filter.Type != "" {
+			query = baseSelect + `workspace = ? AND type = ? ORDER BY created_at DESC`
+			args = []any{filter.Workspace, filter.Type}
+		} else {
+			query = baseSelect + `workspace = ? ORDER BY created_at DESC`
+			args = []any{filter.Workspace}
+		}
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query nodes filtered: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var nodes []Node
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeTypeStr, summary, sourceAgent, workspace sql.NullString
+		var evidence, verificationStatus, verificationResult sql.NullString
+		var confidenceScore, debtScore sql.NullFloat64
+		var debtReason, refactorHint sql.NullString
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeTypeStr, &summary, &sourceAgent, &workspace, &createdAt,
+			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
+			&debtScore, &debtReason, &refactorHint); err != nil {
+			return nil, fmt.Errorf("scan node: %w", err)
+		}
+		populateNodeFromScan(&n, nodeTypeStr, summary, sourceAgent, workspace, createdAt, nil)
 
 		// Populate evidence fields
 		if evidence.Valid {
@@ -1625,11 +1734,11 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 
 	// No similar node found - insert new node (including evidence and debt columns)
 	_, err = tx.Exec(`
-		INSERT INTO nodes (id, content, type, summary, source_agent, embedding, created_at,
+		INSERT INTO nodes (id, content, type, summary, source_agent, workspace, embedding, created_at,
 		                   evidence, verification_status, verification_result, confidence_score,
 		                   debt_score, debt_reason, refactor_hint)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, n.ID, n.Content, n.Type, n.Summary, n.SourceAgent, n.Workspace, embeddingBytes, n.CreatedAt.Format(time.RFC3339),
 		n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
 		n.DebtScore, n.DebtReason, n.RefactorHint)
 
@@ -1647,6 +1756,21 @@ func (s *SQLiteStore) UpdateNodeEmbedding(id string, embedding []float32) error 
 	result, err := s.db.Exec("UPDATE nodes SET embedding = ? WHERE id = ?", embeddingBytes, id)
 	if err != nil {
 		return fmt.Errorf("update embedding: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("node not found: %s", id)
+	}
+
+	return nil
+}
+
+// UpdateNodeWorkspace updates the workspace field for a node.
+func (s *SQLiteStore) UpdateNodeWorkspace(id, workspace string) error {
+	result, err := s.db.Exec("UPDATE nodes SET workspace = ? WHERE id = ?", workspace, id)
+	if err != nil {
+		return fmt.Errorf("update workspace: %w", err)
 	}
 
 	rows, _ := result.RowsAffected()
@@ -1754,7 +1878,7 @@ type FTSResult struct {
 // This fixes the N+1 query pattern in search - one query instead of 1+N.
 func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 	rows, err := s.db.Query(`
-		SELECT id, content, type, summary, source_agent, embedding, created_at,
+		SELECT id, content, type, summary, source_agent, workspace, embedding, created_at,
 		       evidence, verification_status, verification_result, confidence_score,
 		       debt_score, debt_reason, refactor_hint
 		FROM nodes WHERE embedding IS NOT NULL
@@ -1769,18 +1893,101 @@ func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 	for rows.Next() {
 		var n Node
 		var createdAt string
-		var nodeType, summary, sourceAgent sql.NullString
+		var nodeType, summary, sourceAgent, workspace sql.NullString
 		var embeddingBytes []byte
 		var evidence, verificationStatus, verificationResult sql.NullString
 		var confidenceScore, debtScore sql.NullFloat64
 		var debtReason, refactorHint sql.NullString
 
-		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt,
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt,
 			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
 			&debtScore, &debtReason, &refactorHint); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
-		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
+
+		// Populate evidence fields
+		if evidence.Valid {
+			n.Evidence = evidence.String
+		}
+		if verificationStatus.Valid {
+			n.VerificationStatus = verificationStatus.String
+		}
+		if verificationResult.Valid {
+			n.VerificationResult = verificationResult.String
+		}
+		if confidenceScore.Valid {
+			n.ConfidenceScore = confidenceScore.Float64
+		}
+
+		// Populate debt classification fields
+		if debtScore.Valid {
+			n.DebtScore = debtScore.Float64
+		}
+		if debtReason.Valid {
+			n.DebtReason = debtReason.String
+		}
+		if refactorHint.Valid {
+			n.RefactorHint = refactorHint.String
+		}
+
+		nodes = append(nodes, n)
+	}
+
+	return nodes, nil
+}
+
+// ListNodesWithEmbeddingsFiltered returns nodes with embeddings matching the filter.
+// Uses idx_nodes_workspace index for performant workspace filtering.
+func (s *SQLiteStore) ListNodesWithEmbeddingsFiltered(filter NodeFilter) ([]Node, error) {
+	// If no workspace filter, delegate to regular ListNodesWithEmbeddings
+	if filter.Workspace == "" {
+		return s.ListNodesWithEmbeddings()
+	}
+
+	// Build query with workspace filtering (uses idx_nodes_workspace index)
+	var query string
+	var args []any
+
+	baseSelect := `
+		SELECT id, content, type, summary, source_agent, workspace, embedding, created_at,
+		       evidence, verification_status, verification_result, confidence_score,
+		       debt_score, debt_reason, refactor_hint
+		FROM nodes WHERE embedding IS NOT NULL AND `
+
+	// Build workspace condition
+	if filter.IncludeRoot {
+		// Include both specified workspace and root workspace
+		query = baseSelect + `(workspace = ? OR workspace = 'root' OR workspace = '') ORDER BY created_at DESC`
+		args = []any{filter.Workspace}
+	} else {
+		// Only specified workspace
+		query = baseSelect + `workspace = ? ORDER BY created_at DESC`
+		args = []any{filter.Workspace}
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query nodes with embeddings filtered: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var nodes []Node
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeType, summary, sourceAgent, workspace sql.NullString
+		var embeddingBytes []byte
+		var evidence, verificationStatus, verificationResult sql.NullString
+		var confidenceScore, debtScore sql.NullFloat64
+		var debtReason, refactorHint sql.NullString
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt,
+			&evidence, &verificationStatus, &verificationResult, &confidenceScore,
+			&debtScore, &debtReason, &refactorHint); err != nil {
+			return nil, fmt.Errorf("scan node: %w", err)
+		}
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
 
 		// Populate evidence fields
 		if evidence.Valid {
@@ -1897,7 +2104,7 @@ func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 	}
 
 	rows, err := s.db.Query(`
-		SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.embedding, n.created_at,
+		SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.workspace, n.embedding, n.created_at,
 		       bm25(nodes_fts) as rank
 		FROM nodes_fts f
 		JOIN nodes n ON f.id = n.id
@@ -1916,14 +2123,86 @@ func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 	for rows.Next() {
 		var n Node
 		var createdAt string
-		var nodeType, summary, sourceAgent sql.NullString
+		var nodeType, summary, sourceAgent, workspace sql.NullString
 		var embeddingBytes []byte
 		var rank float64
 
-		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &embeddingBytes, &createdAt, &rank); err != nil {
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt, &rank); err != nil {
 			continue
 		}
-		populateNodeFromScan(&n, nodeType, summary, sourceAgent, createdAt, embeddingBytes)
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
+		results = append(results, FTSResult{Node: n, Rank: rank})
+	}
+
+	return results, nil
+}
+
+// SearchFTSFiltered performs full-text search with workspace filtering.
+// Uses idx_nodes_workspace for efficient filtering when workspace is specified.
+func (s *SQLiteStore) SearchFTSFiltered(query string, limit int, filter NodeFilter) ([]FTSResult, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// If no workspace filter, delegate to regular SearchFTS
+	if filter.Workspace == "" {
+		return s.SearchFTS(query, limit)
+	}
+
+	// Sanitize query for FTS5
+	sanitizedQuery := sanitizeFTSQueryForNodes(query)
+	if sanitizedQuery == "" {
+		return nil, nil
+	}
+
+	// Build workspace filter clause
+	// Uses idx_nodes_workspace index for performance
+	var rows *sql.Rows
+	var err error
+
+	if filter.IncludeRoot {
+		// Include both specified workspace and root workspace
+		rows, err = s.db.Query(`
+			SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.workspace, n.embedding, n.created_at,
+			       bm25(nodes_fts) as rank
+			FROM nodes_fts f
+			JOIN nodes n ON f.id = n.id
+			WHERE nodes_fts MATCH ?
+			  AND (n.workspace = ? OR n.workspace = 'root' OR n.workspace = '')
+			ORDER BY rank
+			LIMIT ?
+		`, sanitizedQuery, filter.Workspace, limit)
+	} else {
+		// Only specified workspace
+		rows, err = s.db.Query(`
+			SELECT n.id, n.content, n.type, n.summary, n.source_agent, n.workspace, n.embedding, n.created_at,
+			       bm25(nodes_fts) as rank
+			FROM nodes_fts f
+			JOIN nodes n ON f.id = n.id
+			WHERE nodes_fts MATCH ?
+			  AND n.workspace = ?
+			ORDER BY rank
+			LIMIT ?
+		`, sanitizedQuery, filter.Workspace, limit)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("FTS search filtered failed: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []FTSResult
+	for rows.Next() {
+		var n Node
+		var createdAt string
+		var nodeType, summary, sourceAgent, workspace sql.NullString
+		var embeddingBytes []byte
+		var rank float64
+
+		if err := rows.Scan(&n.ID, &n.Content, &nodeType, &summary, &sourceAgent, &workspace, &embeddingBytes, &createdAt, &rank); err != nil {
+			continue
+		}
+		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
 		results = append(results, FTSResult{Node: n, Rank: rank})
 	}
 
