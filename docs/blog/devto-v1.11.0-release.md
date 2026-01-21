@@ -29,7 +29,7 @@ My AI assistant had amnesia. Every. Single. Time.
 I built [TaskWing](https://github.com/josephgoksu/TaskWing) — a CLI that extracts your architectural decisions and exposes them to AI via MCP.
 
 ```bash
-brew install josephgoksu/tap/taskwing
+brew install --cask josephgoksu/tap/taskwing
 
 taskwing bootstrap   # Scans your codebase
 taskwing mcp         # Exposes to Claude/Cursor

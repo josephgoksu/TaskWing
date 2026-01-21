@@ -101,8 +101,7 @@ release:
 
     **Homebrew (macOS/Linux):**
     ```bash
-    brew tap josephgoksu/tap
-    brew install taskwing
+    brew install --cask josephgoksu/tap/taskwing
     ```
 
     **Manual Installation:**

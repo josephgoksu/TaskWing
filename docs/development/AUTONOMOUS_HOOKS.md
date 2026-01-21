@@ -340,7 +340,7 @@ Long autonomous sessions consume significant tokens. The duration limit helps co
 
 1. Check hooks are registered: `/hooks` in Claude Code
 2. Verify settings.json is valid JSON
-3. Ensure `taskwing` is in PATH (install via Homebrew: `brew install josephgoksu/tap/taskwing`)
+3. Ensure `taskwing` is in PATH (install via Homebrew: `brew install --cask josephgoksu/tap/taskwing`)
 
 ### Session Not Initialized
 

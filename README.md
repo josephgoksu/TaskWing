@@ -19,7 +19,7 @@ Every session with Claude, Cursor, or Copilot:
 ## The Solution
 
 ```bash
-brew install josephgoksu/tap/taskwing
+brew install --cask josephgoksu/tap/taskwing
 
 taskwing bootstrap   # Extract decisions, patterns, constraints
 taskwing mcp         # Expose to AI via MCP
