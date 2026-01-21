@@ -313,6 +313,16 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcpp
 		return mcpMarkdownResponse(mcppresenter.FormatSummary(summary))
 	}
 
+	// Resolve workspace filtering
+	// params.All=true or empty workspace = search all workspaces
+	var workspace string
+	if !params.All && params.Workspace != "" {
+		if err := app.ValidateWorkspace(params.Workspace); err != nil {
+			return mcpValidationErrorResponse("workspace", err.Error())
+		}
+		workspace = params.Workspace
+	}
+
 	// Execute query via app layer (ALL business logic delegated)
 	// Include symbols in MCP recall for enhanced context
 	// Note: Only generate answer if explicitly requested (params.Answer=true)
@@ -322,6 +332,8 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcpp
 		SymbolLimit:    5,
 		GenerateAnswer: params.Answer, // Only when explicitly requested
 		IncludeSymbols: true,          // Include code symbols alongside knowledge
+		Workspace:      workspace,
+		IncludeRoot:    true, // Always include root knowledge when filtering by workspace
 	})
 	if err != nil {
 		return mcpErrorResponse(fmt.Errorf("search failed: %w", err))
