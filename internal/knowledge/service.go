@@ -215,6 +215,63 @@ func (s *Service) SearchByType(ctx context.Context, query string, nodeType strin
 	return s.searchInternal(ctx, query, nodeType, limit)
 }
 
+// SearchWithFilter performs a workspace-aware search with the given filter options.
+// This is the preferred method for monorepo-aware searches.
+// It uses the standard search pipeline, then filters results by workspace.
+func (s *Service) SearchWithFilter(ctx context.Context, query string, limit int, filter memory.NodeFilter) ([]ScoredNode, error) {
+	// If no workspace filter, use regular search
+	if filter.Workspace == "" {
+		return s.searchInternal(ctx, query, filter.Type, limit)
+	}
+
+	// Fetch more candidates to account for post-filtering
+	// Multiply by 3 to ensure we have enough after workspace filtering
+	candidateLimit := limit * 3
+	if candidateLimit < 15 {
+		candidateLimit = 15
+	}
+
+	// Use standard search to get candidates
+	results, err := s.searchInternal(ctx, query, filter.Type, candidateLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter by workspace
+	var filtered []ScoredNode
+	for _, sn := range results {
+		// Check if node matches workspace filter
+		if matchesWorkspaceFilter(sn.Node.Workspace, filter) {
+			filtered = append(filtered, sn)
+			if len(filtered) >= limit {
+				break
+			}
+		}
+	}
+
+	return filtered, nil
+}
+
+// matchesWorkspaceFilter checks if a node's workspace matches the filter criteria.
+func matchesWorkspaceFilter(nodeWorkspace string, filter memory.NodeFilter) bool {
+	// Empty workspace in node is treated as "root" for filtering purposes
+	if nodeWorkspace == "" {
+		nodeWorkspace = "root"
+	}
+
+	// Check exact workspace match
+	if nodeWorkspace == filter.Workspace {
+		return true
+	}
+
+	// If IncludeRoot is true, also include root/global nodes
+	if filter.IncludeRoot && (nodeWorkspace == "root" || nodeWorkspace == "") {
+		return true
+	}
+
+	return false
+}
+
 // ListNodesByType retrieves all nodes of a specific type.
 // This allows for retrieving ALL mandatory constraints without semantic filtering.
 func (s *Service) ListNodesByType(ctx context.Context, nodeType string) ([]memory.Node, error) {

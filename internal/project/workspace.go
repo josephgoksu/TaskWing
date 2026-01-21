@@ -181,3 +181,69 @@ func (w *WorkspaceInfo) ServiceCount() int {
 func (w *WorkspaceInfo) GetServicePath(serviceName string) string {
 	return filepath.Join(w.RootPath, serviceName)
 }
+
+// DetectWorkspaceFromCwd detects the workspace name from the current working directory.
+// In a monorepo, this returns the service/package name based on the subdirectory.
+// Returns "root" if at the root of a repo or unable to determine workspace.
+//
+// Example:
+//   - /monorepo/osprey -> "osprey" (if cwd is in osprey subdir)
+//   - /monorepo -> "root" (at the root)
+//   - /single-repo -> "root" (not a monorepo)
+func DetectWorkspaceFromCwd() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "root", err
+	}
+	return DetectWorkspaceFromPath(cwd)
+}
+
+// DetectWorkspaceFromPath detects the workspace name from the given path.
+// Uses the project context detection to find if we're in a monorepo subdirectory.
+func DetectWorkspaceFromPath(path string) (string, error) {
+	ctx, err := Detect(path)
+	if err != nil {
+		return "root", nil // Fallback to root on error
+	}
+
+	// If not a monorepo or at the root, return "root"
+	if !ctx.IsMonorepo {
+		return "root", nil
+	}
+
+	// Get the relative path from git root to project root
+	relPath := ctx.RelativeGitPath()
+	if relPath == "." || relPath == "" {
+		return "root", nil
+	}
+
+	// Extract the workspace name from the relative path
+	// For paths like "osprey" -> "osprey"
+	// For paths like "services/osprey" -> "osprey" (use the last component)
+	workspace := extractWorkspaceName(relPath)
+	if workspace == "" {
+		return "root", nil
+	}
+
+	return workspace, nil
+}
+
+// extractWorkspaceName extracts the workspace name from a relative path.
+// Uses the last path component as the workspace name.
+func extractWorkspaceName(relPath string) string {
+	// Clean the path and get the last component
+	cleaned := filepath.Clean(relPath)
+	if cleaned == "." || cleaned == "" || cleaned == "/" {
+		return ""
+	}
+
+	// Get the last path component
+	// For "services/osprey" this returns "osprey"
+	// For "osprey" this returns "osprey"
+	base := filepath.Base(cleaned)
+	// Handle edge case where Base returns "/" for root paths
+	if base == "/" {
+		return ""
+	}
+	return base
+}

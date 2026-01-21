@@ -12,6 +12,8 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/project"
 )
 
 // SymbolResponse represents a code symbol in search results.
@@ -90,6 +92,32 @@ func ValidateWorkspace(workspace string) error {
 		}
 	}
 	return nil
+}
+
+// AutoDetectWorkspace returns the workspace name detected from the current working directory.
+// Returns "root" if not in a monorepo subdirectory or if detection fails.
+func AutoDetectWorkspace() string {
+	ws, _ := project.DetectWorkspaceFromCwd()
+	return ws
+}
+
+// ResolveWorkspace resolves the effective workspace to use.
+// If explicitWorkspace is non-empty, it is validated and returned.
+// If explicitWorkspace is empty and autoDetect is true, it auto-detects from cwd.
+// Returns the resolved workspace or "root" as default.
+func ResolveWorkspace(explicitWorkspace string, autoDetect bool) (string, error) {
+	if explicitWorkspace != "" {
+		if err := ValidateWorkspace(explicitWorkspace); err != nil {
+			return "", err
+		}
+		return explicitWorkspace, nil
+	}
+
+	if autoDetect {
+		return AutoDetectWorkspace(), nil
+	}
+
+	return "", nil // Empty means all workspaces
 }
 
 // RecallApp provides knowledge retrieval operations.
@@ -227,9 +255,20 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 	}
 
 	// 3. Execute knowledge search (hybrid + rerank + graph expansion)
-	scored, err := ks.Search(ctx, searchQuery, opts.Limit)
-	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+	// Use workspace-aware search if workspace filter is specified
+	var scored []knowledge.ScoredNode
+	var searchErr error
+	if opts.Workspace != "" {
+		filter := memory.NodeFilter{
+			Workspace:   opts.Workspace,
+			IncludeRoot: opts.IncludeRoot,
+		}
+		scored, searchErr = ks.SearchWithFilter(ctx, searchQuery, opts.Limit, filter)
+	} else {
+		scored, searchErr = ks.Search(ctx, searchQuery, opts.Limit)
+	}
+	if searchErr != nil {
+		return nil, fmt.Errorf("search failed: %w", searchErr)
 	}
 
 	// 4. Convert results to response format (strips embeddings)
