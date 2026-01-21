@@ -29,9 +29,20 @@ func (r *Runner) Close() {
 	core.CloseAgents(r.agents)
 }
 
+// RunOptions configures a runner execution.
+type RunOptions struct {
+	Workspace string // Workspace name for monorepo support ('root' for global, service name for scoped)
+}
+
 // Run executes all agents in parallel and returns raw agent outputs.
 // Respects context cancellation - returns early if context is cancelled.
 func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Output, error) {
+	return r.RunWithOptions(ctx, projectPath, RunOptions{Workspace: "root"})
+}
+
+// RunWithOptions executes all agents with the given options.
+// Respects context cancellation - returns early if context is cancelled.
+func (r *Runner) RunWithOptions(ctx context.Context, projectPath string, opts RunOptions) ([]core.Output, error) {
 	// Check for early cancellation before starting any work
 	select {
 	case <-ctx.Done():
@@ -39,11 +50,18 @@ func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Output, er
 	default:
 	}
 
+	// Default workspace to 'root' if not specified
+	workspace := opts.Workspace
+	if workspace == "" {
+		workspace = "root"
+	}
+
 	input := core.Input{
 		BasePath:    projectPath,
 		ProjectName: filepath.Base(projectPath),
 		Mode:        core.ModeBootstrap,
 		Verbose:     true, // or configurable
+		Workspace:   workspace,
 	}
 
 	var results []core.Output

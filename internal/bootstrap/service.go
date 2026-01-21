@@ -52,6 +52,7 @@ func (s *Service) RegenerateAIConfigs(verbose bool, targetAIs []string) error {
 }
 
 // RunMultiRepoAnalysis executes analysis for all services in a workspace.
+// Each service's findings are tagged with the service name as workspace.
 func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.WorkspaceInfo) ([]core.Finding, []core.Relationship, []string, error) {
 	var allFindings []core.Finding
 	var allRelationships []core.Relationship
@@ -61,7 +62,8 @@ func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.Workspac
 		servicePath := ws.GetServicePath(serviceName)
 		runner := NewRunner(s.llmCfg, servicePath)
 
-		results, err := runner.Run(ctx, servicePath)
+		// Pass workspace (service name) to the runner so agents can tag their findings
+		results, err := runner.RunWithOptions(ctx, servicePath, RunOptions{Workspace: serviceName})
 		// Close runner immediately after use - NOT deferred in loop!
 		// Deferring in a loop keeps all resources open until function exit.
 		runner.Close()
@@ -71,7 +73,8 @@ func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.Workspac
 			continue
 		}
 
-		// Prefix findings with service name for disambiguation
+		// Aggregate findings - workspace tagging happens at agent level via Input.Workspace
+		// We still set metadata["service"] for backward compatibility with ingestion
 		findings := core.AggregateFindings(results)
 		for i := range findings {
 			findings[i].Title = fmt.Sprintf("[%s] %s", serviceName, findings[i].Title)
