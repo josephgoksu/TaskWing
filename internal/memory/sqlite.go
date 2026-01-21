@@ -476,6 +476,9 @@ func (s *SQLiteStore) initSchema() error {
 		{"debt_score", "ALTER TABLE nodes ADD COLUMN debt_score REAL DEFAULT 0.0"},      // 0.0 = clean, 1.0 = pure debt
 		{"debt_reason", "ALTER TABLE nodes ADD COLUMN debt_reason TEXT DEFAULT ''"},     // Why this is considered debt
 		{"refactor_hint", "ALTER TABLE nodes ADD COLUMN refactor_hint TEXT DEFAULT ''"}, // How to eliminate the debt
+		// Workspace scoping (monorepo support) - enables filtering knowledge by service/workspace
+		// 'root' = global knowledge at repo root, service names (e.g., 'osprey', 'studio') for scoped knowledge
+		{"workspace", "ALTER TABLE nodes ADD COLUMN workspace TEXT DEFAULT 'root'"},
 	}
 
 	for _, m := range migrations {
@@ -512,6 +515,9 @@ func (s *SQLiteStore) initSchema() error {
 
 	// Add index for verification status queries (enables efficient filtering)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_nodes_verification_status ON nodes(verification_status)`)
+
+	// Add index for workspace queries (enables efficient monorepo/workspace filtering)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_nodes_workspace ON nodes(workspace)`)
 
 	// Migration: Add AI integration columns to tasks table for MCP tool support
 	// These columns enable task lifecycle management via slash commands
