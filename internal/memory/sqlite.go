@@ -1263,6 +1263,15 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 	return nodes, nil
 }
 
+// ListNodesFiltered returns nodes matching the given filter criteria.
+// This is the preferred method for workspace-aware queries.
+// NOTE: Workspace filtering is a placeholder - actual filtering will be implemented in a later task.
+func (s *SQLiteStore) ListNodesFiltered(filter NodeFilter) ([]Node, error) {
+	// For now, delegate to ListNodes with type filter only
+	// Workspace filtering will be implemented in task "Modify SearchFTS and SearchVector queries to filter by workspace"
+	return s.ListNodes(filter.Type)
+}
+
 // UpdateNode updates mutable node fields.
 func (s *SQLiteStore) UpdateNode(id, content, nodeType, summary string) error {
 	if id == "" {
@@ -1829,6 +1838,14 @@ func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 	return nodes, nil
 }
 
+// ListNodesWithEmbeddingsFiltered returns nodes with embeddings matching the filter.
+// NOTE: Workspace filtering is a placeholder - actual filtering will be implemented in a later task.
+func (s *SQLiteStore) ListNodesWithEmbeddingsFiltered(filter NodeFilter) ([]Node, error) {
+	// For now, delegate to ListNodesWithEmbeddings without workspace filter
+	// Workspace filtering will be implemented in task "Modify SearchFTS and SearchVector queries to filter by workspace"
+	return s.ListNodesWithEmbeddings()
+}
+
 // sanitizeFTSQueryForNodes sanitizes a query for FTS5 knowledge node search.
 // It uses OR logic for multi-word queries to improve recall when exact matches fail.
 // Stop words are filtered to focus on content words.
@@ -1944,6 +1961,14 @@ func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 	}
 
 	return results, nil
+}
+
+// SearchFTSFiltered performs full-text search with workspace filtering.
+// NOTE: Workspace filtering is a placeholder - actual filtering will be implemented in a later task.
+func (s *SQLiteStore) SearchFTSFiltered(query string, limit int, filter NodeFilter) ([]FTSResult, error) {
+	// For now, delegate to SearchFTS without workspace filter
+	// Workspace filtering will be implemented in task "Modify SearchFTS and SearchVector queries to filter by workspace"
+	return s.SearchFTS(query, limit)
 }
 
 // RebuildFTS rebuilds the FTS5 index from existing nodes.

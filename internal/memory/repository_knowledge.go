@@ -23,6 +23,12 @@ func (r *Repository) ListNodes(filter string) ([]Node, error) {
 	return r.db.ListNodes(filter)
 }
 
+// ListNodesFiltered returns nodes matching the given filter criteria.
+// This is the preferred method for workspace-aware queries.
+func (r *Repository) ListNodesFiltered(filter NodeFilter) ([]Node, error) {
+	return r.db.ListNodesFiltered(filter)
+}
+
 func (r *Repository) GetNode(id string) (*Node, error) {
 	return r.db.GetNode(id)
 }
@@ -81,9 +87,19 @@ func (r *Repository) ListNodesWithEmbeddings() ([]Node, error) {
 	return r.db.ListNodesWithEmbeddings()
 }
 
+// ListNodesWithEmbeddingsFiltered returns nodes with embeddings matching the filter.
+func (r *Repository) ListNodesWithEmbeddingsFiltered(filter NodeFilter) ([]Node, error) {
+	return r.db.ListNodesWithEmbeddingsFiltered(filter)
+}
+
 // SearchFTS performs full-text search using FTS5 with BM25 ranking.
 func (r *Repository) SearchFTS(query string, limit int) ([]FTSResult, error) {
 	return r.db.SearchFTS(query, limit)
+}
+
+// SearchFTSFiltered performs full-text search with workspace filtering.
+func (r *Repository) SearchFTSFiltered(query string, limit int, filter NodeFilter) ([]FTSResult, error) {
+	return r.db.SearchFTSFiltered(query, limit, filter)
 }
 
 // RebuildFTS rebuilds the FTS5 index from existing nodes.

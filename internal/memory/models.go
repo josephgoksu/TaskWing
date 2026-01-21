@@ -187,3 +187,20 @@ type ProjectOverview struct {
 	GeneratedAt      time.Time `json:"generated_at"`      // When the overview was auto-generated
 	LastEditedAt     time.Time `json:"last_edited_at"`    // When manually edited (zero if never)
 }
+
+// NodeFilter specifies criteria for filtering node queries.
+// Used by ListNodes, SearchFTS, ListNodesWithEmbeddings, etc.
+type NodeFilter struct {
+	Type        string // Filter by node type (decision, feature, pattern, etc.)
+	Workspace   string // Filter by workspace ('root' for global, or service name)
+	IncludeRoot bool   // When workspace is set, also include 'root' workspace nodes
+}
+
+// DefaultNodeFilter returns a filter that matches all nodes.
+func DefaultNodeFilter() NodeFilter {
+	return NodeFilter{
+		Type:        "",
+		Workspace:   "",
+		IncludeRoot: true,
+	}
+}
