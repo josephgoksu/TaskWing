@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/brief"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -404,6 +405,14 @@ Circuit breakers are configured in .claude/settings.json (defaults: %d tasks, %d
 Use /tw-next to start the first task, or it will auto-continue after each task.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `, session.SessionID, session.StartedAt.Format("15:04:05"), planInfo, DefaultMaxTasksPerSession, DefaultMaxSessionMinutes)
+
+	// Auto-inject project knowledge brief
+	if repo != nil {
+		briefContent, err := brief.GenerateCompactBrief(repo)
+		if err == nil && briefContent != "" {
+			fmt.Printf("\n%s\n", briefContent)
+		}
+	}
 
 	return nil
 }

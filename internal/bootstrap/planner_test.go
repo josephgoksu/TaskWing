@@ -536,7 +536,7 @@ func TestProbeAIHealth(t *testing.T) {
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".claude", "commands")
 				_ = os.MkdirAll(cmdDir, 0755)
-				_ = os.WriteFile(filepath.Join(cmdDir, "taskwing.md"), []byte("test"), 0644)
+				_ = os.WriteFile(filepath.Join(cmdDir, "tw-brief.md"), []byte("test"), 0644)
 				_ = os.WriteFile(filepath.Join(cmdDir, "tw-next.md"), []byte("test"), 0644)
 			},
 			expectStatus: HealthPartial,
@@ -548,7 +548,7 @@ func TestProbeAIHealth(t *testing.T) {
 				cmdDir := filepath.Join(dir, ".claude", "commands")
 				_ = os.MkdirAll(cmdDir, 0755)
 				// Create all 7 command files
-				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
+				for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 			},
@@ -560,7 +560,7 @@ func TestProbeAIHealth(t *testing.T) {
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".claude", "commands")
 				_ = os.MkdirAll(cmdDir, 0755)
-				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
+				for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 				// Add settings.json with valid JSON
@@ -575,7 +575,7 @@ func TestProbeAIHealth(t *testing.T) {
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".claude", "commands")
 				_ = os.MkdirAll(cmdDir, 0755)
-				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
+				for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 				_ = os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
@@ -589,7 +589,7 @@ func TestProbeAIHealth(t *testing.T) {
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".gemini", "commands")
 				_ = os.MkdirAll(cmdDir, 0755)
-				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
+				for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 					_ = os.WriteFile(filepath.Join(cmdDir, name+".toml"), []byte("test"), 0644)
 				}
 			},
@@ -652,7 +652,7 @@ func TestProbeEnvironment(t *testing.T) {
 
 	cmdDir := filepath.Join(tmpDir, ".claude", "commands")
 	_ = os.MkdirAll(cmdDir, 0755)
-	for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
+	for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 		_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 	}
 	_ = os.WriteFile(filepath.Join(tmpDir, ".claude", "settings.json"), []byte(`{"hooks":{}}`), 0644)
@@ -828,7 +828,7 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".codex", "commands")
 				_ = os.MkdirAll(cmdDir, 0755)
-				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
+				for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 			},
@@ -840,7 +840,7 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".codex", "commands")
 				_ = os.MkdirAll(cmdDir, 0755)
-				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
+				for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 				_ = os.WriteFile(filepath.Join(dir, ".codex", "settings.json"), []byte(`{"hooks":{}}`), 0644)
@@ -853,7 +853,7 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 			setup: func(dir string) {
 				cmdDir := filepath.Join(dir, ".cursor", "rules")
 				_ = os.MkdirAll(cmdDir, 0755)
-				for _, name := range []string{"taskwing", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
+				for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-context", "tw-status", "tw-block", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
 			},

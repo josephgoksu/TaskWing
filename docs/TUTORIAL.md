@@ -198,7 +198,7 @@ taskwing mcp install claude
 - `/tw-block` - Mark task as blocked
 - `/tw-status` - Show current task
 - `/tw-context` - Fetch architecture context
-- `/taskwing` - Get project overview
+- `/tw-brief` - Get project knowledge brief
 
 **Configuration:**
 ```bash

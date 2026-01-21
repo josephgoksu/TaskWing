@@ -186,7 +186,7 @@ Interactive script that prompts for version, opens editor for notes, creates tag
 TaskWing provides project memory for AI assistants via MCP tools and slash commands.
 
 ### Slash Commands
-- `/taskwing` - Fetch full project context (decisions, patterns, constraints)
+- `/tw-brief` - Get compact project knowledge brief (decisions, patterns, constraints)
 - `/tw-next` - Start next task with architecture context
 - `/tw-done` - Complete current task with summary
 - `/tw-plan` - Create development plan from goal
