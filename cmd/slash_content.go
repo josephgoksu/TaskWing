@@ -498,42 +498,25 @@ tw context -q "<symbol_name> usage"
 ` + "```" + `
 `
 
-// slashTaskwingContent is the prompt content for /taskwing
-const slashTaskwingContent = `# TaskWing Full Repository Context
+// slashBriefContent is the prompt content for /tw-brief
+const slashBriefContent = `# Project Knowledge Brief
 
-Call MCP tool ` + "`recall`" + ` to retrieve the complete project knowledge base:
-` + "```json" + `
-{}
-` + "```" + `
+Run ` + "`taskwing list`" + ` to get the compact project knowledge inventory.
 
-This returns the full repository context including:
-- **Project Overview**: High-level description and purpose
-- **Key Decisions**: Architectural choices and their rationale
-- **Patterns**: Recurring architectural solutions used in the codebase
-- **Constraints**: Rules and limitations that must be followed
+This outputs all knowledge nodes grouped by type:
+- **Decisions**: Architectural choices and rationale
 - **Features**: Product capabilities and components
-- **Knowledge Summary**: Total nodes across all types with examples
+- **Constraints**: Rules and limitations to follow
+- **Patterns**: Recurring architectural solutions
+- **Documentation**: README, CLAUDE.md, etc.
 
-Present this as a comprehensive project briefing, organized by category.
+The output is compact (bullet summaries only, no IDs or file paths) and token-efficient for AI context.
 
-## For Specific Queries
+## Usage
 
-If user provides search terms, call recall with a query:
-` + "```json" + `
-{"query": "[user's search terms]"}
-` + "```" + `
-
-## For RAG Answers
-
-If user asks a question, call recall with answer=true:
-` + "```json" + `
-{"query": "[user's question]", "answer": true}
-` + "```" + `
-
-## Fallback (No MCP)
 ` + "```bash" + `
-tw context              # Project overview
-tw context -q "query"   # Search
-tw context --answer "q" # RAG answer
+taskwing list
 ` + "```" + `
+
+Present the output to prime the conversation with project knowledge.
 `
