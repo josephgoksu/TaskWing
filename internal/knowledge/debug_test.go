@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -431,4 +432,326 @@ func TestNodeFilter_DefaultValues(t *testing.T) {
 	if !filter.IncludeRoot {
 		t.Error("IncludeRoot = false, want true")
 	}
+}
+
+// === SearchWithFilter Tests (Service-level workspace scoping) ===
+
+func TestSearchWithFilter_EmptyWorkspaceReturnsAll(t *testing.T) {
+	repo := NewMockRepository()
+
+	// Add nodes in different workspaces
+	repo.AddNode(memory.Node{ID: "n-root-1", Summary: "Root Decision", Workspace: "root", Type: "decision"})
+	repo.AddNode(memory.Node{ID: "n-osprey-1", Summary: "Osprey Pattern", Workspace: "osprey", Type: "pattern"})
+	repo.AddNode(memory.Node{ID: "n-studio-1", Summary: "Studio Constraint", Workspace: "studio", Type: "constraint"})
+
+	// Setup FTS results for all nodes
+	repo.SetFTSResults([]memory.FTSResult{
+		{Node: memory.Node{ID: "n-root-1", Summary: "Root Decision", Workspace: "root", Type: "decision"}, Rank: -5.0},
+		{Node: memory.Node{ID: "n-osprey-1", Summary: "Osprey Pattern", Workspace: "osprey", Type: "pattern"}, Rank: -4.0},
+		{Node: memory.Node{ID: "n-studio-1", Summary: "Studio Constraint", Workspace: "studio", Type: "constraint"}, Rank: -3.0},
+	})
+
+	svc := NewService(repo, llm.Config{})
+
+	// Empty workspace filter should return all nodes
+	results, err := svc.SearchWithFilter(context.Background(), "test", 10, memory.NodeFilter{
+		Workspace: "",
+	})
+	if err != nil {
+		t.Fatalf("SearchWithFilter failed: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Errorf("Expected 3 results (all nodes), got %d", len(results))
+	}
+}
+
+func TestSearchWithFilter_WorkspaceWithIncludeRoot(t *testing.T) {
+	repo := NewMockRepository()
+
+	// Add nodes: 2 root, 1 osprey, 1 studio
+	rootNode1 := memory.Node{ID: "n-root-1", Summary: "Root Decision 1", Workspace: "root", Type: "decision"}
+	rootNode2 := memory.Node{ID: "n-root-2", Summary: "Root Decision 2", Workspace: "root", Type: "decision"}
+	ospreyNode := memory.Node{ID: "n-osprey-1", Summary: "Osprey Pattern", Workspace: "osprey", Type: "pattern"}
+	studioNode := memory.Node{ID: "n-studio-1", Summary: "Studio Constraint", Workspace: "studio", Type: "constraint"}
+
+	repo.AddNode(rootNode1)
+	repo.AddNode(rootNode2)
+	repo.AddNode(ospreyNode)
+	repo.AddNode(studioNode)
+
+	// Setup FTS results
+	repo.SetFTSResults([]memory.FTSResult{
+		{Node: rootNode1, Rank: -5.0},
+		{Node: rootNode2, Rank: -4.5},
+		{Node: ospreyNode, Rank: -4.0},
+		{Node: studioNode, Rank: -3.0},
+	})
+
+	svc := NewService(repo, llm.Config{})
+
+	// Search for osprey workspace WITH IncludeRoot
+	results, err := svc.SearchWithFilter(context.Background(), "test", 10, memory.NodeFilter{
+		Workspace:   "osprey",
+		IncludeRoot: true,
+	})
+	if err != nil {
+		t.Fatalf("SearchWithFilter failed: %v", err)
+	}
+
+	// Should return osprey + root nodes (3 total), not studio
+	if len(results) != 3 {
+		t.Errorf("Expected 3 results (osprey + root), got %d", len(results))
+	}
+
+	// Verify no studio nodes
+	for _, r := range results {
+		if r.Node.Workspace == "studio" {
+			t.Errorf("Should not include studio node, but got %s", r.Node.ID)
+		}
+	}
+}
+
+func TestSearchWithFilter_WorkspaceWithoutRoot(t *testing.T) {
+	repo := NewMockRepository()
+
+	// Add nodes
+	rootNode := memory.Node{ID: "n-root-1", Summary: "Root Decision", Workspace: "root", Type: "decision"}
+	ospreyNode := memory.Node{ID: "n-osprey-1", Summary: "Osprey Pattern", Workspace: "osprey", Type: "pattern"}
+
+	repo.AddNode(rootNode)
+	repo.AddNode(ospreyNode)
+
+	// Setup FTS results
+	repo.SetFTSResults([]memory.FTSResult{
+		{Node: rootNode, Rank: -5.0},
+		{Node: ospreyNode, Rank: -4.0},
+	})
+
+	svc := NewService(repo, llm.Config{})
+
+	// Search for osprey workspace WITHOUT IncludeRoot
+	results, err := svc.SearchWithFilter(context.Background(), "test", 10, memory.NodeFilter{
+		Workspace:   "osprey",
+		IncludeRoot: false,
+	})
+	if err != nil {
+		t.Fatalf("SearchWithFilter failed: %v", err)
+	}
+
+	// Should return only osprey nodes
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result (osprey only), got %d", len(results))
+	}
+
+	if len(results) > 0 && results[0].Node.Workspace != "osprey" {
+		t.Errorf("Expected osprey node, got workspace %s", results[0].Node.Workspace)
+	}
+}
+
+func TestSearchWithFilter_LimitRespected(t *testing.T) {
+	repo := NewMockRepository()
+
+	// Add 10 nodes in osprey workspace
+	var ftsResults []memory.FTSResult
+	for i := 0; i < 10; i++ {
+		node := memory.Node{
+			ID:        fmt.Sprintf("n-osprey-%d", i),
+			Summary:   fmt.Sprintf("Osprey Decision %d", i),
+			Workspace: "osprey",
+			Type:      "decision",
+		}
+		repo.AddNode(node)
+		ftsResults = append(ftsResults, memory.FTSResult{Node: node, Rank: float64(-10 + i)})
+	}
+	repo.SetFTSResults(ftsResults)
+
+	svc := NewService(repo, llm.Config{})
+
+	// Request only 3 results
+	results, err := svc.SearchWithFilter(context.Background(), "decision", 3, memory.NodeFilter{
+		Workspace:   "osprey",
+		IncludeRoot: false,
+	})
+	if err != nil {
+		t.Fatalf("SearchWithFilter failed: %v", err)
+	}
+
+	if len(results) > 3 {
+		t.Errorf("Expected at most 3 results, got %d", len(results))
+	}
+}
+
+// === matchesWorkspaceFilter Tests ===
+
+func TestMatchesWorkspaceFilter(t *testing.T) {
+	tests := []struct {
+		name          string
+		nodeWorkspace string
+		filter        memory.NodeFilter
+		want          bool
+	}{
+		{
+			name:          "exact match",
+			nodeWorkspace: "osprey",
+			filter:        memory.NodeFilter{Workspace: "osprey"},
+			want:          true,
+		},
+		{
+			name:          "no match different workspace",
+			nodeWorkspace: "studio",
+			filter:        memory.NodeFilter{Workspace: "osprey"},
+			want:          false,
+		},
+		{
+			name:          "root node with IncludeRoot true",
+			nodeWorkspace: "root",
+			filter:        memory.NodeFilter{Workspace: "osprey", IncludeRoot: true},
+			want:          true,
+		},
+		{
+			name:          "root node with IncludeRoot false",
+			nodeWorkspace: "root",
+			filter:        memory.NodeFilter{Workspace: "osprey", IncludeRoot: false},
+			want:          false,
+		},
+		{
+			name:          "empty workspace treated as root with IncludeRoot true",
+			nodeWorkspace: "",
+			filter:        memory.NodeFilter{Workspace: "osprey", IncludeRoot: true},
+			want:          true,
+		},
+		{
+			name:          "empty workspace treated as root with IncludeRoot false",
+			nodeWorkspace: "",
+			filter:        memory.NodeFilter{Workspace: "osprey", IncludeRoot: false},
+			want:          false,
+		},
+		{
+			name:          "filter for root workspace matches root",
+			nodeWorkspace: "root",
+			filter:        memory.NodeFilter{Workspace: "root"},
+			want:          true,
+		},
+		{
+			name:          "empty node matches root filter",
+			nodeWorkspace: "",
+			filter:        memory.NodeFilter{Workspace: "root"},
+			want:          true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchesWorkspaceFilter(tt.nodeWorkspace, tt.filter)
+			if got != tt.want {
+				t.Errorf("matchesWorkspaceFilter(%q, %+v) = %v, want %v",
+					tt.nodeWorkspace, tt.filter, got, tt.want)
+			}
+		})
+	}
+}
+
+// === Recall Workspace Scoping Integration Tests ===
+
+func TestRecallWorkspaceScoping_MonorepoScenario(t *testing.T) {
+	// Simulates a monorepo with services: api, web, common
+	// When working in "api" subdirectory, should see:
+	// - api-specific knowledge
+	// - global/root knowledge (if IncludeRoot=true)
+	// - NOT web-specific knowledge
+
+	repo := NewMockRepository()
+
+	// Global decisions
+	globalAuth := memory.Node{ID: "n-global-auth", Summary: "JWT Authentication", Workspace: "root", Type: "decision"}
+	globalDB := memory.Node{ID: "n-global-db", Summary: "PostgreSQL Database", Workspace: "root", Type: "decision"}
+
+	// API-specific
+	apiPattern := memory.Node{ID: "n-api-rest", Summary: "REST API Pattern", Workspace: "api", Type: "pattern"}
+	apiConstraint := memory.Node{ID: "n-api-rate", Summary: "Rate Limiting", Workspace: "api", Type: "constraint"}
+
+	// Web-specific
+	webPattern := memory.Node{ID: "n-web-react", Summary: "React Components", Workspace: "web", Type: "pattern"}
+
+	// Common-specific
+	commonUtil := memory.Node{ID: "n-common-utils", Summary: "Shared Utilities", Workspace: "common", Type: "pattern"}
+
+	for _, n := range []memory.Node{globalAuth, globalDB, apiPattern, apiConstraint, webPattern, commonUtil} {
+		repo.AddNode(n)
+	}
+
+	// Setup FTS results
+	repo.SetFTSResults([]memory.FTSResult{
+		{Node: globalAuth, Rank: -8.0},
+		{Node: globalDB, Rank: -7.0},
+		{Node: apiPattern, Rank: -6.0},
+		{Node: apiConstraint, Rank: -5.0},
+		{Node: webPattern, Rank: -4.0},
+		{Node: commonUtil, Rank: -3.0},
+	})
+
+	svc := NewService(repo, llm.Config{})
+
+	// Scenario 1: Working in api directory with IncludeRoot=true
+	t.Run("api workspace with root", func(t *testing.T) {
+		results, err := svc.SearchWithFilter(context.Background(), "pattern", 10, memory.NodeFilter{
+			Workspace:   "api",
+			IncludeRoot: true,
+		})
+		if err != nil {
+			t.Fatalf("SearchWithFilter failed: %v", err)
+		}
+
+		// Should have: api nodes + root nodes
+		workspaces := make(map[string]int)
+		for _, r := range results {
+			workspaces[r.Node.Workspace]++
+		}
+
+		if workspaces["web"] > 0 {
+			t.Error("Should NOT include web-specific nodes when in api workspace")
+		}
+		if workspaces["common"] > 0 {
+			t.Error("Should NOT include common-specific nodes when in api workspace")
+		}
+		if workspaces["api"] == 0 {
+			t.Error("Should include api-specific nodes")
+		}
+		if workspaces["root"] == 0 {
+			t.Error("Should include root nodes when IncludeRoot=true")
+		}
+	})
+
+	// Scenario 2: Working in api directory with IncludeRoot=false
+	t.Run("api workspace without root", func(t *testing.T) {
+		results, err := svc.SearchWithFilter(context.Background(), "pattern", 10, memory.NodeFilter{
+			Workspace:   "api",
+			IncludeRoot: false,
+		})
+		if err != nil {
+			t.Fatalf("SearchWithFilter failed: %v", err)
+		}
+
+		for _, r := range results {
+			if r.Node.Workspace != "api" {
+				t.Errorf("Should only include api nodes, got workspace %s", r.Node.Workspace)
+			}
+		}
+	})
+
+	// Scenario 3: Working at monorepo root (empty workspace = all)
+	t.Run("root directory sees all", func(t *testing.T) {
+		results, err := svc.SearchWithFilter(context.Background(), "pattern", 10, memory.NodeFilter{
+			Workspace: "", // Empty = no filtering
+		})
+		if err != nil {
+			t.Fatalf("SearchWithFilter failed: %v", err)
+		}
+
+		// Should see all nodes from all workspaces
+		if len(results) < 6 {
+			t.Errorf("Expected all 6 nodes when at root, got %d", len(results))
+		}
+	})
 }
