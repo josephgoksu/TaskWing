@@ -408,7 +408,7 @@ func checkOpenCodeMCP(cwd string) []DoctorCheck {
 	}
 
 	// Check 3: Validate MCP section exists
-	if config.MCP == nil || len(config.MCP) == 0 {
+	if len(config.MCP) == 0 {
 		checks = append(checks, DoctorCheck{
 			Name:    "MCP (OpenCode)",
 			Status:  "fail",
