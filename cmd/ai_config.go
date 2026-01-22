@@ -18,7 +18,7 @@ type aiConfig struct {
 }
 
 // Ordered list for consistent display
-var aiConfigOrder = []string{"claude", "cursor", "copilot", "gemini", "codex"}
+var aiConfigOrder = []string{"claude", "cursor", "copilot", "gemini", "codex", "opencode"}
 
 var aiConfigs = map[string]aiConfig{
 	"claude": {
@@ -49,6 +49,12 @@ var aiConfigs = map[string]aiConfig{
 		name:        "codex",
 		displayName: "OpenAI Codex",
 		commandsDir: ".codex/commands",
+		fileExt:     ".md",
+	},
+	"opencode": {
+		name:        "opencode",
+		displayName: "OpenCode",
+		commandsDir: ".opencode/skills",
 		fileExt:     ".md",
 	},
 }

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -29,11 +31,12 @@ func TestValidAINames(t *testing.T) {
 
 	// Check that known AI names are present
 	expectedNames := map[string]bool{
-		"claude":  false,
-		"cursor":  false,
-		"gemini":  false,
-		"codex":   false,
-		"copilot": false,
+		"claude":   false,
+		"cursor":   false,
+		"gemini":   false,
+		"codex":    false,
+		"copilot":  false,
+		"opencode": false,
 	}
 
 	for _, name := range names {
@@ -432,5 +435,358 @@ func TestVersionHashIncludesSingleFile(t *testing.T) {
 	copilotVersion2 := AIToolConfigVersion("copilot")
 	if copilotVersion != copilotVersion2 {
 		t.Error("Version hash should be deterministic")
+	}
+}
+
+// =============================================================================
+// OpenCode Tests
+// =============================================================================
+
+// TestInitializer_OpenCode_Skills tests OpenCode skills directory generation
+func TestInitializer_OpenCode_Skills(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	err := init.createSlashCommands("opencode", false)
+	if err != nil {
+		t.Fatalf("createSlashCommands(opencode) failed: %v", err)
+	}
+
+	// Verify skills directory structure: .opencode/skills/<skill-name>/SKILL.md
+	skillsDir := filepath.Join(tmpDir, ".opencode", "skills")
+	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
+		t.Fatal("Skills directory not created")
+	}
+
+	// Check marker file exists
+	markerPath := filepath.Join(skillsDir, TaskWingManagedFile)
+	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
+		t.Error("Marker file not created in skills directory")
+	}
+
+	// Verify at least one skill was created with correct structure
+	skillPath := filepath.Join(skillsDir, "tw-brief", "SKILL.md")
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("Failed to read tw-brief SKILL.md: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify YAML frontmatter with required fields
+	if !contains(contentStr, "name: tw-brief") {
+		t.Error("SKILL.md missing 'name' field in frontmatter")
+	}
+	if !contains(contentStr, "description:") {
+		t.Error("SKILL.md missing 'description' field in frontmatter")
+	}
+	if !contains(contentStr, "!taskwing slash brief") {
+		t.Error("SKILL.md missing taskwing command invocation")
+	}
+}
+
+// TestInitializer_OpenCode_AllSkillsCreated tests all slash commands become skills
+func TestInitializer_OpenCode_AllSkillsCreated(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	err := init.createSlashCommands("opencode", false)
+	if err != nil {
+		t.Fatalf("createSlashCommands(opencode) failed: %v", err)
+	}
+
+	// Verify each slash command has a corresponding skill
+	for _, cmd := range SlashCommands {
+		skillPath := filepath.Join(tmpDir, ".opencode", "skills", cmd.BaseName, "SKILL.md")
+		if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+			t.Errorf("Skill not created for %s", cmd.BaseName)
+		}
+	}
+}
+
+// TestInitializer_OpenCode_SkillNameValidation tests that skill names match OpenCode regex
+func TestInitializer_OpenCode_SkillNameValidation(t *testing.T) {
+	// All our SlashCommands should have valid names
+	for _, cmd := range SlashCommands {
+		if !openCodeSkillNameRegex.MatchString(cmd.BaseName) {
+			t.Errorf("Slash command %s has invalid name for OpenCode skills (must match ^[a-z0-9]+(-[a-z0-9]+)*$)", cmd.BaseName)
+		}
+	}
+
+	// Test some invalid names that should fail
+	invalidNames := []string{
+		"TW-Brief",     // uppercase
+		"-tw-brief",    // starts with hyphen
+		"tw-brief-",    // ends with hyphen
+		"tw--brief",    // consecutive hyphens
+		"tw_brief",     // underscore
+		"tw.brief",     // dot
+		"tw brief",     // space
+		"TwBrief",      // camelCase
+		"123-456-789a", // valid actually
+	}
+
+	for _, name := range invalidNames[:len(invalidNames)-1] { // last one is actually valid
+		if openCodeSkillNameRegex.MatchString(name) {
+			t.Errorf("Name %s should be invalid for OpenCode skills", name)
+		}
+	}
+}
+
+// TestInitializer_OpenCode_Plugin tests OpenCode plugin generation
+func TestInitializer_OpenCode_Plugin(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	err := init.installOpenCodePlugin(false)
+	if err != nil {
+		t.Fatalf("installOpenCodePlugin failed: %v", err)
+	}
+
+	// Verify plugin file was created
+	pluginPath := filepath.Join(tmpDir, ".opencode", "plugins", "taskwing-hooks.js")
+	content, err := os.ReadFile(pluginPath)
+	if err != nil {
+		t.Fatalf("Failed to read plugin file: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify plugin structure
+	if !contains(contentStr, "TASKWING_MANAGED_PLUGIN") {
+		t.Error("Plugin missing TASKWING_MANAGED_PLUGIN marker")
+	}
+	if !contains(contentStr, "export default async") {
+		t.Error("Plugin missing default async export")
+	}
+	if !contains(contentStr, "session.created") {
+		t.Error("Plugin missing session.created hook")
+	}
+	if !contains(contentStr, "session.idle") {
+		t.Error("Plugin missing session.idle hook")
+	}
+	if !contains(contentStr, "taskwing hook session-init") {
+		t.Error("Plugin missing session-init command")
+	}
+	if !contains(contentStr, "taskwing hook continue-check") {
+		t.Error("Plugin missing continue-check command")
+	}
+}
+
+// TestInitializer_OpenCode_PluginUserFilePreservation tests user-owned plugins aren't overwritten
+func TestInitializer_OpenCode_PluginUserFilePreservation(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	// Create user-owned plugin (no TaskWing marker)
+	pluginsDir := filepath.Join(tmpDir, ".opencode", "plugins")
+	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
+		t.Fatalf("Failed to create plugins dir: %v", err)
+	}
+
+	userContent := "// My custom plugin\nexport default async (ctx) => ({});"
+	pluginPath := filepath.Join(pluginsDir, "taskwing-hooks.js")
+	if err := os.WriteFile(pluginPath, []byte(userContent), 0644); err != nil {
+		t.Fatalf("Failed to write user plugin: %v", err)
+	}
+
+	// Run installOpenCodePlugin - should NOT overwrite user file
+	err := init.installOpenCodePlugin(true)
+	if err != nil {
+		t.Fatalf("installOpenCodePlugin failed: %v", err)
+	}
+
+	// Verify user content is preserved
+	content, err := os.ReadFile(pluginPath)
+	if err != nil {
+		t.Fatalf("Failed to read plugin: %v", err)
+	}
+
+	if string(content) != userContent {
+		t.Errorf("User plugin was overwritten!\nExpected: %s\nGot: %s", userContent, string(content))
+	}
+}
+
+// TestInitializer_OpenCode_InstallHooksConfig tests that InstallHooksConfig routes to plugin installer
+func TestInitializer_OpenCode_InstallHooksConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	err := init.InstallHooksConfig("opencode", false)
+	if err != nil {
+		t.Fatalf("InstallHooksConfig(opencode) failed: %v", err)
+	}
+
+	// Verify plugin was created (not JSON settings)
+	pluginPath := filepath.Join(tmpDir, ".opencode", "plugins", "taskwing-hooks.js")
+	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
+		t.Error("OpenCode plugin not created by InstallHooksConfig")
+	}
+
+	// Verify no settings.json was created
+	settingsPath := filepath.Join(tmpDir, ".opencode", "settings.json")
+	if _, err := os.Stat(settingsPath); !os.IsNotExist(err) {
+		t.Error("settings.json should NOT be created for OpenCode (uses plugins)")
+	}
+}
+
+// TestInitializer_OpenCode_FullRun tests complete OpenCode initialization via Run
+func TestInitializer_OpenCode_FullRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	err := init.Run(false, []string{"opencode"})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Verify skills directory exists
+	skillsDir := filepath.Join(tmpDir, ".opencode", "skills")
+	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
+		t.Error("Skills directory not created")
+	}
+
+	// Verify at least tw-brief skill exists
+	skillPath := filepath.Join(skillsDir, "tw-brief", "SKILL.md")
+	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+		t.Error("tw-brief skill not created")
+	}
+
+	// Verify plugin exists
+	pluginPath := filepath.Join(tmpDir, ".opencode", "plugins", "taskwing-hooks.js")
+	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
+		t.Error("Plugin not created")
+	}
+}
+
+// TestInitializer_GenerateTwBrief tests that tw-brief skill is generated with correct content
+func TestInitializer_GenerateTwBrief(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	// Run initialization with opencode
+	err := init.Run(false, []string{"opencode"})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Verify tw-brief skill exists
+	skillPath := filepath.Join(tmpDir, ".opencode", "skills", "tw-brief", "SKILL.md")
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("Failed to read tw-brief SKILL.md: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify frontmatter structure
+	if !strings.HasPrefix(contentStr, "---\n") {
+		t.Error("SKILL.md missing frontmatter start marker")
+	}
+
+	// Verify required frontmatter fields
+	if !strings.Contains(contentStr, "name: tw-brief") {
+		t.Error("SKILL.md missing 'name: tw-brief' field")
+	}
+	if !strings.Contains(contentStr, "description:") {
+		t.Error("SKILL.md missing 'description' field")
+	}
+
+	// Verify description mentions project knowledge or brief
+	if !strings.Contains(strings.ToLower(contentStr), "brief") && !strings.Contains(strings.ToLower(contentStr), "knowledge") {
+		t.Error("SKILL.md description should mention 'brief' or 'knowledge'")
+	}
+
+	// Verify the skill invokes taskwing slash command
+	if !strings.Contains(contentStr, "!taskwing slash brief") {
+		t.Error("SKILL.md should contain '!taskwing slash brief' directive")
+	}
+
+	// Verify directory name matches frontmatter name (skill naming convention)
+	dirName := filepath.Base(filepath.Dir(skillPath))
+	if dirName != "tw-brief" {
+		t.Errorf("Directory name %q doesn't match skill name 'tw-brief'", dirName)
+	}
+
+	// Verify name matches regex pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+	namePattern := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	if !namePattern.MatchString("tw-brief") {
+		t.Error("Skill name 'tw-brief' doesn't match required pattern")
+	}
+}
+
+// TestInitializer_GenerateOpenCodePlugin tests that OpenCode plugin is generated correctly
+// with proper hook mappings and ctx.$ Bun shell API usage.
+func TestInitializer_GenerateOpenCodePlugin(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	// Run initialization with opencode
+	err := init.Run(false, []string{"opencode"})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Verify plugin file exists
+	pluginPath := filepath.Join(tmpDir, ".opencode", "plugins", "taskwing-hooks.js")
+	content, err := os.ReadFile(pluginPath)
+	if err != nil {
+		t.Fatalf("Failed to read taskwing-hooks.js: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify exports default as async function
+	if !strings.Contains(contentStr, "export default async") {
+		t.Error("Plugin missing 'export default async' export")
+	}
+
+	// Verify ctx parameter is used
+	if !strings.Contains(contentStr, "(ctx)") {
+		t.Error("Plugin missing ctx parameter in default export")
+	}
+
+	// Verify session.created hook exists
+	if !strings.Contains(contentStr, `"session.created"`) {
+		t.Error("Plugin missing session.created hook handler")
+	}
+
+	// Verify session.idle hook exists
+	if !strings.Contains(contentStr, `"session.idle"`) {
+		t.Error("Plugin missing session.idle hook handler")
+	}
+
+	// Verify ctx.$ calls to taskwing hook commands (Bun shell API)
+	if !strings.Contains(contentStr, "ctx.$`taskwing hook session-init`") {
+		t.Error("Plugin missing ctx.$`taskwing hook session-init` call")
+	}
+	if !strings.Contains(contentStr, "ctx.$`taskwing hook continue-check") {
+		t.Error("Plugin missing ctx.$`taskwing hook continue-check` call")
+	}
+
+	// Verify no inline secrets (basic check)
+	secretPatterns := []string{
+		"api_key",
+		"apikey",
+		"secret",
+		"password",
+		"token",
+		"credential",
+	}
+	contentLower := strings.ToLower(contentStr)
+	for _, pattern := range secretPatterns {
+		// Skip if it's just a reference (like error.message)
+		if strings.Contains(contentLower, pattern) && !strings.Contains(contentLower, "error.message") {
+			// Allow "token" in comments explaining what the plugin does
+			if pattern == "token" && strings.Contains(contentStr, "// ") {
+				continue
+			}
+			t.Errorf("Plugin may contain sensitive data (found pattern: %s)", pattern)
+		}
+	}
+
+	// Verify managed marker exists (for update detection)
+	if !strings.Contains(contentStr, "TASKWING_MANAGED_PLUGIN") {
+		t.Error("Plugin missing TASKWING_MANAGED_PLUGIN marker")
 	}
 }

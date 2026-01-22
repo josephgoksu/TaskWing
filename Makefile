@@ -72,6 +72,15 @@ test-mcp: build
 test-mcp-functional: test-mcp
 	@echo "✅ MCP functional tests complete (using test-mcp)"
 
+# Run OpenCode integration tests
+# IMPORTANT: Uses local binary (./bin/taskwing or make build), NOT system-installed taskwing
+.PHONY: test-opencode
+test-opencode: build
+	@echo "🎯 Running OpenCode integration tests..."
+	mkdir -p $(TEST_DIR)
+	$(GO) test -v ./tests/integration/... -run "TestOpenCode" | tee $(TEST_DIR)/opencode-integration.log
+	@echo "✅ OpenCode integration tests complete"
+
 
 # Generate test coverage
 .PHONY: coverage
@@ -193,6 +202,7 @@ help:
 		@echo "  test-unit   - Run unit tests only"
 		@echo "  test-integration - Run integration tests"
 		@echo "  test-mcp    - Run MCP protocol tests (JSON-RPC stdio)"
+		@echo "  test-opencode - Run OpenCode integration tests"
 		@echo "  test-quick  - Run quick tests for development"
 		@echo "  test-all    - Run comprehensive test suite"
 	@echo ""

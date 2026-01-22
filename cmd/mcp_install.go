@@ -29,15 +29,17 @@ Supported editors:
   - gemini         (Configures Gemini CLI via 'gemini mcp add')
   - codex          (Configures OpenAI Codex CLI via 'codex mcp add')
   - copilot        (Creates .vscode/mcp.json for GitHub Copilot)
+  - opencode       (Creates opencode.json at project root)
 
 Examples:
   taskwing mcp install cursor
   taskwing mcp install claude
   taskwing mcp install copilot
+  taskwing mcp install opencode
   taskwing mcp install all`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			fmt.Println("Please specify an editor: cursor, claude, claude-desktop, gemini, codex, copilot, or all")
+			fmt.Println("Please specify an editor: cursor, claude, claude-desktop, gemini, codex, copilot, opencode, or all")
 			os.Exit(1)
 		}
 
@@ -81,12 +83,20 @@ Examples:
 			installGeminiCLI(binPath, cwd)
 		case "copilot":
 			installCopilot(binPath, cwd)
+		case "opencode":
+			if err := installOpenCode(binPath, cwd); err != nil {
+				fmt.Printf("❌ Failed to install for OpenCode: %v\n", err)
+				os.Exit(1)
+			}
 		case "all":
 			installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
 			installClaude(binPath, cwd)
 			installCodexGlobal(binPath, cwd)
 			installGeminiCLI(binPath, cwd)
 			installCopilot(binPath, cwd)
+			if err := installOpenCode(binPath, cwd); err != nil {
+				fmt.Printf("⚠️  OpenCode install failed: %v\n", err)
+			}
 		default:
 			fmt.Printf("Unknown editor: %s\n", target)
 			os.Exit(1)
@@ -121,6 +131,26 @@ type VSCodeMCPServerConfig struct {
 
 type VSCodeMCPConfig struct {
 	Servers map[string]VSCodeMCPServerConfig `json:"servers"`
+}
+
+// OpenCodeMCPServerConfig represents a single MCP server entry in OpenCode's config.
+// OpenCode uses a different format than other tools:
+// - "type" must be "local" for command-based execution
+// - "command" is an ARRAY of strings (not a single string)
+// - Optional "environment" and "timeout" fields
+// See: https://opencode.ai/docs/mcp-servers/
+type OpenCodeMCPServerConfig struct {
+	Type        string            `json:"type"`                  // Must be "local" for command execution
+	Command     []string          `json:"command"`               // Array: ["taskwing", "mcp"]
+	Environment map[string]string `json:"environment,omitempty"` // Optional env vars (no secrets!)
+	Timeout     int               `json:"timeout,omitempty"`     // Optional timeout in ms (default 5000)
+}
+
+// OpenCodeConfig represents the top-level opencode.json configuration.
+// File is placed at project root (NOT in a subdirectory).
+type OpenCodeConfig struct {
+	Schema string                             `json:"$schema,omitempty"` // Optional schema URL
+	MCP    map[string]OpenCodeMCPServerConfig `json:"mcp"`               // MCP servers
 }
 
 // -----------------------------------------------------------------------------
@@ -454,4 +484,85 @@ func installCodexGlobal(binPath, projectDir string) {
 	} else {
 		fmt.Printf("✅ Installed for Codex as '%s'\n", serverName)
 	}
+}
+
+// installOpenCode configures MCP for OpenCode by creating/updating opencode.json
+// at the project root. OpenCode's config format differs from other tools:
+// - File is at project root (opencode.json), not in a subdirectory
+// - Uses "$schema" and "mcp" top-level keys
+// - Command is an array, not a string
+// - Type must be "local" for command execution
+// See: https://opencode.ai/docs/mcp-servers/
+func installOpenCode(binPath, projectDir string) error {
+	configPath := filepath.Join(projectDir, "opencode.json")
+	serverName := mcpServerName(projectDir)
+
+	fmt.Println("👉 Configuring OpenCode...")
+
+	return upsertOpenCodeMCPServer(configPath, serverName, OpenCodeMCPServerConfig{
+		Type:    "local",
+		Command: []string{binPath, "mcp"},
+		Timeout: 5000, // Default 5s timeout
+	})
+}
+
+// upsertOpenCodeMCPServer handles OpenCode's unique config format
+// Unlike other tools, OpenCode uses:
+// - Project root file: opencode.json
+// - Top-level "$schema" and "mcp" keys
+// - Command as array: ["taskwing", "mcp"]
+func upsertOpenCodeMCPServer(configPath, serverName string, serverCfg OpenCodeMCPServerConfig) error {
+	// Validate inputs
+	if configPath == "" {
+		return fmt.Errorf("configPath cannot be empty")
+	}
+	if serverName == "" {
+		return fmt.Errorf("serverName cannot be empty")
+	}
+	if len(serverCfg.Command) == 0 {
+		return fmt.Errorf("command array cannot be empty")
+	}
+	if serverCfg.Type != "local" {
+		return fmt.Errorf("type must be 'local' for OpenCode MCP servers, got: %s", serverCfg.Type)
+	}
+
+	// Read existing config or create new
+	var config OpenCodeConfig
+	if content, err := os.ReadFile(configPath); err == nil {
+		if err := json.Unmarshal(content, &config); err != nil {
+			// Invalid JSON - start fresh but preserve what we can
+			config = OpenCodeConfig{
+				Schema: "https://opencode.ai/config.json",
+				MCP:    make(map[string]OpenCodeMCPServerConfig),
+			}
+		}
+	} else {
+		// File doesn't exist - create new config
+		config = OpenCodeConfig{
+			Schema: "https://opencode.ai/config.json",
+			MCP:    make(map[string]OpenCodeMCPServerConfig),
+		}
+	}
+
+	// Ensure MCP map exists
+	if config.MCP == nil {
+		config.MCP = make(map[string]OpenCodeMCPServerConfig)
+	}
+
+	// Ensure schema is set
+	if config.Schema == "" {
+		config.Schema = "https://opencode.ai/config.json"
+	}
+
+	// Upsert server
+	config.MCP[serverName] = serverCfg
+
+	// Write back
+	if err := writeJSONFile(configPath, config); err != nil {
+		return fmt.Errorf("write opencode.json: %w", err)
+	}
+
+	fmt.Printf("✅ Installed for OpenCode as '%s' in %s\n", serverName, configPath)
+	fmt.Println("   (opencode.json is at project root per OpenCode spec)")
+	return nil
 }

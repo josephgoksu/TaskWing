@@ -255,6 +255,10 @@ func checkMCPServers(cwd string) []DoctorCheck {
 		}
 	}
 
+	// Check OpenCode MCP (project-local opencode.json)
+	openCodeChecks := checkOpenCodeMCP(cwd)
+	checks = append(checks, openCodeChecks...)
+
 	if len(checks) == 0 {
 		checks = append(checks, DoctorCheck{
 			Name:    "MCP Servers",
@@ -352,6 +356,224 @@ func checkCodexMCP() DoctorCheck {
 		Message: "taskwing-mcp not registered",
 		Hint:    "Run: taskwing mcp install codex",
 	}
+}
+
+// checkOpenCodeMCP validates OpenCode MCP configuration:
+// 1. Checks if opencode.json exists at project root
+// 2. Validates JSON structure and taskwing-mcp entry
+// 3. Verifies command is JSON array and type is "local"
+// 4. Validates .opencode/skills/*/SKILL.md files
+func checkOpenCodeMCP(cwd string) []DoctorCheck {
+	checks := []DoctorCheck{}
+
+	// Check 1: opencode.json exists
+	configPath := filepath.Join(cwd, "opencode.json")
+	info, err := os.Stat(configPath)
+	if os.IsNotExist(err) {
+		// No opencode.json - OpenCode is not configured (not an error, just skip)
+		return checks
+	}
+
+	// Size limit for safety
+	if info.Size() > 1024*1024 { // 1MB limit
+		checks = append(checks, DoctorCheck{
+			Name:    "MCP (OpenCode)",
+			Status:  "warn",
+			Message: "opencode.json too large to parse",
+		})
+		return checks
+	}
+
+	// Check 2: Parse and validate JSON structure
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		checks = append(checks, DoctorCheck{
+			Name:    "MCP (OpenCode)",
+			Status:  "warn",
+			Message: "Could not read opencode.json",
+			Hint:    "Check file permissions",
+		})
+		return checks
+	}
+
+	var config OpenCodeConfig
+	if err := json.Unmarshal(content, &config); err != nil {
+		checks = append(checks, DoctorCheck{
+			Name:    "MCP (OpenCode)",
+			Status:  "fail",
+			Message: "Invalid JSON in opencode.json",
+			Hint:    "Run: jq . opencode.json to validate syntax",
+		})
+		return checks
+	}
+
+	// Check 3: Validate MCP section exists
+	if len(config.MCP) == 0 {
+		checks = append(checks, DoctorCheck{
+			Name:    "MCP (OpenCode)",
+			Status:  "fail",
+			Message: "No MCP servers in opencode.json",
+			Hint:    "Run: taskwing mcp install opencode",
+		})
+		return checks
+	}
+
+	// Check 4: Find taskwing-mcp entry (may have project suffix)
+	var serverCfg *OpenCodeMCPServerConfig
+	var serverName string
+	for name, cfg := range config.MCP {
+		if strings.HasPrefix(name, "taskwing-mcp") {
+			serverCfg = &cfg
+			serverName = name
+			break
+		}
+	}
+
+	if serverCfg == nil {
+		checks = append(checks, DoctorCheck{
+			Name:    "MCP (OpenCode)",
+			Status:  "fail",
+			Message: "taskwing-mcp not found in opencode.json",
+			Hint:    "Run: taskwing mcp install opencode",
+		})
+		return checks
+	}
+
+	// Check 5: Validate type is "local"
+	if serverCfg.Type != "local" {
+		checks = append(checks, DoctorCheck{
+			Name:    "MCP (OpenCode)",
+			Status:  "fail",
+			Message: fmt.Sprintf("Invalid type %q (expected \"local\")", serverCfg.Type),
+			Hint:    "Run: taskwing mcp install opencode to regenerate",
+		})
+		return checks
+	}
+
+	// Check 6: Validate command is array with at least 2 elements
+	if len(serverCfg.Command) < 2 {
+		checks = append(checks, DoctorCheck{
+			Name:    "MCP (OpenCode)",
+			Status:  "fail",
+			Message: "Invalid command format (expected array with binary and 'mcp')",
+			Hint:    "Run: taskwing mcp install opencode to regenerate",
+		})
+		return checks
+	}
+
+	// MCP config is valid
+	checks = append(checks, DoctorCheck{
+		Name:    "MCP (OpenCode)",
+		Status:  "ok",
+		Message: fmt.Sprintf("%s registered in opencode.json", serverName),
+	})
+
+	// Check 7: Validate skills (optional - warn if issues)
+	skillsChecks := checkOpenCodeSkills(cwd)
+	checks = append(checks, skillsChecks...)
+
+	return checks
+}
+
+// checkOpenCodeSkills validates .opencode/skills/*/SKILL.md files
+func checkOpenCodeSkills(cwd string) []DoctorCheck {
+	checks := []DoctorCheck{}
+
+	skillsDir := filepath.Join(cwd, ".opencode", "skills")
+	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
+		// No skills directory - not an error, skills are optional
+		return checks
+	}
+
+	// Find all SKILL.md files
+	pattern := filepath.Join(skillsDir, "*", "SKILL.md")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		// No skills found - not an error
+		return checks
+	}
+
+	validSkills := 0
+	invalidSkills := []string{}
+
+	for _, skillPath := range matches {
+		// Get the skill directory name
+		skillDirName := filepath.Base(filepath.Dir(skillPath))
+
+		// Read and validate SKILL.md
+		content, err := os.ReadFile(skillPath)
+		if err != nil {
+			invalidSkills = append(invalidSkills, skillDirName+": unreadable")
+			continue
+		}
+
+		// Check for frontmatter markers
+		contentStr := string(content)
+		if !strings.HasPrefix(contentStr, "---") {
+			invalidSkills = append(invalidSkills, skillDirName+": missing YAML frontmatter")
+			continue
+		}
+
+		// Extract frontmatter
+		parts := strings.SplitN(contentStr, "---", 3)
+		if len(parts) < 3 {
+			invalidSkills = append(invalidSkills, skillDirName+": incomplete frontmatter")
+			continue
+		}
+
+		frontmatter := parts[1]
+
+		// Check for required fields (simple validation - name and description)
+		hasName := strings.Contains(frontmatter, "name:")
+		hasDescription := strings.Contains(frontmatter, "description:")
+
+		if !hasName || !hasDescription {
+			missing := []string{}
+			if !hasName {
+				missing = append(missing, "name")
+			}
+			if !hasDescription {
+				missing = append(missing, "description")
+			}
+			invalidSkills = append(invalidSkills, skillDirName+": missing "+strings.Join(missing, ", "))
+			continue
+		}
+
+		// Extract name from frontmatter and verify it matches directory
+		// Simple extraction - look for "name: value" pattern
+		for _, line := range strings.Split(frontmatter, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "name:") {
+				nameValue := strings.TrimSpace(strings.TrimPrefix(line, "name:"))
+				// Remove quotes if present
+				nameValue = strings.Trim(nameValue, "\"'")
+				if nameValue != skillDirName {
+					invalidSkills = append(invalidSkills, fmt.Sprintf("%s: name mismatch (name: %q != dir: %q)", skillDirName, nameValue, skillDirName))
+					continue
+				}
+				break
+			}
+		}
+
+		validSkills++
+	}
+
+	if len(invalidSkills) > 0 {
+		checks = append(checks, DoctorCheck{
+			Name:    "Skills (OpenCode)",
+			Status:  "warn",
+			Message: fmt.Sprintf("%d valid, %d invalid skills", validSkills, len(invalidSkills)),
+			Hint:    "Invalid: " + strings.Join(invalidSkills, "; ") + ". For development, use taskwing-local-dev-mcp",
+		})
+	} else if validSkills > 0 {
+		checks = append(checks, DoctorCheck{
+			Name:    "Skills (OpenCode)",
+			Status:  "ok",
+			Message: fmt.Sprintf("%d skills configured", validSkills),
+		})
+	}
+
+	return checks
 }
 
 func checkHooksConfig(cwd string) []DoctorCheck {

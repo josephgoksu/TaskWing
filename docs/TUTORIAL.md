@@ -2,7 +2,7 @@
 
 > Give your AI coding assistant permanent memory and autonomous task execution.
 
-TaskWing extracts architectural knowledge from your codebase and exposes it to AI tools (Claude Code, Codex, Gemini) via MCP. It also enables autonomous task execution through plans and hooks.
+TaskWing extracts architectural knowledge from your codebase and exposes it to AI tools (Claude Code, Codex, Gemini, OpenCode) via MCP. It also enables autonomous task execution through plans and hooks.
 
 ---
 
@@ -17,7 +17,7 @@ cd your-project
 taskwing bootstrap
 
 # 3. Follow the prompts to:
-#    - Select your AI tool (Claude, Codex, Gemini)
+#    - Select your AI tool (Claude, Codex, Gemini, OpenCode)
 #    - Configure MCP integration
 ```
 
@@ -87,6 +87,7 @@ You'll be prompted to select your AI tools:
   [ ] copilot    - GitHub Copilot
   [✓] gemini     - Gemini CLI
   [✓] codex      - OpenAI Codex
+  [ ] opencode   - OpenCode
 ```
 
 This creates:
@@ -94,8 +95,10 @@ This creates:
 - `.claude/commands/` - Slash commands (if Claude selected)
 - `.codex/commands/` - Slash commands (if Codex selected)
 - `.gemini/commands/` - Slash commands (if Gemini selected)
+- `.opencode/skills/` - Skills (if OpenCode selected)
+- `opencode.json` - MCP config at project root (if OpenCode selected)
 - MCP server configuration for each tool
-- Hooks for autonomous execution (Claude, Codex)
+- Hooks for autonomous execution (Claude, Codex, OpenCode)
 
 ### Step 2: Verify Setup
 
@@ -241,6 +244,119 @@ taskwing mcp install gemini
 /tw-done          # Complete task
 /tw-next          # Manually start next task
 ```
+
+---
+
+### OpenCode
+
+**Hooks**: ✅ Supported via plugins (auto-continue works)
+**Skills**: ✅ Custom slash commands via `.opencode/skills/`
+**MCP**: ✅ Supported via `opencode.json`
+
+**Setup:**
+```bash
+taskwing bootstrap  # Select 'opencode' when prompted
+# Or install MCP separately:
+taskwing mcp install opencode
+```
+
+This creates:
+- `opencode.json` - MCP server configuration **at project root** (required location)
+- `.opencode/skills/` - TaskWing slash commands (tw-next, tw-done, etc.)
+- `.opencode/plugins/taskwing-hooks.js` - Hooks for auto-continue
+
+**opencode.json Example:**
+
+The `opencode.json` file **must live at the repository root**. It configures the MCP server:
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "taskwing-mcp": {
+      "type": "local",
+      "command": ["taskwing", "mcp"],
+      "timeout": 5000
+    }
+  }
+}
+```
+
+**Skills (Slash Commands):**
+```
+/tw-next     - Start next task
+/tw-done     - Complete current task
+/tw-brief    - Get project knowledge brief
+/tw-status   - Show current task status
+/tw-context  - Fetch architecture context
+/tw-block    - Mark current task as blocked
+```
+
+**Skill Structure:**
+
+Skills live in `.opencode/skills/<skill-name>/SKILL.md`. The **directory name must match** the `name` field in the YAML frontmatter:
+```yaml
+---
+name: tw-brief
+description: Get compact project knowledge brief (decisions, patterns, constraints)
+---
+
+!taskwing slash brief
+```
+
+Valid skill names follow the pattern: `^[a-z0-9]+(-[a-z0-9]+)*$` (lowercase, hyphens allowed)
+
+**Plugin Structure:**
+
+Plugins live in `.opencode/plugins/` and use JavaScript with Bun's shell API (`ctx.$`):
+```javascript
+// .opencode/plugins/taskwing-hooks.js
+export default async (ctx) => ({
+  // session.created: Called when a new session starts
+  "session.created": async (event) => {
+    await ctx.$`taskwing hook session-init`;
+  },
+
+  // session.idle: Called when task completes (auto-continue)
+  "session.idle": async (event) => {
+    await ctx.$`taskwing hook continue-check --max-tasks=5 --max-minutes=30`;
+  }
+});
+```
+
+**Doctor Checks:**
+
+Run `taskwing doctor` to verify your OpenCode installation:
+```bash
+taskwing doctor
+# ✅ MCP (OpenCode): taskwing-mcp registered in opencode.json
+# ✅ Skills (OpenCode): 6 skills validated
+```
+
+**Integration Testing:**
+```bash
+# Run OpenCode integration tests
+make test-opencode
+
+# Or directly:
+go test -v ./tests/integration/... -run "TestOpenCode"
+```
+
+**Development Notes:**
+
+> ⚠️ **CRITICAL**: When developing or testing TaskWing code changes, you **MUST use `taskwing-local-dev-mcp`** instead of the production MCP. The production `taskwing-mcp` uses the Homebrew-installed binary, which won't reflect your code changes.
+
+```bash
+# Development workflow:
+# 1. Make code changes
+# 2. Build: make build
+# 3. Test via local dev MCP (uses ./bin/taskwing)
+# 4. Run tests: make test-opencode
+```
+
+For OpenCode development specifically:
+- During development, configure `taskwing-local-dev-mcp` in your opencode.json
+- The production MCP (`taskwing-mcp`) uses the Homebrew-installed binary
+- Changes to code require rebuild: `make build`
 
 ---
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -127,15 +128,17 @@ type aiHelperConfig struct {
 	fileExt        string
 	singleFile     bool   // If true, generate a single file instead of directory with multiple files
 	singleFileName string // Filename for single-file mode (e.g., "copilot-instructions.md")
+	skillsDir      bool   // If true, use OpenCode-style skills directory structure
 }
 
 // Map AI name to config
 var aiHelpers = map[string]aiHelperConfig{
-	"claude":  {commandsDir: ".claude/commands", fileExt: ".md", singleFile: false},
-	"cursor":  {commandsDir: ".cursor/rules", fileExt: ".md", singleFile: false},
-	"gemini":  {commandsDir: ".gemini/commands", fileExt: ".toml", singleFile: false},
-	"codex":   {commandsDir: ".codex/commands", fileExt: ".md", singleFile: false},
-	"copilot": {commandsDir: ".github", fileExt: ".md", singleFile: true, singleFileName: "copilot-instructions.md"},
+	"claude":   {commandsDir: ".claude/commands", fileExt: ".md", singleFile: false},
+	"cursor":   {commandsDir: ".cursor/rules", fileExt: ".md", singleFile: false},
+	"gemini":   {commandsDir: ".gemini/commands", fileExt: ".toml", singleFile: false},
+	"codex":    {commandsDir: ".codex/commands", fileExt: ".md", singleFile: false},
+	"copilot":  {commandsDir: ".github", fileExt: ".md", singleFile: true, singleFileName: "copilot-instructions.md"},
+	"opencode": {commandsDir: ".opencode/skills", fileExt: ".md", singleFile: false, skillsDir: true},
 }
 
 // TaskWingManagedFile is the marker file name written to directories managed by TaskWing.
@@ -213,6 +216,12 @@ func (i *Initializer) createSlashCommands(aiName string, verbose bool) error {
 	// Handle single-file mode (e.g., GitHub Copilot)
 	if cfg.singleFile {
 		return i.createSingleFileInstructions(aiName, verbose)
+	}
+
+	// Handle OpenCode skills directory structure
+	// OpenCode skills use nested directories: .opencode/skills/<skill-name>/SKILL.md
+	if cfg.skillsDir {
+		return i.createOpenCodeSkills(aiName, verbose)
 	}
 
 	commandsDir := filepath.Join(i.basePath, cfg.commandsDir)
@@ -389,6 +398,75 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 	return nil
 }
 
+// openCodeSkillNameRegex validates OpenCode skill names.
+// OpenCode requires skill names to match: ^[a-z0-9]+(-[a-z0-9]+)*$
+// Names cannot start/end with hyphens or contain consecutive hyphens.
+var openCodeSkillNameRegex = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+// createOpenCodeSkills generates OpenCode skills in the nested directory structure.
+// OpenCode skills use: .opencode/skills/<skill-name>/SKILL.md
+// Each skill directory contains a SKILL.md file with YAML frontmatter containing
+// "name" and "description" fields. The directory name MUST equal the "name" field.
+//
+// Skill name validation rules (from OpenCode docs):
+// - Must match regex: ^[a-z0-9]+(-[a-z0-9]+)*$
+// - Lowercase alphanumeric with hyphens as separators
+// - Cannot start/end with hyphens
+// - Cannot have consecutive hyphens (--)
+func (i *Initializer) createOpenCodeSkills(aiName string, verbose bool) error {
+	cfg := aiHelpers[aiName]
+
+	// Base skills directory: .opencode/skills
+	skillsDir := filepath.Join(i.basePath, cfg.commandsDir)
+	if err := os.MkdirAll(skillsDir, 0755); err != nil {
+		return fmt.Errorf("create skills dir: %w", err)
+	}
+
+	// Write marker file to indicate TaskWing manages this directory
+	configVersion := AIToolConfigVersion(aiName)
+	markerPath := filepath.Join(skillsDir, TaskWingManagedFile)
+	markerContent := fmt.Sprintf("# This directory is managed by TaskWing\n# Created: %s\n# AI: %s\n# Version: %s\n",
+		time.Now().UTC().Format(time.RFC3339), aiName, configVersion)
+	if err := os.WriteFile(markerPath, []byte(markerContent), 0644); err != nil {
+		return fmt.Errorf("create marker file: %w", err)
+	}
+
+	// Generate a skill for each slash command
+	for _, cmd := range SlashCommands {
+		// Validate skill name against OpenCode requirements
+		if !openCodeSkillNameRegex.MatchString(cmd.BaseName) {
+			return fmt.Errorf("invalid OpenCode skill name '%s': must match ^[a-z0-9]+(-[a-z0-9]+)*$ (lowercase alphanumeric with hyphens)", cmd.BaseName)
+		}
+
+		// Create skill directory: .opencode/skills/<skill-name>/
+		skillDir := filepath.Join(skillsDir, cmd.BaseName)
+		if err := os.MkdirAll(skillDir, 0755); err != nil {
+			return fmt.Errorf("create skill dir %s: %w", cmd.BaseName, err)
+		}
+
+		// OpenCode skill format uses YAML frontmatter with name and description
+		// The content after frontmatter is the prompt that gets loaded when the skill is invoked
+		content := fmt.Sprintf(`---
+name: %s
+description: %s
+---
+!taskwing slash %s
+`, cmd.BaseName, cmd.Description, cmd.SlashCmd)
+
+		// Write SKILL.md file (OpenCode requires this exact filename)
+		filePath := filepath.Join(skillDir, "SKILL.md")
+		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("create %s/SKILL.md: %w", cmd.BaseName, err)
+		}
+
+		if verbose {
+			fmt.Printf("  ✓ Created %s/%s/SKILL.md\n", cfg.commandsDir, cmd.BaseName)
+		}
+	}
+
+	return nil
+}
+
 // Hooks Logic (Moved from cmd/bootstrap.go)
 type HooksConfig struct {
 	Hooks map[string][]HookMatcher `json:"hooks"`
@@ -407,6 +485,11 @@ type HookCommand struct {
 }
 
 func (i *Initializer) InstallHooksConfig(aiName string, verbose bool) error {
+	// OpenCode uses JavaScript plugins instead of JSON hooks config
+	if aiName == "opencode" {
+		return i.installOpenCodePlugin(verbose)
+	}
+
 	var settingsPath string
 	switch aiName {
 	case "claude":
@@ -477,6 +560,92 @@ func (i *Initializer) InstallHooksConfig(aiName string, verbose bool) error {
 
 	if verbose {
 		fmt.Printf("  ✓ Created hooks config: %s\n", settingsPath)
+	}
+	return nil
+}
+
+// openCodePluginTemplate is the JavaScript plugin template for OpenCode hooks.
+// OpenCode uses Bun-based plugins in .opencode/plugins/ that export hook handlers.
+//
+// Available hooks from OpenCode docs:
+// - session.created: Called when a new session starts (like Claude's SessionStart)
+// - session.compacted: Called when session context is summarized
+// - session.idle: Called when session becomes idle (like Claude's Stop hook)
+//
+// The plugin uses ctx.$ (Bun shell API) to execute taskwing CLI commands.
+const openCodePluginTemplate = `// TaskWing Plugin for OpenCode
+// This plugin integrates TaskWing's autonomous task execution with OpenCode.
+// Generated by TaskWing - do not edit manually (will be overwritten on bootstrap).
+//
+// TASKWING_MANAGED_PLUGIN
+// Version: %s
+
+export default async (ctx) => ({
+  // session.created: Called when a new OpenCode session starts
+  // Equivalent to Claude Code's SessionStart hook
+  "session.created": async (event) => {
+    try {
+      await ctx.$` + "`taskwing hook session-init`" + `;
+      ctx.client.app.log("info", "TaskWing session initialized");
+    } catch (error) {
+      ctx.client.app.log("warn", ` + "`TaskWing session-init failed: ${error.message}`" + `);
+    }
+  },
+
+  // session.idle: Called when the session becomes idle (task completed)
+  // Equivalent to Claude Code's Stop hook - checks if should continue to next task
+  "session.idle": async (event) => {
+    try {
+      const result = await ctx.$` + "`taskwing hook continue-check --max-tasks=5 --max-minutes=30`" + `;
+      if (result.exitCode === 0 && result.stdout.includes("CONTINUE")) {
+        ctx.client.app.log("info", "TaskWing: Continuing to next task");
+        // OpenCode will pick up the next task context from stdout
+      }
+    } catch (error) {
+      ctx.client.app.log("debug", ` + "`TaskWing continue-check: ${error.message}`" + `);
+    }
+  },
+
+  // session.compacted: Called when session context is being summarized
+  // Can be used to preserve important TaskWing state during compaction
+  "session.compacted": async (event) => {
+    ctx.client.app.log("debug", "TaskWing: Session compacted");
+  }
+});
+`
+
+// installOpenCodePlugin creates the TaskWing hooks plugin for OpenCode.
+// OpenCode plugins are JavaScript files in .opencode/plugins/ that export hook handlers.
+// Unlike Claude/Codex which use JSON settings, OpenCode requires actual JS code.
+func (i *Initializer) installOpenCodePlugin(verbose bool) error {
+	pluginsDir := filepath.Join(i.basePath, ".opencode", "plugins")
+	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
+		return fmt.Errorf("create plugins dir: %w", err)
+	}
+
+	pluginPath := filepath.Join(pluginsDir, "taskwing-hooks.js")
+	configVersion := AIToolConfigVersion("opencode")
+
+	// Check if plugin already exists and is user-managed
+	if existingContent, err := os.ReadFile(pluginPath); err == nil {
+		if !strings.Contains(string(existingContent), "TASKWING_MANAGED_PLUGIN") {
+			// User owns this file - do not overwrite
+			if verbose {
+				fmt.Printf("  ⚠️  Skipping taskwing-hooks.js - file exists and is user-managed\n")
+			}
+			return nil
+		}
+	}
+
+	// Generate plugin content with version
+	content := fmt.Sprintf(openCodePluginTemplate, configVersion)
+
+	if err := os.WriteFile(pluginPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("write plugin: %w", err)
+	}
+
+	if verbose {
+		fmt.Printf("  ✓ Created OpenCode plugin: .opencode/plugins/taskwing-hooks.js\n")
 	}
 	return nil
 }

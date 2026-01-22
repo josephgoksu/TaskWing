@@ -651,6 +651,12 @@ func installMCPServers(basePath string, selectedAIs []string) {
 			installLocalMCP(basePath, ".cursor", "mcp.json", binPath)
 		case "copilot":
 			installCopilot(binPath, basePath)
+		case "opencode":
+			// OpenCode: creates opencode.json at project root
+			// During development, use taskwing-local-dev-mcp for testing changes
+			if err := installOpenCode(binPath, basePath); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠️  OpenCode MCP installation failed: %v\n", err)
+			}
 		}
 	}
 }
