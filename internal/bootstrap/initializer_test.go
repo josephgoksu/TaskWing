@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -654,5 +656,61 @@ func TestInitializer_OpenCode_FullRun(t *testing.T) {
 	pluginPath := filepath.Join(tmpDir, ".opencode", "plugins", "taskwing-hooks.js")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
 		t.Error("Plugin not created")
+	}
+}
+
+// TestInitializer_GenerateTwBrief tests that tw-brief skill is generated with correct content
+func TestInitializer_GenerateTwBrief(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	// Run initialization with opencode
+	err := init.Run(false, []string{"opencode"})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Verify tw-brief skill exists
+	skillPath := filepath.Join(tmpDir, ".opencode", "skills", "tw-brief", "SKILL.md")
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("Failed to read tw-brief SKILL.md: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify frontmatter structure
+	if !strings.HasPrefix(contentStr, "---\n") {
+		t.Error("SKILL.md missing frontmatter start marker")
+	}
+
+	// Verify required frontmatter fields
+	if !strings.Contains(contentStr, "name: tw-brief") {
+		t.Error("SKILL.md missing 'name: tw-brief' field")
+	}
+	if !strings.Contains(contentStr, "description:") {
+		t.Error("SKILL.md missing 'description' field")
+	}
+
+	// Verify description mentions project knowledge or brief
+	if !strings.Contains(strings.ToLower(contentStr), "brief") && !strings.Contains(strings.ToLower(contentStr), "knowledge") {
+		t.Error("SKILL.md description should mention 'brief' or 'knowledge'")
+	}
+
+	// Verify the skill invokes taskwing slash command
+	if !strings.Contains(contentStr, "!taskwing slash brief") {
+		t.Error("SKILL.md should contain '!taskwing slash brief' directive")
+	}
+
+	// Verify directory name matches frontmatter name (skill naming convention)
+	dirName := filepath.Base(filepath.Dir(skillPath))
+	if dirName != "tw-brief" {
+		t.Errorf("Directory name %q doesn't match skill name 'tw-brief'", dirName)
+	}
+
+	// Verify name matches regex pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+	namePattern := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	if !namePattern.MatchString("tw-brief") {
+		t.Error("Skill name 'tw-brief' doesn't match required pattern")
 	}
 }
