@@ -46,3 +46,20 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+  # OpenCode integration tests - runs on main merges and PRs
+  integration-opencode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Build binary for integration tests
+        run: make build
+
+      - name: Run OpenCode integration tests
+        run: go test -v ./tests/integration/... -run "TestOpenCode"

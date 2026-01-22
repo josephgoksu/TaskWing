@@ -2,7 +2,7 @@
 
 > Give your AI coding assistant permanent memory and autonomous task execution.
 
-TaskWing extracts architectural knowledge from your codebase and exposes it to AI tools (Claude Code, Codex, Gemini) via MCP. It also enables autonomous task execution through plans and hooks.
+TaskWing extracts architectural knowledge from your codebase and exposes it to AI tools (Claude Code, Codex, Gemini, OpenCode) via MCP. It also enables autonomous task execution through plans and hooks.
 
 ---
 
@@ -17,7 +17,7 @@ cd your-project
 taskwing bootstrap
 
 # 3. Follow the prompts to:
-#    - Select your AI tool (Claude, Codex, Gemini)
+#    - Select your AI tool (Claude, Codex, Gemini, OpenCode)
 #    - Configure MCP integration
 ```
 
@@ -87,6 +87,7 @@ You'll be prompted to select your AI tools:
   [ ] copilot    - GitHub Copilot
   [✓] gemini     - Gemini CLI
   [✓] codex      - OpenAI Codex
+  [ ] opencode   - OpenCode
 ```
 
 This creates:
@@ -94,8 +95,10 @@ This creates:
 - `.claude/commands/` - Slash commands (if Claude selected)
 - `.codex/commands/` - Slash commands (if Codex selected)
 - `.gemini/commands/` - Slash commands (if Gemini selected)
+- `.opencode/skills/` - Skills (if OpenCode selected)
+- `opencode.json` - MCP config at project root (if OpenCode selected)
 - MCP server configuration for each tool
-- Hooks for autonomous execution (Claude, Codex)
+- Hooks for autonomous execution (Claude, Codex, OpenCode)
 
 ### Step 2: Verify Setup
 
@@ -241,6 +244,62 @@ taskwing mcp install gemini
 /tw-done          # Complete task
 /tw-next          # Manually start next task
 ```
+
+---
+
+### OpenCode
+
+**Hooks**: ✅ Supported via plugins (auto-continue works)
+**Skills**: ✅ Custom slash commands via `.opencode/skills/`
+**MCP**: ✅ Supported via `opencode.json`
+
+**Setup:**
+```bash
+taskwing bootstrap  # Select 'opencode' when prompted
+# Or install MCP separately:
+taskwing mcp install opencode
+```
+
+This creates:
+- `opencode.json` - MCP server configuration at project root
+- `.opencode/skills/` - TaskWing slash commands (tw-next, tw-done, etc.)
+- `.opencode/plugins/taskwing-hooks.js` - Hooks for auto-continue
+
+**Skills (Slash Commands):**
+```
+/tw-next     - Start next task
+/tw-done     - Complete current task
+/tw-brief    - Get project knowledge brief
+/tw-status   - Show current task status
+/tw-context  - Fetch architecture context
+```
+
+**Skill Structure:**
+Skills live in `.opencode/skills/<skill-name>/SKILL.md` with YAML frontmatter:
+```yaml
+---
+name: tw-next
+description: Start working on the next pending task
+---
+
+# tw-next
+
+Instructions for the AI...
+```
+
+**Integration Testing:**
+```bash
+# Run OpenCode integration tests
+make test-opencode
+
+# Or directly:
+go test -v ./tests/integration/... -run "TestOpenCode"
+```
+
+**Development Notes:**
+- During development, use `taskwing-local-dev-mcp` for testing
+- The production MCP uses the Homebrew-installed binary
+- Changes to code require rebuild: `make build`
 
 ---
 
