@@ -95,7 +95,7 @@ This creates:
 - `.claude/commands/` - Slash commands (if Claude selected)
 - `.codex/commands/` - Slash commands (if Codex selected)
 - `.gemini/commands/` - Slash commands (if Gemini selected)
-- `.opencode/skills/` - Skills (if OpenCode selected)
+- `.opencode/commands/` - Skills (if OpenCode selected)
 - `opencode.json` - MCP config at project root (if OpenCode selected)
 - MCP server configuration for each tool
 - Hooks for autonomous execution (Claude, Codex, OpenCode)
@@ -250,7 +250,7 @@ taskwing mcp install gemini
 ### OpenCode
 
 **Hooks**: ✅ Supported via plugins (auto-continue works)
-**Skills**: ✅ Custom slash commands via `.opencode/skills/`
+**Commands**: ✅ Custom slash commands via `.opencode/commands/`
 **MCP**: ✅ Supported via `opencode.json`
 
 **Setup:**
@@ -262,7 +262,7 @@ taskwing mcp install opencode
 
 This creates:
 - `opencode.json` - MCP server configuration **at project root** (required location)
-- `.opencode/skills/` - TaskWing slash commands (tw-next, tw-done, etc.)
+- `.opencode/commands/` - TaskWing slash commands (tw-next, tw-done, etc.)
 - `.opencode/plugins/taskwing-hooks.js` - Hooks for auto-continue
 
 **opencode.json Example:**
@@ -291,19 +291,18 @@ The `opencode.json` file **must live at the repository root**. It configures the
 /tw-block    - Mark current task as blocked
 ```
 
-**Skill Structure:**
+**Command Structure:**
 
-Skills live in `.opencode/skills/<skill-name>/SKILL.md`. The **directory name must match** the `name` field in the YAML frontmatter:
+Commands live in `.opencode/commands/<name>.md` (flat structure). The filename becomes the command name:
 ```yaml
 ---
-name: tw-brief
 description: Get compact project knowledge brief (decisions, patterns, constraints)
 ---
 
 !taskwing slash brief
 ```
 
-Valid skill names follow the pattern: `^[a-z0-9]+(-[a-z0-9]+)*$` (lowercase, hyphens allowed)
+Valid command names follow the pattern: `^[a-z0-9]+(-[a-z0-9]+)*$` (lowercase, hyphens allowed)
 
 **Plugin Structure:**
 

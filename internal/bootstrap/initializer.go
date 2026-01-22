@@ -138,7 +138,7 @@ var aiHelpers = map[string]aiHelperConfig{
 	"gemini":   {commandsDir: ".gemini/commands", fileExt: ".toml", singleFile: false},
 	"codex":    {commandsDir: ".codex/commands", fileExt: ".md", singleFile: false},
 	"copilot":  {commandsDir: ".github", fileExt: ".md", singleFile: true, singleFileName: "copilot-instructions.md"},
-	"opencode": {commandsDir: ".opencode/skills", fileExt: ".md", singleFile: false, skillsDir: true},
+	"opencode": {commandsDir: ".opencode/commands", fileExt: ".md", singleFile: false, skillsDir: true},
 }
 
 // TaskWingManagedFile is the marker file name written to directories managed by TaskWing.
@@ -218,10 +218,11 @@ func (i *Initializer) CreateSlashCommands(aiName string, verbose bool) error {
 		return i.createSingleFileInstructions(aiName, verbose)
 	}
 
-	// Handle OpenCode skills directory structure
-	// OpenCode skills use nested directories: .opencode/skills/<skill-name>/SKILL.md
+	// Handle OpenCode commands directory structure
+	// OpenCode commands: .opencode/commands/<name>.md (flat structure)
+	// See: https://opencode.ai/docs/commands/
 	if cfg.skillsDir {
-		return i.createOpenCodeSkills(aiName, verbose)
+		return i.createOpenCodeCommands(aiName, verbose)
 	}
 
 	commandsDir := filepath.Join(i.basePath, cfg.commandsDir)
@@ -403,64 +404,60 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 // Names cannot start/end with hyphens or contain consecutive hyphens.
 var openCodeSkillNameRegex = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
-// createOpenCodeSkills generates OpenCode skills in the nested directory structure.
-// OpenCode skills use: .opencode/skills/<skill-name>/SKILL.md
-// Each skill directory contains a SKILL.md file with YAML frontmatter containing
-// "name" and "description" fields. The directory name MUST equal the "name" field.
+// createOpenCodeCommands generates OpenCode commands in the flat directory structure.
+// OpenCode commands use: .opencode/commands/<name>.md
+// Each command file contains YAML frontmatter with "description" field.
+// The filename (without .md) becomes the slash command name.
+// See: https://opencode.ai/docs/commands/
 //
-// Skill name validation rules (from OpenCode docs):
+// Command name validation rules (from OpenCode docs):
 // - Must match regex: ^[a-z0-9]+(-[a-z0-9]+)*$
 // - Lowercase alphanumeric with hyphens as separators
 // - Cannot start/end with hyphens
 // - Cannot have consecutive hyphens (--)
-func (i *Initializer) createOpenCodeSkills(aiName string, verbose bool) error {
+func (i *Initializer) createOpenCodeCommands(aiName string, verbose bool) error {
 	cfg := aiHelpers[aiName]
 
-	// Base skills directory: .opencode/skills
-	skillsDir := filepath.Join(i.basePath, cfg.commandsDir)
-	if err := os.MkdirAll(skillsDir, 0755); err != nil {
-		return fmt.Errorf("create skills dir: %w", err)
+	// Commands directory: .opencode/commands
+	commandsDir := filepath.Join(i.basePath, cfg.commandsDir)
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		return fmt.Errorf("create commands dir: %w", err)
 	}
 
 	// Write marker file to indicate TaskWing manages this directory
 	configVersion := AIToolConfigVersion(aiName)
-	markerPath := filepath.Join(skillsDir, TaskWingManagedFile)
+	markerPath := filepath.Join(commandsDir, TaskWingManagedFile)
 	markerContent := fmt.Sprintf("# This directory is managed by TaskWing\n# Created: %s\n# AI: %s\n# Version: %s\n",
 		time.Now().UTC().Format(time.RFC3339), aiName, configVersion)
 	if err := os.WriteFile(markerPath, []byte(markerContent), 0644); err != nil {
 		return fmt.Errorf("create marker file: %w", err)
 	}
 
-	// Generate a skill for each slash command
+	// Generate a command for each slash command
+	// OpenCode format: .opencode/commands/<name>.md with description frontmatter
 	for _, cmd := range SlashCommands {
-		// Validate skill name against OpenCode requirements
+		// Validate command name against OpenCode requirements
 		if !openCodeSkillNameRegex.MatchString(cmd.BaseName) {
-			return fmt.Errorf("invalid OpenCode skill name '%s': must match ^[a-z0-9]+(-[a-z0-9]+)*$ (lowercase alphanumeric with hyphens)", cmd.BaseName)
+			return fmt.Errorf("invalid OpenCode command name '%s': must match ^[a-z0-9]+(-[a-z0-9]+)*$ (lowercase alphanumeric with hyphens)", cmd.BaseName)
 		}
 
-		// Create skill directory: .opencode/skills/<skill-name>/
-		skillDir := filepath.Join(skillsDir, cmd.BaseName)
-		if err := os.MkdirAll(skillDir, 0755); err != nil {
-			return fmt.Errorf("create skill dir %s: %w", cmd.BaseName, err)
-		}
-
-		// OpenCode skill format uses YAML frontmatter with name and description
-		// The content after frontmatter is the prompt that gets loaded when the skill is invoked
+		// OpenCode command format: YAML frontmatter with description only
+		// The content after frontmatter is the prompt that gets executed
+		// See: https://opencode.ai/docs/commands/
 		content := fmt.Sprintf(`---
-name: %s
 description: %s
 ---
 !taskwing slash %s
-`, cmd.BaseName, cmd.Description, cmd.SlashCmd)
+`, cmd.Description, cmd.SlashCmd)
 
-		// Write SKILL.md file (OpenCode requires this exact filename)
-		filePath := filepath.Join(skillDir, "SKILL.md")
+		// Write <name>.md file directly in commands directory
+		filePath := filepath.Join(commandsDir, cmd.BaseName+".md")
 		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-			return fmt.Errorf("create %s/SKILL.md: %w", cmd.BaseName, err)
+			return fmt.Errorf("create %s.md: %w", cmd.BaseName, err)
 		}
 
 		if verbose {
-			fmt.Printf("  ✓ Created %s/%s/SKILL.md\n", cfg.commandsDir, cmd.BaseName)
+			fmt.Printf("  ✓ Created %s/%s.md\n", cfg.commandsDir, cmd.BaseName)
 		}
 	}
 

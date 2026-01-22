@@ -513,11 +513,11 @@ func installOpenCode(binPath, projectDir string) error {
 	init := bootstrap.NewInitializer(projectDir)
 	verbose := viper.GetBool("verbose")
 
-	// Create slash command skills (.opencode/skills/)
+	// Create slash commands (.opencode/commands/)
 	if err := init.CreateSlashCommands("opencode", verbose); err != nil {
-		fmt.Printf("⚠️  Failed to create skills: %v\n", err)
+		fmt.Printf("⚠️  Failed to create commands: %v\n", err)
 	} else {
-		fmt.Println("✅ Created OpenCode skills in .opencode/skills/")
+		fmt.Println("✅ Created OpenCode commands in .opencode/commands/")
 	}
 
 	// Create hooks plugin (.opencode/plugins/)

@@ -17,7 +17,7 @@ import (
 // TestOpenCode_BootstrapAndDoctor tests the complete OpenCode bootstrap and doctor flow.
 // This validates:
 // 1. Bootstrap creates opencode.json at project root
-// 2. Bootstrap creates .opencode/skills/ structure
+// 2. Bootstrap creates .opencode/commands/ structure (flat format per OpenCode docs)
 // 3. Doctor command validates OpenCode configuration
 //
 // CRITICAL: Uses go run . instead of system-installed taskwing binary.
@@ -48,9 +48,9 @@ func TestOpenCode_BootstrapAndDoctor(t *testing.T) {
 		testOpenCodeDoctor(t, fixture.root)
 	})
 
-	t.Run("skills_structure_valid", func(t *testing.T) {
-		// Verify skills directory structure is correct
-		testOpenCodeSkills(t, fixture.root)
+	t.Run("commands_structure_valid", func(t *testing.T) {
+		// Verify commands directory structure is correct
+		testOpenCodeCommands(t, fixture.root)
 	})
 }
 
@@ -76,9 +76,9 @@ func setupOpenCodeFixture(t *testing.T, tmpDir string) *openCodeFixture {
 	}
 
 	// Create a minimal .opencode directory structure
-	openCodeDir := filepath.Join(rootDir, ".opencode", "skills")
+	openCodeDir := filepath.Join(rootDir, ".opencode", "commands")
 	if err := os.MkdirAll(openCodeDir, 0755); err != nil {
-		t.Fatalf("failed to create .opencode/skills: %v", err)
+		t.Fatalf("failed to create .opencode/commands: %v", err)
 	}
 
 	return &openCodeFixture{
@@ -195,56 +195,46 @@ func testOpenCodeDoctor(t *testing.T, projectRoot string) {
 	}
 }
 
-// testOpenCodeSkills tests that skills directory structure is valid.
-func testOpenCodeSkills(t *testing.T, projectRoot string) {
+// testOpenCodeCommands tests that commands directory structure is valid.
+// OpenCode uses flat structure: .opencode/commands/<name>.md with description frontmatter
+func testOpenCodeCommands(t *testing.T, projectRoot string) {
 	t.Helper()
 
-	skillsDir := filepath.Join(projectRoot, ".opencode", "skills")
+	commandsDir := filepath.Join(projectRoot, ".opencode", "commands")
 
-	// Create a test skill to validate structure
-	testSkillDir := filepath.Join(skillsDir, "tw-test")
-	if err := os.MkdirAll(testSkillDir, 0755); err != nil {
-		t.Fatalf("failed to create test skill dir: %v", err)
-	}
-
-	skillContent := `---
-name: tw-test
-description: Test skill for integration testing
+	// Create a test command to validate structure
+	cmdContent := `---
+description: Test command for integration testing
 ---
 
-# tw-test
-
-This is a test skill.
+!taskwing slash test
 `
-	skillPath := filepath.Join(testSkillDir, "SKILL.md")
-	if err := os.WriteFile(skillPath, []byte(skillContent), 0644); err != nil {
-		t.Fatalf("failed to write SKILL.md: %v", err)
+	cmdPath := filepath.Join(commandsDir, "tw-test.md")
+	if err := os.WriteFile(cmdPath, []byte(cmdContent), 0644); err != nil {
+		t.Fatalf("failed to write tw-test.md: %v", err)
 	}
 
-	// Verify skill file exists
-	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
-		t.Error("SKILL.md was not created")
+	// Verify command file exists
+	if _, err := os.Stat(cmdPath); os.IsNotExist(err) {
+		t.Error("tw-test.md was not created")
 	}
 
 	// Verify frontmatter is valid
-	content, err := os.ReadFile(skillPath)
+	content, err := os.ReadFile(cmdPath)
 	if err != nil {
-		t.Fatalf("failed to read SKILL.md: %v", err)
+		t.Fatalf("failed to read tw-test.md: %v", err)
 	}
 
 	contentStr := string(content)
 
 	// Check frontmatter markers
 	if !strings.HasPrefix(contentStr, "---") {
-		t.Error("SKILL.md missing frontmatter start marker")
+		t.Error("Command file missing frontmatter start marker")
 	}
 
-	// Check required fields
-	if !strings.Contains(contentStr, "name:") {
-		t.Error("SKILL.md missing 'name' field")
-	}
+	// Check required field (OpenCode only requires description)
 	if !strings.Contains(contentStr, "description:") {
-		t.Error("SKILL.md missing 'description' field")
+		t.Error("Command file missing 'description' field")
 	}
 }
 

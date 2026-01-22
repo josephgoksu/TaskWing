@@ -362,7 +362,7 @@ func checkCodexMCP() DoctorCheck {
 // 1. Checks if opencode.json exists at project root
 // 2. Validates JSON structure and taskwing-mcp entry
 // 3. Verifies command is JSON array and type is "local"
-// 4. Validates .opencode/skills/*/SKILL.md files
+// 4. Validates .opencode/commands/*.md files
 func checkOpenCodeMCP(cwd string) []DoctorCheck {
 	checks := []DoctorCheck{}
 
@@ -468,108 +468,91 @@ func checkOpenCodeMCP(cwd string) []DoctorCheck {
 		Message: fmt.Sprintf("%s registered in opencode.json", serverName),
 	})
 
-	// Check 7: Validate skills (optional - warn if issues)
-	skillsChecks := checkOpenCodeSkills(cwd)
-	checks = append(checks, skillsChecks...)
+	// Check 7: Validate commands (optional - warn if issues)
+	commandsChecks := checkOpenCodeCommands(cwd)
+	checks = append(checks, commandsChecks...)
 
 	return checks
 }
 
-// checkOpenCodeSkills validates .opencode/skills/*/SKILL.md files
-func checkOpenCodeSkills(cwd string) []DoctorCheck {
+// checkOpenCodeCommands validates .opencode/commands/*.md files
+// OpenCode commands use flat structure: .opencode/commands/<name>.md with description frontmatter
+// See: https://opencode.ai/docs/commands/
+func checkOpenCodeCommands(cwd string) []DoctorCheck {
 	checks := []DoctorCheck{}
 
-	skillsDir := filepath.Join(cwd, ".opencode", "skills")
-	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		// No skills directory - not an error, skills are optional
+	commandsDir := filepath.Join(cwd, ".opencode", "commands")
+	if _, err := os.Stat(commandsDir); os.IsNotExist(err) {
+		// No commands directory - not an error, commands are optional
 		return checks
 	}
 
-	// Find all SKILL.md files
-	pattern := filepath.Join(skillsDir, "*", "SKILL.md")
+	// Find all .md files in commands directory (flat structure)
+	pattern := filepath.Join(commandsDir, "*.md")
 	matches, err := filepath.Glob(pattern)
 	if err != nil || len(matches) == 0 {
-		// No skills found - not an error
+		// No commands found - not an error
 		return checks
 	}
 
-	validSkills := 0
-	invalidSkills := []string{}
+	validCommands := 0
+	invalidCommands := []string{}
 
-	for _, skillPath := range matches {
-		// Get the skill directory name
-		skillDirName := filepath.Base(filepath.Dir(skillPath))
+	for _, cmdPath := range matches {
+		// Skip marker file
+		if filepath.Base(cmdPath) == ".taskwing-managed" {
+			continue
+		}
 
-		// Read and validate SKILL.md
-		content, err := os.ReadFile(skillPath)
+		// Get the command name from filename (without .md extension)
+		cmdName := strings.TrimSuffix(filepath.Base(cmdPath), ".md")
+
+		// Read and validate command file
+		content, err := os.ReadFile(cmdPath)
 		if err != nil {
-			invalidSkills = append(invalidSkills, skillDirName+": unreadable")
+			invalidCommands = append(invalidCommands, cmdName+": unreadable")
 			continue
 		}
 
 		// Check for frontmatter markers
 		contentStr := string(content)
 		if !strings.HasPrefix(contentStr, "---") {
-			invalidSkills = append(invalidSkills, skillDirName+": missing YAML frontmatter")
+			invalidCommands = append(invalidCommands, cmdName+": missing YAML frontmatter")
 			continue
 		}
 
 		// Extract frontmatter
 		parts := strings.SplitN(contentStr, "---", 3)
 		if len(parts) < 3 {
-			invalidSkills = append(invalidSkills, skillDirName+": incomplete frontmatter")
+			invalidCommands = append(invalidCommands, cmdName+": incomplete frontmatter")
 			continue
 		}
 
 		frontmatter := parts[1]
 
-		// Check for required fields (simple validation - name and description)
-		hasName := strings.Contains(frontmatter, "name:")
+		// Check for required field (OpenCode only requires description)
 		hasDescription := strings.Contains(frontmatter, "description:")
 
-		if !hasName || !hasDescription {
-			missing := []string{}
-			if !hasName {
-				missing = append(missing, "name")
-			}
-			if !hasDescription {
-				missing = append(missing, "description")
-			}
-			invalidSkills = append(invalidSkills, skillDirName+": missing "+strings.Join(missing, ", "))
+		if !hasDescription {
+			invalidCommands = append(invalidCommands, cmdName+": missing description")
 			continue
 		}
 
-		// Extract name from frontmatter and verify it matches directory
-		// Simple extraction - look for "name: value" pattern
-		for _, line := range strings.Split(frontmatter, "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "name:") {
-				nameValue := strings.TrimSpace(strings.TrimPrefix(line, "name:"))
-				// Remove quotes if present
-				nameValue = strings.Trim(nameValue, "\"'")
-				if nameValue != skillDirName {
-					invalidSkills = append(invalidSkills, fmt.Sprintf("%s: name mismatch (name: %q != dir: %q)", skillDirName, nameValue, skillDirName))
-					continue
-				}
-				break
-			}
-		}
-
-		validSkills++
+		validCommands++
 	}
 
-	if len(invalidSkills) > 0 {
+	if len(invalidCommands) > 0 {
 		checks = append(checks, DoctorCheck{
-			Name:    "Skills (OpenCode)",
+			Name:    "Commands (OpenCode)",
 			Status:  "warn",
-			Message: fmt.Sprintf("%d valid, %d invalid skills", validSkills, len(invalidSkills)),
-			Hint:    "Invalid: " + strings.Join(invalidSkills, "; ") + ". For development, use taskwing-local-dev-mcp",
+			Message: fmt.Sprintf("%d valid, %d invalid commands", validCommands, len(invalidCommands)),
+			Hint:    "Invalid: " + strings.Join(invalidCommands, "; ") + ". For development, use taskwing-local-dev-mcp",
 		})
-	} else if validSkills > 0 {
+	} else if validCommands > 0 {
 		checks = append(checks, DoctorCheck{
-			Name:    "Skills (OpenCode)",
+			Name:    "Commands (OpenCode)",
 			Status:  "ok",
-			Message: fmt.Sprintf("%d skills configured", validSkills),
+			Message: fmt.Sprintf("%d commands configured", validCommands),
 		})
 	}
 

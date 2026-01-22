@@ -218,76 +218,73 @@ func TestDoctor_CheckOpenCodeMCP_WithProjectSuffix(t *testing.T) {
 }
 
 // =============================================================================
-// OpenCode Skills Doctor Tests
+// OpenCode Commands Doctor Tests
 // =============================================================================
 
-// TestDoctor_CheckOpenCodeSkills_NoSkillsDir tests that missing skills dir is not an error.
-func TestDoctor_CheckOpenCodeSkills_NoSkillsDir(t *testing.T) {
+// TestDoctor_CheckOpenCodeCommands_NoCommandsDir tests that missing commands dir is not an error.
+func TestDoctor_CheckOpenCodeCommands_NoCommandsDir(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	checks := checkOpenCodeSkills(tmpDir)
+	checks := checkOpenCodeCommands(tmpDir)
 
-	// No skills directory should return empty checks
+	// No commands directory should return empty checks
 	if len(checks) != 0 {
-		t.Errorf("Expected 0 checks when no skills directory exists, got %d", len(checks))
+		t.Errorf("Expected 0 checks when no commands directory exists, got %d", len(checks))
 	}
 }
 
-// TestDoctor_CheckOpenCodeSkills_ValidSkill tests valid skill passes.
-func TestDoctor_CheckOpenCodeSkills_ValidSkill(t *testing.T) {
+// TestDoctor_CheckOpenCodeCommands_ValidCommand tests valid command passes.
+func TestDoctor_CheckOpenCodeCommands_ValidCommand(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create valid skill
-	skillDir := filepath.Join(tmpDir, ".opencode", "skills", "tw-brief")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatalf("Failed to create skill dir: %v", err)
+	// Create valid command (OpenCode format: .opencode/commands/<name>.md)
+	commandsDir := filepath.Join(tmpDir, ".opencode", "commands")
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
-	skillContent := `---
-name: tw-brief
+	cmdContent := `---
 description: Get compact project knowledge brief
 ---
 
-# tw-brief
-
-This skill provides project context.
+!taskwing slash brief
 `
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0644); err != nil {
-		t.Fatalf("Failed to write SKILL.md: %v", err)
+	if err := os.WriteFile(filepath.Join(commandsDir, "tw-brief.md"), []byte(cmdContent), 0644); err != nil {
+		t.Fatalf("Failed to write tw-brief.md: %v", err)
 	}
 
-	checks := checkOpenCodeSkills(tmpDir)
+	checks := checkOpenCodeCommands(tmpDir)
 
 	if len(checks) == 0 {
-		t.Fatal("Expected at least one check for valid skill")
+		t.Fatal("Expected at least one check for valid command")
 	}
 
 	if checks[0].Status != "ok" {
-		t.Errorf("Expected status 'ok' for valid skill, got %q with message %q", checks[0].Status, checks[0].Message)
+		t.Errorf("Expected status 'ok' for valid command, got %q with message %q", checks[0].Status, checks[0].Message)
 	}
 }
 
-// TestDoctor_CheckOpenCodeSkills_MissingFrontmatter tests skill without frontmatter.
-func TestDoctor_CheckOpenCodeSkills_MissingFrontmatter(t *testing.T) {
+// TestDoctor_CheckOpenCodeCommands_MissingFrontmatter tests command without frontmatter.
+func TestDoctor_CheckOpenCodeCommands_MissingFrontmatter(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create skill without frontmatter
-	skillDir := filepath.Join(tmpDir, ".opencode", "skills", "bad-skill")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatalf("Failed to create skill dir: %v", err)
+	// Create command without frontmatter
+	commandsDir := filepath.Join(tmpDir, ".opencode", "commands")
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
-	skillContent := `# Just markdown, no frontmatter
-This skill is missing YAML frontmatter.
+	cmdContent := `# Just markdown, no frontmatter
+This command is missing YAML frontmatter.
 `
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0644); err != nil {
-		t.Fatalf("Failed to write SKILL.md: %v", err)
+	if err := os.WriteFile(filepath.Join(commandsDir, "bad-cmd.md"), []byte(cmdContent), 0644); err != nil {
+		t.Fatalf("Failed to write bad-cmd.md: %v", err)
 	}
 
-	checks := checkOpenCodeSkills(tmpDir)
+	checks := checkOpenCodeCommands(tmpDir)
 
 	if len(checks) == 0 {
-		t.Fatal("Expected at least one check for invalid skill")
+		t.Fatal("Expected at least one check for invalid command")
 	}
 
 	if checks[0].Status != "warn" {
@@ -295,30 +292,30 @@ This skill is missing YAML frontmatter.
 	}
 }
 
-// TestDoctor_CheckOpenCodeSkills_MissingRequiredFields tests skill missing name/description.
-func TestDoctor_CheckOpenCodeSkills_MissingRequiredFields(t *testing.T) {
+// TestDoctor_CheckOpenCodeCommands_MissingDescription tests command missing description.
+func TestDoctor_CheckOpenCodeCommands_MissingDescription(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create skill with incomplete frontmatter
-	skillDir := filepath.Join(tmpDir, ".opencode", "skills", "incomplete")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatalf("Failed to create skill dir: %v", err)
+	// Create command with incomplete frontmatter (missing description)
+	commandsDir := filepath.Join(tmpDir, ".opencode", "commands")
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
-	skillContent := `---
-name: incomplete
+	cmdContent := `---
+agent: coder
 ---
 
 Missing description field.
 `
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0644); err != nil {
-		t.Fatalf("Failed to write SKILL.md: %v", err)
+	if err := os.WriteFile(filepath.Join(commandsDir, "incomplete.md"), []byte(cmdContent), 0644); err != nil {
+		t.Fatalf("Failed to write incomplete.md: %v", err)
 	}
 
-	checks := checkOpenCodeSkills(tmpDir)
+	checks := checkOpenCodeCommands(tmpDir)
 
 	if len(checks) == 0 {
-		t.Fatal("Expected at least one check for incomplete skill")
+		t.Fatal("Expected at least one check for incomplete command")
 	}
 
 	if checks[0].Status != "warn" {
@@ -326,69 +323,37 @@ Missing description field.
 	}
 }
 
-// TestDoctor_CheckOpenCodeSkills_NameMismatch tests skill with name not matching directory.
-func TestDoctor_CheckOpenCodeSkills_NameMismatch(t *testing.T) {
+// TestDoctor_CheckOpenCodeCommands_MultipleCommands tests multiple commands validation.
+func TestDoctor_CheckOpenCodeCommands_MultipleCommands(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create skill with mismatched name
-	skillDir := filepath.Join(tmpDir, ".opencode", "skills", "tw-next")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatalf("Failed to create skill dir: %v", err)
+	// Create multiple valid commands
+	commandsDir := filepath.Join(tmpDir, ".opencode", "commands")
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		t.Fatalf("Failed to create commands dir: %v", err)
 	}
 
-	skillContent := `---
-name: tw-different
-description: Name doesn't match directory
----
-
-The name field doesn't match the directory name.
-`
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0644); err != nil {
-		t.Fatalf("Failed to write SKILL.md: %v", err)
-	}
-
-	checks := checkOpenCodeSkills(tmpDir)
-
-	if len(checks) == 0 {
-		t.Fatal("Expected at least one check for mismatched name")
-	}
-
-	if checks[0].Status != "warn" {
-		t.Errorf("Expected status 'warn' for name mismatch, got %q", checks[0].Status)
-	}
-}
-
-// TestDoctor_CheckOpenCodeSkills_MultipleSkills tests multiple skills validation.
-func TestDoctor_CheckOpenCodeSkills_MultipleSkills(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create multiple valid skills
-	skills := []string{"tw-brief", "tw-next", "tw-done"}
-	for _, skillName := range skills {
-		skillDir := filepath.Join(tmpDir, ".opencode", "skills", skillName)
-		if err := os.MkdirAll(skillDir, 0755); err != nil {
-			t.Fatalf("Failed to create skill dir: %v", err)
-		}
-
-		skillContent := "---\nname: " + skillName + "\ndescription: Test skill\n---\n\nContent.\n"
-		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0644); err != nil {
-			t.Fatalf("Failed to write SKILL.md: %v", err)
+	commands := []string{"tw-brief", "tw-next", "tw-done"}
+	for _, cmdName := range commands {
+		cmdContent := "---\ndescription: Test command " + cmdName + "\n---\n\n!taskwing slash " + cmdName + "\n"
+		if err := os.WriteFile(filepath.Join(commandsDir, cmdName+".md"), []byte(cmdContent), 0644); err != nil {
+			t.Fatalf("Failed to write %s.md: %v", cmdName, err)
 		}
 	}
 
-	checks := checkOpenCodeSkills(tmpDir)
+	checks := checkOpenCodeCommands(tmpDir)
 
 	if len(checks) == 0 {
-		t.Fatal("Expected at least one check for multiple skills")
+		t.Fatal("Expected at least one check for multiple commands")
 	}
 
 	if checks[0].Status != "ok" {
-		t.Errorf("Expected status 'ok' for valid skills, got %q", checks[0].Status)
+		t.Errorf("Expected status 'ok' for valid commands, got %q", checks[0].Status)
 	}
 
 	// Verify message mentions the count
-	if checks[0].Message != "3 skills configured" {
-		t.Errorf("Expected message '3 skills configured', got %q", checks[0].Message)
+	if checks[0].Message != "3 commands configured" {
+		t.Errorf("Expected message '3 commands configured', got %q", checks[0].Message)
 	}
 }
 

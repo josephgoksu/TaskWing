@@ -452,41 +452,38 @@ func TestInitializer_OpenCode_Skills(t *testing.T) {
 		t.Fatalf("CreateSlashCommands(opencode) failed: %v", err)
 	}
 
-	// Verify skills directory structure: .opencode/skills/<skill-name>/SKILL.md
-	skillsDir := filepath.Join(tmpDir, ".opencode", "skills")
-	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		t.Fatal("Skills directory not created")
+	// Verify commands directory structure: .opencode/commands/<name>.md
+	commandsDir := filepath.Join(tmpDir, ".opencode", "commands")
+	if _, err := os.Stat(commandsDir); os.IsNotExist(err) {
+		t.Fatal("Commands directory not created")
 	}
 
 	// Check marker file exists
-	markerPath := filepath.Join(skillsDir, TaskWingManagedFile)
+	markerPath := filepath.Join(commandsDir, TaskWingManagedFile)
 	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
-		t.Error("Marker file not created in skills directory")
+		t.Error("Marker file not created in commands directory")
 	}
 
-	// Verify at least one skill was created with correct structure
-	skillPath := filepath.Join(skillsDir, "tw-brief", "SKILL.md")
-	content, err := os.ReadFile(skillPath)
+	// Verify at least one command was created with correct structure
+	cmdPath := filepath.Join(commandsDir, "tw-brief.md")
+	content, err := os.ReadFile(cmdPath)
 	if err != nil {
-		t.Fatalf("Failed to read tw-brief SKILL.md: %v", err)
+		t.Fatalf("Failed to read tw-brief.md: %v", err)
 	}
 
 	contentStr := string(content)
 
-	// Verify YAML frontmatter with required fields
-	if !contains(contentStr, "name: tw-brief") {
-		t.Error("SKILL.md missing 'name' field in frontmatter")
-	}
+	// Verify YAML frontmatter with description field (OpenCode format)
 	if !contains(contentStr, "description:") {
-		t.Error("SKILL.md missing 'description' field in frontmatter")
+		t.Error("Command file missing 'description' field in frontmatter")
 	}
 	if !contains(contentStr, "!taskwing slash brief") {
-		t.Error("SKILL.md missing taskwing command invocation")
+		t.Error("Command file missing taskwing command invocation")
 	}
 }
 
-// TestInitializer_OpenCode_AllSkillsCreated tests all slash commands become skills
-func TestInitializer_OpenCode_AllSkillsCreated(t *testing.T) {
+// TestInitializer_OpenCode_AllCommandsCreated tests all slash commands become OpenCode commands
+func TestInitializer_OpenCode_AllCommandsCreated(t *testing.T) {
 	tmpDir := t.TempDir()
 	init := NewInitializer(tmpDir)
 
@@ -495,11 +492,11 @@ func TestInitializer_OpenCode_AllSkillsCreated(t *testing.T) {
 		t.Fatalf("CreateSlashCommands(opencode) failed: %v", err)
 	}
 
-	// Verify each slash command has a corresponding skill
+	// Verify each slash command has a corresponding command file
 	for _, cmd := range SlashCommands {
-		skillPath := filepath.Join(tmpDir, ".opencode", "skills", cmd.BaseName, "SKILL.md")
-		if _, err := os.Stat(skillPath); os.IsNotExist(err) {
-			t.Errorf("Skill not created for %s", cmd.BaseName)
+		cmdPath := filepath.Join(tmpDir, ".opencode", "commands", cmd.BaseName+".md")
+		if _, err := os.Stat(cmdPath); os.IsNotExist(err) {
+			t.Errorf("Command not created for %s", cmd.BaseName)
 		}
 	}
 }
@@ -640,16 +637,16 @@ func TestInitializer_OpenCode_FullRun(t *testing.T) {
 		t.Fatalf("Run failed: %v", err)
 	}
 
-	// Verify skills directory exists
-	skillsDir := filepath.Join(tmpDir, ".opencode", "skills")
-	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		t.Error("Skills directory not created")
+	// Verify commands directory exists
+	commandsDir := filepath.Join(tmpDir, ".opencode", "commands")
+	if _, err := os.Stat(commandsDir); os.IsNotExist(err) {
+		t.Error("Commands directory not created")
 	}
 
-	// Verify at least tw-brief skill exists
-	skillPath := filepath.Join(skillsDir, "tw-brief", "SKILL.md")
-	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
-		t.Error("tw-brief skill not created")
+	// Verify at least tw-brief command exists
+	cmdPath := filepath.Join(commandsDir, "tw-brief.md")
+	if _, err := os.Stat(cmdPath); os.IsNotExist(err) {
+		t.Error("tw-brief command not created")
 	}
 
 	// Verify plugin exists
@@ -659,7 +656,7 @@ func TestInitializer_OpenCode_FullRun(t *testing.T) {
 	}
 }
 
-// TestInitializer_GenerateTwBrief tests that tw-brief skill is generated with correct content
+// TestInitializer_GenerateTwBrief tests that tw-brief command is generated with correct content
 func TestInitializer_GenerateTwBrief(t *testing.T) {
 	tmpDir := t.TempDir()
 	init := NewInitializer(tmpDir)
@@ -670,48 +667,39 @@ func TestInitializer_GenerateTwBrief(t *testing.T) {
 		t.Fatalf("Run failed: %v", err)
 	}
 
-	// Verify tw-brief skill exists
-	skillPath := filepath.Join(tmpDir, ".opencode", "skills", "tw-brief", "SKILL.md")
-	content, err := os.ReadFile(skillPath)
+	// Verify tw-brief command exists (OpenCode format: .opencode/commands/<name>.md)
+	cmdPath := filepath.Join(tmpDir, ".opencode", "commands", "tw-brief.md")
+	content, err := os.ReadFile(cmdPath)
 	if err != nil {
-		t.Fatalf("Failed to read tw-brief SKILL.md: %v", err)
+		t.Fatalf("Failed to read tw-brief.md: %v", err)
 	}
 
 	contentStr := string(content)
 
 	// Verify frontmatter structure
 	if !strings.HasPrefix(contentStr, "---\n") {
-		t.Error("SKILL.md missing frontmatter start marker")
+		t.Error("Command file missing frontmatter start marker")
 	}
 
-	// Verify required frontmatter fields
-	if !strings.Contains(contentStr, "name: tw-brief") {
-		t.Error("SKILL.md missing 'name: tw-brief' field")
-	}
+	// Verify required frontmatter field (OpenCode only requires description)
 	if !strings.Contains(contentStr, "description:") {
-		t.Error("SKILL.md missing 'description' field")
+		t.Error("Command file missing 'description' field")
 	}
 
 	// Verify description mentions project knowledge or brief
 	if !strings.Contains(strings.ToLower(contentStr), "brief") && !strings.Contains(strings.ToLower(contentStr), "knowledge") {
-		t.Error("SKILL.md description should mention 'brief' or 'knowledge'")
+		t.Error("Command description should mention 'brief' or 'knowledge'")
 	}
 
-	// Verify the skill invokes taskwing slash command
+	// Verify the command invokes taskwing slash command
 	if !strings.Contains(contentStr, "!taskwing slash brief") {
-		t.Error("SKILL.md should contain '!taskwing slash brief' directive")
+		t.Error("Command file should contain '!taskwing slash brief' directive")
 	}
 
-	// Verify directory name matches frontmatter name (skill naming convention)
-	dirName := filepath.Base(filepath.Dir(skillPath))
-	if dirName != "tw-brief" {
-		t.Errorf("Directory name %q doesn't match skill name 'tw-brief'", dirName)
-	}
-
-	// Verify name matches regex pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+	// Verify command name matches regex pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
 	namePattern := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	if !namePattern.MatchString("tw-brief") {
-		t.Error("Skill name 'tw-brief' doesn't match required pattern")
+		t.Error("Command name 'tw-brief' doesn't match required pattern")
 	}
 }
 

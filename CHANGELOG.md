@@ -11,11 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **OpenCode Support**: Full integration with OpenCode AI assistant
   - Bootstrap creates `opencode.json` at project root with MCP server configuration
-  - Skills directory `.opencode/skills/` with TaskWing slash commands (tw-next, tw-done, tw-brief, etc.)
+  - Commands directory `.opencode/commands/` with TaskWing slash commands (tw-next, tw-done, tw-brief, etc.)
   - Plugin hooks `.opencode/plugins/taskwing-hooks.js` for autonomous task execution using Bun's ctx.$ API
-  - Doctor health checks validate OpenCode configuration (MCP, skills, plugins)
+  - Doctor health checks validate OpenCode configuration (MCP, commands, plugins)
   - Integration tests and CI job for OpenCode-specific validation
-  - Documentation in TUTORIAL.md with opencode.json example, skill structure, and plugin format
+  - Documentation in TUTORIAL.md with opencode.json example, command structure, and plugin format
 - **Workspace-Aware Knowledge Scoping**: Full monorepo support for knowledge management
   - New `tw workspaces` command to list detected workspaces in a monorepo
   - `--workspace` and `--all` flags for `tw list` and `tw context` commands
