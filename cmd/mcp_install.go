@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -499,11 +500,34 @@ func installOpenCode(binPath, projectDir string) error {
 
 	fmt.Println("👉 Configuring OpenCode...")
 
-	return upsertOpenCodeMCPServer(configPath, serverName, OpenCodeMCPServerConfig{
+	// Create MCP config (opencode.json)
+	if err := upsertOpenCodeMCPServer(configPath, serverName, OpenCodeMCPServerConfig{
 		Type:    "local",
 		Command: []string{binPath, "mcp"},
 		Timeout: 5000, // Default 5s timeout
-	})
+	}); err != nil {
+		return err
+	}
+
+	// Create skills and plugins using the initializer
+	init := bootstrap.NewInitializer(projectDir)
+	verbose := viper.GetBool("verbose")
+
+	// Create slash command skills (.opencode/skills/)
+	if err := init.CreateSlashCommands("opencode", verbose); err != nil {
+		fmt.Printf("⚠️  Failed to create skills: %v\n", err)
+	} else {
+		fmt.Println("✅ Created OpenCode skills in .opencode/skills/")
+	}
+
+	// Create hooks plugin (.opencode/plugins/)
+	if err := init.InstallHooksConfig("opencode", verbose); err != nil {
+		fmt.Printf("⚠️  Failed to create plugin: %v\n", err)
+	} else {
+		fmt.Println("✅ Created OpenCode plugin in .opencode/plugins/")
+	}
+
+	return nil
 }
 
 // upsertOpenCodeMCPServer handles OpenCode's unique config format

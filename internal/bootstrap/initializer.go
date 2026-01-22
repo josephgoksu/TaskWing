@@ -81,7 +81,7 @@ func (i *Initializer) setupAIIntegrations(verbose bool, selectedAIs []string, sh
 
 	for _, ai := range validAIs {
 		// Create slash commands
-		if err := i.createSlashCommands(ai, verbose); err != nil {
+		if err := i.CreateSlashCommands(ai, verbose); err != nil {
 			return err
 		}
 
@@ -206,7 +206,7 @@ func ExpectedCommandCount() int {
 	return len(SlashCommands)
 }
 
-func (i *Initializer) createSlashCommands(aiName string, verbose bool) error {
+func (i *Initializer) CreateSlashCommands(aiName string, verbose bool) error {
 	cfg, ok := aiHelpers[aiName]
 	if !ok {
 		// Unknown AI - skip silently (user may have specified an unsupported AI)

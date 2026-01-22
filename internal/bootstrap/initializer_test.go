@@ -242,9 +242,9 @@ func TestCreateSlashCommands_AllAIs(t *testing.T) {
 			tmpDir := t.TempDir()
 			init := NewInitializer(tmpDir)
 
-			err := init.createSlashCommands(aiName, false)
+			err := init.CreateSlashCommands(aiName, false)
 			if err != nil {
-				t.Errorf("createSlashCommands(%s) failed: %v", aiName, err)
+				t.Errorf("CreateSlashCommands(%s) failed: %v", aiName, err)
 			}
 
 			// Verify commands directory exists
@@ -262,7 +262,7 @@ func TestCreateSlashCommands_UnknownAI(t *testing.T) {
 	init := NewInitializer(tmpDir)
 
 	// Unknown AI should return nil (no error)
-	err := init.createSlashCommands("unknown-ai", false)
+	err := init.CreateSlashCommands("unknown-ai", false)
 	if err != nil {
 		t.Errorf("Expected nil for unknown AI, got: %v", err)
 	}
@@ -287,9 +287,9 @@ func TestCopilotSingleFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	init := NewInitializer(tmpDir)
 
-	err := init.createSlashCommands("copilot", false)
+	err := init.CreateSlashCommands("copilot", false)
 	if err != nil {
-		t.Fatalf("createSlashCommands(copilot) failed: %v", err)
+		t.Fatalf("CreateSlashCommands(copilot) failed: %v", err)
 	}
 
 	// Verify single file created (not a directory of files)
@@ -327,10 +327,10 @@ func TestCopilotUserFilePreservation(t *testing.T) {
 		t.Fatalf("Failed to write user file: %v", err)
 	}
 
-	// Run createSlashCommands - should NOT overwrite user file
-	err := init.createSlashCommands("copilot", true)
+	// Run CreateSlashCommands - should NOT overwrite user file
+	err := init.CreateSlashCommands("copilot", true)
 	if err != nil {
-		t.Fatalf("createSlashCommands failed: %v", err)
+		t.Fatalf("CreateSlashCommands failed: %v", err)
 	}
 
 	// Verify user content is preserved
@@ -369,10 +369,10 @@ func TestCopilotLegacyDirectoryCleanup(t *testing.T) {
 		}
 	}
 
-	// Run createSlashCommands
-	err := init.createSlashCommands("copilot", true)
+	// Run CreateSlashCommands
+	err := init.CreateSlashCommands("copilot", true)
 	if err != nil {
-		t.Fatalf("createSlashCommands failed: %v", err)
+		t.Fatalf("CreateSlashCommands failed: %v", err)
 	}
 
 	// Verify legacy directory was cleaned up
@@ -406,10 +406,10 @@ func TestCopilotLegacyDirectoryWithoutMarker(t *testing.T) {
 		}
 	}
 
-	// Run createSlashCommands
-	err := init.createSlashCommands("copilot", true)
+	// Run CreateSlashCommands
+	err := init.CreateSlashCommands("copilot", true)
 	if err != nil {
-		t.Fatalf("createSlashCommands failed: %v", err)
+		t.Fatalf("CreateSlashCommands failed: %v", err)
 	}
 
 	// Verify legacy directory was cleaned up (detected by tw-* pattern)
@@ -447,9 +447,9 @@ func TestInitializer_OpenCode_Skills(t *testing.T) {
 	tmpDir := t.TempDir()
 	init := NewInitializer(tmpDir)
 
-	err := init.createSlashCommands("opencode", false)
+	err := init.CreateSlashCommands("opencode", false)
 	if err != nil {
-		t.Fatalf("createSlashCommands(opencode) failed: %v", err)
+		t.Fatalf("CreateSlashCommands(opencode) failed: %v", err)
 	}
 
 	// Verify skills directory structure: .opencode/skills/<skill-name>/SKILL.md
@@ -490,9 +490,9 @@ func TestInitializer_OpenCode_AllSkillsCreated(t *testing.T) {
 	tmpDir := t.TempDir()
 	init := NewInitializer(tmpDir)
 
-	err := init.createSlashCommands("opencode", false)
+	err := init.CreateSlashCommands("opencode", false)
 	if err != nil {
-		t.Fatalf("createSlashCommands(opencode) failed: %v", err)
+		t.Fatalf("CreateSlashCommands(opencode) failed: %v", err)
 	}
 
 	// Verify each slash command has a corresponding skill
