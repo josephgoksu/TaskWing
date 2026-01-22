@@ -714,3 +714,79 @@ func TestInitializer_GenerateTwBrief(t *testing.T) {
 		t.Error("Skill name 'tw-brief' doesn't match required pattern")
 	}
 }
+
+// TestInitializer_GenerateOpenCodePlugin tests that OpenCode plugin is generated correctly
+// with proper hook mappings and ctx.$ Bun shell API usage.
+func TestInitializer_GenerateOpenCodePlugin(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	// Run initialization with opencode
+	err := init.Run(false, []string{"opencode"})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Verify plugin file exists
+	pluginPath := filepath.Join(tmpDir, ".opencode", "plugins", "taskwing-hooks.js")
+	content, err := os.ReadFile(pluginPath)
+	if err != nil {
+		t.Fatalf("Failed to read taskwing-hooks.js: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify exports default as async function
+	if !strings.Contains(contentStr, "export default async") {
+		t.Error("Plugin missing 'export default async' export")
+	}
+
+	// Verify ctx parameter is used
+	if !strings.Contains(contentStr, "(ctx)") {
+		t.Error("Plugin missing ctx parameter in default export")
+	}
+
+	// Verify session.created hook exists
+	if !strings.Contains(contentStr, `"session.created"`) {
+		t.Error("Plugin missing session.created hook handler")
+	}
+
+	// Verify session.idle hook exists
+	if !strings.Contains(contentStr, `"session.idle"`) {
+		t.Error("Plugin missing session.idle hook handler")
+	}
+
+	// Verify ctx.$ calls to taskwing hook commands (Bun shell API)
+	if !strings.Contains(contentStr, "ctx.$`taskwing hook session-init`") {
+		t.Error("Plugin missing ctx.$`taskwing hook session-init` call")
+	}
+	if !strings.Contains(contentStr, "ctx.$`taskwing hook continue-check") {
+		t.Error("Plugin missing ctx.$`taskwing hook continue-check` call")
+	}
+
+	// Verify no inline secrets (basic check)
+	secretPatterns := []string{
+		"api_key",
+		"apikey",
+		"secret",
+		"password",
+		"token",
+		"credential",
+	}
+	contentLower := strings.ToLower(contentStr)
+	for _, pattern := range secretPatterns {
+		// Skip if it's just a reference (like error.message)
+		if strings.Contains(contentLower, pattern) && !strings.Contains(contentLower, "error.message") {
+			// Allow "token" in comments explaining what the plugin does
+			if pattern == "token" && strings.Contains(contentStr, "// ") {
+				continue
+			}
+			t.Errorf("Plugin may contain sensitive data (found pattern: %s)", pattern)
+		}
+	}
+
+	// Verify managed marker exists (for update detection)
+	if !strings.Contains(contentStr, "TASKWING_MANAGED_PLUGIN") {
+		t.Error("Plugin missing TASKWING_MANAGED_PLUGIN marker")
+	}
+}
