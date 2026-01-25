@@ -10,6 +10,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/ui"
+	"github.com/josephgoksu/TaskWing/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -211,11 +212,9 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		for _, tp := range tasks {
 			t := tp.Task
 
-			// ID - Cyan and bold
-			tid := t.ID
-			if len(tid) > 12 {
-				tid = tid[:12]
-			}
+			// ID - Cyan and bold, use ShortID for consistent display
+			// Full task IDs are 13 chars (task-xxxxxxxx), display fits in 14-char column
+			tid := util.ShortID(t.ID, util.TaskIDLength)
 			idStr := idStyle.Render(tid)
 
 			// Status - Color coded

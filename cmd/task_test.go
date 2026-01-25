@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/josephgoksu/TaskWing/internal/task"
+	"github.com/josephgoksu/TaskWing/internal/util"
 )
 
 // TestFormatTaskStatus_AllKnownStatuses verifies all defined TaskStatus values render correctly.
@@ -336,6 +337,29 @@ func TestTaskListVerboseError(t *testing.T) {
 	// Test that the flag exists by checking the root command
 	if rootCmd.PersistentFlags().Lookup("verbose") == nil {
 		t.Error("expected --verbose flag to be registered on root command")
+	}
+}
+
+// TestTaskListFormatting verifies that task list uses consistent ID formatting.
+func TestTaskListFormatting(t *testing.T) {
+	// Verify util package is used for ID formatting by checking it can be imported
+	// and ShortID works correctly with TaskIDLength
+	testID := "task-abcdef12"
+	shortID := util.ShortID(testID, util.TaskIDLength)
+
+	// TaskIDLength is 13, so full ID should be preserved
+	if shortID != testID {
+		t.Errorf("ShortID with TaskIDLength should preserve full ID, got %q want %q", shortID, testID)
+	}
+
+	// Verify TaskIDLength constant is correct
+	if util.TaskIDLength != 13 {
+		t.Errorf("TaskIDLength = %d, want 13", util.TaskIDLength)
+	}
+
+	// Verify PlanIDLength constant is correct
+	if util.PlanIDLength != 13 {
+		t.Errorf("PlanIDLength = %d, want 13", util.PlanIDLength)
 	}
 }
 

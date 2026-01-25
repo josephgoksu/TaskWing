@@ -18,6 +18,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/ui"
+	"github.com/josephgoksu/TaskWing/internal/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
@@ -656,10 +657,8 @@ func printStatus(plan *task.Plan) {
 			title = dimStyle.Render(title)
 		}
 
-		tid := t.ID
-		if len(tid) > 12 {
-			tid = tid[:12]
-		}
+		// Use ShortID for consistent task ID display
+		tid := util.ShortID(t.ID, util.TaskIDLength)
 		fmt.Printf("   %s %s %s\n", statusMarker, dimStyle.Render(tid), title)
 	}
 	fmt.Println()
