@@ -194,6 +194,9 @@ func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 		p.Tasks = make([]task.Task, taskCount)
 		plans = append(plans, p)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list plans: %w", err)
+	}
 
 	return plans, nil
 }
@@ -441,6 +444,9 @@ func (s *SQLiteStore) ListTasks(planID string) ([]task.Task, error) {
 		tasks = append(tasks, t)
 		taskIDs = append(taskIDs, t.ID)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list tasks: %w", err)
+	}
 
 	// Batch fetch all dependencies in a single query (fixes N+1)
 	if len(taskIDs) > 0 {
@@ -523,6 +529,9 @@ func (s *SQLiteStore) GetTaskDependencies(taskID string) ([]string, error) {
 		}
 		deps = append(deps, d)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("get task dependencies: %w", err)
+	}
 	return deps, nil
 }
 
@@ -556,6 +565,9 @@ func (s *SQLiteStore) batchGetTaskDependencies(taskIDs []string) (map[string][]s
 		}
 		result[taskID] = append(result[taskID], dependsOn)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("batch get task dependencies: %w", err)
+	}
 	return result, nil
 }
 
@@ -573,6 +585,9 @@ func (s *SQLiteStore) GetTaskContextNodes(taskID string) ([]string, error) {
 			return nil, err
 		}
 		nodes = append(nodes, n)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("get task context nodes: %w", err)
 	}
 	return nodes, nil
 }
@@ -842,6 +857,9 @@ func (s *SQLiteStore) SearchPlans(query string, status task.PlanStatus) ([]task.
 		// Store task count in placeholder slice for display
 		p.Tasks = make([]task.Task, taskCount)
 		plans = append(plans, p)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("search plans: %w", err)
 	}
 
 	return plans, nil

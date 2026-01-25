@@ -763,6 +763,9 @@ func (s *SQLiteStore) ListFeatures() ([]FeatureSummary, error) {
 		}
 		features = append(features, f)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list features: %w", err)
+	}
 
 	return features, nil
 }
@@ -895,6 +898,9 @@ func (s *SQLiteStore) GetDecisions(featureID string) ([]Decision, error) {
 		d.Tradeoffs = tradeoffs.String
 		decisions = append(decisions, d)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("get decisions: %w", err)
+	}
 
 	return decisions, nil
 }
@@ -974,6 +980,9 @@ func (s *SQLiteStore) ListPatterns() ([]Pattern, error) {
 		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		patterns = append(patterns, p)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list patterns: %w", err)
+	}
 	return patterns, nil
 }
 
@@ -1052,6 +1061,9 @@ func (s *SQLiteStore) Check() ([]Issue, error) {
 				Message:   fmt.Sprintf("Markdown file missing: %s", filePath),
 			})
 		}
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("check features: %w", err)
 	}
 
 	return issues, nil
@@ -1259,6 +1271,9 @@ func (s *SQLiteStore) ListNodes(nodeType string) ([]Node, error) {
 
 		nodes = append(nodes, n)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list nodes: %w", err)
+	}
 
 	return nodes, nil
 }
@@ -1351,6 +1366,9 @@ func (s *SQLiteStore) ListNodesFiltered(filter NodeFilter) ([]Node, error) {
 		}
 
 		nodes = append(nodes, n)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list nodes filtered: %w", err)
 	}
 
 	return nodes, nil
@@ -1488,6 +1506,9 @@ func (s *SQLiteStore) DeleteNodesByFiles(agentName string, filePaths []string) e
 			}
 		}
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return fmt.Errorf("iterate nodes for purge: %w", err)
+	}
 	_ = rows.Close()
 
 	if len(idsToDelete) == 0 {
@@ -1607,6 +1628,9 @@ func (s *SQLiteStore) GetNodesByFiles(agentName string, filePaths []string) ([]N
 			// Rehydrate embedding if needed (skipping for now as we don't use it in prompt)
 			nodes = append(nodes, n)
 		}
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("iterate nodes for files: %w", err)
 	}
 
 	return nodes, nil
@@ -1730,6 +1754,10 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 			return tx.Commit()
 		}
 	}
+	if err := checkRowsErr(rows); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("iterate similar nodes: %w", err)
+	}
 	_ = rows.Close()
 
 	// No similar node found - insert new node (including evidence and debt columns)
@@ -1831,6 +1859,9 @@ func (s *SQLiteStore) GetNodeEdges(nodeID string) ([]NodeEdge, error) {
 		}
 		edges = append(edges, e)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("get node edges: %w", err)
+	}
 
 	return edges, nil
 }
@@ -1861,6 +1892,9 @@ func (s *SQLiteStore) GetAllNodeEdges() ([]NodeEdge, error) {
 			_ = json.Unmarshal([]byte(propsJSON.String), &e.Properties)
 		}
 		edges = append(edges, e)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("get all node edges: %w", err)
 	}
 
 	return edges, nil
@@ -1932,6 +1966,9 @@ func (s *SQLiteStore) ListNodesWithEmbeddings() ([]Node, error) {
 		}
 
 		nodes = append(nodes, n)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list nodes with embeddings: %w", err)
 	}
 
 	return nodes, nil
@@ -2015,6 +2052,9 @@ func (s *SQLiteStore) ListNodesWithEmbeddingsFiltered(filter NodeFilter) ([]Node
 		}
 
 		nodes = append(nodes, n)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list nodes with embeddings filtered: %w", err)
 	}
 
 	return nodes, nil
@@ -2133,6 +2173,9 @@ func (s *SQLiteStore) SearchFTS(query string, limit int) ([]FTSResult, error) {
 		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
 		results = append(results, FTSResult{Node: n, Rank: rank})
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("FTS search iterate: %w", err)
+	}
 
 	return results, nil
 }
@@ -2204,6 +2247,9 @@ func (s *SQLiteStore) SearchFTSFiltered(query string, limit int, filter NodeFilt
 		}
 		populateNodeFromScan(&n, nodeType, summary, sourceAgent, workspace, createdAt, embeddingBytes)
 		results = append(results, FTSResult{Node: n, Rank: rank})
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("FTS search filtered iterate: %w", err)
 	}
 
 	return results, nil
@@ -2446,6 +2492,9 @@ func (s *SQLiteStore) GetEmbeddingStats() (*EmbeddingStats, error) {
 		}
 		dimensions[dim] = true
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("get memory stats: %w", err)
+	}
 
 	// Check for mixed dimensions
 	if len(dimensions) > 1 {
@@ -2584,6 +2633,9 @@ func (s *SQLiteStore) ListBootstrapStates() ([]BootstrapState, error) {
 
 		states = append(states, state)
 	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list bootstrap states: %w", err)
+	}
 
 	return states, nil
 }
@@ -2708,6 +2760,9 @@ func (s *SQLiteStore) ListToolVersions() ([]ToolVersion, error) {
 		}
 
 		versions = append(versions, tv)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list tool versions: %w", err)
 	}
 
 	return versions, nil

@@ -234,25 +234,29 @@ func (m BootstrapModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		allDone := true
 		for i, state := range m.Agents {
 			if state.Name == msg.Name {
-				if state.Err != nil {
-					state.Status = StatusError
-					state.Message = fmt.Sprintf("Error: %v", state.Err)
-				} else if msg.Err != nil {
+				// AgentResultMsg is the final result - it overrides any intermediate
+				// errors captured during retry attempts. This fixes the bug where
+				// retryable errors (like JSON parse errors) would mark the agent as
+				// failed even after successful retry.
+				if msg.Err != nil {
 					state.Status = StatusError
 					state.Err = msg.Err
 					state.Message = fmt.Sprintf("Error: %v", msg.Err)
 				} else if msg.Output != nil && msg.Output.Error != nil {
-					// Task 3: Agent returned successfully but with an embedded error/warning
+					// Agent returned successfully but with an embedded error/warning
 					// This happens when agent processes data but finds nothing meaningful
 					state.Status = StatusDone // Show as done (not error) since agent completed
+					state.Err = nil           // Clear any intermediate retry errors
 					state.Result = msg.Output
 					state.Message = fmt.Sprintf("Warning: %v", msg.Output.Error)
 					m.Results = append(m.Results, *msg.Output)
 				} else {
+					// Agent completed successfully - clear any intermediate errors
 					state.Status = StatusDone
+					state.Err = nil // Clear intermediate retry errors (e.g., JSON parse errors that were retried)
 					state.Result = msg.Output
 					count := len(msg.Output.Findings)
-					state.Message = fmt.Sprintf("Found %d items", count) // "The Counter"
+					state.Message = fmt.Sprintf("Found %d items", count)
 					m.Results = append(m.Results, *msg.Output)
 				}
 				m.Agents[i] = state
