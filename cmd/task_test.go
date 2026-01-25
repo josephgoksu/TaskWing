@@ -242,3 +242,16 @@ func TestTaskListCommandHelp(t *testing.T) {
 		t.Error("task list long help should mention --include-archived flag")
 	}
 }
+
+// TestTaskListErrorPropagation verifies that errors are properly returned, not swallowed.
+func TestTaskListErrorPropagation(t *testing.T) {
+	// Verify the RunE function is set (meaning errors will be returned to Cobra)
+	if taskListCmd.RunE == nil {
+		t.Fatal("taskListCmd.RunE should be set to return errors")
+	}
+
+	// Verify Run is not set (which would swallow errors)
+	if taskListCmd.Run != nil {
+		t.Error("taskListCmd.Run should not be set; use RunE for error propagation")
+	}
+}

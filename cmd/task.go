@@ -45,7 +45,7 @@ Examples:
 func runTaskList(cmd *cobra.Command, args []string) error {
 	repo, err := openRepo()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open repository: %w", err)
 	}
 	defer func() { _ = repo.Close() }()
 
@@ -58,7 +58,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 
 	plans, err := repo.ListPlans()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list plans: %w", err)
 	}
 
 	if len(plans) == 0 {
@@ -86,7 +86,10 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		if planFilter != "" && !strings.HasPrefix(p.ID, planFilter) {
 			continue
 		}
-		tasks, _ := repo.ListTasks(p.ID)
+		tasks, err := repo.ListTasks(p.ID)
+		if err != nil {
+			return fmt.Errorf("failed to list tasks for plan %s: %w", p.ID, err)
+		}
 		for _, t := range tasks {
 			// Apply filters
 			if statusFilter != "" && string(t.Status) != statusFilter {
