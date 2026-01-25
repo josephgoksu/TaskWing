@@ -4,12 +4,14 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 
+	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/util"
 )
@@ -443,4 +445,255 @@ func TestTaskListJSONIncludesPlanStatus(t *testing.T) {
 	if !strings.Contains(jsonStr, `"active"`) {
 		t.Errorf("JSON output should contain plan_status value 'active', got: %s", jsonStr)
 	}
+}
+
+// === Integration Tests with SQLite ===
+
+// setupTestRepo creates a temp directory with a repository seeded with test data.
+// Returns the repo and a cleanup function.
+func setupTestRepo(t *testing.T) (*memory.Repository, func()) {
+	t.Helper()
+
+	tmpDir, err := os.MkdirTemp("", "taskwing-integration-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+
+	repo, err := memory.NewDefaultRepository(tmpDir)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		t.Fatalf("failed to create repository: %v", err)
+	}
+
+	cleanup := func() {
+		repo.Close()
+		os.RemoveAll(tmpDir)
+	}
+
+	return repo, cleanup
+}
+
+// seedTestData creates test plans and tasks in the repository.
+func seedTestData(t *testing.T, repo *memory.Repository) (activePlan *task.Plan, archivedPlan *task.Plan) {
+	t.Helper()
+
+	// Create an active plan with tasks
+	activePlan = &task.Plan{
+		ID:     "plan-active01",
+		Goal:   "Active test plan",
+		Status: task.PlanStatusActive,
+	}
+	if err := repo.GetDB().CreatePlan(activePlan); err != nil {
+		t.Fatalf("failed to create active plan: %v", err)
+	}
+
+	activeTask1 := &task.Task{
+		ID:          "task-act00001",
+		PlanID:      activePlan.ID,
+		Title:       "Active task 1",
+		Description: "First task in active plan",
+		Status:      task.StatusPending,
+		Priority:    50,
+	}
+	if err := repo.GetDB().CreateTask(activeTask1); err != nil {
+		t.Fatalf("failed to create active task 1: %v", err)
+	}
+
+	activeTask2 := &task.Task{
+		ID:          "task-act00002",
+		PlanID:      activePlan.ID,
+		Title:       "Active task 2",
+		Description: "Second task in active plan",
+		Status:      task.StatusInProgress,
+		Priority:    30,
+	}
+	if err := repo.GetDB().CreateTask(activeTask2); err != nil {
+		t.Fatalf("failed to create active task 2: %v", err)
+	}
+
+	// Create an archived plan with tasks
+	archivedPlan = &task.Plan{
+		ID:     "plan-archive1",
+		Goal:   "Archived test plan",
+		Status: task.PlanStatusArchived,
+	}
+	if err := repo.GetDB().CreatePlan(archivedPlan); err != nil {
+		t.Fatalf("failed to create archived plan: %v", err)
+	}
+
+	archivedTask := &task.Task{
+		ID:          "task-arch0001",
+		PlanID:      archivedPlan.ID,
+		Title:       "Archived task",
+		Description: "Task in archived plan",
+		Status:      task.StatusCompleted,
+		Priority:    50,
+	}
+	if err := repo.GetDB().CreateTask(archivedTask); err != nil {
+		t.Fatalf("failed to create archived task: %v", err)
+	}
+
+	return activePlan, archivedPlan
+}
+
+// TestTaskListIntegration_ExcludesArchivedByDefault tests that archived plans are excluded by default.
+func TestTaskListIntegration_ExcludesArchivedByDefault(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	activePlan, archivedPlan := seedTestData(t, repo)
+
+	// List all plans
+	plans, err := repo.GetDB().ListPlans()
+	if err != nil {
+		t.Fatalf("failed to list plans: %v", err)
+	}
+
+	// Should have both plans
+	if len(plans) != 2 {
+		t.Fatalf("expected 2 plans, got %d", len(plans))
+	}
+
+	// Count tasks excluding archived plans (simulating default behavior)
+	var activeTasks []task.Task
+	for _, p := range plans {
+		if p.Status == task.PlanStatusArchived {
+			continue // This is what the CLI does by default
+		}
+		tasks, err := repo.GetDB().ListTasks(p.ID)
+		if err != nil {
+			t.Fatalf("failed to list tasks for plan %s: %v", p.ID, err)
+		}
+		activeTasks = append(activeTasks, tasks...)
+	}
+
+	// Should only see active plan's tasks
+	if len(activeTasks) != 2 {
+		t.Errorf("expected 2 active tasks, got %d", len(activeTasks))
+	}
+
+	// Verify they're from the active plan
+	for _, tsk := range activeTasks {
+		if tsk.PlanID != activePlan.ID {
+			t.Errorf("task %s should be from active plan %s, got %s", tsk.ID, activePlan.ID, tsk.PlanID)
+		}
+	}
+
+	// Count tasks including archived plans (simulating --include-archived)
+	var allTasks []task.Task
+	for _, p := range plans {
+		tasks, err := repo.GetDB().ListTasks(p.ID)
+		if err != nil {
+			t.Fatalf("failed to list tasks for plan %s: %v", p.ID, err)
+		}
+		allTasks = append(allTasks, tasks...)
+	}
+
+	// Should see all 3 tasks
+	if len(allTasks) != 3 {
+		t.Errorf("expected 3 total tasks with include-archived, got %d", len(allTasks))
+	}
+
+	// Verify archived plan's task is included
+	foundArchived := false
+	for _, tsk := range allTasks {
+		if tsk.PlanID == archivedPlan.ID {
+			foundArchived = true
+			break
+		}
+	}
+	if !foundArchived {
+		t.Error("archived plan's tasks should be included with --include-archived")
+	}
+}
+
+// TestTaskShowIntegration_PrefixResolution tests prefix resolution with real SQLite.
+func TestTaskShowIntegration_PrefixResolution(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	seedTestData(t, repo)
+	ctx := context.Background()
+
+	t.Run("full ID resolves", func(t *testing.T) {
+		resolved, err := util.ResolveTaskID(ctx, repo, "task-act00001")
+		if err != nil {
+			t.Fatalf("failed to resolve full ID: %v", err)
+		}
+		if resolved != "task-act00001" {
+			t.Errorf("resolved = %q, want %q", resolved, "task-act00001")
+		}
+	})
+
+	t.Run("unique prefix resolves", func(t *testing.T) {
+		// "task-arch" should uniquely match "task-arch0001"
+		resolved, err := util.ResolveTaskID(ctx, repo, "task-arch")
+		if err != nil {
+			t.Fatalf("failed to resolve unique prefix: %v", err)
+		}
+		if resolved != "task-arch0001" {
+			t.Errorf("resolved = %q, want %q", resolved, "task-arch0001")
+		}
+	})
+
+	t.Run("ambiguous prefix errors", func(t *testing.T) {
+		// "task-act" matches both "task-act00001" and "task-act00002"
+		_, err := util.ResolveTaskID(ctx, repo, "task-act")
+		if err == nil {
+			t.Fatal("expected error for ambiguous prefix, got nil")
+		}
+		if !strings.Contains(err.Error(), "ambiguous") {
+			t.Errorf("error should mention 'ambiguous', got: %v", err)
+		}
+	})
+
+	t.Run("nonexistent prefix errors", func(t *testing.T) {
+		_, err := util.ResolveTaskID(ctx, repo, "task-nonexistent")
+		if err == nil {
+			t.Fatal("expected error for nonexistent prefix, got nil")
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			t.Errorf("error should mention 'not found', got: %v", err)
+		}
+	})
+
+	t.Run("prefix without task- prepended", func(t *testing.T) {
+		// "arch" should be prepended to "task-arch" and resolve
+		resolved, err := util.ResolveTaskID(ctx, repo, "arch")
+		if err != nil {
+			t.Fatalf("failed to resolve prefix without task-: %v", err)
+		}
+		if resolved != "task-arch0001" {
+			t.Errorf("resolved = %q, want %q", resolved, "task-arch0001")
+		}
+	})
+}
+
+// TestPlanPrefixResolution tests plan ID prefix resolution.
+func TestPlanPrefixResolution(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	seedTestData(t, repo)
+	ctx := context.Background()
+
+	t.Run("unique plan prefix resolves", func(t *testing.T) {
+		resolved, err := util.ResolvePlanID(ctx, repo, "plan-active")
+		if err != nil {
+			t.Fatalf("failed to resolve plan prefix: %v", err)
+		}
+		if resolved != "plan-active01" {
+			t.Errorf("resolved = %q, want %q", resolved, "plan-active01")
+		}
+	})
+
+	t.Run("plan prefix without plan- prepended", func(t *testing.T) {
+		resolved, err := util.ResolvePlanID(ctx, repo, "archive")
+		if err != nil {
+			t.Fatalf("failed to resolve plan prefix without plan-: %v", err)
+		}
+		if resolved != "plan-archive1" {
+			t.Errorf("resolved = %q, want %q", resolved, "plan-archive1")
+		}
+	})
 }
