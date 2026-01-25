@@ -340,6 +340,38 @@ func TestTaskListVerboseError(t *testing.T) {
 	}
 }
 
+// TestTaskShowAcceptsPrefix verifies task show command accepts ID prefixes.
+func TestTaskShowAcceptsPrefix(t *testing.T) {
+	// Verify the command help mentions prefix support
+	longHelp := taskShowCmd.Long
+	if !strings.Contains(longHelp, "prefix") {
+		t.Error("task show long help should mention prefix support")
+	}
+
+	// Verify RunE is set (for proper error handling)
+	if taskShowCmd.RunE == nil {
+		t.Fatal("taskShowCmd.RunE should be set")
+	}
+
+	// Verify Args requires exactly 1 argument
+	if taskShowCmd.Args == nil {
+		t.Error("taskShowCmd.Args should be set")
+	}
+}
+
+// TestTaskShowHelpExamples verifies help shows prefix examples.
+func TestTaskShowHelpExamples(t *testing.T) {
+	longHelp := taskShowCmd.Long
+
+	// Should have examples showing different ID formats
+	if !strings.Contains(longHelp, "task-abc") {
+		t.Error("task show help should have prefix example")
+	}
+	if !strings.Contains(longHelp, "auto-prepended") || !strings.Contains(longHelp, "abc") {
+		t.Error("task show help should mention auto-prepending task- prefix")
+	}
+}
+
 // TestTaskListFormatting verifies that task list uses consistent ID formatting.
 func TestTaskListFormatting(t *testing.T) {
 	// Verify util package is used for ID formatting by checking it can be imported

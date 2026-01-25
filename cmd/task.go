@@ -304,18 +304,33 @@ func formatPriority(priority int) string {
 var taskShowCmd = &cobra.Command{
 	Use:   "show [task-id]",
 	Short: "Show a task",
-	Args:  cobra.ExactArgs(1),
+	Long: `Show details for a specific task.
+
+Accepts full task IDs or unique prefixes. If the prefix is ambiguous,
+candidate IDs will be displayed.
+
+Examples:
+  taskwing task show task-abc12345     # Full ID
+  taskwing task show task-abc          # Unique prefix
+  taskwing task show abc               # Prefix without 'task-' (auto-prepended)`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		taskID := args[0]
+		idOrPrefix := args[0]
 		repo, err := openRepo()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to open repository: %w", err)
 		}
 		defer func() { _ = repo.Close() }()
 
+		// Resolve prefix to full task ID
+		taskID, err := util.ResolveTaskID(cmd.Context(), repo, idOrPrefix)
+		if err != nil {
+			return fmt.Errorf("failed to resolve task ID: %w", err)
+		}
+
 		t, err := repo.GetTask(taskID)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get task %s: %w", taskID, err)
 		}
 
 		if isJSON() {
