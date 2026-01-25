@@ -211,6 +211,54 @@ func TestHandleTaskTool_CompleteMissingTaskID(t *testing.T) {
 	}
 }
 
+func TestHandleTaskTool_NextMissingSessionID(t *testing.T) {
+	params := TaskToolParams{
+		Action:    TaskActionNext,
+		SessionID: "", // missing
+	}
+
+	result, err := HandleTaskTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Error == "" {
+		t.Error("expected error for missing session_id")
+	}
+	if !strings.Contains(result.Error, "session_id") {
+		t.Errorf("error should mention session_id: %s", result.Error)
+	}
+	if result.Action != "next" {
+		t.Errorf("expected action 'next', got %q", result.Action)
+	}
+	// Should have actionable guidance in content
+	if !strings.Contains(result.Content, "session") {
+		t.Error("content should mention session for guidance")
+	}
+}
+
+func TestHandleTaskTool_CurrentMissingSessionID(t *testing.T) {
+	params := TaskToolParams{
+		Action:    TaskActionCurrent,
+		SessionID: "", // missing
+	}
+
+	result, err := HandleTaskTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Error == "" {
+		t.Error("expected error for missing session_id")
+	}
+	if !strings.Contains(result.Error, "session_id") {
+		t.Errorf("error should mention session_id: %s", result.Error)
+	}
+	if result.Action != "current" {
+		t.Errorf("expected action 'current', got %q", result.Action)
+	}
+}
+
 func TestHandleTaskTool_ActionRouting(t *testing.T) {
 	// Test actions that have validation before hitting the repo
 	tests := []struct {
@@ -218,6 +266,8 @@ func TestHandleTaskTool_ActionRouting(t *testing.T) {
 		name        string
 		expectError bool
 	}{
+		{TaskActionNext, "next", true},         // missing session_id
+		{TaskActionCurrent, "current", true},   // missing session_id
 		{TaskActionStart, "start", true},       // missing task_id
 		{TaskActionComplete, "complete", true}, // missing task_id
 	}

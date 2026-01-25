@@ -217,7 +217,13 @@ func runMCPServer(ctx context.Context) error {
 - next: Get next pending task from plan (use auto_start=true to claim immediately)
 - current: Get current in-progress task for session
 - start: Claim a specific task by ID
-- complete: Mark task as completed with summary`,
+- complete: Mark task as completed with summary
+
+REQUIRED FIELDS BY ACTION:
+- next: session_id (required)
+- current: session_id (required)
+- start: task_id (required), session_id (required)
+- complete: task_id (required)`,
 	}
 	mcpsdk.AddTool(server, taskTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.TaskToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		result, err := mcppresenter.HandleTaskTool(ctx, repo, params.Arguments)
