@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ID Prefix Resolution**: `tw task show` now accepts unique ID prefixes (e.g., `task-abc` instead of full ID)
+  - Ambiguous prefixes display candidate IDs with clear error message
+  - Auto-prepends `task-` or `plan-` prefix when missing
+- **Archived Plan Filtering**: `tw task list` now excludes archived plans by default
+  - New `--include-archived` flag to show tasks from archived plans
+  - JSON output includes `plan_status` field for each task
+- **ID Utilities**: New `internal/util` package with ID helper functions
+  - `ShortID(id, n)` for consistent ID truncation
+  - `ResolveTaskID` and `ResolvePlanID` for prefix-based ID resolution
+  - Repository methods `FindTaskIDsByPrefix` and `FindPlanIDsByPrefix`
+
+### Changed
+
+- Standardized PlanID JSON field to `plan_id` (snake_case) across all types
+  - `planId` (camelCase) still accepted as deprecated alias with warning
+  - Affects Task model, MCP tool params (TaskToolParams, PlanToolParams, PolicyToolParams)
+- Improved CLI ID display using consistent `util.ShortID` formatting
+- Enhanced error messages with context wrapping (e.g., "failed to list tasks for plan X: ...")
+
+### Fixed
+
+- **Task Show ID Mismatch**: Fixed truncated 12-char display vs 13-char actual IDs causing "task not found" errors
+- **Silent Error Suppression**: `tw task list` now properly propagates errors instead of silently returning empty results
+- **Storage Layer**: Added `rows.Err()` checks to 24 database query functions to catch iteration errors
+- **TaskStatus Formatting**: Complete coverage for all 8 status values with graceful "unknown" fallback
+
 - **OpenCode Support**: Full integration with OpenCode AI assistant
   - Bootstrap creates `opencode.json` at project root with MCP server configuration
   - Commands directory `.opencode/commands/` with TaskWing slash commands (tw-next, tw-done, tw-brief, etc.)

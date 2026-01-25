@@ -47,5 +47,5 @@ type StyledEdge struct {
 // PromoteRequest is the payload for /api/tasks/promote
 type PromoteRequest struct {
 	FindingID int64  `json:"findingId"`
-	PlanID    string `json:"planId,omitempty"` // If empty, a new plan will be created
+	PlanID    string `json:"plan_id,omitempty"` // If empty, a new plan will be created
 }

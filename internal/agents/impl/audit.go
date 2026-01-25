@@ -76,7 +76,7 @@ type VerificationResult struct {
 
 // AuditResult contains the full audit report.
 type AuditResult struct {
-	PlanID         string             `json:"planId"`
+	PlanID         string             `json:"plan_id"`
 	Status         string             `json:"status"` // "passed", "failed"
 	BuildResult    VerificationResult `json:"buildResult"`
 	TestResult     VerificationResult `json:"testResult"`
