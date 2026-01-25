@@ -27,19 +27,37 @@ type txExecutor interface {
 // insertTaskTx inserts a task and its relations within a transaction.
 // This is the SINGLE source of truth for task insertion logic.
 func insertTaskTx(tx txExecutor, t *task.Task) error {
-	acJSON, _ := json.Marshal(t.AcceptanceCriteria)
-	vsJSON, _ := json.Marshal(t.ValidationSteps)
-	keywordsJSON, _ := json.Marshal(t.Keywords)
-	queriesJSON, _ := json.Marshal(t.SuggestedRecallQueries)
-	filesJSON, _ := json.Marshal(t.FilesModified)
-	expectedFilesJSON, _ := json.Marshal(t.ExpectedFiles)
+	acJSON, err := json.Marshal(t.AcceptanceCriteria)
+	if err != nil {
+		return fmt.Errorf("marshal acceptance_criteria for task %s: %w", t.ID, err)
+	}
+	vsJSON, err := json.Marshal(t.ValidationSteps)
+	if err != nil {
+		return fmt.Errorf("marshal validation_steps for task %s: %w", t.ID, err)
+	}
+	keywordsJSON, err := json.Marshal(t.Keywords)
+	if err != nil {
+		return fmt.Errorf("marshal keywords for task %s: %w", t.ID, err)
+	}
+	queriesJSON, err := json.Marshal(t.SuggestedRecallQueries)
+	if err != nil {
+		return fmt.Errorf("marshal suggested_recall_queries for task %s: %w", t.ID, err)
+	}
+	filesJSON, err := json.Marshal(t.FilesModified)
+	if err != nil {
+		return fmt.Errorf("marshal files_modified for task %s: %w", t.ID, err)
+	}
+	expectedFilesJSON, err := json.Marshal(t.ExpectedFiles)
+	if err != nil {
+		return fmt.Errorf("marshal expected_files for task %s: %w", t.ID, err)
+	}
 
 	var parentID interface{}
 	if t.ParentTaskID != "" {
 		parentID = t.ParentTaskID
 	}
 
-	_, err := tx.Exec(`
+	_, err = tx.Exec(`
 		INSERT INTO tasks (
 			id, plan_id, title, description,
 			acceptance_criteria, validation_steps,
