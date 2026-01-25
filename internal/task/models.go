@@ -1,11 +1,24 @@
 package task
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
+
+// planIDDeprecationWarned ensures we only log the deprecation warning once per process.
+var planIDDeprecationWarned sync.Once
+
+// warnPlanIDDeprecation logs a deprecation warning once per process run.
+func warnPlanIDDeprecation() {
+	planIDDeprecationWarned.Do(func() {
+		fmt.Fprintln(os.Stderr, "DEPRECATION WARNING: JSON field 'planId' is deprecated, use 'plan_id' instead")
+	})
+}
 
 // TaskStatus represents the lifecycle state of a task
 type TaskStatus string
@@ -36,7 +49,7 @@ const (
 // Task represents a discrete unit of work to be executed by an agent
 type Task struct {
 	ID                 string     `json:"id"`
-	PlanID             string     `json:"planId"`
+	PlanID             string     `json:"plan_id"`
 	Title              string     `json:"title"`
 	Description        string     `json:"description"`
 	Status             TaskStatus `json:"status"`
@@ -88,6 +101,34 @@ func (t *Task) Validate() error {
 	if t.Priority < 0 || t.Priority > 100 {
 		return fmt.Errorf("priority must be between 0 and 100")
 	}
+	return nil
+}
+
+// taskAlias is used for JSON unmarshaling to accept deprecated planId field.
+type taskAlias Task
+
+// taskWithAlias includes both plan_id and deprecated planId for backward compatibility.
+type taskWithAlias struct {
+	taskAlias
+	PlanIDAlias string `json:"planId,omitempty"` // Deprecated: use plan_id
+}
+
+// UnmarshalJSON implements custom unmarshaling to accept deprecated planId field.
+// If planId is provided but plan_id is empty, planId will be used with a deprecation warning.
+func (t *Task) UnmarshalJSON(data []byte) error {
+	var aux taskWithAlias
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*t = Task(aux.taskAlias)
+
+	// If plan_id is empty but planId alias was provided, use the alias
+	if t.PlanID == "" && aux.PlanIDAlias != "" {
+		t.PlanID = aux.PlanIDAlias
+		warnPlanIDDeprecation()
+	}
+
 	return nil
 }
 

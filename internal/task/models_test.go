@@ -1,7 +1,9 @@
 package task
 
 import (
+	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -71,6 +73,150 @@ func TestTask_Validate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := tt.task.Validate(); (err != nil) != tt.wantErr {
 				t.Errorf("Task.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestPlanIDJSONSchema_SnakeCase tests that plan_id is used in JSON output.
+func TestPlanIDJSONSchema_SnakeCase(t *testing.T) {
+	task := Task{
+		ID:          "task-123",
+		PlanID:      "plan-456",
+		Title:       "Test Task",
+		Description: "Test Description",
+	}
+
+	data, err := json.Marshal(task)
+	if err != nil {
+		t.Fatalf("Failed to marshal task: %v", err)
+	}
+
+	jsonStr := string(data)
+
+	// Should contain plan_id (snake_case)
+	if !strings.Contains(jsonStr, `"plan_id"`) {
+		t.Errorf("JSON output should use 'plan_id', got: %s", jsonStr)
+	}
+
+	// Should NOT contain planId (camelCase) in output
+	if strings.Contains(jsonStr, `"planId"`) {
+		t.Errorf("JSON output should NOT use 'planId', got: %s", jsonStr)
+	}
+}
+
+// TestPlanIDJSONSchema_AcceptSnakeCase tests that plan_id is correctly unmarshaled.
+func TestPlanIDJSONSchema_AcceptSnakeCase(t *testing.T) {
+	jsonData := `{"id":"task-123","plan_id":"plan-456","title":"Test","description":"Test"}`
+
+	var task Task
+	if err := json.Unmarshal([]byte(jsonData), &task); err != nil {
+		t.Fatalf("Failed to unmarshal task: %v", err)
+	}
+
+	if task.PlanID != "plan-456" {
+		t.Errorf("PlanID = %q, want %q", task.PlanID, "plan-456")
+	}
+}
+
+// TestPlanIDJSONSchema_AcceptCamelCaseAlias tests that planId is accepted as deprecated alias.
+func TestPlanIDJSONSchema_AcceptCamelCaseAlias(t *testing.T) {
+	// Reset the deprecation warning flag for this test
+	planIDDeprecationWarned = sync.Once{}
+
+	jsonData := `{"id":"task-123","planId":"plan-789","title":"Test","description":"Test"}`
+
+	var task Task
+	if err := json.Unmarshal([]byte(jsonData), &task); err != nil {
+		t.Fatalf("Failed to unmarshal task: %v", err)
+	}
+
+	if task.PlanID != "plan-789" {
+		t.Errorf("PlanID = %q, want %q (from planId alias)", task.PlanID, "plan-789")
+	}
+}
+
+// TestPlanIDJSONSchema_SnakeCaseTakesPrecedence tests that plan_id takes precedence over planId.
+func TestPlanIDJSONSchema_SnakeCaseTakesPrecedence(t *testing.T) {
+	// When both plan_id and planId are provided, plan_id should take precedence
+	jsonData := `{"id":"task-123","plan_id":"plan-primary","planId":"plan-alias","title":"Test","description":"Test"}`
+
+	var task Task
+	if err := json.Unmarshal([]byte(jsonData), &task); err != nil {
+		t.Fatalf("Failed to unmarshal task: %v", err)
+	}
+
+	if task.PlanID != "plan-primary" {
+		t.Errorf("PlanID = %q, want %q (plan_id should take precedence)", task.PlanID, "plan-primary")
+	}
+}
+
+// TestPlanIDJSONSchema_RoundTrip tests that marshal -> unmarshal preserves PlanID.
+func TestPlanIDJSONSchema_RoundTrip(t *testing.T) {
+	original := Task{
+		ID:          "task-123",
+		PlanID:      "plan-456",
+		Title:       "Test Task",
+		Description: "Test Description",
+		Priority:    50,
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("Failed to marshal task: %v", err)
+	}
+
+	var decoded Task
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Failed to unmarshal task: %v", err)
+	}
+
+	if decoded.PlanID != original.PlanID {
+		t.Errorf("PlanID after round-trip = %q, want %q", decoded.PlanID, original.PlanID)
+	}
+}
+
+// TestPlanIDJSONSchema_EmptyValues tests edge cases with empty values.
+func TestPlanIDJSONSchema_EmptyValues(t *testing.T) {
+	tests := []struct {
+		name       string
+		jsonData   string
+		wantPlanID string
+	}{
+		{
+			name:       "empty plan_id",
+			jsonData:   `{"id":"task-123","plan_id":"","title":"Test","description":"Test"}`,
+			wantPlanID: "",
+		},
+		{
+			name:       "null plan_id",
+			jsonData:   `{"id":"task-123","plan_id":null,"title":"Test","description":"Test"}`,
+			wantPlanID: "",
+		},
+		{
+			name:       "missing plan_id uses planId",
+			jsonData:   `{"id":"task-123","planId":"plan-fallback","title":"Test","description":"Test"}`,
+			wantPlanID: "plan-fallback",
+		},
+		{
+			name:       "both missing",
+			jsonData:   `{"id":"task-123","title":"Test","description":"Test"}`,
+			wantPlanID: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset deprecation flag
+			planIDDeprecationWarned = sync.Once{}
+
+			var task Task
+			if err := json.Unmarshal([]byte(tc.jsonData), &task); err != nil {
+				t.Fatalf("Failed to unmarshal: %v", err)
+			}
+
+			if task.PlanID != tc.wantPlanID {
+				t.Errorf("PlanID = %q, want %q", task.PlanID, tc.wantPlanID)
 			}
 		})
 	}
