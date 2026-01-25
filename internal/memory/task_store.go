@@ -3,13 +3,23 @@ package memory
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/josephgoksu/TaskWing/internal/task"
 )
+
+// rollbackWithLog attempts rollback and logs non-ErrTxDone errors at warn level.
+// This ensures transaction cleanup failures are visible without masking the original error.
+func rollbackWithLog(tx *sql.Tx, context string) {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		log.Printf("[WARN] rollback failed (%s): %v", context, err)
+	}
+}
 
 // nullTimeString returns nil for zero time, RFC3339 string otherwise
 func nullTimeString(t time.Time) interface{} {
@@ -126,7 +136,7 @@ func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { rollbackWithLog(tx, "task_store") }()
 
 	if _, err = tx.Exec(`
 		INSERT INTO plans (id, goal, enriched_goal, status, created_at, updated_at)
@@ -276,7 +286,7 @@ func (s *SQLiteStore) UpdatePlanAuditReport(id string, status task.PlanStatus, a
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { rollbackWithLog(tx, "task_store") }()
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
@@ -334,7 +344,7 @@ func (s *SQLiteStore) CreateTask(t *task.Task) error {
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { rollbackWithLog(tx, "task_store") }()
 
 	if err := insertTaskTx(tx, t); err != nil {
 		return err
@@ -930,7 +940,7 @@ func (s *SQLiteStore) SetActivePlan(id string) error {
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { rollbackWithLog(tx, "task_store") }()
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
