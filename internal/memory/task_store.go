@@ -217,9 +217,11 @@ func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 		if lastAuditReport.Valid {
 			p.LastAuditReport = lastAuditReport.String
 		}
-		// Store task count in a placeholder slice (just for count display)
-		// This avoids loading all tasks but allows len(p.Tasks) to work
-		p.Tasks = make([]task.Task, taskCount)
+		// Store task count for efficient list views without loading all tasks.
+		// Use plan.GetTaskCount() to get the count regardless of how the plan was loaded.
+		p.TaskCount = taskCount
+		// Leave Tasks nil - callers should use GetTaskCount() for counts,
+		// or call GetPlanWithTasks() if they need actual task data.
 		plans = append(plans, p)
 	}
 	if err := checkRowsErr(rows); err != nil {
