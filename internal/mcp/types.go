@@ -1,6 +1,23 @@
 // Package mcp provides types and utilities for the MCP server.
 package mcp
 
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sync"
+)
+
+// planIDMCPDeprecationWarned ensures we only log the MCP deprecation warning once per process.
+var planIDMCPDeprecationWarned sync.Once
+
+// warnPlanIDMCPDeprecation logs a deprecation warning once per process run.
+func warnPlanIDMCPDeprecation() {
+	planIDMCPDeprecationWarned.Do(func() {
+		fmt.Fprintln(os.Stderr, "DEPRECATION WARNING: MCP parameter 'planId' is deprecated, use 'plan_id' instead")
+	})
+}
+
 // === Action Constants ===
 
 // CodeAction defines the valid actions for the unified code tool.
@@ -142,6 +159,7 @@ type TaskToolParams struct {
 
 	// PlanID is the plan identifier.
 	// Optional for: next, current (defaults to active plan)
+	// Deprecated alias: planId (still accepted but plan_id is preferred)
 	PlanID string `json:"plan_id,omitempty"`
 
 	// SessionID is the unique AI session identifier.
@@ -167,6 +185,33 @@ type TaskToolParams struct {
 	// SkipUnpushedCheck proceeds despite unpushed commits.
 	// Optional for: next (only if create_branch=true)
 	SkipUnpushedCheck bool `json:"skip_unpushed_check,omitempty"`
+}
+
+// taskToolParamsAlias is used for JSON unmarshaling to accept deprecated planId field.
+type taskToolParamsAlias TaskToolParams
+
+// taskToolParamsWithAlias includes both plan_id and deprecated planId for backward compatibility.
+type taskToolParamsWithAlias struct {
+	taskToolParamsAlias
+	PlanIDAlias string `json:"planId,omitempty"` // Deprecated: use plan_id
+}
+
+// UnmarshalJSON implements custom unmarshaling to accept deprecated planId field.
+func (p *TaskToolParams) UnmarshalJSON(data []byte) error {
+	var aux taskToolParamsWithAlias
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*p = TaskToolParams(aux.taskToolParamsAlias)
+
+	// If plan_id is empty but planId alias was provided, use the alias
+	if p.PlanID == "" && aux.PlanIDAlias != "" {
+		p.PlanID = aux.PlanIDAlias
+		warnPlanIDMCPDeprecation()
+	}
+
+	return nil
 }
 
 // === MCP Tool Parameters (non-unified) ===
@@ -233,11 +278,39 @@ type PlanToolParams struct {
 
 	// PlanID is the plan to audit.
 	// Optional for: audit (defaults to active plan)
+	// Deprecated alias: planId (still accepted but plan_id is preferred)
 	PlanID string `json:"plan_id,omitempty"`
 
 	// AutoFix attempts to automatically fix failures.
 	// Optional for: audit (default: true)
 	AutoFix *bool `json:"auto_fix,omitempty"`
+}
+
+// planToolParamsAlias is used for JSON unmarshaling to accept deprecated planId field.
+type planToolParamsAlias PlanToolParams
+
+// planToolParamsWithAlias includes both plan_id and deprecated planId for backward compatibility.
+type planToolParamsWithAlias struct {
+	planToolParamsAlias
+	PlanIDAlias string `json:"planId,omitempty"` // Deprecated: use plan_id
+}
+
+// UnmarshalJSON implements custom unmarshaling to accept deprecated planId field.
+func (p *PlanToolParams) UnmarshalJSON(data []byte) error {
+	var aux planToolParamsWithAlias
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*p = PlanToolParams(aux.planToolParamsAlias)
+
+	// If plan_id is empty but planId alias was provided, use the alias
+	if p.PlanID == "" && aux.PlanIDAlias != "" {
+		p.PlanID = aux.PlanIDAlias
+		warnPlanIDMCPDeprecation()
+	}
+
+	return nil
 }
 
 // PolicyAction defines the valid actions for the unified policy tool.
@@ -284,6 +357,7 @@ type PolicyToolParams struct {
 
 	// PlanID is the plan context for policy evaluation.
 	// Optional for: check
+	// Deprecated alias: planId (still accepted but plan_id is preferred)
 	PlanID string `json:"plan_id,omitempty"`
 
 	// PlanGoal is the plan goal for policy evaluation.
@@ -293,4 +367,31 @@ type PolicyToolParams struct {
 	// PolicyName is the name of a specific policy to explain.
 	// Optional for: explain (if not provided, lists all rules)
 	PolicyName string `json:"policy_name,omitempty"`
+}
+
+// policyToolParamsAlias is used for JSON unmarshaling to accept deprecated planId field.
+type policyToolParamsAlias PolicyToolParams
+
+// policyToolParamsWithAlias includes both plan_id and deprecated planId for backward compatibility.
+type policyToolParamsWithAlias struct {
+	policyToolParamsAlias
+	PlanIDAlias string `json:"planId,omitempty"` // Deprecated: use plan_id
+}
+
+// UnmarshalJSON implements custom unmarshaling to accept deprecated planId field.
+func (p *PolicyToolParams) UnmarshalJSON(data []byte) error {
+	var aux policyToolParamsWithAlias
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*p = PolicyToolParams(aux.policyToolParamsAlias)
+
+	// If plan_id is empty but planId alias was provided, use the alias
+	if p.PlanID == "" && aux.PlanIDAlias != "" {
+		p.PlanID = aux.PlanIDAlias
+		warnPlanIDMCPDeprecation()
+	}
+
+	return nil
 }
