@@ -233,7 +233,12 @@ func runMCPServer(ctx context.Context) error {
 		Description: `Unified plan creation tool. Use action parameter to select operation:
 - clarify: Refine goal with clarifying questions (loop until is_ready_to_plan=true)
 - generate: Create plan with tasks from enriched goal
-- audit: Verify completed plan with build/test/semantic checks (auto-fixes failures)`,
+- audit: Verify completed plan with build/test/semantic checks (auto-fixes failures)
+
+REQUIRED FIELDS BY ACTION:
+- clarify: goal (required)
+- generate: goal (required), enriched_goal (required) - call clarify first to get enriched_goal
+- audit: none required (defaults to active plan)`,
 	}
 	mcpsdk.AddTool(server, planTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.PlanToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		result, err := mcppresenter.HandlePlanTool(ctx, repo, params.Arguments)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -321,6 +322,71 @@ func TestHandlePlanTool_GenerateMissingEnrichedGoal(t *testing.T) {
 	}
 	if result.Action != "generate" {
 		t.Errorf("expected action 'generate', got %q", result.Action)
+	}
+}
+
+// TestHandlePlanTool_GenerateErrorContainsFieldDetails validates that validation errors
+// contain actionable field-level details to help AI clients self-correct.
+func TestHandlePlanTool_GenerateErrorContainsFieldDetails(t *testing.T) {
+	tests := []struct {
+		name           string
+		params         PlanToolParams
+		expectedFields []string
+		fieldCount     int // expected number of missing fields
+	}{
+		{
+			name: "missing_both_fields_lists_both",
+			params: PlanToolParams{
+				Action: PlanActionGenerate,
+				// Both goal and enriched_goal missing
+			},
+			expectedFields: []string{"goal", "enriched_goal"},
+			fieldCount:     2,
+		},
+		{
+			name: "missing_goal_only_lists_goal",
+			params: PlanToolParams{
+				Action:       PlanActionGenerate,
+				EnrichedGoal: "some enriched goal",
+			},
+			expectedFields: []string{"goal"},
+			fieldCount:     1,
+		},
+		{
+			name: "missing_enriched_goal_only_lists_enriched_goal",
+			params: PlanToolParams{
+				Action: PlanActionGenerate,
+				Goal:   "some goal",
+			},
+			expectedFields: []string{"enriched_goal"},
+			fieldCount:     1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := HandlePlanTool(context.Background(), nil, tt.params)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Error should list missing fields
+			for _, field := range tt.expectedFields {
+				if !strings.Contains(result.Error, field) {
+					t.Errorf("error should contain field %q: %s", field, result.Error)
+				}
+			}
+
+			// Verify correct number of fields reported (check bracket contents)
+			if tt.fieldCount == 1 && strings.Contains(result.Error, ", ") {
+				t.Errorf("error lists more fields than expected for single missing field: %s", result.Error)
+			}
+
+			// Content should have actionable guidance
+			if !strings.Contains(result.Content, "clarify") {
+				t.Error("content should mention 'clarify' action for guidance")
+			}
+		})
 	}
 }
 

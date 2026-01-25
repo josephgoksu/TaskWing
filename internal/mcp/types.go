@@ -251,17 +251,22 @@ type DebugToolParams struct {
 
 // PlanToolParams defines the parameters for the unified plan tool.
 // Consolidates: plan_clarify, plan_generate, audit_plan
+//
+// Required fields by action:
+//   - clarify: goal
+//   - generate: goal, enriched_goal (call clarify first to get enriched_goal)
+//   - audit: none (defaults to active plan)
 type PlanToolParams struct {
 	// Action specifies which operation to perform.
 	// Required. One of: clarify, generate, audit
 	Action PlanAction `json:"action"`
 
 	// Goal is the user's development goal.
-	// Required for: clarify, generate
+	// REQUIRED for: clarify, generate (will error if empty for these actions)
 	Goal string `json:"goal,omitempty"`
 
 	// EnrichedGoal is the full technical specification from clarify.
-	// Required for: generate
+	// REQUIRED for: generate (will error if empty; call clarify first to get this)
 	EnrichedGoal string `json:"enriched_goal,omitempty"`
 
 	// History is a JSON array of previous Q&A from clarify loop.
