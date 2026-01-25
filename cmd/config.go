@@ -104,7 +104,10 @@ func detectProjectRoot() *project.Context {
 	}
 
 	// Store in config package for GetMemoryBasePath and other consumers
-	config.SetProjectContext(ctx)
+	if err := config.SetProjectContext(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to set project context: %v\n", err)
+		return nil
+	}
 
 	// Log in verbose mode
 	if viper.GetBool("verbose") && ctx.RootPath != cwd {

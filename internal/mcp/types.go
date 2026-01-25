@@ -148,13 +148,19 @@ type CodeToolParams struct {
 
 // TaskToolParams defines the parameters for the unified task tool.
 // Consolidates: task_next, task_current, task_start, task_complete
+//
+// Required fields by action:
+//   - next: session_id
+//   - current: session_id
+//   - start: task_id, session_id
+//   - complete: task_id
 type TaskToolParams struct {
 	// Action specifies which operation to perform.
 	// Required. One of: next, current, start, complete
 	Action TaskAction `json:"action"`
 
 	// TaskID is the task identifier.
-	// Required for: start, complete
+	// REQUIRED for: start, complete (will error if empty for these actions)
 	TaskID string `json:"task_id,omitempty"`
 
 	// PlanID is the plan identifier.
@@ -163,7 +169,7 @@ type TaskToolParams struct {
 	PlanID string `json:"plan_id,omitempty"`
 
 	// SessionID is the unique AI session identifier.
-	// Required for: next, current, start
+	// REQUIRED for: next, current, start (will error if empty for these actions)
 	SessionID string `json:"session_id,omitempty"`
 
 	// Summary describes what was accomplished.
@@ -251,17 +257,22 @@ type DebugToolParams struct {
 
 // PlanToolParams defines the parameters for the unified plan tool.
 // Consolidates: plan_clarify, plan_generate, audit_plan
+//
+// Required fields by action:
+//   - clarify: goal
+//   - generate: goal, enriched_goal (call clarify first to get enriched_goal)
+//   - audit: none (defaults to active plan)
 type PlanToolParams struct {
 	// Action specifies which operation to perform.
 	// Required. One of: clarify, generate, audit
 	Action PlanAction `json:"action"`
 
 	// Goal is the user's development goal.
-	// Required for: clarify, generate
+	// REQUIRED for: clarify, generate (will error if empty for these actions)
 	Goal string `json:"goal,omitempty"`
 
 	// EnrichedGoal is the full technical specification from clarify.
-	// Required for: generate
+	// REQUIRED for: generate (will error if empty; call clarify first to get this)
 	EnrichedGoal string `json:"enriched_goal,omitempty"`
 
 	// History is a JSON array of previous Q&A from clarify loop.

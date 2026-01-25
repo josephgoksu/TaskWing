@@ -357,13 +357,12 @@ func printPlanTable(plans []task.Plan) {
 			goal = goal[:57] + "..."
 		}
 		// Tasks count - service ListPlans probably returns plans without tasks or with?
-		// task.Repository interface implies ListPlans returns []Plan which contains Tasks?
-		// SQLite implementation usually does. If not, we might check tasks length.
-		// Assuming populated for now or length 0.
+		// ListPlans sets TaskCount but leaves Tasks nil for efficiency.
+		// Use GetTaskCount() to get the count regardless of how the plan was loaded.
 		fmt.Printf("%-18s %-12s %-6d %s\n",
 			idStyle.Render(p.ID),
 			dateStyle.Render(p.CreatedAt.Format("2006-01-02")),
-			len(p.Tasks),
+			p.GetTaskCount(),
 			goalStyle.Render(goal))
 	}
 	fmt.Printf("\n%s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(fmt.Sprintf("Total: %d plan(s)", len(plans))))

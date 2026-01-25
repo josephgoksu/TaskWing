@@ -151,11 +151,23 @@ type Plan struct {
 	EnrichedGoal string     `json:"enrichedGoal"` // Full technical specification refined by Clarifying Agent
 	Status       PlanStatus `json:"status"`       // draft, active, completed, verified, needs_revision, archived
 	Tasks        []Task     `json:"tasks"`
+	TaskCount    int        `json:"taskCount,omitempty"` // Precomputed count for list views (avoids loading all tasks)
 	CreatedAt    time.Time  `json:"createdAt"`
 	UpdatedAt    time.Time  `json:"updatedAt"`
 
 	// Audit fields
 	LastAuditReport string `json:"lastAuditReport,omitempty"` // JSON-serialized AuditReport
+}
+
+// GetTaskCount returns the number of tasks in this plan.
+// It uses TaskCount if set (from ListPlans), otherwise falls back to len(Tasks).
+// This handles both cases: ListPlans (which sets TaskCount but not Tasks)
+// and GetPlanWithTasks (which populates Tasks but not TaskCount).
+func (p *Plan) GetTaskCount() int {
+	if p.TaskCount > 0 {
+		return p.TaskCount
+	}
+	return len(p.Tasks)
 }
 
 // Scope customization is available via .taskwing.yaml or ~/.taskwing/config.yaml:

@@ -536,6 +536,20 @@ func HandleTaskTool(ctx context.Context, repo *memory.Repository, params TaskToo
 
 // handleTaskNext implements the 'next' action - get the next pending task.
 func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+	// Validate required fields
+	sessionID := strings.TrimSpace(params.SessionID)
+	if sessionID == "" {
+		return &TaskToolResult{
+			Action: "next",
+			Error:  "session_id is required for next action",
+			Content: FormatMultiValidationError(
+				"next",
+				[]string{"session_id"},
+				"Provide a unique session identifier (e.g., from hook session-init or a UUID).",
+			),
+		}, nil
+	}
+
 	appCtx := app.NewContext(repo)
 	taskApp := app.NewTaskApp(appCtx)
 
@@ -547,7 +561,7 @@ func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToo
 
 	result, err := taskApp.Next(ctx, app.TaskNextOptions{
 		PlanID:            params.PlanID,
-		SessionID:         params.SessionID,
+		SessionID:         sessionID, // Use validated/trimmed value
 		AutoStart:         params.AutoStart,
 		CreateBranch:      createBranch,
 		SkipUnpushedCheck: params.SkipUnpushedCheck,
@@ -567,10 +581,24 @@ func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToo
 
 // handleTaskCurrent implements the 'current' action - get the current in-progress task.
 func handleTaskCurrent(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+	// Validate required fields
+	sessionID := strings.TrimSpace(params.SessionID)
+	if sessionID == "" {
+		return &TaskToolResult{
+			Action: "current",
+			Error:  "session_id is required for current action",
+			Content: FormatMultiValidationError(
+				"current",
+				[]string{"session_id"},
+				"Provide the session identifier used when starting the task.",
+			),
+		}, nil
+	}
+
 	appCtx := app.NewContext(repo)
 	taskApp := app.NewTaskApp(appCtx)
 
-	result, err := taskApp.Current(ctx, params.SessionID, params.PlanID)
+	result, err := taskApp.Current(ctx, sessionID, params.PlanID)
 	if err != nil {
 		return &TaskToolResult{
 			Action: "current",

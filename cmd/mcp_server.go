@@ -97,7 +97,10 @@ func mcpFormattedErrorResponse(formattedError string) (*mcpsdk.CallToolResultFor
 func initMCPRepository() (*memory.Repository, error) {
 	// MCP server is a special case - it may run in sandboxed environments
 	// where project context isn't available. Use the fallback-enabled path.
-	memoryPath := config.GetMemoryBasePathOrGlobal()
+	memoryPath, err := config.GetMemoryBasePathOrGlobal()
+	if err != nil {
+		return nil, fmt.Errorf("determine memory path: %w", err)
+	}
 
 	repo, err := memory.NewDefaultRepository(memoryPath)
 	if err != nil {
@@ -214,7 +217,13 @@ func runMCPServer(ctx context.Context) error {
 - next: Get next pending task from plan (use auto_start=true to claim immediately)
 - current: Get current in-progress task for session
 - start: Claim a specific task by ID
-- complete: Mark task as completed with summary`,
+- complete: Mark task as completed with summary
+
+REQUIRED FIELDS BY ACTION:
+- next: session_id (required)
+- current: session_id (required)
+- start: task_id (required), session_id (required)
+- complete: task_id (required)`,
 	}
 	mcpsdk.AddTool(server, taskTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.TaskToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		result, err := mcppresenter.HandleTaskTool(ctx, repo, params.Arguments)
@@ -233,7 +242,12 @@ func runMCPServer(ctx context.Context) error {
 		Description: `Unified plan creation tool. Use action parameter to select operation:
 - clarify: Refine goal with clarifying questions (loop until is_ready_to_plan=true)
 - generate: Create plan with tasks from enriched goal
-- audit: Verify completed plan with build/test/semantic checks (auto-fixes failures)`,
+- audit: Verify completed plan with build/test/semantic checks (auto-fixes failures)
+
+REQUIRED FIELDS BY ACTION:
+- clarify: goal (required)
+- generate: goal (required), enriched_goal (required) - call clarify first to get enriched_goal
+- audit: none required (defaults to active plan)`,
 	}
 	mcpsdk.AddTool(server, planTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.PlanToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		result, err := mcppresenter.HandlePlanTool(ctx, repo, params.Arguments)

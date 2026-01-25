@@ -640,7 +640,7 @@ func (s *SQLiteStore) CreateFeature(f Feature) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { rollbackWithLog(tx, "sqlite") }()
 
 	// Insert into SQLite
 	_, err = tx.Exec(`
@@ -785,7 +785,7 @@ func (s *SQLiteStore) AddDecision(featureID string, d Decision) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { rollbackWithLog(tx, "sqlite") }()
 
 	_, err = tx.Exec(`
 		INSERT INTO decisions (id, feature_id, title, summary, reasoning, tradeoffs, created_at)
@@ -847,7 +847,7 @@ func (s *SQLiteStore) DeleteDecision(id string) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { rollbackWithLog(tx, "sqlite") }()
 
 	_, err = tx.Exec("DELETE FROM decisions WHERE id = ?", id)
 	if err != nil {
@@ -1643,7 +1643,7 @@ func (s *SQLiteStore) ClearAllKnowledge() error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { rollbackWithLog(tx, "sqlite") }()
 
 	// Clear in order respecting foreign key constraints
 	tables := []string{"node_edges", "nodes", "decisions", "patterns", "features"}
@@ -1685,7 +1685,7 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { rollbackWithLog(tx, "sqlite") }()
 
 	// First check if node with exact summary+agent exists
 	var existingID string
