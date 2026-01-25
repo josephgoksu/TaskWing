@@ -561,7 +561,7 @@ func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToo
 
 	result, err := taskApp.Next(ctx, app.TaskNextOptions{
 		PlanID:            params.PlanID,
-		SessionID:         params.SessionID,
+		SessionID:         sessionID, // Use validated/trimmed value
 		AutoStart:         params.AutoStart,
 		CreateBranch:      createBranch,
 		SkipUnpushedCheck: params.SkipUnpushedCheck,
