@@ -38,13 +38,15 @@ var GetGlobalConfigDir = func() (string, error) {
 
 // SetProjectContext sets the detected project context for use by GetMemoryBasePath.
 // This MUST be called during CLI initialization before any command that needs project context.
-func SetProjectContext(ctx *project.Context) {
+// Returns error if ctx is nil.
+func SetProjectContext(ctx *project.Context) error {
 	if ctx == nil {
-		panic("SetProjectContext called with nil context")
+		return errors.New("SetProjectContext called with nil context")
 	}
 	projectContextMu.Lock()
 	defer projectContextMu.Unlock()
 	projectContext = ctx
+	return nil
 }
 
 // ClearProjectContext resets the project context. Only use in tests.
@@ -62,14 +64,14 @@ func GetProjectContext() *project.Context {
 	return projectContext
 }
 
-// MustGetProjectContext returns the project context or panics if not set.
-// Use this when project context is required and absence is a programming error.
-func MustGetProjectContext() *project.Context {
+// GetProjectContextOrError returns the project context or an error if not set.
+// Use this when project context is required.
+func GetProjectContextOrError() (*project.Context, error) {
 	ctx := GetProjectContext()
 	if ctx == nil {
-		panic(ErrProjectContextNotSet)
+		return nil, ErrProjectContextNotSet
 	}
-	return ctx
+	return ctx, nil
 }
 
 // DetectAndSetProjectContext detects the project root and sets it.
@@ -90,7 +92,9 @@ func DetectAndSetProjectContext() (*project.Context, error) {
 		return nil, fmt.Errorf("%w: %v", ErrDetectionFailed, err)
 	}
 
-	SetProjectContext(ctx)
+	if err := SetProjectContext(ctx); err != nil {
+		return nil, fmt.Errorf("set project context: %w", err)
+	}
 	return ctx, nil
 }
 
@@ -133,19 +137,18 @@ func GetMemoryBasePath() (string, error) {
 //
 // ALL OTHER COMMANDS should use GetMemoryBasePath() which enforces fail-fast behavior.
 // Using this function inappropriately masks project detection failures.
-func GetMemoryBasePathOrGlobal() string {
+func GetMemoryBasePathOrGlobal() (string, error) {
 	path, err := GetMemoryBasePath()
 	if err == nil {
-		return path
+		return path, nil
 	}
 
 	// Only fall back to global for non-project commands
 	dir, err := GetGlobalConfigDir()
 	if err != nil {
-		// This is a critical failure - can't determine any valid path
-		panic(fmt.Sprintf("cannot determine memory path: %v", err))
+		return "", fmt.Errorf("cannot determine memory path: %w", err)
 	}
-	return filepath.Join(dir, "memory")
+	return filepath.Join(dir, "memory"), nil
 }
 
 // GetProjectRoot returns the detected project root path.
@@ -159,14 +162,4 @@ func GetProjectRoot() (string, error) {
 		return "", fmt.Errorf("project context has empty RootPath")
 	}
 	return ctx.RootPath, nil
-}
-
-// MustGetProjectRoot returns the project root or panics.
-// Use when project root is required and absence is a programming error.
-func MustGetProjectRoot() string {
-	root, err := GetProjectRoot()
-	if err != nil {
-		panic(err)
-	}
-	return root
 }

@@ -436,22 +436,32 @@ Tasks Completed: %d
 `, session.SessionID, int(elapsed.Minutes()), session.TasksCompleted)
 
 	// Remove session file
-	sessionPath := getHookSessionPath()
-	_ = os.Remove(sessionPath)
+	sessionPath, err := getHookSessionPath()
+	if err == nil {
+		_ = os.Remove(sessionPath)
+	}
 
 	return nil
 }
 
 // Session persistence helpers
 
-func getHookSessionPath() string {
+func getHookSessionPath() (string, error) {
 	// Hook commands use GetMemoryBasePathOrGlobal since they may run
 	// before project context is fully established (e.g., SessionStart)
-	return filepath.Join(config.GetMemoryBasePathOrGlobal(), "hook_session.json")
+	memoryPath, err := config.GetMemoryBasePathOrGlobal()
+	if err != nil {
+		return "", fmt.Errorf("get memory path: %w", err)
+	}
+	return filepath.Join(memoryPath, "hook_session.json"), nil
 }
 
 func loadHookSession() (*HookSession, error) {
-	data, err := os.ReadFile(getHookSessionPath())
+	sessionPath, err := getHookSessionPath()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(sessionPath)
 	if err != nil {
 		return nil, err
 	}
@@ -470,7 +480,10 @@ func saveHookSession(session *HookSession) error {
 		return err
 	}
 
-	sessionPath := getHookSessionPath()
+	sessionPath, err := getHookSessionPath()
+	if err != nil {
+		return err
+	}
 	// Ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(sessionPath), 0755); err != nil {
 		return fmt.Errorf("create session directory: %w", err)

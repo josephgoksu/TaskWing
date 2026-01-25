@@ -97,7 +97,10 @@ func mcpFormattedErrorResponse(formattedError string) (*mcpsdk.CallToolResultFor
 func initMCPRepository() (*memory.Repository, error) {
 	// MCP server is a special case - it may run in sandboxed environments
 	// where project context isn't available. Use the fallback-enabled path.
-	memoryPath := config.GetMemoryBasePathOrGlobal()
+	memoryPath, err := config.GetMemoryBasePathOrGlobal()
+	if err != nil {
+		return nil, fmt.Errorf("determine memory path: %w", err)
+	}
 
 	repo, err := memory.NewDefaultRepository(memoryPath)
 	if err != nil {
