@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"fmt"
 )
 
@@ -64,4 +65,16 @@ func (r *Repository) AddDependency(taskID, dependsOn string) error {
 // RemoveDependency removes a dependency relationship between two tasks.
 func (r *Repository) RemoveDependency(taskID, dependsOn string) error {
 	return r.db.RemoveDependency(taskID, dependsOn)
+}
+
+// FindTaskIDsByPrefix returns all task IDs that start with the given prefix.
+// The ctx parameter is accepted for interface compatibility but not currently used.
+func (r *Repository) FindTaskIDsByPrefix(ctx context.Context, prefix string) ([]string, error) {
+	return r.db.FindTaskIDsByPrefix(prefix)
+}
+
+// FindPlanIDsByPrefix returns all plan IDs that start with the given prefix.
+// The ctx parameter is accepted for interface compatibility but not currently used.
+func (r *Repository) FindPlanIDsByPrefix(ctx context.Context, prefix string) ([]string, error) {
+	return r.db.FindPlanIDsByPrefix(prefix)
 }

@@ -627,3 +627,198 @@ func TestCheckRowsErrHelper_FunctionExists(t *testing.T) {
 
 // Verify that sql package is imported and types are correct
 var _ *sql.Rows // Ensures sql package is correctly imported
+
+// === Prefix Finder Tests ===
+
+// TestFindTaskIDsByPrefix tests the task ID prefix finder.
+func TestFindTaskIDsByPrefix(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "taskwing-prefix-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewSQLiteStore(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	// Create a test plan
+	plan := &task.Plan{ID: "plan-prefix001", Goal: "Test plan"}
+	if err := store.CreatePlan(plan); err != nil {
+		t.Fatalf("failed to create plan: %v", err)
+	}
+
+	// Create test tasks with various prefixes
+	tasks := []*task.Task{
+		{ID: "task-abc11111", PlanID: "plan-prefix001", Title: "Task A1"},
+		{ID: "task-abc22222", PlanID: "plan-prefix001", Title: "Task A2"},
+		{ID: "task-abc33333", PlanID: "plan-prefix001", Title: "Task A3"},
+		{ID: "task-xyz11111", PlanID: "plan-prefix001", Title: "Task X1"},
+	}
+	for _, tsk := range tasks {
+		if err := store.CreateTask(tsk); err != nil {
+			t.Fatalf("failed to create task: %v", err)
+		}
+	}
+
+	tests := []struct {
+		name      string
+		prefix    string
+		wantCount int
+		wantIDs   []string
+	}{
+		{
+			name:      "full ID match",
+			prefix:    "task-abc11111",
+			wantCount: 1,
+			wantIDs:   []string{"task-abc11111"},
+		},
+		{
+			name:      "prefix matches multiple",
+			prefix:    "task-abc",
+			wantCount: 3,
+		},
+		{
+			name:      "prefix matches one",
+			prefix:    "task-xyz",
+			wantCount: 1,
+			wantIDs:   []string{"task-xyz11111"},
+		},
+		{
+			name:      "prefix matches none",
+			prefix:    "task-zzz",
+			wantCount: 0,
+		},
+		{
+			name:      "empty prefix matches all",
+			prefix:    "",
+			wantCount: 4,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ids, err := store.FindTaskIDsByPrefix(tc.prefix)
+			if err != nil {
+				t.Fatalf("FindTaskIDsByPrefix failed: %v", err)
+			}
+			if len(ids) != tc.wantCount {
+				t.Errorf("got %d IDs, want %d", len(ids), tc.wantCount)
+			}
+			if tc.wantIDs != nil {
+				for i, wantID := range tc.wantIDs {
+					if i >= len(ids) || ids[i] != wantID {
+						t.Errorf("ID[%d] = %q, want %q", i, ids[i], wantID)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestFindPlanIDsByPrefix tests the plan ID prefix finder.
+func TestFindPlanIDsByPrefix(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "taskwing-prefix-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewSQLiteStore(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	// Create test plans with various prefixes
+	plans := []*task.Plan{
+		{ID: "plan-abc11111", Goal: "Plan A1"},
+		{ID: "plan-abc22222", Goal: "Plan A2"},
+		{ID: "plan-xyz11111", Goal: "Plan X1"},
+	}
+	for _, p := range plans {
+		if err := store.CreatePlan(p); err != nil {
+			t.Fatalf("failed to create plan: %v", err)
+		}
+	}
+
+	tests := []struct {
+		name      string
+		prefix    string
+		wantCount int
+		wantIDs   []string
+	}{
+		{
+			name:      "full ID match",
+			prefix:    "plan-abc11111",
+			wantCount: 1,
+			wantIDs:   []string{"plan-abc11111"},
+		},
+		{
+			name:      "prefix matches multiple",
+			prefix:    "plan-abc",
+			wantCount: 2,
+		},
+		{
+			name:      "prefix matches one",
+			prefix:    "plan-xyz",
+			wantCount: 1,
+			wantIDs:   []string{"plan-xyz11111"},
+		},
+		{
+			name:      "prefix matches none",
+			prefix:    "plan-zzz",
+			wantCount: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ids, err := store.FindPlanIDsByPrefix(tc.prefix)
+			if err != nil {
+				t.Fatalf("FindPlanIDsByPrefix failed: %v", err)
+			}
+			if len(ids) != tc.wantCount {
+				t.Errorf("got %d IDs, want %d", len(ids), tc.wantCount)
+			}
+			if tc.wantIDs != nil {
+				for i, wantID := range tc.wantIDs {
+					if i >= len(ids) || ids[i] != wantID {
+						t.Errorf("ID[%d] = %q, want %q", i, ids[i], wantID)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestFindPrefixMethods_ClosedDB tests error propagation for prefix finders.
+func TestFindPrefixMethods_ClosedDB(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "taskwing-prefix-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewSQLiteStore(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	store.Close() // Close immediately
+
+	t.Run("FindTaskIDsByPrefix", func(t *testing.T) {
+		_, err := store.FindTaskIDsByPrefix("task-")
+		if err == nil {
+			t.Error("expected error on closed database, got nil")
+		}
+	})
+
+	t.Run("FindPlanIDsByPrefix", func(t *testing.T) {
+		_, err := store.FindPlanIDsByPrefix("plan-")
+		if err == nil {
+			t.Error("expected error on closed database, got nil")
+		}
+	})
+}

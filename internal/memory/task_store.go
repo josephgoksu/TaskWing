@@ -948,3 +948,51 @@ func (s *SQLiteStore) SetActivePlan(id string) error {
 
 	return tx.Commit()
 }
+
+// FindTaskIDsByPrefix returns all task IDs that start with the given prefix.
+// Results are ordered by ID for consistent output.
+func (s *SQLiteStore) FindTaskIDsByPrefix(prefix string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT id FROM tasks WHERE id LIKE ? ORDER BY id`, prefix+"%")
+	if err != nil {
+		return nil, fmt.Errorf("find task IDs by prefix: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan task ID: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}
+
+// FindPlanIDsByPrefix returns all plan IDs that start with the given prefix.
+// Results are ordered by ID for consistent output.
+func (s *SQLiteStore) FindPlanIDsByPrefix(prefix string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT id FROM plans WHERE id LIKE ? ORDER BY id`, prefix+"%")
+	if err != nil {
+		return nil, fmt.Errorf("find plan IDs by prefix: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan plan ID: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}
