@@ -578,20 +578,6 @@ func TestMockRowsErr(t *testing.T) {
 	}
 }
 
-// scannerMock implements sql.Rows-like interface for testing error scenarios
-type scannerMock struct {
-	scanErr error
-	rowsErr error
-}
-
-func (s *scannerMock) Scan(dest ...any) error {
-	return s.scanErr
-}
-
-func (s *scannerMock) Err() error {
-	return s.rowsErr
-}
-
 // TestCheckRowsErrHelper_FunctionExists verifies the helper function works.
 func TestCheckRowsErrHelper_FunctionExists(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "taskwing-rows-err-test-*")
