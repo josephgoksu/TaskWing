@@ -285,7 +285,7 @@ func containsError(err, target error) bool {
 	}
 	return err.Error() == target.Error() ||
 		len(err.Error()) > len(target.Error()) &&
-		err.Error()[len(err.Error())-len(target.Error()):] == target.Error()
+			err.Error()[len(err.Error())-len(target.Error()):] == target.Error()
 }
 
 func TestAmbiguousErrorMessage(t *testing.T) {
