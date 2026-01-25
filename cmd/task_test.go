@@ -209,3 +209,36 @@ func TestStripANSI(t *testing.T) {
 		})
 	}
 }
+
+// TestTaskListArchivedFilter tests that the include-archived flag exists.
+func TestTaskListArchivedFilter(t *testing.T) {
+	// Verify the flag is registered on the command
+	flag := taskListCmd.Flags().Lookup("include-archived")
+	if flag == nil {
+		t.Fatal("expected --include-archived flag to be registered on task list command")
+	}
+
+	if flag.DefValue != "false" {
+		t.Errorf("expected default value 'false', got %q", flag.DefValue)
+	}
+
+	// Verify the flag help text
+	usage := flag.Usage
+	if usage == "" {
+		t.Error("expected --include-archived flag to have usage text")
+	}
+	if !strings.Contains(strings.ToLower(usage), "archived") {
+		t.Errorf("flag usage should mention 'archived', got: %q", usage)
+	}
+}
+
+// TestTaskListCommandHelp verifies help mentions archived filtering.
+func TestTaskListCommandHelp(t *testing.T) {
+	longHelp := taskListCmd.Long
+	if !strings.Contains(longHelp, "archived") {
+		t.Error("task list long help should mention archived plans")
+	}
+	if !strings.Contains(longHelp, "--include-archived") {
+		t.Error("task list long help should mention --include-archived flag")
+	}
+}

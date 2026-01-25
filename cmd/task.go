@@ -24,14 +24,18 @@ var taskListCmd = &cobra.Command{
 	Short: "List all tasks",
 	Long: `List all tasks, grouped by plan.
 
+By default, tasks from archived plans are excluded. Use --include-archived to show them.
+
 Filter options:
-  --plan      Filter by plan ID (prefix match)
-  --status    Filter by status (pending, in_progress, completed, failed)
-  --priority  Filter by priority threshold (show tasks with priority <= value)
-  --scope     Filter by scope/tag
+  --plan              Filter by plan ID (prefix match)
+  --status            Filter by status (pending, in_progress, completed, failed)
+  --priority          Filter by priority threshold (show tasks with priority <= value)
+  --scope             Filter by scope/tag
+  --include-archived  Include tasks from archived plans
 
 Examples:
-  taskwing task list                    # All tasks
+  taskwing task list                    # All tasks (excludes archived plans)
+  taskwing task list --include-archived # Include archived plan tasks
   taskwing task list --status pending   # Only pending tasks
   taskwing task list --priority 50      # High priority tasks only
   taskwing task list --scope api        # Tasks in api scope`,
@@ -50,6 +54,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	statusFilter, _ := cmd.Flags().GetString("status")
 	priorityFilter, _ := cmd.Flags().GetInt("priority")
 	scopeFilter, _ := cmd.Flags().GetString("scope")
+	includeArchived, _ := cmd.Flags().GetBool("include-archived")
 
 	plans, err := repo.ListPlans()
 	if err != nil {
@@ -66,13 +71,18 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 
 	// Collect and filter tasks
 	type taskWithPlan struct {
-		Task   task.Task
-		PlanID string
-		Goal   string
+		Task       task.Task
+		PlanID     string
+		PlanStatus task.PlanStatus
+		Goal       string
 	}
 	var allTasks []taskWithPlan
 
 	for _, p := range plans {
+		// Skip archived plans by default unless --include-archived is set
+		if !includeArchived && p.Status == task.PlanStatusArchived {
+			continue
+		}
 		if planFilter != "" && !strings.HasPrefix(p.ID, planFilter) {
 			continue
 		}
@@ -98,7 +108,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 					continue
 				}
 			}
-			allTasks = append(allTasks, taskWithPlan{Task: t, PlanID: p.ID, Goal: p.Goal})
+			allTasks = append(allTasks, taskWithPlan{Task: t, PlanID: p.ID, PlanStatus: p.Status, Goal: p.Goal})
 		}
 	}
 
@@ -107,6 +117,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		type taskJSON struct {
 			ID                     string   `json:"id"`
 			PlanID                 string   `json:"plan_id"`
+			PlanStatus             string   `json:"plan_status"`
 			Title                  string   `json:"title"`
 			Description            string   `json:"description"`
 			Status                 string   `json:"status"`
@@ -124,6 +135,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 			jsonTasks = append(jsonTasks, taskJSON{
 				ID:                     t.ID,
 				PlanID:                 tp.PlanID,
+				PlanStatus:             string(tp.PlanStatus),
 				Title:                  t.Title,
 				Description:            t.Description,
 				Status:                 string(t.Status),
@@ -833,6 +845,7 @@ func init() {
 	taskListCmd.Flags().StringP("status", "s", "", "Filter by status (pending, in_progress, completed, failed)")
 	taskListCmd.Flags().IntP("priority", "P", 0, "Filter by max priority (show tasks with priority <= value)")
 	taskListCmd.Flags().String("scope", "", "Filter by scope/tag")
+	taskListCmd.Flags().Bool("include-archived", false, "Include tasks from archived plans")
 
 	taskUpdateCmd.Flags().String("status", "", "Update the task status (draft, pending, in_progress, verifying, completed, failed)")
 	taskDeleteCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
