@@ -237,18 +237,37 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 }
 
 // formatTaskStatus returns a color-coded status string.
+// Covers all known TaskStatus values with an "unknown" fallback for unexpected values.
 func formatTaskStatus(status task.TaskStatus) string {
 	switch status {
 	case task.StatusCompleted, "done":
+		// Green - successfully completed
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("[done]    ")
 	case task.StatusInProgress:
+		// Orange/bold - actively working
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true).Render("[active]  ")
 	case task.StatusFailed:
+		// Red - execution or verification failed
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("[failed]  ")
 	case task.StatusVerifying:
+		// Blue - running validation
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render("[verify]  ")
-	default:
+	case task.StatusPending:
+		// Gray - ready to be picked up
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("[pending] ")
+	case task.StatusDraft:
+		// Dim gray - initial creation, not ready
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("[draft]   ")
+	case task.StatusBlocked:
+		// Red/dim - waiting on dependencies
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("124")).Render("[blocked] ")
+	case task.StatusReady:
+		// Green/dim - dependencies met, ready for execution
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("28")).Render("[ready]   ")
+	default:
+		// Unknown status - neutral gray with label showing the actual value
+		// This ensures we never panic on unexpected values
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("[unknown] ")
 	}
 }
 
