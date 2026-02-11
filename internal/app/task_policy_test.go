@@ -19,7 +19,7 @@ func TestTaskComplete_PolicyEnforcement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create .taskwing/policies directory
 	policiesDir := filepath.Join(tmpDir, ".taskwing", "policies")
@@ -62,7 +62,7 @@ deny contains msg if {
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create a test plan and task
 	testPlan := &task.Plan{
@@ -91,7 +91,7 @@ deny contains msg if {
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("failed to change to temp dir: %v", err)
 	}
-	defer os.Chdir(oldWd)
+	defer func() { _ = os.Chdir(oldWd) }()
 
 	// Create TaskApp
 	appCtx := &Context{

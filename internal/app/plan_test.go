@@ -206,9 +206,10 @@ func TestPlanApp_Generate_SemanticValidation(t *testing.T) {
 		}
 
 		result, err := planApp.Generate(context.Background(), GenerateOptions{
-			Goal:         "Test goal",
-			EnrichedGoal: "Test enriched goal",
-			Save:         true,
+			Goal:             "Test goal",
+			ClarifySessionID: "clarify-ephemeral",
+			EnrichedGoal:     "Test enriched goal",
+			Save:             true,
 		})
 
 		if err != nil {
@@ -282,9 +283,10 @@ func TestPlanApp_Generate_SemanticValidation(t *testing.T) {
 		}
 
 		result, err := planApp.Generate(context.Background(), GenerateOptions{
-			Goal:         "Test goal",
-			EnrichedGoal: "Test enriched goal",
-			Save:         true,
+			Goal:             "Test goal",
+			ClarifySessionID: "clarify-ephemeral",
+			EnrichedGoal:     "Test enriched goal",
+			Save:             true,
 		})
 
 		if err != nil {

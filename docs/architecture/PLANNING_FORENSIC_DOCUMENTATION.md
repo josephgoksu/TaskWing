@@ -45,33 +45,33 @@
 |--------|-------------|
 | **Trigger** | `PlanApp.Clarify()` invocation |
 | **Actors** | `ClarifyingAgent` (LLM-backed) |
-| **Inputs** | `goal` (string), `history` (string), optional knowledge context |
-| **Outputs** | `ClarifyResult` with `questions[]`, `enriched_goal`, `is_ready_to_plan` |
-| **Persistence** | None (in-memory until plan generation) |
-| **Control Transfer** | Returns to caller; caller decides to loop or proceed |
+| **Inputs** | First call: `goal`; follow-up calls: `clarify_session_id` + `answers[]`; optional knowledge context |
+| **Outputs** | `ClarifyResult` with `clarify_session_id`, `questions[]`, `enriched_goal`, `is_ready_to_plan`, `round_index`, `max_rounds_reached` |
+| **Persistence** | Session + turn history persisted in `clarify_sessions` and `clarify_turns` |
+| **Control Transfer** | Returns to caller; generation is blocked until `is_ready_to_plan=true` |
 
-**Source:** `internal/app/plan.go:129-233`, `internal/agents/impl/planning_agents.go:50-109`
+**Source:** `internal/app/plan.go`, `internal/memory/task_store.go`, `internal/mcp/types.go`
 
 **Auto-Answer Loop:**
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ ClarifyingAgent.Run(goal, history, context)                 │
-└─────────────────┬───────────────────────────────────────────┘
-                  │
-                  ▼
-        ┌─────────────────┐
-        │ is_ready_to_plan │
-        │     = true?     │
-        └───────┬─────────┘
-           NO   │   YES
-           │    │    │
-           ▼    │    ▼
-    ┌──────────┐│  ┌────────────────┐
-    │AutoAnswer││  │Return enriched │
-    │ (max 3x) ││  │goal to caller  │
-    └────┬─────┘│  └────────────────┘
-         │      │
-         └──────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Clarify start: create session (round 1) and run clarifier               │
+└────────────────────┬─────────────────────────────────────────────────────┘
+                     │
+                     ▼
+            ┌────────────────────┐
+            │ is_ready_to_plan ? │
+            └─────────┬──────────┘
+               NO     │      YES
+               │      │       │
+               ▼      │       ▼
+     ┌────────────────────┐  ┌───────────────────────────┐
+     │ Persist turn+state │  │ Return ready result       │
+     │ Return questions   │  │ allow generate            │
+     └─────────┬──────────┘  └───────────────────────────┘
+               │
+               ▼
+   Continue with clarify_session_id + answers[] (or auto_answer)
 ```
 
 **Conditional Logic (observed):**
@@ -627,5 +627,46 @@ Task completion fails (status != in_progress) →
 **Output:** `TaskResult` with `AuditTriggered=true`, `AuditStatus`, optional `PRURL`
 
 ---
+
+## 11. Mermaid Diagrams
+
+### 11.1 Multi-Stage Clarify Session Loop
+
+```mermaid
+flowchart TD
+    A["User defines goal"] --> B["plan clarify (first call with goal)"]
+    B --> C["Create clarify_session (round_index=0)"]
+    C --> D["Run clarifier with knowledge + persisted turn history"]
+    D --> E{"is_ready_to_plan?"}
+
+    E -- "No" --> F["Persist clarify_turn (questions, answers, enriched_goal snapshot)"]
+    F --> G{"Interactive TTY?"}
+    G -- "Yes" --> H["Ask questions and collect structured answers[]"]
+    G -- "No / JSON" --> I["Return unresolved state: clarify_session_id + questions + enriched_goal"]
+    H --> J["plan clarify (follow-up with clarify_session_id + answers[])"]
+    J --> D
+
+    E -- "Yes" --> K["Persist session state: ready_to_plan"]
+    K --> L["plan generate (goal + enriched_goal + clarify_session_id)"]
+    L --> M{"Session ready_to_plan?"}
+    M -- "No" --> N["Reject generate with remediation message"]
+    M -- "Yes" --> O["Generate tasks, save plan, set active plan"]
+
+    P["Legacy payload with history field"] --> Q["Rejected (hard-break validation error)"]
+```
+
+### 11.2 `taskwing goal` Execution Path
+
+```mermaid
+flowchart LR
+    A["taskwing goal '<goal>'"] --> B{"TTY + not --auto-answer?"}
+    B -- "Yes" --> C["Interactive clarify rounds"]
+    B -- "No" --> D["Single clarify call (or auto-answer loop)"]
+    C --> E{"is_ready_to_plan?"}
+    D --> E
+    E -- "No" --> F["Return unresolved clarify state (no generate)"]
+    E -- "Yes" --> G["Call generate with clarify_session_id"]
+    G --> H["Persist plan + tasks and activate plan"]
+```
 
 ## End of Documentation

@@ -307,17 +307,18 @@ TaskWing provides project memory for AI assistants via MCP tools and slash comma
 |------|-------------|
 | `recall` | Retrieve project knowledge (decisions, patterns, constraints) |
 | `task` | Unified task lifecycle (next, current, start, complete) |
-| `plan` | Plan management (clarify, decompose, expand, generate, finalize, audit) |
+| `plan` | Plan management (clarify, generate, audit) |
 | `code` | Code intelligence (find, search, explain, callers, impact, simplify) |
 | `debug` | Diagnose issues systematically with AI-powered analysis |
 | `remember` | Store knowledge in project memory |
 
 ### CLI Commands
 ```bash
-taskwing bootstrap   # Initialize project memory (first-time setup)
-taskwing goal "goal" # Create and activate a development plan
-taskwing task list   # List tasks from active plan
-taskwing plan status # Show progress of active plan
+tw bootstrap        # Initialize project memory (first-time setup)
+tw context "query"  # Search knowledge semantically
+tw add "content"    # Add knowledge to memory
+tw plan new "goal"  # Create development plan
+tw task list        # List tasks from active plan
 ```
 
 ### Autonomous Task Execution (Hooks)

@@ -36,9 +36,13 @@ var bootstrapCmd = &cobra.Command{
 Bootstrap analyzes your codebase to extract architectural knowledge:
   • Creates .taskwing/ directory structure
   • Sets up AI assistant integration (Claude, Cursor, etc.)
+  • Auto-repairs managed local AI config drift
   • Indexes code symbols (functions, types, etc.)
   • Analyzes code patterns and architecture (requires API key)
   • Extracts decisions and understands WHY choices were made
+
+Bootstrap does NOT adopt unmanaged AI config automatically and does NOT mutate
+global MCP in run mode. Use "taskwing doctor --fix" for explicit repair flows.
 
 Requires: OPENAI_API_KEY or TASKWING_LLM_APIKEY environment variable.
 
@@ -132,23 +136,20 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	// ═══════════════════════════════════════════════════════════════════════
 	// PHASE 1: Probe Environment (no side effects)
 	// ═══════════════════════════════════════════════════════════════════════
+	existingGlobalAIs := detectExistingMCPConfigs()
+	globalMCPSet := make(map[string]bool, len(existingGlobalAIs))
+	for _, ai := range existingGlobalAIs {
+		globalMCPSet[ai] = true
+	}
+	previousDetector := bootstrap.GlobalMCPDetector
+	bootstrap.GlobalMCPDetector = func(aiName string) bool {
+		return globalMCPSet[aiName]
+	}
+	defer func() { bootstrap.GlobalMCPDetector = previousDetector }()
+
 	snapshot, err := bootstrap.ProbeEnvironment(cwd)
 	if err != nil {
 		return fmt.Errorf("probe environment: %w", err)
-	}
-
-	// Enhance snapshot with global MCP detection (uses existing helper)
-	existingGlobalAIs := detectExistingMCPConfigs()
-	if len(existingGlobalAIs) > 0 {
-		snapshot.HasAnyGlobalMCP = true
-		snapshot.GlobalMCPAIs = existingGlobalAIs
-		// Update AI health with global MCP info
-		for _, ai := range existingGlobalAIs {
-			if health, ok := snapshot.AIHealth[ai]; ok {
-				health.GlobalMCPExists = true
-				snapshot.AIHealth[ai] = health
-			}
-		}
 	}
 
 	// ═══════════════════════════════════════════════════════════════════════
@@ -203,6 +204,17 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 
 	// Final success message
 	if !flags.Quiet {
+		if len(plan.ManagedDriftAIs) > 0 {
+			fmt.Printf("managed_drift_fixed: %s\n", strings.Join(plan.ManagedDriftAIs, ", "))
+		}
+		if len(plan.UnmanagedDriftAIs) > 0 {
+			fmt.Printf("unmanaged_drift_detected: %s\n", strings.Join(plan.UnmanagedDriftAIs, ", "))
+			fmt.Println("  ↳ Run `taskwing doctor --fix --adopt-unmanaged` to claim and repair unmanaged TaskWing-like configs.")
+		}
+		if len(plan.GlobalMCPDriftAIs) > 0 {
+			fmt.Printf("global_mcp_drift_detected: %s\n", strings.Join(plan.GlobalMCPDriftAIs, ", "))
+			fmt.Println("  ↳ Run `taskwing doctor --fix` to repair global MCP registration.")
+		}
 		fmt.Println()
 		fmt.Println("✅ Bootstrap complete!")
 	}

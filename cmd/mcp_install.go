@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
+	"github.com/josephgoksu/TaskWing/internal/mcpcfg"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -197,7 +198,7 @@ type OpenCodeConfig struct {
 // mcpServerName returns the TaskWing MCP server name for a project
 // Uses a consistent name across all projects; AI tools differentiate by working directory
 func mcpServerName(projectDir string) string {
-	return "taskwing-mcp"
+	return mcpcfg.CanonicalServerName
 }
 
 // legacyServerName returns the OLD server name format for migration cleanup
@@ -255,6 +256,13 @@ func upsertMCPServer(configPath, serverName string, serverCfg MCPServerConfig) e
 		config.MCPServers = make(map[string]MCPServerConfig)
 	}
 
+	// Strict canonical naming: remove all legacy TaskWing server keys.
+	for name := range config.MCPServers {
+		if mcpcfg.IsLegacyServerName(name) {
+			delete(config.MCPServers, name)
+		}
+	}
+
 	// Upsert server
 	config.MCPServers[serverName] = serverCfg
 
@@ -297,6 +305,13 @@ func upsertVSCodeMCPServer(configPath, serverName string, serverCfg VSCodeMCPSer
 
 	if config.Servers == nil {
 		config.Servers = make(map[string]VSCodeMCPServerConfig)
+	}
+
+	// Strict canonical naming: remove all legacy TaskWing server keys.
+	for name := range config.Servers {
+		if mcpcfg.IsLegacyServerName(name) {
+			delete(config.Servers, name)
+		}
 	}
 
 	// Upsert server
@@ -612,6 +627,13 @@ func upsertOpenCodeMCPServer(configPath, serverName string, serverCfg OpenCodeMC
 	// Ensure schema is set
 	if config.Schema == "" {
 		config.Schema = "https://opencode.ai/config.json"
+	}
+
+	// Strict canonical naming: remove all legacy TaskWing server keys.
+	for name := range config.MCP {
+		if mcpcfg.IsLegacyServerName(name) {
+			delete(config.MCP, name)
+		}
 	}
 
 	// Upsert server

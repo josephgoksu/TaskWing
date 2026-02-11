@@ -13,14 +13,14 @@ func TestUpdateNodeWorkspace_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize repository
 	repo, err := NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create a test node
 	testNode := &Node{
@@ -56,13 +56,13 @@ func TestUpdateNodeWorkspace_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Try to update a non-existent node
 	err = repo.UpdateNodeWorkspace("nonexistent-node", "osprey")
@@ -77,13 +77,13 @@ func TestWorkspaceDefaultsToRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create a node without explicit workspace
 	testNode := &Node{
@@ -116,13 +116,13 @@ func TestListNodesFiltered_ByWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create nodes in different workspaces
 	nodes := []Node{
@@ -170,13 +170,13 @@ func TestMarkdownMirrorAfterWorkspaceUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create a feature node (features get markdown files)
 	testNode := &Node{
@@ -229,13 +229,13 @@ func TestSearchFTSFiltered_Workspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create nodes in different workspaces with searchable content
 	nodes := []Node{
@@ -344,13 +344,13 @@ func TestListNodesFiltered_WorkspaceWithType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create nodes in different workspaces with different types
 	nodes := []Node{
@@ -430,13 +430,13 @@ func TestListNodesFiltered_IncludeRootBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create a mix of workspaces including empty (legacy nodes)
 	nodes := []Node{
@@ -505,13 +505,13 @@ func TestListNodesWithEmbeddingsFiltered_Workspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create nodes with embeddings in different workspaces
 	// Note: We need to manually set embeddings since CreateNode doesn't generate them

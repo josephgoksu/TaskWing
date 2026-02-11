@@ -507,7 +507,7 @@ type TaskToolResult struct {
 // HandleTaskTool is the unified handler for all task lifecycle operations.
 // It routes to the appropriate service logic based on the action parameter.
 // Supports lifecycle actions: next, current, start, complete
-func HandleTaskTool(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+func HandleTaskTool(ctx context.Context, repo *memory.Repository, params TaskToolParams, defaultSessionID string) (*TaskToolResult, error) {
 	// Validate action
 	if !params.Action.IsValid() {
 		return &TaskToolResult{
@@ -518,11 +518,11 @@ func HandleTaskTool(ctx context.Context, repo *memory.Repository, params TaskToo
 
 	switch params.Action {
 	case TaskActionNext:
-		return handleTaskNext(ctx, repo, params)
+		return handleTaskNext(ctx, repo, params, defaultSessionID)
 	case TaskActionCurrent:
-		return handleTaskCurrent(ctx, repo, params)
+		return handleTaskCurrent(ctx, repo, params, defaultSessionID)
 	case TaskActionStart:
-		return handleTaskStart(ctx, repo, params)
+		return handleTaskStart(ctx, repo, params, defaultSessionID)
 	case TaskActionComplete:
 		return handleTaskComplete(ctx, repo, params)
 	default:
@@ -533,10 +533,18 @@ func HandleTaskTool(ctx context.Context, repo *memory.Repository, params TaskToo
 	}
 }
 
+func resolveTaskSessionID(explicit, fallback string) string {
+	sessionID := strings.TrimSpace(explicit)
+	if sessionID != "" {
+		return sessionID
+	}
+	return strings.TrimSpace(fallback)
+}
+
 // handleTaskNext implements the 'next' action - get the next pending task.
-func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToolParams, defaultSessionID string) (*TaskToolResult, error) {
 	// Validate required fields
-	sessionID := strings.TrimSpace(params.SessionID)
+	sessionID := resolveTaskSessionID(params.SessionID, defaultSessionID)
 	if sessionID == "" {
 		return &TaskToolResult{
 			Action: "next",
@@ -544,7 +552,7 @@ func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToo
 			Content: FormatMultiValidationError(
 				"next",
 				[]string{"session_id"},
-				"Provide a unique session identifier (e.g., from hook session-init or a UUID).",
+				"Provide a unique session identifier (e.g., hook session-init or UUID). MCP tools can omit this when transport session identity is available.",
 			),
 		}, nil
 	}
@@ -579,9 +587,9 @@ func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToo
 }
 
 // handleTaskCurrent implements the 'current' action - get the current in-progress task.
-func handleTaskCurrent(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+func handleTaskCurrent(ctx context.Context, repo *memory.Repository, params TaskToolParams, defaultSessionID string) (*TaskToolResult, error) {
 	// Validate required fields
-	sessionID := strings.TrimSpace(params.SessionID)
+	sessionID := resolveTaskSessionID(params.SessionID, defaultSessionID)
 	if sessionID == "" {
 		return &TaskToolResult{
 			Action: "current",
@@ -589,7 +597,7 @@ func handleTaskCurrent(ctx context.Context, repo *memory.Repository, params Task
 			Content: FormatMultiValidationError(
 				"current",
 				[]string{"session_id"},
-				"Provide the session identifier used when starting the task.",
+				"Provide the session identifier used when starting the task. MCP tools can omit this when transport session identity is available.",
 			),
 		}, nil
 	}
@@ -612,7 +620,7 @@ func handleTaskCurrent(ctx context.Context, repo *memory.Repository, params Task
 }
 
 // handleTaskStart implements the 'start' action - claim a specific task.
-func handleTaskStart(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+func handleTaskStart(ctx context.Context, repo *memory.Repository, params TaskToolParams, defaultSessionID string) (*TaskToolResult, error) {
 	// Validate required fields
 	taskID := strings.TrimSpace(params.TaskID)
 	if taskID == "" {
@@ -622,7 +630,7 @@ func handleTaskStart(ctx context.Context, repo *memory.Repository, params TaskTo
 		}, nil
 	}
 
-	sessionID := strings.TrimSpace(params.SessionID)
+	sessionID := resolveTaskSessionID(params.SessionID, defaultSessionID)
 	if sessionID == "" {
 		return &TaskToolResult{
 			Action: "start",
@@ -735,18 +743,45 @@ func HandlePlanTool(ctx context.Context, repo *memory.Repository, params PlanToo
 
 // handlePlanClarify implements the 'clarify' action - refine a goal with questions.
 func handlePlanClarify(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
-	// Validate required fields
 	goal := strings.TrimSpace(params.Goal)
-	if goal == "" {
+	sessionID := strings.TrimSpace(params.ClarifySessionID)
+
+	// First call requires goal.
+	if sessionID == "" && goal == "" {
 		return &PlanToolResult{
 			Action: "clarify",
 			Error:  "goal is required for clarify action",
 			Content: FormatMultiValidationError(
 				"clarify",
 				[]string{"goal"},
-				"Provide a development goal describing what you want to build or accomplish.",
+				"First clarify call requires a goal. Follow-up calls require clarify_session_id and answers.",
 			),
 		}, nil
+	}
+
+	// Follow-up calls require answers unless auto_answer is requested.
+	if sessionID != "" && !params.AutoAnswer && len(params.Answers) == 0 {
+		return &PlanToolResult{
+			Action: "clarify",
+			Error:  "answers are required for clarify follow-up action",
+			Content: FormatMultiValidationError(
+				"clarify",
+				[]string{"answers"},
+				"Provide answers for pending questions, or set auto_answer=true to let TaskWing continue automatically.",
+			),
+		}, nil
+	}
+
+	answers := make([]app.ClarifyAnswer, 0, len(params.Answers))
+	for _, ans := range params.Answers {
+		answer := strings.TrimSpace(ans.Answer)
+		if answer == "" {
+			continue
+		}
+		answers = append(answers, app.ClarifyAnswer{
+			Question: strings.TrimSpace(ans.Question),
+			Answer:   answer,
+		})
 	}
 
 	// Use RoleBootstrap for planning operations
@@ -754,9 +789,10 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Clarify(ctx, app.ClarifyOptions{
-		Goal:       goal,
-		History:    params.History,
-		AutoAnswer: params.AutoAnswer,
+		Goal:             goal,
+		ClarifySessionID: sessionID,
+		Answers:          answers,
+		AutoAnswer:       params.AutoAnswer,
 	})
 	if err != nil {
 		return &PlanToolResult{
@@ -776,6 +812,7 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 	// Validate ALL required fields at once to avoid sequential error frustration
 	goal := strings.TrimSpace(params.Goal)
 	enrichedGoal := strings.TrimSpace(params.EnrichedGoal)
+	clarifySessionID := strings.TrimSpace(params.ClarifySessionID)
 
 	var missingFields []string
 	if goal == "" {
@@ -783,6 +820,9 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 	}
 	if enrichedGoal == "" {
 		missingFields = append(missingFields, "enriched_goal")
+	}
+	if clarifySessionID == "" {
+		missingFields = append(missingFields, "clarify_session_id")
 	}
 
 	if len(missingFields) > 0 {
@@ -792,7 +832,7 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 			Content: FormatMultiValidationError(
 				"generate",
 				missingFields,
-				"First call `plan clarify` to refine your goal into an enriched specification, then pass both `goal` (original) and `enriched_goal` (specification from clarify) to generate.",
+				"First call `plan clarify` until is_ready_to_plan=true, then pass goal, enriched_goal, and clarify_session_id to generate.",
 			),
 		}, nil
 	}
@@ -808,9 +848,10 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Generate(ctx, app.GenerateOptions{
-		Goal:         goal,
-		EnrichedGoal: enrichedGoal,
-		Save:         save,
+		Goal:             goal,
+		ClarifySessionID: clarifySessionID,
+		EnrichedGoal:     enrichedGoal,
+		Save:             save,
 	})
 	if err != nil {
 		return &PlanToolResult{

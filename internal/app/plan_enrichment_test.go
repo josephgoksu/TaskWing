@@ -125,9 +125,10 @@ func TestPlanEnrichment_ContextSummaryPopulated(t *testing.T) {
 
 	// Execute generate with Save=true
 	genRes, err := app.Generate(context.Background(), GenerateOptions{
-		Goal:         "implement user auth",
-		EnrichedGoal: clarifyRes.EnrichedGoal,
-		Save:         true,
+		Goal:             "implement user auth",
+		ClarifySessionID: clarifyRes.ClarifySessionID,
+		EnrichedGoal:     clarifyRes.EnrichedGoal,
+		Save:             true,
 	})
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
@@ -228,9 +229,10 @@ func TestPlanEnrichment_MultipleQueriesAggregated(t *testing.T) {
 
 	clarifyRes, _ := app.Clarify(context.Background(), ClarifyOptions{Goal: "test"})
 	_, err := app.Generate(context.Background(), GenerateOptions{
-		Goal:         "test",
-		EnrichedGoal: clarifyRes.EnrichedGoal,
-		Save:         true,
+		Goal:             "test",
+		ClarifySessionID: clarifyRes.ClarifySessionID,
+		EnrichedGoal:     clarifyRes.EnrichedGoal,
+		Save:             true,
 	})
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
@@ -306,9 +308,10 @@ func TestPlanEnrichment_NilEnricherSkipsEnrichment(t *testing.T) {
 
 	clarifyRes, _ := app.Clarify(context.Background(), ClarifyOptions{Goal: "test"})
 	genRes, err := app.Generate(context.Background(), GenerateOptions{
-		Goal:         "test",
-		EnrichedGoal: clarifyRes.EnrichedGoal,
-		Save:         true,
+		Goal:             "test",
+		ClarifySessionID: clarifyRes.ClarifySessionID,
+		EnrichedGoal:     clarifyRes.EnrichedGoal,
+		Save:             true,
 	})
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
@@ -397,9 +400,10 @@ func TestPlanEnrichment_ContentLengthHandling(t *testing.T) {
 
 	clarifyRes, _ := app.Clarify(context.Background(), ClarifyOptions{Goal: "test"})
 	genRes, err := app.Generate(context.Background(), GenerateOptions{
-		Goal:         "test",
-		EnrichedGoal: clarifyRes.EnrichedGoal,
-		Save:         true,
+		Goal:             "test",
+		ClarifySessionID: clarifyRes.ClarifySessionID,
+		EnrichedGoal:     clarifyRes.EnrichedGoal,
+		Save:             true,
 	})
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)

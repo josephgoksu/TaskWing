@@ -85,7 +85,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 // TestQueryService_FindSymbol tests symbol lookup by ID.
 func TestQueryService_FindSymbol(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewRepository(db)
 	qs := NewQueryService(repo, llm.Config{})
@@ -137,7 +137,7 @@ func TestQueryService_FindSymbol(t *testing.T) {
 // TestQueryService_FindSymbolByName tests symbol lookup by name.
 func TestQueryService_FindSymbolByName(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewRepository(db)
 	qs := NewQueryService(repo, llm.Config{})
@@ -226,7 +226,7 @@ func TestQueryService_FindSymbolByName(t *testing.T) {
 // TestQueryService_AnalyzeImpact tests impact analysis with dependency graph traversal.
 func TestQueryService_AnalyzeImpact(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewRepository(db)
 	qs := NewQueryService(repo, llm.Config{})
@@ -359,7 +359,7 @@ func TestQueryService_AnalyzeImpact(t *testing.T) {
 // TestQueryService_AnalyzeImpact_CyclicGraph tests impact analysis handles cycles correctly.
 func TestQueryService_AnalyzeImpact_CyclicGraph(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewRepository(db)
 	qs := NewQueryService(repo, llm.Config{})
@@ -431,7 +431,7 @@ func TestQueryService_AnalyzeImpact_CyclicGraph(t *testing.T) {
 // TestQueryService_GetCallers tests the GetCallers function.
 func TestQueryService_GetCallers(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewRepository(db)
 	qs := NewQueryService(repo, llm.Config{})
@@ -478,7 +478,7 @@ func TestQueryService_GetCallers(t *testing.T) {
 // TestQueryService_GetCallees tests the GetCallees function.
 func TestQueryService_GetCallees(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewRepository(db)
 	qs := NewQueryService(repo, llm.Config{})
@@ -525,7 +525,7 @@ func TestQueryService_GetCallees(t *testing.T) {
 // TestQueryService_NotFoundScenarios tests various not-found scenarios.
 func TestQueryService_NotFoundScenarios(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := NewRepository(db)
 	qs := NewQueryService(repo, llm.Config{})

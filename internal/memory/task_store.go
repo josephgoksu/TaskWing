@@ -29,6 +29,13 @@ func nullTimeString(t time.Time) interface{} {
 	return t.Format(time.RFC3339)
 }
 
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
 // txExecutor abstracts sql.Tx for task insertion (enables DRY)
 type txExecutor interface {
 	Exec(query string, args ...any) (sql.Result, error)
@@ -371,6 +378,211 @@ func (s *SQLiteStore) DeletePlan(id string) error {
 		return fmt.Errorf("plan not found: %s", id)
 	}
 	return nil
+}
+
+// === Clarify Session Persistence ===
+
+// CreateClarifySession creates a new persisted clarify session.
+func (s *SQLiteStore) CreateClarifySession(session *task.ClarifySession) error {
+	if session == nil {
+		return fmt.Errorf("clarify session is required")
+	}
+	if session.Goal == "" {
+		return fmt.Errorf("clarify session goal is required")
+	}
+	if session.ID == "" {
+		session.ID = "clarify-" + uuid.New().String()[:8]
+	}
+	if session.State == "" {
+		session.State = task.ClarifySessionStateNew
+	}
+	if session.MaxRounds <= 0 {
+		session.MaxRounds = 5
+	}
+	if session.MaxQuestionsPerRound <= 0 {
+		session.MaxQuestionsPerRound = 3
+	}
+	now := time.Now().UTC()
+	if session.CreatedAt.IsZero() {
+		session.CreatedAt = now
+	}
+	session.UpdatedAt = now
+
+	questionsJSON, err := json.Marshal(session.CurrentQuestions)
+	if err != nil {
+		return fmt.Errorf("marshal current_questions: %w", err)
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO clarify_sessions (
+			id, goal, enriched_goal, goal_summary, state, round_index,
+			max_rounds, max_questions_per_round, current_questions, is_ready_to_plan,
+			last_context_used, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		session.ID, session.Goal, session.EnrichedGoal, session.GoalSummary, session.State, session.RoundIndex,
+		session.MaxRounds, session.MaxQuestionsPerRound, string(questionsJSON), boolToInt(session.IsReadyToPlan),
+		session.LastContextUsed, session.CreatedAt.Format(time.RFC3339), session.UpdatedAt.Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("insert clarify session: %w", err)
+	}
+	return nil
+}
+
+// GetClarifySession retrieves a clarify session by ID.
+func (s *SQLiteStore) GetClarifySession(id string) (*task.ClarifySession, error) {
+	var session task.ClarifySession
+	var createdAt, updatedAt string
+	var currentQuestionsJSON sql.NullString
+	var isReadyInt int
+
+	err := s.db.QueryRow(`
+		SELECT id, goal, enriched_goal, goal_summary, state, round_index,
+		       max_rounds, max_questions_per_round, current_questions, is_ready_to_plan,
+		       last_context_used, created_at, updated_at
+		FROM clarify_sessions
+		WHERE id = ?
+	`, id).Scan(
+		&session.ID, &session.Goal, &session.EnrichedGoal, &session.GoalSummary, &session.State, &session.RoundIndex,
+		&session.MaxRounds, &session.MaxQuestionsPerRound, &currentQuestionsJSON, &isReadyInt,
+		&session.LastContextUsed, &createdAt, &updatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("clarify session not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query clarify session: %w", err)
+	}
+
+	session.IsReadyToPlan = isReadyInt == 1
+	session.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	session.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	if currentQuestionsJSON.Valid && currentQuestionsJSON.String != "" {
+		_ = json.Unmarshal([]byte(currentQuestionsJSON.String), &session.CurrentQuestions)
+	}
+
+	return &session, nil
+}
+
+// UpdateClarifySession updates mutable fields for a clarify session.
+func (s *SQLiteStore) UpdateClarifySession(session *task.ClarifySession) error {
+	if session == nil {
+		return fmt.Errorf("clarify session is required")
+	}
+	if session.ID == "" {
+		return fmt.Errorf("clarify session id is required")
+	}
+
+	session.UpdatedAt = time.Now().UTC()
+
+	questionsJSON, err := json.Marshal(session.CurrentQuestions)
+	if err != nil {
+		return fmt.Errorf("marshal current_questions: %w", err)
+	}
+
+	res, err := s.db.Exec(`
+		UPDATE clarify_sessions
+		SET enriched_goal = ?, goal_summary = ?, state = ?, round_index = ?,
+		    max_rounds = ?, max_questions_per_round = ?, current_questions = ?, is_ready_to_plan = ?,
+		    last_context_used = ?, updated_at = ?
+		WHERE id = ?
+	`, session.EnrichedGoal, session.GoalSummary, session.State, session.RoundIndex,
+		session.MaxRounds, session.MaxQuestionsPerRound, string(questionsJSON), boolToInt(session.IsReadyToPlan),
+		session.LastContextUsed, session.UpdatedAt.Format(time.RFC3339), session.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update clarify session: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return fmt.Errorf("clarify session not found: %s", session.ID)
+	}
+	return nil
+}
+
+// CreateClarifyTurn persists one round of clarify output.
+func (s *SQLiteStore) CreateClarifyTurn(turn *task.ClarifyTurn) error {
+	if turn == nil {
+		return fmt.Errorf("clarify turn is required")
+	}
+	if turn.SessionID == "" {
+		return fmt.Errorf("clarify turn session_id is required")
+	}
+	if turn.ID == "" {
+		turn.ID = "turn-" + uuid.New().String()[:8]
+	}
+	if turn.CreatedAt.IsZero() {
+		turn.CreatedAt = time.Now().UTC()
+	}
+
+	questionsJSON, err := json.Marshal(turn.Questions)
+	if err != nil {
+		return fmt.Errorf("marshal questions: %w", err)
+	}
+	answersJSON, err := json.Marshal(turn.Answers)
+	if err != nil {
+		return fmt.Errorf("marshal answers: %w", err)
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO clarify_turns (
+			id, session_id, round_index, questions, answers, goal_summary, enriched_goal,
+			is_ready_to_plan, auto_answered, max_rounds_reached, context_summary, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		turn.ID, turn.SessionID, turn.RoundIndex, string(questionsJSON), string(answersJSON), turn.GoalSummary, turn.EnrichedGoal,
+		boolToInt(turn.IsReadyToPlan), boolToInt(turn.AutoAnswered), boolToInt(turn.MaxRoundsReached), turn.ContextSummary, turn.CreatedAt.Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("insert clarify turn: %w", err)
+	}
+	return nil
+}
+
+// ListClarifyTurns returns all clarify turns for a session in round order.
+func (s *SQLiteStore) ListClarifyTurns(sessionID string) ([]task.ClarifyTurn, error) {
+	rows, err := s.db.Query(`
+		SELECT id, session_id, round_index, questions, answers, goal_summary, enriched_goal,
+		       is_ready_to_plan, auto_answered, max_rounds_reached, context_summary, created_at
+		FROM clarify_turns
+		WHERE session_id = ?
+		ORDER BY round_index ASC
+	`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("query clarify turns: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var turns []task.ClarifyTurn
+	for rows.Next() {
+		var turn task.ClarifyTurn
+		var questionsJSON, answersJSON sql.NullString
+		var isReadyInt, autoAnsweredInt, maxRoundsReachedInt int
+		var createdAt string
+		if err := rows.Scan(
+			&turn.ID, &turn.SessionID, &turn.RoundIndex, &questionsJSON, &answersJSON, &turn.GoalSummary, &turn.EnrichedGoal,
+			&isReadyInt, &autoAnsweredInt, &maxRoundsReachedInt, &turn.ContextSummary, &createdAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan clarify turn: %w", err)
+		}
+		turn.IsReadyToPlan = isReadyInt == 1
+		turn.AutoAnswered = autoAnsweredInt == 1
+		turn.MaxRoundsReached = maxRoundsReachedInt == 1
+		turn.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		if questionsJSON.Valid && questionsJSON.String != "" {
+			_ = json.Unmarshal([]byte(questionsJSON.String), &turn.Questions)
+		}
+		if answersJSON.Valid && answersJSON.String != "" {
+			_ = json.Unmarshal([]byte(answersJSON.String), &turn.Answers)
+		}
+		turns = append(turns, turn)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list clarify turns: %w", err)
+	}
+
+	return turns, nil
 }
 
 // === Task CRUD ===
@@ -1047,7 +1259,7 @@ func (s *SQLiteStore) FindTaskIDsByPrefix(prefix string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("find task IDs by prefix: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []string
 	for rows.Next() {
@@ -1071,7 +1283,7 @@ func (s *SQLiteStore) FindPlanIDsByPrefix(prefix string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("find plan IDs by prefix: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []string
 	for rows.Next() {

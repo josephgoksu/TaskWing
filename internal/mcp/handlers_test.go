@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/josephgoksu/TaskWing/internal/memory"
 )
 
 func TestHandleCodeTool_InvalidAction(t *testing.T) {
@@ -142,7 +144,7 @@ func TestHandleTaskTool_InvalidAction(t *testing.T) {
 		Action: "invalid_action",
 	}
 
-	result, err := HandleTaskTool(context.Background(), nil, params)
+	result, err := HandleTaskTool(context.Background(), nil, params, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -162,7 +164,7 @@ func TestHandleTaskTool_StartMissingTaskID(t *testing.T) {
 		SessionID: "session-123",
 	}
 
-	result, err := HandleTaskTool(context.Background(), nil, params)
+	result, err := HandleTaskTool(context.Background(), nil, params, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -182,7 +184,7 @@ func TestHandleTaskTool_StartMissingSessionID(t *testing.T) {
 		SessionID: "", // missing
 	}
 
-	result, err := HandleTaskTool(context.Background(), nil, params)
+	result, err := HandleTaskTool(context.Background(), nil, params, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -192,13 +194,55 @@ func TestHandleTaskTool_StartMissingSessionID(t *testing.T) {
 	}
 }
 
+func TestResolveTaskSessionID(t *testing.T) {
+	tests := []struct {
+		name     string
+		explicit string
+		fallback string
+		want     string
+	}{
+		{name: "explicit wins", explicit: "session-explicit", fallback: "session-default", want: "session-explicit"},
+		{name: "fallback used", explicit: "", fallback: "session-default", want: "session-default"},
+		{name: "both empty", explicit: "", fallback: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveTaskSessionID(tt.explicit, tt.fallback)
+			if got != tt.want {
+				t.Fatalf("resolveTaskSessionID(%q, %q) = %q, want %q", tt.explicit, tt.fallback, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHandleTaskTool_NextUsesDefaultSessionIDWhenOmitted(t *testing.T) {
+	repo, err := memory.NewDefaultRepository(t.TempDir())
+	if err != nil {
+		t.Fatalf("create repository: %v", err)
+	}
+	defer func() { _ = repo.Close() }()
+
+	params := TaskToolParams{
+		Action: TaskActionNext,
+	}
+
+	result, err := HandleTaskTool(context.Background(), repo, params, "session-from-mcp")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(result.Error, "session_id is required") {
+		t.Fatalf("expected default session_id to be used, got error: %q", result.Error)
+	}
+}
+
 func TestHandleTaskTool_CompleteMissingTaskID(t *testing.T) {
 	params := TaskToolParams{
 		Action: TaskActionComplete,
 		TaskID: "", // missing
 	}
 
-	result, err := HandleTaskTool(context.Background(), nil, params)
+	result, err := HandleTaskTool(context.Background(), nil, params, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -217,7 +261,7 @@ func TestHandleTaskTool_NextMissingSessionID(t *testing.T) {
 		SessionID: "", // missing
 	}
 
-	result, err := HandleTaskTool(context.Background(), nil, params)
+	result, err := HandleTaskTool(context.Background(), nil, params, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -243,7 +287,7 @@ func TestHandleTaskTool_CurrentMissingSessionID(t *testing.T) {
 		SessionID: "", // missing
 	}
 
-	result, err := HandleTaskTool(context.Background(), nil, params)
+	result, err := HandleTaskTool(context.Background(), nil, params, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -279,7 +323,7 @@ func TestHandleTaskTool_ActionRouting(t *testing.T) {
 				// Intentionally missing required fields
 			}
 
-			result, err := HandleTaskTool(context.Background(), nil, params)
+			result, err := HandleTaskTool(context.Background(), nil, params, "")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -335,6 +379,43 @@ func TestHandlePlanTool_ClarifyMissingGoal(t *testing.T) {
 	}
 }
 
+func TestHandlePlanTool_ClarifyFollowUpMissingAnswers(t *testing.T) {
+	params := PlanToolParams{
+		Action:           PlanActionClarify,
+		ClarifySessionID: "clarify-123",
+	}
+
+	result, err := HandlePlanTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Error == "" {
+		t.Fatal("expected validation error for missing answers")
+	}
+	if !strings.Contains(result.Error, "answers") {
+		t.Fatalf("expected error to mention answers, got %q", result.Error)
+	}
+	if !strings.Contains(result.Content, "auto_answer") {
+		t.Fatalf("expected remediation to mention auto_answer, got %q", result.Content)
+	}
+}
+
+func TestHandlePlanTool_ClarifyFollowUpAllowsAutoAnswerWithoutAnswers(t *testing.T) {
+	params := PlanToolParams{
+		Action:           PlanActionClarify,
+		ClarifySessionID: "clarify-123",
+		AutoAnswer:       true,
+	}
+
+	result, err := HandlePlanTool(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(result.Error, "answers are required") {
+		t.Fatalf("unexpected answers validation error when auto_answer=true: %q", result.Error)
+	}
+}
+
 func TestHandlePlanTool_GenerateMissingGoal(t *testing.T) {
 	params := PlanToolParams{
 		Action:       PlanActionGenerate,
@@ -382,34 +463,30 @@ func TestHandlePlanTool_GenerateErrorContainsFieldDetails(t *testing.T) {
 		name           string
 		params         PlanToolParams
 		expectedFields []string
-		fieldCount     int // expected number of missing fields
 	}{
 		{
-			name: "missing_both_fields_lists_both",
+			name: "missing_required_fields_lists_all",
 			params: PlanToolParams{
 				Action: PlanActionGenerate,
-				// Both goal and enriched_goal missing
+				// goal, enriched_goal, clarify_session_id missing
 			},
-			expectedFields: []string{"goal", "enriched_goal"},
-			fieldCount:     2,
+			expectedFields: []string{"goal", "enriched_goal", "clarify_session_id"},
 		},
 		{
-			name: "missing_goal_only_lists_goal",
+			name: "missing_goal_and_session_lists_both",
 			params: PlanToolParams{
 				Action:       PlanActionGenerate,
 				EnrichedGoal: "some enriched goal",
 			},
-			expectedFields: []string{"goal"},
-			fieldCount:     1,
+			expectedFields: []string{"goal", "clarify_session_id"},
 		},
 		{
-			name: "missing_enriched_goal_only_lists_enriched_goal",
+			name: "missing_enriched_goal_and_session",
 			params: PlanToolParams{
 				Action: PlanActionGenerate,
 				Goal:   "some goal",
 			},
-			expectedFields: []string{"enriched_goal"},
-			fieldCount:     1,
+			expectedFields: []string{"enriched_goal", "clarify_session_id"},
 		},
 	}
 
@@ -425,11 +502,6 @@ func TestHandlePlanTool_GenerateErrorContainsFieldDetails(t *testing.T) {
 				if !strings.Contains(result.Error, field) {
 					t.Errorf("error should contain field %q: %s", field, result.Error)
 				}
-			}
-
-			// Verify correct number of fields reported (check bracket contents)
-			if tt.fieldCount == 1 && strings.Contains(result.Error, ", ") {
-				t.Errorf("error lists more fields than expected for single missing field: %s", result.Error)
 			}
 
 			// Content should have actionable guidance

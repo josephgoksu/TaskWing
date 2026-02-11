@@ -29,20 +29,31 @@ import (
 
 // ClarifyResult contains the result of plan clarification.
 type ClarifyResult struct {
-	Success       bool     `json:"success"`
-	Questions     []string `json:"questions,omitempty"`
-	GoalSummary   string   `json:"goal_summary,omitempty"`
-	EnrichedGoal  string   `json:"enriched_goal,omitempty"`
-	IsReadyToPlan bool     `json:"is_ready_to_plan"`
-	ContextUsed   string   `json:"context_used,omitempty"`
-	Message       string   `json:"message,omitempty"`
+	Success          bool     `json:"success"`
+	ClarifySessionID string   `json:"clarify_session_id,omitempty"`
+	Questions        []string `json:"questions,omitempty"`
+	GoalSummary      string   `json:"goal_summary,omitempty"`
+	EnrichedGoal     string   `json:"enriched_goal,omitempty"`
+	IsReadyToPlan    bool     `json:"is_ready_to_plan"`
+	RoundIndex       int      `json:"round_index,omitempty"`
+	MaxRoundsReached bool     `json:"max_rounds_reached,omitempty"`
+	ContextUsed      string   `json:"context_used,omitempty"`
+	Message          string   `json:"message,omitempty"`
+}
+
+// ClarifyAnswer is a structured answer to a single clarifying question.
+type ClarifyAnswer struct {
+	Question string `json:"question,omitempty"`
+	Answer   string `json:"answer"`
 }
 
 // ClarifyOptions configures the behavior of plan clarification.
 type ClarifyOptions struct {
-	Goal       string // Initial user goal
-	History    string // History of Q&A
-	AutoAnswer bool   // Whether to autonomously refine context
+	Goal             string          // Initial user goal
+	ClarifySessionID string          // Session ID from previous clarify round
+	Answers          []ClarifyAnswer // Answers for the previous round questions
+	AutoAnswer       bool            // Whether to autonomously refine context
+	MaxRounds        int             // Maximum clarification rounds (default: 5)
 }
 
 // GenerateResult contains the result of plan generation.
@@ -61,9 +72,10 @@ type GenerateResult struct {
 
 // GenerateOptions configures the behavior of plan generation.
 type GenerateOptions struct {
-	Goal         string // Original user goal
-	EnrichedGoal string // Fully clarified specification
-	Save         bool   // Whether to persist plan/tasks to DB
+	Goal             string // Original user goal
+	ClarifySessionID string // Required: clarify session that reached ready state
+	EnrichedGoal     string // Fully clarified specification
+	Save             bool   // Whether to persist plan/tasks to DB
 }
 
 // AuditResult contains the result of plan auditing.
@@ -104,6 +116,11 @@ type TaskPlanner interface {
 // This is used during task creation to populate ContextSummary (early binding).
 // See docs/architecture/ADR_CONTEXT_BINDING.md for the full context binding design.
 type TaskContextEnricher func(ctx context.Context, queries []string) (string, error)
+
+const (
+	defaultClarifyMaxRounds            = 5
+	defaultClarifyMaxQuestionsPerRound = 3
+)
 
 // PlanApp provides plan lifecycle operations.
 // This is THE implementation - CLI and MCP both call these methods.
@@ -186,10 +203,105 @@ func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (st
 // Clarify refines a development goal by asking clarifying questions.
 // Call this in a loop until IsReadyToPlan is true.
 func (a *PlanApp) Clarify(ctx context.Context, opts ClarifyOptions) (*ClarifyResult, error) {
-	if opts.Goal == "" {
+	if a.ctx == nil || a.ctx.Repo == nil {
+		return a.clarifyWithoutPersistence(ctx, opts)
+	}
+
+	maxRounds := opts.MaxRounds
+	if maxRounds <= 0 {
+		maxRounds = defaultClarifyMaxRounds
+	}
+
+	sessionID := strings.TrimSpace(opts.ClarifySessionID)
+	goal := strings.TrimSpace(opts.Goal)
+	var session *task.ClarifySession
+	var turns []task.ClarifyTurn
+	var err error
+
+	if sessionID == "" {
+		if goal == "" {
+			return &ClarifyResult{
+				Success: false,
+				Message: "goal is required",
+			}, nil
+		}
+		session = &task.ClarifySession{
+			Goal:                 goal,
+			State:                task.ClarifySessionStateNew,
+			RoundIndex:           0,
+			MaxRounds:            maxRounds,
+			MaxQuestionsPerRound: defaultClarifyMaxQuestionsPerRound,
+			CurrentQuestions:     nil,
+			IsReadyToPlan:        false,
+		}
+		if err := a.ctx.Repo.CreateClarifySession(session); err != nil {
+			return nil, fmt.Errorf("create clarify session: %w", err)
+		}
+		turns = []task.ClarifyTurn{}
+	} else {
+		session, err = a.ctx.Repo.GetClarifySession(sessionID)
+		if err != nil {
+			return &ClarifyResult{
+				Success: false,
+				Message: fmt.Sprintf("clarify session not found: %s", sessionID),
+			}, nil
+		}
+		turns, err = a.ctx.Repo.ListClarifyTurns(session.ID)
+		if err != nil {
+			return nil, fmt.Errorf("list clarify turns: %w", err)
+		}
+		if goal == "" {
+			goal = session.Goal
+		}
+	}
+
+	if session.IsReadyToPlan {
+		return &ClarifyResult{
+			Success:          true,
+			ClarifySessionID: session.ID,
+			Questions:        nil,
+			GoalSummary:      session.GoalSummary,
+			EnrichedGoal:     session.EnrichedGoal,
+			IsReadyToPlan:    true,
+			RoundIndex:       session.RoundIndex,
+			MaxRoundsReached: false,
+			Message:          "clarify session already ready to plan",
+		}, nil
+	}
+
+	if session.State == task.ClarifySessionStateMaxRoundsReached {
+		return &ClarifyResult{
+			Success:          true,
+			ClarifySessionID: session.ID,
+			Questions:        session.CurrentQuestions,
+			GoalSummary:      session.GoalSummary,
+			EnrichedGoal:     session.EnrichedGoal,
+			IsReadyToPlan:    false,
+			RoundIndex:       session.RoundIndex,
+			MaxRoundsReached: true,
+			Message:          "clarification reached max rounds",
+		}, nil
+	}
+
+	inputAnswers := normalizeClarifyAnswers(opts.Answers)
+	if session.State == task.ClarifySessionStateAwaitingAnswers && !opts.AutoAnswer && len(inputAnswers) == 0 {
+		return &ClarifyResult{
+			Success:          true,
+			ClarifySessionID: session.ID,
+			Questions:        session.CurrentQuestions,
+			GoalSummary:      session.GoalSummary,
+			EnrichedGoal:     session.EnrichedGoal,
+			IsReadyToPlan:    false,
+			RoundIndex:       session.RoundIndex,
+			MaxRoundsReached: false,
+			Message:          "answers are required to continue clarification",
+		}, nil
+	}
+
+	if len(inputAnswers) > 0 && len(session.CurrentQuestions) == 0 {
 		return &ClarifyResult{
 			Success: false,
-			Message: "goal is required",
+			Message: "answers provided but no pending clarification questions exist",
 		}, nil
 	}
 
@@ -197,12 +309,10 @@ func (a *PlanApp) Clarify(ctx context.Context, opts ClarifyOptions) (*ClarifyRes
 
 	// Fetch context from knowledge graph using canonical shared function
 	// Context retrieval is optional enhancement - log errors but don't fail
-	ks := knowledge.NewService(a.ctx.Repo, llmCfg) // Still needs concrete repo for now?
-	// ks := knowledge.NewService(repo, llmCfg) // Error: repo is interface, NewService takes *memory.Repository
-	// We handle this by keeping a.ctx.Repo for NewService, but using a.ContextRetriever which can be mocked to ignore ks.
+	ks := knowledge.NewService(a.ctx.Repo, llmCfg)
 	var contextStr string
 	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
-		if result, err := a.ContextRetriever(ctx, ks, opts.Goal, memoryPath); err == nil {
+		if result, err := a.ContextRetriever(ctx, ks, goal, memoryPath); err == nil {
 			contextStr = result.Context
 		}
 	}
@@ -211,84 +321,205 @@ func (a *PlanApp) Clarify(ctx context.Context, opts ClarifyOptions) (*ClarifyRes
 	clarifyingAgent := a.ClarifierFactory(llmCfg)
 	defer func() { _ = clarifyingAgent.Close() }()
 
-	input := core.Input{
-		ExistingContext: map[string]any{
-			"goal":    opts.Goal,
-			"history": opts.History,
-			"context": contextStr,
-		},
-	}
-
-	output, err := clarifyingAgent.Run(ctx, input)
-	if err != nil {
-		return &ClarifyResult{
-			Success: false,
-			Message: fmt.Sprintf("Clarifying agent failed: %v", err),
-		}, nil
-	}
-	if output.Error != nil {
-		return &ClarifyResult{
-			Success: false,
-			Message: fmt.Sprintf("Clarifying agent error: %v", output.Error),
-		}, nil
-	}
-
-	// Parse agent output
-	if len(output.Findings) == 0 {
-		return &ClarifyResult{
-			Success: false,
-			Message: "No findings from clarifying agent",
-		}, nil
-	}
-
-	finding := output.Findings[0]
-	questions := parseQuestionsFromMetadata(finding.Metadata)
-	goalSummary, _ := finding.Metadata["goal_summary"].(string)
-	enrichedGoal, _ := finding.Metadata["enriched_goal"].(string)
-	isReady, _ := finding.Metadata["is_ready_to_plan"].(bool)
-
-	// If auto_answer and we have questions, try to answer them
-	if opts.AutoAnswer && len(questions) > 0 && !isReady {
-		const maxAutoAnswerAttempts = 3
-		attempts := 0
-
-		for len(questions) > 0 && !isReady && attempts < maxAutoAnswerAttempts {
-			attempts++
-			answer, err := clarifyingAgent.AutoAnswer(ctx, enrichedGoal, questions, contextStr)
-			if err != nil || answer == "" {
-				break // Stop if LLM fails or returns empty
-			}
-
-			enrichedGoal = answer
-			// Re-run to check if now ready
-			input.ExistingContext["history"] = fmt.Sprintf("%s\n\nAuto-answered questions (Attempt %d):\n%s", opts.History, attempts, answer)
-
-			output2, err := clarifyingAgent.Run(ctx, input)
-			if err != nil || len(output2.Findings) == 0 {
-				break
-			}
-
-			finding2 := output2.Findings[0]
-			questions = parseQuestionsFromMetadata(finding2.Metadata)
-			goalSummary, _ = finding2.Metadata["goal_summary"].(string)
-			enrichedGoal, _ = finding2.Metadata["enriched_goal"].(string)
-			isReady, _ = finding2.Metadata["is_ready_to_plan"].(bool)
-		}
-	}
-
 	contextSummary := ""
 	if contextStr != "" {
 		contextSummary = "Retrieved relevant nodes and constraints from knowledge graph"
 	}
 
-	return &ClarifyResult{
-		Success:       true,
-		Questions:     questions,
-		GoalSummary:   goalSummary,
-		EnrichedGoal:  enrichedGoal,
-		IsReadyToPlan: isReady,
-		ContextUsed:   contextSummary,
-	}, nil
+	answersForRound := append([]string(nil), inputAnswers...)
+	for {
+		history := buildClarifyHistory(turns, session.CurrentQuestions, answersForRound)
+		input := core.Input{
+			ExistingContext: map[string]any{
+				"goal":    goal,
+				"history": history,
+				"context": contextStr,
+			},
+		}
+
+		output, err := clarifyingAgent.Run(ctx, input)
+		if err != nil {
+			return &ClarifyResult{
+				Success: false,
+				Message: fmt.Sprintf("clarifying agent failed: %v", err),
+			}, nil
+		}
+		if output.Error != nil {
+			return &ClarifyResult{
+				Success: false,
+				Message: fmt.Sprintf("clarifying agent error: %v", output.Error),
+			}, nil
+		}
+		if len(output.Findings) == 0 {
+			return &ClarifyResult{
+				Success: false,
+				Message: "no findings from clarifying agent",
+			}, nil
+		}
+
+		finding := output.Findings[0]
+		questions := limitQuestions(parseQuestionsFromMetadata(finding.Metadata), session.MaxQuestionsPerRound)
+		goalSummary, _ := finding.Metadata["goal_summary"].(string)
+		enrichedGoal, _ := finding.Metadata["enriched_goal"].(string)
+		isReady, _ := finding.Metadata["is_ready_to_plan"].(bool)
+
+		nextRound := session.RoundIndex + 1
+		maxRoundsReached := nextRound >= session.MaxRounds && !isReady
+		state := task.ClarifySessionStateAwaitingAnswers
+		if isReady {
+			state = task.ClarifySessionStateReadyToPlan
+		} else if maxRoundsReached {
+			state = task.ClarifySessionStateMaxRoundsReached
+		}
+
+		turn := &task.ClarifyTurn{
+			SessionID:        session.ID,
+			RoundIndex:       nextRound,
+			Questions:        questions,
+			Answers:          answersForRound,
+			GoalSummary:      goalSummary,
+			EnrichedGoal:     enrichedGoal,
+			IsReadyToPlan:    isReady,
+			AutoAnswered:     opts.AutoAnswer,
+			MaxRoundsReached: maxRoundsReached,
+			ContextSummary:   contextSummary,
+		}
+		if err := a.ctx.Repo.CreateClarifyTurn(turn); err != nil {
+			return nil, fmt.Errorf("create clarify turn: %w", err)
+		}
+		turns = append(turns, *turn)
+
+		session.Goal = goal
+		session.GoalSummary = goalSummary
+		session.EnrichedGoal = enrichedGoal
+		session.RoundIndex = nextRound
+		session.State = state
+		session.CurrentQuestions = questions
+		session.IsReadyToPlan = isReady
+		session.LastContextUsed = contextSummary
+		session.MaxRounds = maxRounds
+		session.MaxQuestionsPerRound = defaultClarifyMaxQuestionsPerRound
+		if err := a.ctx.Repo.UpdateClarifySession(session); err != nil {
+			return nil, fmt.Errorf("update clarify session: %w", err)
+		}
+
+		if opts.AutoAnswer && !isReady && !maxRoundsReached && len(questions) > 0 {
+			autoAnswer, err := clarifyingAgent.AutoAnswer(ctx, enrichedGoal, questions, contextStr)
+			if err != nil || strings.TrimSpace(autoAnswer) == "" {
+				return &ClarifyResult{
+					Success:          true,
+					ClarifySessionID: session.ID,
+					Questions:        questions,
+					GoalSummary:      goalSummary,
+					EnrichedGoal:     enrichedGoal,
+					IsReadyToPlan:    false,
+					RoundIndex:       nextRound,
+					MaxRoundsReached: false,
+					ContextUsed:      contextSummary,
+					Message:          "auto-answer could not resolve all questions",
+				}, nil
+			}
+			answersForRound = []string{strings.TrimSpace(autoAnswer)}
+			continue
+		}
+
+		return &ClarifyResult{
+			Success:          true,
+			ClarifySessionID: session.ID,
+			Questions:        questions,
+			GoalSummary:      goalSummary,
+			EnrichedGoal:     enrichedGoal,
+			IsReadyToPlan:    isReady,
+			RoundIndex:       nextRound,
+			MaxRoundsReached: maxRoundsReached,
+			ContextUsed:      contextSummary,
+		}, nil
+	}
+}
+
+// clarifyWithoutPersistence is a test-friendly fallback when repository context is unavailable.
+// It preserves the clarify contract but skips session storage.
+func (a *PlanApp) clarifyWithoutPersistence(ctx context.Context, opts ClarifyOptions) (*ClarifyResult, error) {
+	goal := strings.TrimSpace(opts.Goal)
+	if goal == "" {
+		return &ClarifyResult{
+			Success: false,
+			Message: "goal is required",
+		}, nil
+	}
+
+	llmCfg := a.ctx.LLMCfg
+	clarifyingAgent := a.ClarifierFactory(llmCfg)
+	defer func() { _ = clarifyingAgent.Close() }()
+
+	maxRounds := opts.MaxRounds
+	if maxRounds <= 0 {
+		maxRounds = defaultClarifyMaxRounds
+	}
+
+	sessionID := strings.TrimSpace(opts.ClarifySessionID)
+	if sessionID == "" {
+		sessionID = "clarify-ephemeral"
+	}
+
+	history := ""
+	roundIndex := 0
+
+	for {
+		roundIndex++
+		input := core.Input{
+			ExistingContext: map[string]any{
+				"goal":    goal,
+				"history": history,
+				"context": "",
+			},
+		}
+		output, err := clarifyingAgent.Run(ctx, input)
+		if err != nil {
+			return &ClarifyResult{Success: false, Message: fmt.Sprintf("clarifying agent failed: %v", err)}, nil
+		}
+		if output.Error != nil {
+			return &ClarifyResult{Success: false, Message: fmt.Sprintf("clarifying agent error: %v", output.Error)}, nil
+		}
+		if len(output.Findings) == 0 {
+			return &ClarifyResult{Success: false, Message: "no findings from clarifying agent"}, nil
+		}
+
+		finding := output.Findings[0]
+		questions := limitQuestions(parseQuestionsFromMetadata(finding.Metadata), defaultClarifyMaxQuestionsPerRound)
+		goalSummary, _ := finding.Metadata["goal_summary"].(string)
+		enrichedGoal, _ := finding.Metadata["enriched_goal"].(string)
+		isReady, _ := finding.Metadata["is_ready_to_plan"].(bool)
+		maxReached := roundIndex >= maxRounds && !isReady
+
+		if opts.AutoAnswer && !isReady && !maxReached && len(questions) > 0 {
+			autoAnswer, err := clarifyingAgent.AutoAnswer(ctx, enrichedGoal, questions, "")
+			if err != nil || strings.TrimSpace(autoAnswer) == "" {
+				return &ClarifyResult{
+					Success:          true,
+					ClarifySessionID: sessionID,
+					Questions:        questions,
+					GoalSummary:      goalSummary,
+					EnrichedGoal:     enrichedGoal,
+					IsReadyToPlan:    false,
+					RoundIndex:       roundIndex,
+				}, nil
+			}
+			history = buildClarifyHistory(nil, questions, []string{strings.TrimSpace(autoAnswer)})
+			continue
+		}
+
+		return &ClarifyResult{
+			Success:          true,
+			ClarifySessionID: sessionID,
+			Questions:        questions,
+			GoalSummary:      goalSummary,
+			EnrichedGoal:     enrichedGoal,
+			IsReadyToPlan:    isReady,
+			RoundIndex:       roundIndex,
+			MaxRoundsReached: maxReached,
+		}, nil
+	}
 }
 
 // Generate creates a development plan with tasks from a refined goal.
@@ -300,11 +531,35 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 			Message: "goal is required",
 		}, nil
 	}
+	if strings.TrimSpace(opts.ClarifySessionID) == "" {
+		return &GenerateResult{
+			Success: false,
+			Message: "clarify_session_id is required (run Clarify first)",
+			Hint:    "Call plan action=clarify until is_ready_to_plan=true, then pass clarify_session_id to generate.",
+		}, nil
+	}
 	if opts.EnrichedGoal == "" {
 		return &GenerateResult{
 			Success: false,
 			Message: "enriched_goal is required (run Clarify first)",
 		}, nil
+	}
+
+	if a.ctx != nil && a.ctx.Repo != nil {
+		session, err := a.ctx.Repo.GetClarifySession(strings.TrimSpace(opts.ClarifySessionID))
+		if err != nil {
+			return &GenerateResult{
+				Success: false,
+				Message: fmt.Sprintf("clarify session not found: %s", opts.ClarifySessionID),
+			}, nil
+		}
+		if !session.IsReadyToPlan || session.State != task.ClarifySessionStateReadyToPlan {
+			return &GenerateResult{
+				Success: false,
+				Message: "clarification is not complete for this session",
+				Hint:    "Continue plan action=clarify with clarify_session_id and answers until is_ready_to_plan=true.",
+			}, nil
+		}
 	}
 
 	repo := a.Repo
@@ -763,6 +1018,56 @@ func parseQuestionsFromMetadata(metadata map[string]any) []string {
 		return questions
 	}
 	return nil
+}
+
+func normalizeClarifyAnswers(answers []ClarifyAnswer) []string {
+	out := make([]string, 0, len(answers))
+	for _, a := range answers {
+		value := strings.TrimSpace(a.Answer)
+		if value == "" {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
+func limitQuestions(questions []string, max int) []string {
+	if max <= 0 || len(questions) <= max {
+		return questions
+	}
+	return questions[:max]
+}
+
+func buildClarifyHistory(turns []task.ClarifyTurn, pendingQuestions, pendingAnswers []string) string {
+	var b strings.Builder
+
+	for _, turn := range turns {
+		if len(turn.Questions) == 0 && len(turn.Answers) == 0 {
+			continue
+		}
+		b.WriteString(fmt.Sprintf("Round %d:\n", turn.RoundIndex))
+		for i, q := range turn.Questions {
+			b.WriteString(fmt.Sprintf("Q%d: %s\n", i+1, q))
+			if i < len(turn.Answers) && strings.TrimSpace(turn.Answers[i]) != "" {
+				b.WriteString(fmt.Sprintf("A%d: %s\n", i+1, strings.TrimSpace(turn.Answers[i])))
+			}
+		}
+		b.WriteString("\n")
+	}
+
+	if len(pendingQuestions) > 0 && len(pendingAnswers) > 0 {
+		round := len(turns) + 1
+		b.WriteString(fmt.Sprintf("Round %d (user answers):\n", round))
+		for i, q := range pendingQuestions {
+			b.WriteString(fmt.Sprintf("Q%d: %s\n", i+1, q))
+			if i < len(pendingAnswers) {
+				b.WriteString(fmt.Sprintf("A%d: %s\n", i+1, strings.TrimSpace(pendingAnswers[i])))
+			}
+		}
+	}
+
+	return strings.TrimSpace(b.String())
 }
 
 // parseTasksFromMetadata extracts tasks from agent metadata,
@@ -1307,11 +1612,9 @@ func (a *PlanApp) Expand(ctx context.Context, opts ExpandOptions) (*ExpandResult
 	}
 
 	// Build hint
-	hint := "Phase expanded successfully."
+	hint := "All phases expanded. Use plan finalize to complete the plan."
 	if remainingPhases > 0 {
 		hint = fmt.Sprintf("Use plan expand to expand the next phase: %s", nextPhaseTitle)
-	} else {
-		hint = "All phases expanded. Use plan finalize to complete the plan."
 	}
 
 	return &ExpandResult{

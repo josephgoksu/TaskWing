@@ -64,6 +64,94 @@ func (i *Initializer) RegenerateConfigs(verbose bool, targetAIs []string) error 
 	return i.setupAIIntegrations(verbose, targetAIs, false)
 }
 
+// AdoptionResult contains backup metadata for an unmanaged adoption operation.
+type AdoptionResult struct {
+	AI           string   `json:"ai"`
+	BackupDir    string   `json:"backup_dir"`
+	ManifestPath string   `json:"manifest_path"`
+	BackedUp     []string `json:"backed_up"`
+}
+
+// AdoptAIConfig claims TaskWing-like unmanaged AI config safely by backing up artifacts,
+// adding ownership markers, and preparing the AI for canonical regeneration.
+func (i *Initializer) AdoptAIConfig(aiName string, verbose bool) (*AdoptionResult, error) {
+	cfg, ok := aiHelpers[aiName]
+	if !ok {
+		return nil, fmt.Errorf("unsupported AI: %s", aiName)
+	}
+
+	ts := time.Now().UTC().Format("20060102T150405Z")
+	backupDir := filepath.Join(i.basePath, ".taskwing", "backups", "ai-configs", ts, aiName)
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return nil, fmt.Errorf("create backup dir: %w", err)
+	}
+
+	paths := adoptionCandidatePaths(i.basePath, aiName, cfg)
+	backedUp := make([]string, 0, len(paths))
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		rel, relErr := filepath.Rel(i.basePath, p)
+		if relErr != nil {
+			rel = filepath.Base(p)
+		}
+		dest := filepath.Join(backupDir, rel)
+		if info.IsDir() {
+			if err := copyDir(p, dest); err != nil {
+				return nil, fmt.Errorf("backup %s: %w", p, err)
+			}
+		} else {
+			if err := copyFile(p, dest); err != nil {
+				return nil, fmt.Errorf("backup %s: %w", p, err)
+			}
+		}
+		backedUp = append(backedUp, p)
+	}
+
+	if cfg.singleFile {
+		if err := i.claimSingleFileOwnership(aiName, cfg); err != nil {
+			return nil, err
+		}
+	} else {
+		commandsDir := filepath.Join(i.basePath, cfg.commandsDir)
+		if _, err := os.Stat(commandsDir); err == nil {
+			if err := os.MkdirAll(commandsDir, 0755); err != nil {
+				return nil, fmt.Errorf("ensure commands dir: %w", err)
+			}
+			markerPath := filepath.Join(commandsDir, TaskWingManagedFile)
+			marker := fmt.Sprintf("# This directory is managed by TaskWing\n# Adopted: %s\n# AI: %s\n# Version: %s\n",
+				time.Now().UTC().Format(time.RFC3339), aiName, AIToolConfigVersion(aiName))
+			if err := os.WriteFile(markerPath, []byte(marker), 0644); err != nil {
+				return nil, fmt.Errorf("write marker file: %w", err)
+			}
+		}
+	}
+
+	manifest := map[string]any{
+		"ai":        aiName,
+		"timestamp": ts,
+		"backed_up": backedUp,
+	}
+	manifestPath := filepath.Join(backupDir, "manifest.json")
+	blob, _ := json.MarshalIndent(manifest, "", "  ")
+	if err := os.WriteFile(manifestPath, blob, 0644); err != nil {
+		return nil, fmt.Errorf("write adoption manifest: %w", err)
+	}
+
+	if verbose {
+		fmt.Printf("  ✓ Adopted unmanaged config for %s (backup: %s)\n", aiName, backupDir)
+	}
+
+	return &AdoptionResult{
+		AI:           aiName,
+		BackupDir:    backupDir,
+		ManifestPath: manifestPath,
+		BackedUp:     backedUp,
+	}, nil
+}
+
 // setupAIIntegrations creates slash commands and hooks for selected AIs.
 // If showHeader is true, prints the "Setting up AI integrations" message.
 func (i *Initializer) setupAIIntegrations(verbose bool, selectedAIs []string, showHeader bool) error {
@@ -452,7 +540,7 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 	sb.WriteString("```json\n")
 	sb.WriteString(`{
   "servers": {
-    "taskwing": {
+    "taskwing-mcp": {
       "command": "taskwing",
       "args": ["mcp"]
     }
@@ -463,9 +551,9 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 
 	sb.WriteString("### Usage\n\n")
 	sb.WriteString("With MCP configured, you can use TaskWing tools via:\n")
-	sb.WriteString("- `@mcp taskwing recall \"query\"` - Search project knowledge\n")
-	sb.WriteString("- `@mcp taskwing task {\\\"action\\\":\\\"next\\\",\\\"session_id\\\":\\\"your-session\\\"}` - Get next task from plan\n")
-	sb.WriteString("- `@mcp taskwing remember \"content\"` - Store knowledge\n")
+	sb.WriteString("- `@mcp taskwing-mcp recall \"query\"` - Search project knowledge\n")
+	sb.WriteString("- `@mcp taskwing-mcp task {\\\"action\\\":\\\"next\\\"}` - Get next task from plan (session_id auto-derived in MCP session)\n")
+	sb.WriteString("- `@mcp taskwing-mcp remember \"content\"` - Store knowledge\n")
 
 	if err := os.WriteFile(filePath, []byte(sb.String()), 0644); err != nil {
 		// Rollback: restore legacy backup if write fails
@@ -576,6 +664,112 @@ type HookCommand struct {
 	Timeout int    `json:"timeout,omitempty"`
 }
 
+func defaultTaskWingHooks() map[string][]HookMatcher {
+	// Claude hook docs recommend referencing project scripts via CLAUDE_PROJECT_DIR
+	// and note command hooks default to a long timeout when unset.
+	// We intentionally avoid short custom timeouts here because Stop hooks may need
+	// repo + policy checks and can exceed aggressive limits on larger projects.
+	return map[string][]HookMatcher{
+		"SessionStart": {
+			{
+				Hooks: []HookCommand{
+					{
+						Type:    "command",
+						Command: taskWingHookCommand("session-init"),
+					},
+				},
+			},
+		},
+		"Stop": {
+			{
+				Hooks: []HookCommand{
+					{
+						Type:    "command",
+						Command: taskWingHookCommand("continue-check --max-tasks=5 --max-minutes=30"),
+					},
+				},
+			},
+		},
+		"SessionEnd": {
+			{
+				Hooks: []HookCommand{
+					{
+						Type:    "command",
+						Command: taskWingHookCommand("session-end"),
+					},
+				},
+			},
+		},
+	}
+}
+
+func taskWingHookCommand(args string) string {
+	// Prefer project-local binary when present, fall back to PATH binary.
+	// Quoted $CLAUDE_PROJECT_DIR follows Claude hook docs for path safety.
+	return fmt.Sprintf(`if [ -x "$CLAUDE_PROJECT_DIR/bin/taskwing" ]; then "$CLAUDE_PROJECT_DIR/bin/taskwing" hook %s; else taskwing hook %s; fi`, args, args)
+}
+
+func requiredHookCommandSubstr(hookName string) string {
+	switch hookName {
+	case "SessionStart":
+		return "hook session-init"
+	case "Stop":
+		return "hook continue-check"
+	case "SessionEnd":
+		return "hook session-end"
+	default:
+		return ""
+	}
+}
+
+func hookEventHasRequiredCommand(raw any, required string) bool {
+	eventEntries, ok := raw.([]any)
+	if !ok {
+		return false
+	}
+	req := strings.ToLower(strings.TrimSpace(required))
+	if req == "" {
+		return false
+	}
+	for _, entry := range eventEntries {
+		entryMap, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		rawHooks, ok := entryMap["hooks"]
+		if !ok {
+			continue
+		}
+		hookCommands, ok := rawHooks.([]any)
+		if !ok {
+			continue
+		}
+		for _, cmdEntry := range hookCommands {
+			cmdMap, ok := cmdEntry.(map[string]any)
+			if !ok {
+				continue
+			}
+			cmdStr, _ := cmdMap["command"].(string)
+			if strings.Contains(strings.ToLower(cmdStr), req) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hookMatchersToAny(matchers []HookMatcher) ([]any, error) {
+	data, err := json.Marshal(matchers)
+	if err != nil {
+		return nil, err
+	}
+	var out []any
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (i *Initializer) InstallHooksConfig(aiName string, verbose bool) error {
 	// OpenCode uses JavaScript plugins instead of JSON hooks config
 	if aiName == "opencode" {
@@ -596,49 +790,63 @@ func (i *Initializer) InstallHooksConfig(aiName string, verbose bool) error {
 		return fmt.Errorf("create settings dir: %w", err)
 	}
 
+	desiredHooks := defaultTaskWingHooks()
+
+	config := map[string]any{
+		"hooks": desiredHooks,
+	}
+	changed := true
+
 	if content, err := os.ReadFile(settingsPath); err == nil {
+		changed = false
 		var existing map[string]any
 		if err := json.Unmarshal(content, &existing); err != nil {
 			// File exists but contains invalid JSON - don't overwrite, warn user
 			return fmt.Errorf("existing %s contains invalid JSON (please fix manually): %w", settingsPath, err)
 		}
-		if _, hasHooks := existing["hooks"]; hasHooks {
-			if verbose {
-				fmt.Printf("  ℹ️  Hooks already configured in %s\n", settingsPath)
+		config = existing
+
+		hooksRaw, hasHooks := config["hooks"]
+		if !hasHooks {
+			config["hooks"] = desiredHooks
+			changed = true
+		} else {
+			hooksMap, ok := hooksRaw.(map[string]any)
+			if !ok {
+				return fmt.Errorf("existing %s has invalid hooks format (expected object)", settingsPath)
 			}
-			return nil
+			for hookName, hookConfig := range desiredHooks {
+				existingHook, exists := hooksMap[hookName]
+				if !exists {
+					hooksMap[hookName] = hookConfig
+					changed = true
+					continue
+				}
+
+				requiredSubstr := requiredHookCommandSubstr(hookName)
+				if requiredSubstr == "" || hookEventHasRequiredCommand(existingHook, requiredSubstr) {
+					continue
+				}
+
+				existingList, ok := existingHook.([]any)
+				if !ok {
+					return fmt.Errorf("existing %s has invalid %s hook format (expected array)", settingsPath, hookName)
+				}
+				desiredList, err := hookMatchersToAny(hookConfig)
+				if err != nil {
+					return fmt.Errorf("convert desired %s hook config: %w", hookName, err)
+				}
+				hooksMap[hookName] = append(existingList, desiredList...)
+				changed = true
+			}
 		}
 	}
 
-	// Hook timeout values (in seconds):
-	// - SessionStart (10s): Quick initialization, only creates session file
-	// - Stop (15s): May need to query plan state, fetch next task context
-	// Users can adjust these in the generated settings.json if needed.
-	config := HooksConfig{
-		Hooks: map[string][]HookMatcher{
-			"SessionStart": {
-				{
-					Hooks: []HookCommand{
-						{
-							Type:    "command",
-							Command: "taskwing hook session-init",
-							Timeout: 10,
-						},
-					},
-				},
-			},
-			"Stop": {
-				{
-					Hooks: []HookCommand{
-						{
-							Type:    "command",
-							Command: "taskwing hook continue-check --max-tasks=5 --max-minutes=30",
-							Timeout: 15,
-						},
-					},
-				},
-			},
-		},
+	if !changed {
+		if verbose {
+			fmt.Printf("  ℹ️  Hooks already configured in %s\n", settingsPath)
+		}
+		return nil
 	}
 
 	data, err := json.MarshalIndent(config, "", "  ")
@@ -652,6 +860,7 @@ func (i *Initializer) InstallHooksConfig(aiName string, verbose bool) error {
 
 	if verbose {
 		fmt.Printf("  ✓ Created hooks config: %s\n", settingsPath)
+		fmt.Println("  ℹ️  If Claude Code is already running, review/reload hooks from /hooks for changes to take effect.")
 	}
 	return nil
 }
@@ -799,6 +1008,8 @@ taskwing hook status            # View current session state
 - ` + "`--max-minutes=30`" + ` - Stop after N minutes
 
 Configuration in ` + "`.claude/settings.json`" + ` enables auto-continuation through plans.
+Hook commands prefer ` + "`$CLAUDE_PROJECT_DIR/bin/taskwing`" + ` and fall back to ` + "`taskwing`" + ` in PATH.
+If Claude Code is already running, use ` + "`/hooks`" + ` to review/reload hook changes.
 
 ` + taskwingDocMarkerEnd
 
@@ -897,4 +1108,75 @@ func findLegacyTaskWingSection(content string) (int, int) {
 	}
 
 	return legacyStart, legacyEnd
+}
+
+func adoptionCandidatePaths(basePath, aiName string, cfg aiHelperConfig) []string {
+	paths := make([]string, 0, 5)
+	if cfg.singleFile {
+		paths = append(paths, filepath.Join(basePath, cfg.commandsDir, cfg.singleFileName))
+	} else {
+		paths = append(paths, filepath.Join(basePath, cfg.commandsDir))
+	}
+	switch aiName {
+	case "claude", "codex":
+		paths = append(paths, filepath.Join(basePath, "."+aiName, "settings.json"))
+	case "opencode":
+		paths = append(paths,
+			filepath.Join(basePath, ".opencode", "plugins", "taskwing-hooks.js"),
+			filepath.Join(basePath, "opencode.json"),
+		)
+	case "gemini":
+		paths = append(paths, filepath.Join(basePath, ".gemini", "settings.json"))
+	case "cursor":
+		paths = append(paths, filepath.Join(basePath, ".cursor", "mcp.json"))
+	case "copilot":
+		paths = append(paths, filepath.Join(basePath, ".vscode", "mcp.json"))
+	}
+	return paths
+}
+
+func (i *Initializer) claimSingleFileOwnership(aiName string, cfg aiHelperConfig) error {
+	filePath := filepath.Join(i.basePath, cfg.commandsDir, cfg.singleFileName)
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil
+	}
+	if strings.Contains(string(content), "<!-- TASKWING_MANAGED -->") {
+		return nil
+	}
+	version := AIToolConfigVersion(aiName)
+	prefix := fmt.Sprintf("<!-- TASKWING_MANAGED -->\n<!-- Version: %s -->\n", version)
+	newContent := prefix + string(content)
+	if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
+		return fmt.Errorf("claim ownership for %s: %w", filePath, err)
+	}
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
+}
+
+func copyDir(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, relErr := filepath.Rel(src, path)
+		if relErr != nil {
+			return relErr
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		return copyFile(path, target)
+	})
 }

@@ -15,20 +15,20 @@ func TestCheckRowsErr_NilError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Execute a simple query and iterate fully
 	rows, err := store.db.Query("SELECT 1")
 	if err != nil {
 		t.Fatalf("query failed: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var v int
@@ -51,7 +51,7 @@ func TestListPlans_ErrorPropagation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
@@ -85,7 +85,7 @@ func TestListTasks_ErrorPropagation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
@@ -129,7 +129,7 @@ func TestListNodes_ErrorPropagation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
@@ -165,7 +165,7 @@ func TestListFeatures_ErrorPropagation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
@@ -190,7 +190,7 @@ func TestSearchPlans_ErrorPropagation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
@@ -215,7 +215,7 @@ func TestGetNodeEdges_ErrorPropagation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
@@ -304,7 +304,7 @@ func TestRowsErrPropagation_TableDriven(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create temp dir: %v", err)
 			}
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			store, err := NewSQLiteStore(tmpDir)
 			if err != nil {
@@ -331,13 +331,13 @@ func TestRowsErrPropagation_SuccessPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Create test data
 	plan := &task.Plan{
@@ -423,13 +423,13 @@ func TestCheckRowsErr_ReturnsWrappedError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Create and fully iterate rows
 	rows, err := store.db.Query("SELECT 1 UNION SELECT 2 UNION SELECT 3")
@@ -445,7 +445,7 @@ func TestCheckRowsErr_ReturnsWrappedError(t *testing.T) {
 		}
 		count++
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	if count != 3 {
 		t.Errorf("expected 3 rows, got %d", count)
@@ -464,7 +464,7 @@ func TestErrorMessageContainsContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
@@ -472,7 +472,7 @@ func TestErrorMessageContainsContext(t *testing.T) {
 	}
 
 	// Close the database to force errors
-	store.Close()
+	_ = store.Close()
 
 	// Test that error messages contain meaningful context
 	tests := []struct {
@@ -532,13 +532,13 @@ func TestMockRowsErr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Test 1: Successful iteration should have nil Err()
 	rows, err := store.db.Query("SELECT 1")
@@ -548,14 +548,16 @@ func TestMockRowsErr(t *testing.T) {
 
 	for rows.Next() {
 		var v int
-		rows.Scan(&v)
+		if err := rows.Scan(&v); err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
 	}
 
 	// Before Close, Err() should be nil for successful iteration
 	if err := checkRowsErr(rows); err != nil {
 		t.Errorf("expected nil error after successful iteration, got: %v", err)
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	// Test 2: Query with no results should also have nil Err()
 	rows2, err := store.db.Query("SELECT 1 WHERE 1=0") // returns no rows
@@ -571,7 +573,7 @@ func TestMockRowsErr(t *testing.T) {
 	if err := checkRowsErr(rows2); err != nil {
 		t.Errorf("expected nil error for empty result set, got: %v", err)
 	}
-	rows2.Close()
+	_ = rows2.Close()
 
 	if count != 0 {
 		t.Errorf("expected 0 rows, got %d", count)
@@ -584,25 +586,27 @@ func TestCheckRowsErrHelper_FunctionExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Create rows and verify checkRowsErr exists and works
 	rows, err := store.db.Query("SELECT 1")
 	if err != nil {
 		t.Fatalf("query failed: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Iterate
 	for rows.Next() {
 		var v int
-		rows.Scan(&v)
+		if err := rows.Scan(&v); err != nil {
+			t.Fatalf("scan failed: %v", err)
+		}
 	}
 
 	// Call checkRowsErr - should return nil
@@ -622,13 +626,13 @@ func TestFindTaskIDsByPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Create a test plan
 	plan := &task.Plan{ID: "plan-prefix001", Goal: "Test plan"}
@@ -710,13 +714,13 @@ func TestFindPlanIDsByPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Create test plans with various prefixes
 	plans := []*task.Plan{
@@ -786,13 +790,13 @@ func TestFindPrefixMethods_ClosedDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewSQLiteStore(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
 	}
-	store.Close() // Close immediately
+	_ = store.Close() // Close immediately
 
 	t.Run("FindTaskIDsByPrefix", func(t *testing.T) {
 		_, err := store.FindTaskIDsByPrefix("task-")

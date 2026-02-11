@@ -183,6 +183,7 @@ var planNewCmd = &cobra.Command{
 			clarifyRes, err := planApp.Clarify(clarifyCtx, app.ClarifyOptions{
 				Goal:       goal,
 				AutoAnswer: true,
+				MaxRounds:  5,
 			})
 			if err != nil {
 				if errors.Is(clarifyCtx.Err(), context.DeadlineExceeded) {
@@ -193,14 +194,18 @@ var planNewCmd = &cobra.Command{
 			if !clarifyRes.Success {
 				return fmt.Errorf("clarification failed: %s", clarifyRes.Message)
 			}
+			if !clarifyRes.IsReadyToPlan {
+				return fmt.Errorf("clarification unresolved after %d round(s); answer questions and retry", clarifyRes.RoundIndex)
+			}
 			fmt.Printf("Goal refined: %s\nGenerating plan...\n", clarifyRes.GoalSummary)
 
 			genCtx, genCancel := context.WithTimeout(ctx, 2*time.Minute)
 			defer genCancel()
 			genRes, err := planApp.Generate(genCtx, app.GenerateOptions{
-				Goal:         goal,
-				EnrichedGoal: clarifyRes.EnrichedGoal,
-				Save:         true,
+				Goal:             goal,
+				ClarifySessionID: clarifyRes.ClarifySessionID,
+				EnrichedGoal:     clarifyRes.EnrichedGoal,
+				Save:             true,
 			})
 			if err != nil {
 				if errors.Is(genCtx.Err(), context.DeadlineExceeded) {

@@ -161,6 +161,24 @@ func TestInitializer_InstallHooksConfig(t *testing.T) {
 	if _, ok := config.Hooks["Stop"]; !ok {
 		t.Error("Missing Stop hook")
 	}
+	if _, ok := config.Hooks["SessionEnd"]; !ok {
+		t.Error("Missing SessionEnd hook")
+	}
+
+	stopHook := config.Hooks["Stop"]
+	if len(stopHook) == 0 || len(stopHook[0].Hooks) == 0 {
+		t.Fatal("Stop hook commands missing")
+	}
+	stopCmd := stopHook[0].Hooks[0].Command
+	if !strings.Contains(stopCmd, "$CLAUDE_PROJECT_DIR/bin/taskwing") {
+		t.Errorf("Stop hook should prefer project-local binary, got: %q", stopCmd)
+	}
+	if !strings.Contains(stopCmd, "hook continue-check") {
+		t.Errorf("Stop hook should call continue-check, got: %q", stopCmd)
+	}
+	if stopHook[0].Hooks[0].Timeout != 0 {
+		t.Errorf("Stop hook should rely on default timeout (0/omitted), got: %d", stopHook[0].Hooks[0].Timeout)
+	}
 }
 
 func TestInitializer_InstallHooksConfig_MalformedJSON(t *testing.T) {
@@ -199,7 +217,7 @@ func TestInitializer_InstallHooksConfig_ExistingHooks(t *testing.T) {
 		t.Fatalf("Failed to write existing config: %v", err)
 	}
 
-	// Should not overwrite existing hooks
+	// Should preserve existing hooks and add missing TaskWing defaults
 	err := init.InstallHooksConfig("claude", false)
 	if err != nil {
 		t.Fatalf("InstallHooksConfig failed: %v", err)
@@ -222,6 +240,48 @@ func TestInitializer_InstallHooksConfig_ExistingHooks(t *testing.T) {
 	}
 	if _, ok := hooks["Test"]; !ok {
 		t.Error("Existing Test hook was removed")
+	}
+	if _, ok := hooks["SessionStart"]; !ok {
+		t.Error("SessionStart hook was not added")
+	}
+	if _, ok := hooks["Stop"]; !ok {
+		t.Error("Stop hook was not added")
+	}
+	if _, ok := hooks["SessionEnd"]; !ok {
+		t.Error("SessionEnd hook was not added")
+	}
+}
+
+func TestInitializer_InstallHooksConfig_RepairsWrongStopCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	settingsDir := filepath.Join(tmpDir, ".claude")
+	if err := os.MkdirAll(settingsDir, 0755); err != nil {
+		t.Fatalf("Failed to create dir: %v", err)
+	}
+	settingsPath := filepath.Join(settingsDir, "settings.json")
+	existingConfig := `{
+	  "hooks": {
+	    "SessionStart": [{"hooks":[{"type":"command","command":"taskwing hook session-init"}]}],
+	    "Stop": [{"hooks":[{"type":"command","command":"echo noop"}]}],
+	    "SessionEnd": [{"hooks":[{"type":"command","command":"taskwing hook session-end"}]}]
+	  }
+	}`
+	if err := os.WriteFile(settingsPath, []byte(existingConfig), 0644); err != nil {
+		t.Fatalf("Failed to write existing config: %v", err)
+	}
+
+	if err := init.InstallHooksConfig("claude", false); err != nil {
+		t.Fatalf("InstallHooksConfig failed: %v", err)
+	}
+
+	content, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("Failed to read settings.json: %v", err)
+	}
+	if !strings.Contains(string(content), "hook continue-check") {
+		t.Fatalf("Stop hook repair should inject continue-check command, got: %s", string(content))
 	}
 }
 
@@ -830,5 +890,44 @@ func TestInitializer_GenerateOpenCodePlugin(t *testing.T) {
 	// Verify managed marker exists (for update detection)
 	if !strings.Contains(contentStr, "TASKWING_MANAGED_PLUGIN") {
 		t.Error("Plugin missing TASKWING_MANAGED_PLUGIN marker")
+	}
+}
+
+func TestInitializer_AdoptAIConfig_ClaudebackupAndMarker(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	commandsDir := filepath.Join(tmpDir, ".claude", "commands")
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		t.Fatalf("mkdir commands: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(commandsDir, "tw-brief.md"), []byte("---\ndescription: brief\n---\n!taskwing slash brief\n"), 0644); err != nil {
+		t.Fatalf("write command: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".claude", "settings.json"), []byte(`{"hooks":{}}`), 0644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	result, err := init.AdoptAIConfig("claude", false)
+	if err != nil {
+		t.Fatalf("AdoptAIConfig failed: %v", err)
+	}
+
+	if result == nil || result.BackupDir == "" {
+		t.Fatal("expected adoption result with backup dir")
+	}
+	if _, err := os.Stat(result.BackupDir); err != nil {
+		t.Fatalf("backup dir missing: %v", err)
+	}
+	if _, err := os.Stat(result.ManifestPath); err != nil {
+		t.Fatalf("manifest missing: %v", err)
+	}
+	markerPath := filepath.Join(commandsDir, TaskWingManagedFile)
+	marker, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("marker missing after adoption: %v", err)
+	}
+	if !strings.Contains(string(marker), "Version:") {
+		t.Fatalf("marker missing version metadata: %s", string(marker))
 	}
 }

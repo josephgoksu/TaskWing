@@ -45,22 +45,11 @@ func TestInstallMCPServers_OpenCode(t *testing.T) {
 		t.Fatal("MCP section is nil")
 	}
 
-	// Server name should include project directory name
-	expectedServerName := "taskwing-mcp-" + filepath.Base(tmpDir)
+	// Server name must be canonical (strict naming policy)
+	expectedServerName := "taskwing-mcp"
 	serverCfg, ok := config.MCP[expectedServerName]
 	if !ok {
-		// Check if any taskwing-mcp server exists
-		found := false
-		for name := range config.MCP {
-			if len(name) >= 12 && name[:12] == "taskwing-mcp" {
-				found = true
-				serverCfg = config.MCP[name]
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("No taskwing-mcp server entry found in MCP section. Got: %v", config.MCP)
-		}
+		t.Fatalf("Canonical taskwing-mcp server entry missing in MCP section. Got: %v", config.MCP)
 	}
 
 	// Verify type is "local"

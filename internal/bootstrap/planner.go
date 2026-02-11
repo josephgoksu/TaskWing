@@ -1,11 +1,11 @@
 package bootstrap
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 )
 
@@ -56,15 +56,21 @@ type ProjectHealth struct {
 
 // AIHealth captures the health of a single AI integration.
 type AIHealth struct {
-	Name              string       `json:"name"`
-	Status            HealthStatus `json:"status"`
-	CommandsDirExists bool         `json:"commands_dir_exists"`
-	MarkerFileExists  bool         `json:"marker_file_exists"` // True if TaskWing created this directory
-	CommandFilesCount int          `json:"command_files_count"`
-	HooksConfigExists bool         `json:"hooks_config_exists"` // Only for claude/codex
-	HooksConfigValid  bool         `json:"hooks_config_valid"`  // JSON parseable?
-	GlobalMCPExists   bool         `json:"global_mcp_exists"`
-	Reason            string       `json:"reason,omitempty"`
+	Name                  string             `json:"name"`
+	Status                HealthStatus       `json:"status"`
+	CommandsDirExists     bool               `json:"commands_dir_exists"`
+	MarkerFileExists      bool               `json:"marker_file_exists"` // True if TaskWing created this directory
+	CommandFilesCount     int                `json:"command_files_count"`
+	HooksConfigExists     bool               `json:"hooks_config_exists"` // Only for claude/codex
+	HooksConfigValid      bool               `json:"hooks_config_valid"`  // JSON parseable?
+	GlobalMCPExists       bool               `json:"global_mcp_exists"`
+	Reason                string             `json:"reason,omitempty"`
+	Ownership             Ownership          `json:"ownership,omitempty"`
+	Issues                []IntegrationIssue `json:"issues,omitempty"`
+	ManagedLocalDrift     bool               `json:"managed_local_drift"`
+	UnmanagedDrift        bool               `json:"unmanaged_drift"`
+	GlobalMCPDrift        bool               `json:"global_mcp_drift"`
+	TaskWingLikeUnmanaged bool               `json:"taskwing_like_unmanaged"`
 }
 
 // Snapshot captures the complete state of the environment.
@@ -127,6 +133,9 @@ type Plan struct {
 	SuggestedAIs      []string `json:"suggested_ais,omitempty"`
 	AIsNeedingRepair  []string `json:"ais_needing_repair,omitempty"`
 	SkippedActions    []string `json:"skipped_actions,omitempty"` // Actions we're not taking + why
+	ManagedDriftAIs   []string `json:"managed_drift_ais,omitempty"`
+	UnmanagedDriftAIs []string `json:"unmanaged_drift_ais,omitempty"`
+	GlobalMCPDriftAIs []string `json:"global_mcp_drift_ais,omitempty"`
 
 	// Execution state (populated during execution, not planning)
 	SelectedAIs []string `json:"selected_ais,omitempty"` // User's actual AI selection
@@ -193,7 +202,7 @@ func ProbeEnvironment(basePath string) (*Snapshot, error) {
 		health := probeAIHealth(basePath, ai)
 		snap.AIHealth[ai] = health
 
-		if health.Status == HealthOK || health.Status == HealthPartial {
+		if health.Status != HealthMissing && health.Status != HealthUnsupported {
 			snap.HasAnyLocalAI = true
 			snap.ExistingLocalAI = append(snap.ExistingLocalAI, ai)
 		} else {
@@ -220,6 +229,9 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		Warnings: []string{},
 		Reasons:  []string{},
 	}
+	plan.ManagedDriftAIs = managedLocalDriftAIsFromSnapshot(snap)
+	plan.UnmanagedDriftAIs = unmanagedDriftAIsFromSnapshot(snap)
+	plan.GlobalMCPDriftAIs = globalMCPDriftAIsFromSnapshot(snap)
 
 	// First, validate flags
 	if err := ValidateFlags(flags); err != nil {
@@ -263,6 +275,7 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		plan.Mode = ModeRepair
 		plan.DetectedState = "Partial setup detected - repair needed"
 		plan.Reasons = append(plan.Reasons, fmt.Sprintf("Project health: %s (%s)", snap.Project.Status, snap.Project.Reason))
+		plan.AIsNeedingRepair = getAIsNeedingRepair(snap)
 
 	case projectOK && hasAIsNeedingRepair(snap):
 		// Project OK but some AI configs need repair
@@ -270,7 +283,8 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		aisToRepair := getAIsNeedingRepair(snap)
 		plan.DetectedState = fmt.Sprintf("AI configurations need repair: %s", strings.Join(aisToRepair, ", "))
 		plan.AIsNeedingRepair = aisToRepair
-		plan.RequiresUserInput = len(aisToRepair) > 0 // Confirm repair
+		// Managed local drift is auto-repaired in bootstrap mode.
+		plan.RequiresUserInput = false
 		plan.Reasons = append(plan.Reasons, "Project directory is healthy")
 		for _, ai := range aisToRepair {
 			health := snap.AIHealth[ai]
@@ -333,6 +347,16 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		plan.SkippedActions = append(plan.SkippedActions,
 			fmt.Sprintf("index_code (reason: %d files > 5000 threshold; use --force)", snap.FileCount))
 	}
+	if len(plan.UnmanagedDriftAIs) > 0 {
+		plan.Warnings = append(plan.Warnings,
+			fmt.Sprintf("Unmanaged drift detected for: %s. TaskWing will not mutate these automatically.", strings.Join(plan.UnmanagedDriftAIs, ", ")))
+		plan.Warnings = append(plan.Warnings, "Run: taskwing doctor --fix --adopt-unmanaged")
+	}
+	if len(plan.GlobalMCPDriftAIs) > 0 {
+		plan.Warnings = append(plan.Warnings,
+			fmt.Sprintf("Global MCP drift detected for: %s. Bootstrap will not mutate global MCP in run mode.", strings.Join(plan.GlobalMCPDriftAIs, ", ")))
+		plan.Warnings = append(plan.Warnings, "Run: taskwing doctor --fix")
+	}
 
 	// NoOp detection
 	if len(plan.Actions) == 0 && plan.Mode != ModeError {
@@ -392,10 +416,8 @@ func decideActions(snap *Snapshot, flags Flags, mode BootstrapMode) []Action {
 // We do NOT repair directories that exist but weren't created by TaskWing.
 func hasAIsNeedingRepair(snap *Snapshot) bool {
 	for _, health := range snap.AIHealth {
-		// Only repair if:
-		// 1. Marker file exists (proves TaskWing created this directory)
-		// 2. Status is Partial or Invalid (configuration is incomplete)
-		if health.MarkerFileExists && (health.Status == HealthPartial || health.Status == HealthInvalid) {
+		// Managed local drift is safe to auto-repair.
+		if health.ManagedLocalDrift || (health.MarkerFileExists && (health.Status == HealthPartial || health.Status == HealthInvalid)) {
 			return true
 		}
 	}
@@ -407,13 +429,44 @@ func hasAIsNeedingRepair(snap *Snapshot) bool {
 func getAIsNeedingRepair(snap *Snapshot) []string {
 	var ais []string
 	for name, health := range snap.AIHealth {
-		// Only repair if:
-		// 1. Marker file exists (proves TaskWing created this directory)
-		// 2. Status is Partial or Invalid (configuration is incomplete)
-		if health.MarkerFileExists && (health.Status == HealthPartial || health.Status == HealthInvalid) {
+		if health.ManagedLocalDrift || (health.MarkerFileExists && (health.Status == HealthPartial || health.Status == HealthInvalid)) {
 			ais = append(ais, name)
 		}
 	}
+	sort.Strings(ais)
+	return ais
+}
+
+func managedLocalDriftAIsFromSnapshot(snap *Snapshot) []string {
+	var ais []string
+	for ai, health := range snap.AIHealth {
+		if health.ManagedLocalDrift {
+			ais = append(ais, ai)
+		}
+	}
+	sort.Strings(ais)
+	return ais
+}
+
+func unmanagedDriftAIsFromSnapshot(snap *Snapshot) []string {
+	var ais []string
+	for ai, health := range snap.AIHealth {
+		if health.UnmanagedDrift {
+			ais = append(ais, ai)
+		}
+	}
+	sort.Strings(ais)
+	return ais
+}
+
+func globalMCPDriftAIsFromSnapshot(snap *Snapshot) []string {
+	var ais []string
+	for ai, health := range snap.AIHealth {
+		if health.GlobalMCPDrift {
+			ais = append(ais, ai)
+		}
+	}
+	sort.Strings(ais)
 	return ais
 }
 
@@ -511,122 +564,74 @@ func probeProjectHealth(basePath string) ProjectHealth {
 }
 
 func probeAIHealth(basePath, aiName string) AIHealth {
-	health := AIHealth{Name: aiName}
+	report := EvaluateIntegration(basePath, aiName, checkGlobalMCPForAI(aiName))
+	health := AIHealth{
+		Name:                  aiName,
+		CommandsDirExists:     report.CommandsDirExists,
+		MarkerFileExists:      report.MarkerFileExists,
+		CommandFilesCount:     report.CommandFilesCount,
+		HooksConfigExists:     report.HooksConfigExists,
+		HooksConfigValid:      report.HooksConfigValid,
+		GlobalMCPExists:       report.GlobalMCPExists,
+		Issues:                report.Issues,
+		ManagedLocalDrift:     report.ManagedLocalDrift,
+		UnmanagedDrift:        report.UnmanagedDrift,
+		GlobalMCPDrift:        report.GlobalMCPDrift,
+		TaskWingLikeUnmanaged: report.TaskWingLikeUnmanaged,
+		Ownership:             report.ComponentOwnership[AIComponentCommands],
+	}
 
-	// Get expected paths
-	cfg, ok := aiHelpers[aiName]
-	if !ok {
+	if _, ok := aiHelpers[aiName]; !ok {
 		health.Status = HealthUnsupported
 		health.Reason = fmt.Sprintf("AI assistant '%s' is not supported by TaskWing", aiName)
 		return health
 	}
 
-	// Handle single-file mode (e.g., GitHub Copilot)
-	if cfg.singleFile {
-		return probeSingleFileAIHealth(basePath, aiName, cfg)
-	}
-
-	commandsDir := filepath.Join(basePath, cfg.commandsDir)
-
-	// Check commands directory
-	if info, err := os.Stat(commandsDir); err == nil && info.IsDir() {
-		health.CommandsDirExists = true
-
-		// Check for TaskWing marker file to verify we created this directory
-		markerPath := filepath.Join(commandsDir, TaskWingManagedFile)
-		if _, err := os.Stat(markerPath); err == nil {
-			health.MarkerFileExists = true
-		}
-
-		// Count command files
-		entries, _ := os.ReadDir(commandsDir)
-		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), cfg.fileExt) {
-				health.CommandFilesCount++
-			}
-		}
-	}
-
-	// Check hooks config (only for claude/codex)
-	if aiName == "claude" || aiName == "codex" {
-		settingsPath := filepath.Join(basePath, "."+aiName, "settings.json")
-		if content, err := os.ReadFile(settingsPath); err == nil {
-			health.HooksConfigExists = true
-
-			var parsed map[string]any
-			if err := json.Unmarshal(content, &parsed); err == nil {
-				health.HooksConfigValid = true
-			}
-		}
-	}
-
-	// Check global MCP registration
-	health.GlobalMCPExists = checkGlobalMCPForAI(aiName)
-
-	// Determine overall status
-	// Use dynamic command count from the SlashCommands manifest
-	expectedCommands := ExpectedCommandCount()
-
-	if !health.CommandsDirExists {
+	health.Status = HealthOK
+	switch report.ComponentStatuses[AIComponentCommands] {
+	case ComponentStatusMissing:
 		health.Status = HealthMissing
-		health.Reason = "commands directory missing"
-	} else if health.CommandFilesCount < expectedCommands {
-		health.Status = HealthPartial
-		health.Reason = fmt.Sprintf("only %d/%d command files present", health.CommandFilesCount, expectedCommands)
-	} else if (aiName == "claude" || aiName == "codex") && !health.HooksConfigValid {
-		if !health.HooksConfigExists {
+	case ComponentStatusInvalid:
+		health.Status = HealthInvalid
+	case ComponentStatusStale:
+		// Managed command drift is degraded to partial; unmanaged drift is surfaced as warning only.
+		if report.ComponentOwnership[AIComponentCommands] == OwnershipManaged {
 			health.Status = HealthPartial
-			health.Reason = "hooks config missing"
-		} else {
-			health.Status = HealthInvalid
-			health.Reason = "hooks config exists but is invalid JSON"
 		}
-	} else {
-		health.Status = HealthOK
 	}
 
-	return health
-}
-
-// probeSingleFileAIHealth handles health checking for AIs that use a single instructions file
-// (like GitHub Copilot's .github/copilot-instructions.md) instead of a directory of slash commands.
-func probeSingleFileAIHealth(basePath, aiName string, cfg aiHelperConfig) AIHealth {
-	health := AIHealth{Name: aiName}
-
-	// Get the expected filename from config (extensible for future single-file AIs)
-	instructionsFile := filepath.Join(basePath, cfg.commandsDir, cfg.singleFileName)
-
-	// Check if the instructions file exists
-	content, err := os.ReadFile(instructionsFile)
-	if err != nil {
-		health.Status = HealthMissing
-		health.Reason = fmt.Sprintf("%s file missing", cfg.singleFileName)
-		return health
+	for _, issue := range report.Issues {
+		// MCP drift should not demote local AI health classification.
+		if issue.Component == AIComponentMCPGlobal || issue.Component == AIComponentMCPLocal {
+			continue
+		}
+		// Unmanaged marker-loss only drift remains non-fatal for planner classification.
+		if issue.Ownership == OwnershipUnmanaged &&
+			issue.Component == AIComponentCommands &&
+			issue.Status == ComponentStatusStale &&
+			strings.Contains(strings.ToLower(issue.Reason), "adoption recommended") {
+			continue
+		}
+		switch issue.Status {
+		case ComponentStatusInvalid:
+			health.Status = HealthInvalid
+		case ComponentStatusMissing, ComponentStatusStale:
+			if health.Status != HealthInvalid && health.Status != HealthMissing {
+				health.Status = HealthPartial
+			}
+		}
 	}
-
-	// File exists
-	health.CommandsDirExists = true
-
-	// Check if TaskWing manages this file by looking for our marker comment
-	contentStr := string(content)
-	if strings.Contains(contentStr, "<!-- TASKWING_MANAGED -->") {
-		health.MarkerFileExists = true
-		health.CommandFilesCount = 1 // Only count as "ours" if we manage it
+	if len(report.Issues) > 0 {
+		reasons := make([]string, 0, len(report.Issues))
+		for _, issue := range report.Issues {
+			reasons = append(reasons, fmt.Sprintf("%s: %s", issue.Component, issue.Reason))
+		}
+		health.Reason = strings.Join(reasons, "; ")
 	}
-
-	// Check global MCP registration
-	health.GlobalMCPExists = checkGlobalMCPForAI(aiName)
-
-	// Determine status
-	if health.MarkerFileExists {
-		health.Status = HealthOK
-	} else {
-		// File exists but not managed by TaskWing - user owns it, treat as OK
-		// We won't overwrite user files, so this is a healthy state (user chose their own config)
-		health.Status = HealthOK
-		health.Reason = fmt.Sprintf("%s exists but managed by user (will not overwrite)", cfg.singleFileName)
+	if health.Status == HealthOK && health.Ownership == OwnershipUnmanaged && report.TaskWingLikeUnmanaged {
+		// Keep overall health non-fatal but visible in reason to prevent silent drift.
+		health.Reason = "taskwing-like unmanaged configuration detected"
 	}
-
 	return health
 }
 
@@ -767,6 +772,15 @@ func FormatPlanSummary(plan *Plan, quiet bool) string {
 	if len(plan.Warnings) > 0 {
 		fmt.Fprintf(&sb, " warnings=%d", len(plan.Warnings))
 	}
+	if len(plan.ManagedDriftAIs) > 0 {
+		fmt.Fprintf(&sb, " managed_drift_fixed=%s", strings.Join(plan.ManagedDriftAIs, ","))
+	}
+	if len(plan.UnmanagedDriftAIs) > 0 {
+		fmt.Fprintf(&sb, " unmanaged_drift_detected=%s", strings.Join(plan.UnmanagedDriftAIs, ","))
+	}
+	if len(plan.GlobalMCPDriftAIs) > 0 {
+		fmt.Fprintf(&sb, " global_mcp_drift_detected=%s", strings.Join(plan.GlobalMCPDriftAIs, ","))
+	}
 
 	sb.WriteString("\n")
 
@@ -778,6 +792,18 @@ func FormatPlanSummary(plan *Plan, quiet bool) string {
 			sb.WriteString("\nActions:\n")
 			for _, summary := range plan.ActionSummary {
 				fmt.Fprintf(&sb, "  • %s\n", summary)
+			}
+		}
+		if len(plan.ManagedDriftAIs) > 0 || len(plan.UnmanagedDriftAIs) > 0 || len(plan.GlobalMCPDriftAIs) > 0 {
+			sb.WriteString("\nDrift:\n")
+			if len(plan.ManagedDriftAIs) > 0 {
+				fmt.Fprintf(&sb, "  • managed_drift_fixed: %s\n", strings.Join(plan.ManagedDriftAIs, ", "))
+			}
+			if len(plan.UnmanagedDriftAIs) > 0 {
+				fmt.Fprintf(&sb, "  • unmanaged_drift_detected: %s\n", strings.Join(plan.UnmanagedDriftAIs, ", "))
+			}
+			if len(plan.GlobalMCPDriftAIs) > 0 {
+				fmt.Fprintf(&sb, "  • global_mcp_drift_detected: %s\n", strings.Join(plan.GlobalMCPDriftAIs, ", "))
 			}
 		}
 

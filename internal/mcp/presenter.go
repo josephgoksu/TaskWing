@@ -645,6 +645,11 @@ func FormatClarifyResult(result *app.ClarifyResult) string {
 		sb.WriteString("## 🔍 Clarification Needed\n\n")
 	}
 
+	if result.ClarifySessionID != "" {
+		sb.WriteString(fmt.Sprintf("**Clarify Session**: `%s`\n", result.ClarifySessionID))
+		sb.WriteString(fmt.Sprintf("**Round**: %d\n\n", result.RoundIndex))
+	}
+
 	// Goal summary
 	if result.GoalSummary != "" {
 		sb.WriteString(fmt.Sprintf("**Goal**: %s\n\n", result.GoalSummary))
@@ -659,12 +664,31 @@ func FormatClarifyResult(result *app.ClarifyResult) string {
 		sb.WriteString("\n")
 	}
 
-	// Enriched goal (if ready)
-	if result.EnrichedGoal != "" && result.IsReadyToPlan {
+	// Enriched goal draft is always shown so user/agent can refine every round.
+	if result.EnrichedGoal != "" {
 		sb.WriteString("### Enriched Specification\n")
 		sb.WriteString(result.EnrichedGoal)
 		sb.WriteString("\n\n")
-		sb.WriteString("> **Next**: Call `plan` with action=`generate` and this `enriched_goal` to create tasks.\n")
+		if result.IsReadyToPlan {
+			sb.WriteString("> **Next**: Call `plan` with action=`generate`, this `enriched_goal`, and `clarify_session_id` to create tasks.\n")
+		}
+	}
+
+	if !result.IsReadyToPlan && result.ClarifySessionID != "" {
+		sb.WriteString("### Next Clarify Call Payload\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"action\": \"clarify\",\n")
+		sb.WriteString(fmt.Sprintf("  \"clarify_session_id\": \"%s\",\n", result.ClarifySessionID))
+		sb.WriteString("  \"answers\": [\n")
+		sb.WriteString("    {\"question\": \"<question>\", \"answer\": \"<answer>\"}\n")
+		sb.WriteString("  ]\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n")
+	}
+
+	if result.MaxRoundsReached {
+		sb.WriteString("\n⚠️ Clarification reached maximum rounds before becoming ready.\n")
 	}
 
 	// Context used

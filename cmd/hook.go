@@ -453,13 +453,30 @@ Tasks Completed: %d
 // Session persistence helpers
 
 func getHookSessionPath() (string, error) {
-	// Hook commands use GetMemoryBasePathOrGlobal since they may run
-	// before project context is fully established (e.g., SessionStart)
-	memoryPath, err := config.GetMemoryBasePathOrGlobal()
+	memoryPath, err := resolveHookMemoryPath()
 	if err != nil {
 		return "", fmt.Errorf("get memory path: %w", err)
 	}
 	return filepath.Join(memoryPath, "hook_session.json"), nil
+}
+
+func resolveHookMemoryPath() (string, error) {
+	// First prefer project-scoped memory when context is available.
+	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
+		return memoryPath, nil
+	}
+
+	// Claude hooks expose CLAUDE_PROJECT_DIR; use it before global fallback
+	// to keep session state isolated per project even if project context wasn't set.
+	if projectDir := strings.TrimSpace(os.Getenv("CLAUDE_PROJECT_DIR")); projectDir != "" {
+		taskwingDir := filepath.Join(projectDir, ".taskwing")
+		if info, statErr := os.Stat(taskwingDir); statErr == nil && info.IsDir() {
+			return filepath.Join(taskwingDir, "memory"), nil
+		}
+	}
+
+	// Final fallback for non-project contexts.
+	return config.GetMemoryBasePathOrGlobal()
 }
 
 func loadHookSession() (*HookSession, error) {

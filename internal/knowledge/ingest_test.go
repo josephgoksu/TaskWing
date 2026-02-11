@@ -21,14 +21,14 @@ func TestService_IngestFindings_BasicFinding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize real repository using NewDefaultRepository
 	repo, err := memory.NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create service with empty LLM config (embeddings disabled)
 	svc := NewService(repo, llm.Config{})
@@ -85,13 +85,13 @@ func TestService_IngestFindings_OpenCodeSkillMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := memory.NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	svc := NewService(repo, llm.Config{})
 
@@ -162,13 +162,13 @@ func TestService_IngestFindings_EmptyFindings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := memory.NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	svc := NewService(repo, llm.Config{})
 
@@ -190,13 +190,13 @@ func TestService_IngestFindings_MultipleTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := memory.NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	svc := NewService(repo, llm.Config{})
 
@@ -271,13 +271,13 @@ func TestService_IngestFindings_WithWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := memory.NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	svc := NewService(repo, llm.Config{})
 
@@ -345,14 +345,14 @@ func TestNewDefaultRepository_CreateAndRetrieve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Use NewDefaultRepository as mandated by constraints
 	repo, err := memory.NewDefaultRepository(tmpDir)
 	if err != nil {
 		t.Fatalf("NewDefaultRepository failed: %v", err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	// Create a node
 	testNode := &memory.Node{
@@ -393,7 +393,7 @@ func TestNewDefaultRepository_SQLiteIsCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	repo, err := memory.NewDefaultRepository(tmpDir)
 	if err != nil {
@@ -422,7 +422,7 @@ func TestNewDefaultRepository_SQLiteIsCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDefaultRepository (reopen) failed: %v", err)
 	}
-	defer repo2.Close()
+	defer func() { _ = repo2.Close() }()
 
 	// Verify data persisted (SQLite is the source of truth)
 	nodes, err := repo2.ListNodes("")

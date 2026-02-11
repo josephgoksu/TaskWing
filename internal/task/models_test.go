@@ -3,7 +3,6 @@ package task
 import (
 	"encoding/json"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -119,35 +118,31 @@ func TestPlanIDJSONSchema_AcceptSnakeCase(t *testing.T) {
 	}
 }
 
-// TestPlanIDJSONSchema_AcceptCamelCaseAlias tests that planId is accepted as deprecated alias.
-func TestPlanIDJSONSchema_AcceptCamelCaseAlias(t *testing.T) {
-	// Reset the deprecation warning flag for this test
-	planIDDeprecationWarned = sync.Once{}
-
+// TestPlanIDJSONSchema_RejectCamelCaseAlias tests that planId is rejected.
+func TestPlanIDJSONSchema_RejectCamelCaseAlias(t *testing.T) {
 	jsonData := `{"id":"task-123","planId":"plan-789","title":"Test","description":"Test"}`
 
 	var task Task
-	if err := json.Unmarshal([]byte(jsonData), &task); err != nil {
-		t.Fatalf("Failed to unmarshal task: %v", err)
+	err := json.Unmarshal([]byte(jsonData), &task)
+	if err == nil {
+		t.Fatal("expected unmarshal error for legacy planId")
 	}
-
-	if task.PlanID != "plan-789" {
-		t.Errorf("PlanID = %q, want %q (from planId alias)", task.PlanID, "plan-789")
+	if !strings.Contains(err.Error(), "planId") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-// TestPlanIDJSONSchema_SnakeCaseTakesPrecedence tests that plan_id takes precedence over planId.
-func TestPlanIDJSONSchema_SnakeCaseTakesPrecedence(t *testing.T) {
-	// When both plan_id and planId are provided, plan_id should take precedence
+// TestPlanIDJSONSchema_RejectWhenBothKeysPresent tests strict rejection when legacy key exists.
+func TestPlanIDJSONSchema_RejectWhenBothKeysPresent(t *testing.T) {
 	jsonData := `{"id":"task-123","plan_id":"plan-primary","planId":"plan-alias","title":"Test","description":"Test"}`
 
 	var task Task
-	if err := json.Unmarshal([]byte(jsonData), &task); err != nil {
-		t.Fatalf("Failed to unmarshal task: %v", err)
+	err := json.Unmarshal([]byte(jsonData), &task)
+	if err == nil {
+		t.Fatal("expected unmarshal error for legacy planId")
 	}
-
-	if task.PlanID != "plan-primary" {
-		t.Errorf("PlanID = %q, want %q (plan_id should take precedence)", task.PlanID, "plan-primary")
+	if !strings.Contains(err.Error(), "planId") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -194,11 +189,6 @@ func TestPlanIDJSONSchema_EmptyValues(t *testing.T) {
 			wantPlanID: "",
 		},
 		{
-			name:       "missing plan_id uses planId",
-			jsonData:   `{"id":"task-123","planId":"plan-fallback","title":"Test","description":"Test"}`,
-			wantPlanID: "plan-fallback",
-		},
-		{
 			name:       "both missing",
 			jsonData:   `{"id":"task-123","title":"Test","description":"Test"}`,
 			wantPlanID: "",
@@ -207,9 +197,6 @@ func TestPlanIDJSONSchema_EmptyValues(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Reset deprecation flag
-			planIDDeprecationWarned = sync.Once{}
-
 			var task Task
 			if err := json.Unmarshal([]byte(tc.jsonData), &task); err != nil {
 				t.Fatalf("Failed to unmarshal: %v", err)
@@ -219,5 +206,18 @@ func TestPlanIDJSONSchema_EmptyValues(t *testing.T) {
 				t.Errorf("PlanID = %q, want %q", task.PlanID, tc.wantPlanID)
 			}
 		})
+	}
+}
+
+func TestPlanIDJSONSchema_LegacyAliasRejected(t *testing.T) {
+	jsonData := `{"id":"task-123","planId":"plan-fallback","title":"Test","description":"Test"}`
+
+	var task Task
+	err := json.Unmarshal([]byte(jsonData), &task)
+	if err == nil {
+		t.Fatal("expected unmarshal error for legacy planId")
+	}
+	if !strings.Contains(err.Error(), "planId") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -71,6 +71,22 @@ taskwing doctor
 taskwing config show
 ```
 
+Repair workflow:
+
+```bash
+# Apply managed repairs + MCP fixes
+taskwing doctor --fix --yes
+
+# Adopt unmanaged TaskWing-like AI files (with backup) and repair
+taskwing doctor --fix --adopt-unmanaged --yes --ai claude
+```
+
+Bootstrap behavior during drift:
+
+- Managed local drift: `taskwing bootstrap` auto-repairs.
+- Unmanaged drift: bootstrap warns and points to `doctor --fix --adopt-unmanaged`.
+- Global MCP drift: bootstrap warns and points to `doctor --fix`.
+
 ## Command Surface (Focused)
 
 Top-level commands for daily use:

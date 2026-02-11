@@ -21,6 +21,26 @@ taskwing goal "Add Stripe billing"
 /tw-done
 ```
 
+## Bootstrap and Repair Model
+
+- `taskwing bootstrap` auto-repairs only TaskWing-managed local AI assets.
+- If drift is unmanaged (marker missing/user-owned), bootstrap warns and does not mutate files.
+- Global MCP repair is explicit via `taskwing doctor --fix`.
+- Unmanaged adoption is explicit via `taskwing doctor --fix --adopt-unmanaged`.
+
+Recovery examples:
+
+```bash
+# Inspect current health
+taskwing doctor
+
+# Apply safe repairs for managed drift and MCP config
+taskwing doctor --fix --yes
+
+# Explicitly adopt unmanaged TaskWing-like files, then repair
+taskwing doctor --fix --adopt-unmanaged --yes --ai claude
+```
+
 ## What TaskWing Does
 
 - Stores architecture decisions, constraints, and patterns in local project memory.
@@ -44,7 +64,7 @@ taskwing goal "Add Stripe billing"
 ```json
 {
   "mcpServers": {
-    "taskwing": {
+    "taskwing-mcp": {
       "command": "taskwing",
       "args": ["mcp"]
     }

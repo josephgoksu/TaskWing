@@ -215,7 +215,47 @@ func (s *SQLiteStore) initSchema() error {
 		PRIMARY KEY (task_id, node_id, link_type)
 	);
 
-	-- Clarification history (Audit trail for the agent)
+	-- Clarify sessions (stateful multi-round clarification loop)
+	CREATE TABLE IF NOT EXISTS clarify_sessions (
+		id TEXT PRIMARY KEY,
+		goal TEXT NOT NULL,
+		enriched_goal TEXT,
+		goal_summary TEXT,
+		state TEXT NOT NULL,              -- new_session, awaiting_answers, ready_to_plan, max_rounds_exceeded
+		round_index INTEGER NOT NULL DEFAULT 0,
+		max_rounds INTEGER NOT NULL DEFAULT 5,
+		max_questions_per_round INTEGER NOT NULL DEFAULT 3,
+		current_questions TEXT,           -- JSON array
+		is_ready_to_plan INTEGER NOT NULL DEFAULT 0,
+		last_context_used TEXT,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_clarify_sessions_state ON clarify_sessions(state);
+	CREATE INDEX IF NOT EXISTS idx_clarify_sessions_updated_at ON clarify_sessions(updated_at);
+
+	-- Clarify turns (per-round questions/answers and snapshots)
+	CREATE TABLE IF NOT EXISTS clarify_turns (
+		id TEXT PRIMARY KEY,
+		session_id TEXT NOT NULL,
+		round_index INTEGER NOT NULL,
+		questions TEXT,                   -- JSON array
+		answers TEXT,                     -- JSON array
+		goal_summary TEXT,
+		enriched_goal TEXT,
+		is_ready_to_plan INTEGER NOT NULL DEFAULT 0,
+		auto_answered INTEGER NOT NULL DEFAULT 0,
+		max_rounds_reached INTEGER NOT NULL DEFAULT 0,
+		context_summary TEXT,
+		created_at TEXT NOT NULL,
+		FOREIGN KEY (session_id) REFERENCES clarify_sessions(id) ON DELETE CASCADE
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_clarify_turns_session_round ON clarify_turns(session_id, round_index);
+	CREATE INDEX IF NOT EXISTS idx_clarify_turns_session_id ON clarify_turns(session_id);
+
+	-- Legacy clarification history (deprecated; retained for backward compatibility)
 	CREATE TABLE IF NOT EXISTS plan_clarifications (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		plan_id TEXT NOT NULL,

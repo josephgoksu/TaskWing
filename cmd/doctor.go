@@ -4,17 +4,17 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
-	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/task"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var doctorCmd = &cobra.Command{
@@ -29,14 +29,24 @@ Checks:
   • Active plan and task status
   • Session state
 
-Use this to troubleshoot issues or verify setup after bootstrap.`,
+Use this to troubleshoot issues or verify setup after bootstrap.
+
+Repair mode:
+  • --fix applies an explicit repair plan
+  • --adopt-unmanaged allows claiming unmanaged TaskWing-like AI configs (with backup)
+  • --yes is required for non-interactive global/adoption mutations`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runDoctor()
+		return runDoctor(cmd)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(doctorCmd)
+	doctorCmd.Flags().Bool("fix", false, "Automatically apply safe repairs for detected integration drift")
+	doctorCmd.Flags().Bool("yes", false, "Auto-confirm prompts (required for non-interactive fix flows)")
+	doctorCmd.Flags().Bool("adopt-unmanaged", false, "Allow adopting unmanaged TaskWing-like configs before repair")
+	doctorCmd.Flags().String("ai", "", "Comma-separated AI list to target during repair (e.g., claude,codex)")
+	doctorCmd.Flags().Bool("dry-run", false, "Show planned repairs without mutating files/config")
 }
 
 // DoctorCheck represents a single diagnostic check
@@ -49,57 +59,43 @@ type DoctorCheck struct {
 
 // DoctorResult is the JSON output structure for doctor command
 type DoctorResult struct {
-	Status   string        `json:"status"` // "ok", "warn", "fail"
-	Checks   []DoctorCheck `json:"checks"`
-	Errors   int           `json:"errors"`
-	Warnings int           `json:"warnings"`
+	Status         string                   `json:"status"` // "ok", "warn", "fail"
+	Checks         []DoctorCheck            `json:"checks"`
+	Errors         int                      `json:"errors"`
+	Warnings       int                      `json:"warnings"`
+	RepairPlan     []bootstrap.RepairAction `json:"repair_plan,omitempty"`
+	AppliedRepairs []bootstrap.RepairAction `json:"applied_repairs,omitempty"`
+	SkippedRepairs []bootstrap.RepairAction `json:"skipped_repairs,omitempty"`
+	BlockedRepairs []bootstrap.RepairAction `json:"blocked_repairs,omitempty"`
 }
 
-func runDoctor() error {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get current directory: %w", err)
-	}
+type doctorFixOptions struct {
+	Fix            bool
+	Yes            bool
+	AdoptUnmanaged bool
+	DryRun         bool
+	TargetAIs      []string
+}
 
+func evaluateDoctorState(cwd string) ([]DoctorCheck, map[string]bootstrap.IntegrationReport, bool, bool, int, int) {
 	checks := []DoctorCheck{}
-	hasErrors := false
-	hasWarnings := false
 
 	// Check 1: TaskWing initialized
-	check := checkTaskWingInit(cwd)
-	checks = append(checks, check)
-	switch check.Status {
-	case "fail":
-		hasErrors = true
-	case "warn":
-		hasWarnings = true
-	}
+	checks = append(checks, checkTaskWingInit(cwd))
 
-	// Check 2: MCP servers
-	mcpChecks := checkMCPServers(cwd)
-	checks = append(checks, mcpChecks...)
+	// Check 2: Active plan
+	checks = append(checks, checkActivePlan())
 
-	// Check 3: Hooks configuration
-	hookChecks := checkHooksConfig(cwd)
-	checks = append(checks, hookChecks...)
-	for _, c := range hookChecks {
-		switch c.Status {
-		case "fail":
-			hasErrors = true
-		case "warn":
-			hasWarnings = true
-		}
-	}
+	// Check 3: Session state
+	checks = append(checks, checkSession())
 
-	// Check 4: Active plan
-	planCheck := checkActivePlan()
-	checks = append(checks, planCheck)
+	// Check 4: Shared integration evaluator (source of truth for bootstrap + doctor repair)
+	globalMap := makeGlobalMCPMap(detectExistingMCPConfigs())
+	reports := bootstrap.EvaluateIntegrations(cwd, globalMap)
+	checks = append(checks, checksFromIntegrationReports(reports)...)
 
-	// Check 5: Session state
-	sessionCheck := checkSession()
-	checks = append(checks, sessionCheck)
-
-	// Count errors and warnings
+	hasErrors := false
+	hasWarnings := false
 	errorCount := 0
 	warningCount := 0
 	for _, c := range checks {
@@ -113,6 +109,47 @@ func runDoctor() error {
 		}
 	}
 
+	return checks, reports, hasErrors, hasWarnings, errorCount, warningCount
+}
+
+func runDoctor(cmd *cobra.Command) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get current directory: %w", err)
+	}
+	opts := doctorFixOptions{
+		Fix:            getBoolFlag(cmd, "fix"),
+		Yes:            getBoolFlag(cmd, "yes"),
+		AdoptUnmanaged: getBoolFlag(cmd, "adopt-unmanaged"),
+		DryRun:         getBoolFlag(cmd, "dry-run"),
+		TargetAIs:      parseCSVFlag(getStringFlag(cmd, "ai")),
+	}
+
+	checks, reports, hasErrors, hasWarnings, errorCount, warningCount := evaluateDoctorState(cwd)
+
+	var repairPlan []bootstrap.RepairAction
+	var appliedRepairs []bootstrap.RepairAction
+	var skippedRepairs []bootstrap.RepairAction
+	var blockedRepairs []bootstrap.RepairAction
+
+	if opts.Fix {
+		built := bootstrap.BuildRepairPlan(reports, bootstrap.RepairPlanOptions{
+			TargetAIs:                opts.TargetAIs,
+			IncludeGlobalMutations:   true,
+			IncludeUnmanagedAdoption: opts.AdoptUnmanaged,
+		})
+		repairPlan = built.Actions
+		appliedRepairs, skippedRepairs, blockedRepairs, err = applyRepairPlan(cwd, built, opts)
+		if err != nil {
+			return err
+		}
+
+		// Re-evaluate after apply (unless dry-run) to reflect final health.
+		if !opts.DryRun {
+			checks, _, hasErrors, hasWarnings, errorCount, warningCount = evaluateDoctorState(cwd)
+		}
+	}
+
 	// JSON output
 	if isJSON() {
 		status := "ok"
@@ -122,10 +159,14 @@ func runDoctor() error {
 			status = "warn"
 		}
 		return printJSON(DoctorResult{
-			Status:   status,
-			Checks:   checks,
-			Errors:   errorCount,
-			Warnings: warningCount,
+			Status:         status,
+			Checks:         checks,
+			Errors:         errorCount,
+			Warnings:       warningCount,
+			RepairPlan:     repairPlan,
+			AppliedRepairs: appliedRepairs,
+			SkippedRepairs: skippedRepairs,
+			BlockedRepairs: blockedRepairs,
 		})
 	}
 
@@ -137,6 +178,21 @@ func runDoctor() error {
 	// Print all checks
 	for _, c := range checks {
 		printCheck(c)
+	}
+
+	if opts.Fix {
+		fmt.Println()
+		fmt.Println("🔧 Repair Summary")
+		fmt.Printf("   Planned: %d\n", len(repairPlan))
+		fmt.Printf("   Applied: %d\n", len(appliedRepairs))
+		fmt.Printf("   Skipped: %d\n", len(skippedRepairs))
+		fmt.Printf("   Blocked: %d\n", len(blockedRepairs))
+		for _, action := range blockedRepairs {
+			fmt.Printf("   ⊘ %s/%s: %s\n", action.AI, action.Component, action.Reason)
+		}
+		for _, action := range skippedRepairs {
+			fmt.Printf("   ⊘ %s/%s: %s\n", action.AI, action.Component, action.Reason)
+		}
 	}
 
 	fmt.Println()
@@ -156,6 +212,30 @@ func runDoctor() error {
 	return nil
 }
 
+func parseCSVFlag(v string) []string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func makeGlobalMCPMap(ais []string) map[string]bool {
+	out := make(map[string]bool, len(ais))
+	for _, ai := range ais {
+		out[ai] = true
+	}
+	return out
+}
+
 func printCheck(c DoctorCheck) {
 	var icon string
 	switch c.Status {
@@ -170,6 +250,140 @@ func printCheck(c DoctorCheck) {
 	fmt.Printf("%s %s: %s\n", icon, c.Name, c.Message)
 	if c.Hint != "" && c.Status != "ok" {
 		fmt.Printf("   └─ %s\n", c.Hint)
+	}
+}
+
+func checksFromIntegrationReports(reports map[string]bootstrap.IntegrationReport) []DoctorCheck {
+	ais := make([]string, 0, len(reports))
+	for ai := range reports {
+		ais = append(ais, ai)
+	}
+	sort.Strings(ais)
+
+	checks := make([]DoctorCheck, 0)
+	for _, ai := range ais {
+		report := reports[ai]
+		if len(report.Issues) == 0 {
+			checks = append(checks, DoctorCheck{
+				Name:    fmt.Sprintf("Integration (%s)", ai),
+				Status:  "ok",
+				Message: "Healthy",
+			})
+			continue
+		}
+		for _, issue := range report.Issues {
+			status := "warn"
+			if issue.Status == bootstrap.ComponentStatusInvalid {
+				status = "fail"
+			}
+			hint := fmt.Sprintf("Run: taskwing doctor --fix --ai %s", ai)
+			if issue.AdoptRequired {
+				hint = fmt.Sprintf("Run: taskwing doctor --fix --adopt-unmanaged --ai %s", ai)
+			}
+			if issue.MutatesGlobal {
+				hint = fmt.Sprintf("Run: taskwing doctor --fix --yes --ai %s", ai)
+			}
+			checks = append(checks, DoctorCheck{
+				Name:    fmt.Sprintf("Integration (%s/%s)", ai, issue.Component),
+				Status:  status,
+				Message: issue.Reason,
+				Hint:    hint,
+			})
+		}
+	}
+	return checks
+}
+
+func applyRepairPlan(cwd string, plan bootstrap.RepairPlan, opts doctorFixOptions) ([]bootstrap.RepairAction, []bootstrap.RepairAction, []bootstrap.RepairAction, error) {
+	applied := make([]bootstrap.RepairAction, 0)
+	skipped := make([]bootstrap.RepairAction, 0)
+	blocked := make([]bootstrap.RepairAction, 0)
+
+	if len(plan.Actions) == 0 {
+		return applied, skipped, blocked, nil
+	}
+
+	needsConfirmation := false
+	for _, action := range plan.Actions {
+		if !action.Apply {
+			blocked = append(blocked, action)
+			continue
+		}
+		if action.MutatesGlobal || action.RequiresAdoption {
+			needsConfirmation = true
+		}
+	}
+
+	if needsConfirmation && !opts.Yes {
+		if !ui.IsInteractive() {
+			return nil, nil, nil, fmt.Errorf("doctor --fix requires --yes in non-interactive mode when global/adoption changes are needed")
+		}
+		fmt.Print("Apply repair actions that may mutate global/adopt unmanaged configs? [y/N]: ")
+		var input string
+		_, _ = fmt.Scanln(&input)
+		input = strings.TrimSpace(strings.ToLower(input))
+		if input != "y" && input != "yes" {
+			return applied, skipped, blocked, nil
+		}
+	}
+
+	binPath, err := os.Executable()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("resolve executable path: %w", err)
+	}
+	if absPath, err := filepath.Abs(binPath); err == nil {
+		binPath = filepath.Clean(absPath)
+	}
+
+	init := bootstrap.NewInitializer(cwd)
+	for _, action := range plan.Actions {
+		if !action.Apply {
+			continue
+		}
+		if opts.DryRun {
+			action.Apply = false
+			action.Reason = "dry-run"
+			skipped = append(skipped, action)
+			continue
+		}
+		if strings.HasPrefix(action.Primitive, "adopt_and_") {
+			if _, adoptErr := init.AdoptAIConfig(action.AI, viper.GetBool("verbose")); adoptErr != nil {
+				action.Apply = false
+				action.Reason = "adoption failed: " + adoptErr.Error()
+				skipped = append(skipped, action)
+				continue
+			}
+		}
+		primitive := strings.TrimPrefix(action.Primitive, "adopt_and_")
+		if err := applyRepairPrimitive(primitive, action.AI, cwd, binPath, init); err != nil {
+			action.Apply = false
+			action.Reason = err.Error()
+			skipped = append(skipped, action)
+			continue
+		}
+		applied = append(applied, action)
+	}
+
+	return applied, skipped, blocked, nil
+}
+
+func applyRepairPrimitive(primitive, aiName, cwd, binPath string, init *bootstrap.Initializer) error {
+	switch primitive {
+	case "repairCommands":
+		return init.CreateSlashCommands(aiName, viper.GetBool("verbose"))
+	case "repairHooks":
+		return init.InstallHooksConfig(aiName, viper.GetBool("verbose"))
+	case "repairPlugin":
+		if aiName != "opencode" {
+			return nil
+		}
+		return init.InstallHooksConfig("opencode", viper.GetBool("verbose"))
+	case "repairLocalMCP":
+		return installMCPForTarget(aiName, binPath, cwd)
+	case "repairGlobalMCP":
+		return installMCPForTarget(aiName, binPath, cwd)
+	default:
+		return fmt.Errorf("unknown repair primitive: %s", primitive)
 	}
 }
 
@@ -202,444 +416,6 @@ func checkTaskWingInit(cwd string) DoctorCheck {
 	}
 }
 
-func checkMCPServers(cwd string) []DoctorCheck {
-	checks := []DoctorCheck{}
-
-	// Check Claude Code MCP
-	claudeCheck := checkClaudeMCP()
-	if claudeCheck.Status != "" {
-		checks = append(checks, claudeCheck)
-	}
-
-	// Check Gemini MCP (with size limit)
-	geminiPath := filepath.Join(cwd, ".gemini", "settings.json")
-	if info, err := os.Stat(geminiPath); err == nil && info.Size() < 1024*1024 { // 1MB limit
-		if content, err := os.ReadFile(geminiPath); err == nil {
-			var config map[string]any
-			if err := json.Unmarshal(content, &config); err == nil {
-				if servers, ok := config["mcpServers"].(map[string]any); ok {
-					if _, hasTaskwing := servers["taskwing-mcp"]; hasTaskwing {
-						checks = append(checks, DoctorCheck{
-							Name:    "MCP (Gemini)",
-							Status:  "ok",
-							Message: "taskwing-mcp registered",
-						})
-					}
-				}
-			}
-		}
-	}
-
-	// Check Codex MCP
-	codexCheck := checkCodexMCP()
-	if codexCheck.Status != "" {
-		checks = append(checks, codexCheck)
-	}
-
-	// Check Cursor MCP (with size limit)
-	cursorPath := filepath.Join(cwd, ".cursor", "mcp.json")
-	if info, err := os.Stat(cursorPath); err == nil && info.Size() < 1024*1024 { // 1MB limit
-		if content, err := os.ReadFile(cursorPath); err == nil {
-			var config map[string]any
-			if err := json.Unmarshal(content, &config); err == nil {
-				if servers, ok := config["mcpServers"].(map[string]any); ok {
-					if _, hasTaskwing := servers["taskwing-mcp"]; hasTaskwing {
-						checks = append(checks, DoctorCheck{
-							Name:    "MCP (Cursor)",
-							Status:  "ok",
-							Message: "taskwing-mcp registered",
-						})
-					}
-				}
-			}
-		}
-	}
-
-	// Check OpenCode MCP (project-local opencode.json)
-	openCodeChecks := checkOpenCodeMCP(cwd)
-	checks = append(checks, openCodeChecks...)
-
-	if len(checks) == 0 {
-		checks = append(checks, DoctorCheck{
-			Name:    "MCP Servers",
-			Status:  "warn",
-			Message: "No MCP servers configured",
-			Hint:    "Run: taskwing mcp install claude (or gemini, codex, cursor)",
-		})
-	}
-
-	return checks
-}
-
-func checkClaudeMCP() DoctorCheck {
-	// Check if claude CLI exists
-	if _, err := exec.LookPath("claude"); err != nil {
-		// Return empty check - Claude not installed is not an error, just skip
-		return DoctorCheck{}
-	}
-
-	// Run claude mcp list with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "claude", "mcp", "list")
-	output, err := cmd.Output()
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return DoctorCheck{
-				Name:    "MCP (Claude)",
-				Status:  "warn",
-				Message: "Timeout checking MCP servers",
-			}
-		}
-		return DoctorCheck{
-			Name:    "MCP (Claude)",
-			Status:  "warn",
-			Message: "Could not check MCP servers",
-		}
-	}
-
-	if strings.Contains(string(output), "taskwing-mcp") {
-		return DoctorCheck{
-			Name:    "MCP (Claude)",
-			Status:  "ok",
-			Message: "taskwing-mcp registered",
-		}
-	}
-
-	return DoctorCheck{
-		Name:    "MCP (Claude)",
-		Status:  "warn",
-		Message: "taskwing-mcp not registered",
-		Hint:    "Run: taskwing mcp install claude",
-	}
-}
-
-func checkCodexMCP() DoctorCheck {
-	// Check if codex CLI exists
-	if _, err := exec.LookPath("codex"); err != nil {
-		return DoctorCheck{} // Not installed, skip
-	}
-
-	// Run codex mcp list with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "codex", "mcp", "list")
-	output, err := cmd.Output()
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return DoctorCheck{
-				Name:    "MCP (Codex)",
-				Status:  "warn",
-				Message: "Timeout checking MCP servers",
-			}
-		}
-		return DoctorCheck{
-			Name:    "MCP (Codex)",
-			Status:  "warn",
-			Message: "Could not check MCP servers",
-		}
-	}
-
-	if strings.Contains(string(output), "taskwing-mcp") {
-		return DoctorCheck{
-			Name:    "MCP (Codex)",
-			Status:  "ok",
-			Message: "taskwing-mcp registered",
-		}
-	}
-
-	return DoctorCheck{
-		Name:    "MCP (Codex)",
-		Status:  "warn",
-		Message: "taskwing-mcp not registered",
-		Hint:    "Run: taskwing mcp install codex",
-	}
-}
-
-// checkOpenCodeMCP validates OpenCode MCP configuration:
-// 1. Checks if opencode.json exists at project root
-// 2. Validates JSON structure and taskwing-mcp entry
-// 3. Verifies command is JSON array and type is "local"
-// 4. Validates .opencode/commands/*.md files
-func checkOpenCodeMCP(cwd string) []DoctorCheck {
-	checks := []DoctorCheck{}
-
-	// Check 1: opencode.json exists
-	configPath := filepath.Join(cwd, "opencode.json")
-	info, err := os.Stat(configPath)
-	if os.IsNotExist(err) {
-		// No opencode.json - OpenCode is not configured (not an error, just skip)
-		return checks
-	}
-
-	// Size limit for safety
-	if info.Size() > 1024*1024 { // 1MB limit
-		checks = append(checks, DoctorCheck{
-			Name:    "MCP (OpenCode)",
-			Status:  "warn",
-			Message: "opencode.json too large to parse",
-		})
-		return checks
-	}
-
-	// Check 2: Parse and validate JSON structure
-	content, err := os.ReadFile(configPath)
-	if err != nil {
-		checks = append(checks, DoctorCheck{
-			Name:    "MCP (OpenCode)",
-			Status:  "warn",
-			Message: "Could not read opencode.json",
-			Hint:    "Check file permissions",
-		})
-		return checks
-	}
-
-	var config OpenCodeConfig
-	if err := json.Unmarshal(content, &config); err != nil {
-		checks = append(checks, DoctorCheck{
-			Name:    "MCP (OpenCode)",
-			Status:  "fail",
-			Message: "Invalid JSON in opencode.json",
-			Hint:    "Run: jq . opencode.json to validate syntax",
-		})
-		return checks
-	}
-
-	// Check 3: Validate MCP section exists
-	if len(config.MCP) == 0 {
-		checks = append(checks, DoctorCheck{
-			Name:    "MCP (OpenCode)",
-			Status:  "fail",
-			Message: "No MCP servers in opencode.json",
-			Hint:    "Run: taskwing mcp install opencode",
-		})
-		return checks
-	}
-
-	// Check 4: Find taskwing-mcp entry (may have project suffix)
-	var serverCfg *OpenCodeMCPServerConfig
-	var serverName string
-	for name, cfg := range config.MCP {
-		if strings.HasPrefix(name, "taskwing-mcp") {
-			serverCfg = &cfg
-			serverName = name
-			break
-		}
-	}
-
-	if serverCfg == nil {
-		checks = append(checks, DoctorCheck{
-			Name:    "MCP (OpenCode)",
-			Status:  "fail",
-			Message: "taskwing-mcp not found in opencode.json",
-			Hint:    "Run: taskwing mcp install opencode",
-		})
-		return checks
-	}
-
-	// Check 5: Validate type is "local"
-	if serverCfg.Type != "local" {
-		checks = append(checks, DoctorCheck{
-			Name:    "MCP (OpenCode)",
-			Status:  "fail",
-			Message: fmt.Sprintf("Invalid type %q (expected \"local\")", serverCfg.Type),
-			Hint:    "Run: taskwing mcp install opencode to regenerate",
-		})
-		return checks
-	}
-
-	// Check 6: Validate command is array with at least 2 elements
-	if len(serverCfg.Command) < 2 {
-		checks = append(checks, DoctorCheck{
-			Name:    "MCP (OpenCode)",
-			Status:  "fail",
-			Message: "Invalid command format (expected array with binary and 'mcp')",
-			Hint:    "Run: taskwing mcp install opencode to regenerate",
-		})
-		return checks
-	}
-
-	// MCP config is valid
-	checks = append(checks, DoctorCheck{
-		Name:    "MCP (OpenCode)",
-		Status:  "ok",
-		Message: fmt.Sprintf("%s registered in opencode.json", serverName),
-	})
-
-	// Check 7: Validate commands (optional - warn if issues)
-	commandsChecks := checkOpenCodeCommands(cwd)
-	checks = append(checks, commandsChecks...)
-
-	return checks
-}
-
-// checkOpenCodeCommands validates .opencode/commands/*.md files
-// OpenCode commands use flat structure: .opencode/commands/<name>.md with description frontmatter
-// See: https://opencode.ai/docs/commands/
-func checkOpenCodeCommands(cwd string) []DoctorCheck {
-	checks := []DoctorCheck{}
-
-	commandsDir := filepath.Join(cwd, ".opencode", "commands")
-	if _, err := os.Stat(commandsDir); os.IsNotExist(err) {
-		// No commands directory - not an error, commands are optional
-		return checks
-	}
-
-	// Find all .md files in commands directory (flat structure)
-	pattern := filepath.Join(commandsDir, "*.md")
-	matches, err := filepath.Glob(pattern)
-	if err != nil || len(matches) == 0 {
-		// No commands found - not an error
-		return checks
-	}
-
-	validCommands := 0
-	invalidCommands := []string{}
-
-	for _, cmdPath := range matches {
-		// Skip marker file
-		if filepath.Base(cmdPath) == ".taskwing-managed" {
-			continue
-		}
-
-		// Get the command name from filename (without .md extension)
-		cmdName := strings.TrimSuffix(filepath.Base(cmdPath), ".md")
-
-		// Read and validate command file
-		content, err := os.ReadFile(cmdPath)
-		if err != nil {
-			invalidCommands = append(invalidCommands, cmdName+": unreadable")
-			continue
-		}
-
-		// Check for frontmatter markers
-		contentStr := string(content)
-		if !strings.HasPrefix(contentStr, "---") {
-			invalidCommands = append(invalidCommands, cmdName+": missing YAML frontmatter")
-			continue
-		}
-
-		// Extract frontmatter
-		parts := strings.SplitN(contentStr, "---", 3)
-		if len(parts) < 3 {
-			invalidCommands = append(invalidCommands, cmdName+": incomplete frontmatter")
-			continue
-		}
-
-		frontmatter := parts[1]
-
-		// Check for required field (OpenCode only requires description)
-		hasDescription := strings.Contains(frontmatter, "description:")
-
-		if !hasDescription {
-			invalidCommands = append(invalidCommands, cmdName+": missing description")
-			continue
-		}
-
-		validCommands++
-	}
-
-	if len(invalidCommands) > 0 {
-		checks = append(checks, DoctorCheck{
-			Name:    "Commands (OpenCode)",
-			Status:  "warn",
-			Message: fmt.Sprintf("%d valid, %d invalid commands", validCommands, len(invalidCommands)),
-			Hint:    "Invalid: " + strings.Join(invalidCommands, "; ") + ". For development, use taskwing-local-dev-mcp",
-		})
-	} else if validCommands > 0 {
-		checks = append(checks, DoctorCheck{
-			Name:    "Commands (OpenCode)",
-			Status:  "ok",
-			Message: fmt.Sprintf("%d commands configured", validCommands),
-		})
-	}
-
-	return checks
-}
-
-func checkHooksConfig(cwd string) []DoctorCheck {
-	checks := []DoctorCheck{}
-
-	// Check Claude hooks
-	claudeSettingsPath := filepath.Join(cwd, ".claude", "settings.json")
-	claudeCheck := checkHooksFile(claudeSettingsPath, "Claude")
-	if claudeCheck.Status != "" {
-		checks = append(checks, claudeCheck)
-	}
-
-	// Check Codex hooks
-	codexSettingsPath := filepath.Join(cwd, ".codex", "settings.json")
-	codexCheck := checkHooksFile(codexSettingsPath, "Codex")
-	if codexCheck.Status != "" {
-		checks = append(checks, codexCheck)
-	}
-
-	if len(checks) == 0 {
-		checks = append(checks, DoctorCheck{
-			Name:    "Hooks",
-			Status:  "warn",
-			Message: "No hooks configured",
-			Hint:    "Run: taskwing bootstrap (select claude or codex)",
-		})
-	}
-
-	return checks
-}
-
-func checkHooksFile(settingsPath, aiName string) DoctorCheck {
-	content, err := os.ReadFile(settingsPath)
-	if err != nil {
-		return DoctorCheck{} // File doesn't exist, skip
-	}
-
-	var config map[string]any
-	if err := json.Unmarshal(content, &config); err != nil {
-		return DoctorCheck{
-			Name:    fmt.Sprintf("Hooks (%s)", aiName),
-			Status:  "warn",
-			Message: "Invalid settings.json",
-			Hint:    "Check JSON syntax in " + settingsPath,
-		}
-	}
-
-	hooks, hasHooks := config["hooks"]
-	if !hasHooks {
-		return DoctorCheck{
-			Name:    fmt.Sprintf("Hooks (%s)", aiName),
-			Status:  "warn",
-			Message: "No hooks in settings.json",
-			Hint:    "Run: taskwing bootstrap",
-		}
-	}
-
-	// Check for Stop hook specifically
-	hooksMap, ok := hooks.(map[string]any)
-	if !ok {
-		return DoctorCheck{
-			Name:    fmt.Sprintf("Hooks (%s)", aiName),
-			Status:  "warn",
-			Message: "Invalid hooks format",
-		}
-	}
-
-	if _, hasStop := hooksMap["Stop"]; !hasStop {
-		return DoctorCheck{
-			Name:    fmt.Sprintf("Hooks (%s)", aiName),
-			Status:  "warn",
-			Message: "Missing Stop hook (required for auto-continue)",
-			Hint:    "Run: taskwing bootstrap",
-		}
-	}
-
-	return DoctorCheck{
-		Name:    fmt.Sprintf("Hooks (%s)", aiName),
-		Status:  "ok",
-		Message: "Configured (SessionStart, Stop, SessionEnd)",
-	}
-}
-
 func checkActivePlan() DoctorCheck {
 	repo, err := openRepo()
 	if err != nil {
@@ -665,7 +441,7 @@ func checkActivePlan() DoctorCheck {
 			Name:    "Active Plan",
 			Status:  "warn",
 			Message: "No active plan",
-			Hint:    "Run: taskwing plan new \"your goal\" && taskwing plan start latest",
+			Hint:    "Run: taskwing goal \"your goal\"",
 		}
 	}
 
@@ -735,9 +511,8 @@ func printNextSteps(checks []DoctorCheck) {
 	fmt.Println()
 	fmt.Println("Next steps:")
 	if !hasActivePlan {
-		fmt.Println("  1. Create a plan: taskwing plan new \"your development goal\"")
-		fmt.Println("  2. Start the plan: taskwing plan start latest")
-		fmt.Println("  3. Open Claude Code and run: /tw-next")
+		fmt.Println("  1. Create and activate plan: taskwing goal \"your development goal\"")
+		fmt.Println("  2. Open Claude Code and run: /tw-next")
 	} else if !hasSession {
 		fmt.Println("  1. Open Claude Code (session will auto-initialize)")
 		fmt.Println("  2. Run: /tw-next")

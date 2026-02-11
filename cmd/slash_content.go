@@ -11,8 +11,10 @@ Execute these steps IN ORDER. Do not skip any step.
 ## Step 1: Get Next Task
 Call MCP tool ` + "`task`" + ` with action ` + "`next`" + ` to retrieve the highest-priority pending task:
 ` + "```json" + `
-{"action": "next", "session_id": "claude-session"}
+{"action": "next"}
 ` + "```" + `
+
+` + "`session_id`" + ` is optional when called through MCP transport; include it only for explicit cross-session orchestration.
 
 Extract from the response:
 - task_id, title, description
@@ -46,7 +48,7 @@ Use ` + "`suggested_recall_queries`" + ` if available, otherwise extract keyword
 ## Step 4: Claim the Task
 Call MCP tool ` + "`task`" + ` with action ` + "`start`" + `:
 ` + "```json" + `
-{"action": "start", "task_id": "[task_id from step 1]", "session_id": "claude-session"}
+{"action": "start", "task_id": "[task_id from step 1]"}
 ` + "```" + `
 
 ## Step 5: Present Unified Task Brief
@@ -109,7 +111,7 @@ Execute these steps IN ORDER.
 ## Step 1: Get Current Task
 Call MCP tool ` + "`task`" + ` with action ` + "`current`" + `:
 ` + "```json" + `
-{"action": "current", "session_id": "claude-session"}
+{"action": "current"}
 ` + "```" + `
 
 If no active task, inform user and stop.
@@ -173,7 +175,7 @@ const slashStatusContent = `# Show Current Task Status
 ## Step 1: Get Current Task
 Call MCP tool ` + "`task`" + ` with action ` + "`current`" + `:
 ` + "```json" + `
-{"action": "current", "session_id": "claude-session"}
+{"action": "current"}
 ` + "```" + `
 
 If no active task:
@@ -249,7 +251,7 @@ Call MCP tool ` + "`plan`" + ` with action ` + "`clarify`" + ` and the user's go
 {"action": "clarify", "goal": "[goal from Step 0]"}
 ` + "```" + `
 
-Extract: questions, goal_summary, enriched_goal, is_ready_to_plan, context_used.
+Extract: clarify_session_id, questions, goal_summary, enriched_goal, is_ready_to_plan, context_used.
 
 ## Step 2: Ask Clarifying Questions (Loop)
 
@@ -257,10 +259,17 @@ Extract: questions, goal_summary, enriched_goal, is_ready_to_plan, context_used.
 Present the questions to the user. Wait for user response.
 
 **If user says "auto":**
-Call ` + "`plan`" + ` again with action ` + "`clarify`" + ` and auto_answer: true.
+Call ` + "`plan`" + ` again with action ` + "`clarify`" + `, clarify_session_id, and auto_answer: true.
 
 **If user provides answers:**
-Format answers as JSON and call ` + "`plan`" + ` again with action ` + "`clarify`" + `.
+Format answers as JSON and call ` + "`plan`" + ` again with action ` + "`clarify`" + ` and clarify_session_id:
+` + "```json" + `
+{
+  "action": "clarify",
+  "clarify_session_id": "[clarify_session_id from previous clarify step]",
+  "answers": [{"question":"...","answer":"..."}]
+}
+` + "```" + `
 
 Repeat until is_ready_to_plan is true.
 
@@ -271,6 +280,7 @@ When is_ready_to_plan is true, call MCP tool ` + "`plan`" + ` with action ` + "`
 {
   "action": "generate",
   "goal": "$ARGUMENTS",
+  "clarify_session_id": "[clarify_session_id from clarify loop]",
   "enriched_goal": "[enriched_goal from step 2]",
   "save": true
 }
@@ -320,7 +330,7 @@ Call MCP tool ` + "`plan`" + ` with action=clarify:
 ` + "```" + `
 
 Ask clarifying questions until is_ready_to_plan is true.
-Save the plan_id and enriched_goal for subsequent steps.
+Save the clarify_session_id and enriched_goal for subsequent steps.
 
 **CHECKPOINT 1**: User approves the enriched goal before proceeding.
 
@@ -442,9 +452,9 @@ After all phases are expanded, call MCP tool ` + "`plan`" + ` with action=finali
 
 ## Fallback (No MCP)
 ` + "```bash" + `
-taskwing plan new "Your goal description"
-taskwing plan new --interactive "Your goal description"  # Interactive mode
-taskwing plan new --non-interactive "Your goal description"  # Batch mode
+taskwing goal "Your goal description"  # Preferred
+taskwing plan new "Your goal description"  # Advanced mode
+taskwing plan new --non-interactive "Your goal description"  # Headless mode
 ` + "```" + `
 `
 

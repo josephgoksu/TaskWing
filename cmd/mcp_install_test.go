@@ -304,6 +304,59 @@ func TestUpsertOpenCodeMCPServer_MalformedExistingJSON(t *testing.T) {
 	}
 }
 
+func TestUpsertOpenCodeMCPServer_RemovesLegacyTaskWingKeys(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "opencode.json")
+
+	existing := OpenCodeConfig{
+		Schema: "https://opencode.ai/config.json",
+		MCP: map[string]OpenCodeMCPServerConfig{
+			"taskwing-mcp-my-project": {
+				Type:    "local",
+				Command: []string{"taskwing", "mcp"},
+			},
+			"other-mcp": {
+				Type:    "local",
+				Command: []string{"other", "mcp"},
+			},
+		},
+	}
+	data, err := json.MarshalIndent(existing, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal existing config: %v", err)
+	}
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		t.Fatalf("write existing config: %v", err)
+	}
+
+	if err := upsertOpenCodeMCPServer(configPath, "taskwing-mcp", OpenCodeMCPServerConfig{
+		Type:    "local",
+		Command: []string{"taskwing", "mcp"},
+	}); err != nil {
+		t.Fatalf("upsertOpenCodeMCPServer failed: %v", err)
+	}
+
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+
+	var config OpenCodeConfig
+	if err := json.Unmarshal(content, &config); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+
+	if _, ok := config.MCP["taskwing-mcp"]; !ok {
+		t.Fatal("canonical taskwing-mcp entry missing after upsert")
+	}
+	if _, ok := config.MCP["taskwing-mcp-my-project"]; ok {
+		t.Fatal("legacy taskwing-mcp-* entry should be removed during canonicalization")
+	}
+	if _, ok := config.MCP["other-mcp"]; !ok {
+		t.Fatal("non-taskwing MCP entries must be preserved")
+	}
+}
+
 // =============================================================================
 // Helper Functions
 // =============================================================================

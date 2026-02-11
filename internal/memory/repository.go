@@ -137,3 +137,30 @@ func (r *Repository) UpdatePlanDraftState(planID string, draftStateJSON string) 
 func (r *Repository) UpdatePlanGenerationMode(planID string, mode task.GenerationMode) error {
 	return r.db.UpdatePlanGenerationMode(planID, mode)
 }
+
+// === Clarify Session Repository Methods (delegate to SQLiteStore) ===
+
+// CreateClarifySession creates a persisted clarify session.
+func (r *Repository) CreateClarifySession(session *task.ClarifySession) error {
+	return r.db.CreateClarifySession(session)
+}
+
+// GetClarifySession retrieves a clarify session by ID.
+func (r *Repository) GetClarifySession(id string) (*task.ClarifySession, error) {
+	return r.db.GetClarifySession(id)
+}
+
+// UpdateClarifySession updates persisted clarify session state.
+func (r *Repository) UpdateClarifySession(session *task.ClarifySession) error {
+	return r.db.UpdateClarifySession(session)
+}
+
+// CreateClarifyTurn persists a single clarify round turn.
+func (r *Repository) CreateClarifyTurn(turn *task.ClarifyTurn) error {
+	return r.db.CreateClarifyTurn(turn)
+}
+
+// ListClarifyTurns returns all clarify turns for a session.
+func (r *Repository) ListClarifyTurns(sessionID string) ([]task.ClarifyTurn, error) {
+	return r.db.ListClarifyTurns(sessionID)
+}

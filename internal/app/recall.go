@@ -86,8 +86,8 @@ func ValidateWorkspace(workspace string) error {
 	}
 	// Allow alphanumeric, hyphens, underscores (common service naming conventions)
 	for _, r := range workspace {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
-			(r >= '0' && r <= '9') || r == '-' || r == '_') {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') &&
+			(r < '0' || r > '9') && r != '-' && r != '_' {
 			return fmt.Errorf("invalid workspace name %q: only alphanumeric characters, hyphens, and underscores allowed", workspace)
 		}
 	}

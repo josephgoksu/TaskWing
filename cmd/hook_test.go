@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/josephgoksu/TaskWing/internal/config"
 )
 
 func TestHookSessionJSON(t *testing.T) {
@@ -306,5 +308,47 @@ func TestHookSessionAllFieldsSerialization(t *testing.T) {
 		if c.got != c.want {
 			t.Errorf("%s: got %v, want %v", c.name, c.got, c.want)
 		}
+	}
+}
+
+func TestResolveHookMemoryPath_UsesClaudeProjectDir(t *testing.T) {
+	config.ClearProjectContext()
+
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".taskwing", "memory"), 0755); err != nil {
+		t.Fatalf("mkdir project memory: %v", err)
+	}
+	t.Setenv("CLAUDE_PROJECT_DIR", tmpDir)
+
+	path, err := resolveHookMemoryPath()
+	if err != nil {
+		t.Fatalf("resolveHookMemoryPath failed: %v", err)
+	}
+
+	want := filepath.Join(tmpDir, ".taskwing", "memory")
+	if path != want {
+		t.Fatalf("memory path = %q, want %q", path, want)
+	}
+}
+
+func TestResolveHookMemoryPath_FallsBackToGlobal(t *testing.T) {
+	config.ClearProjectContext()
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+
+	globalDir := t.TempDir()
+	origGlobalDir := config.GetGlobalConfigDir
+	config.GetGlobalConfigDir = func() (string, error) { return globalDir, nil }
+	t.Cleanup(func() {
+		config.GetGlobalConfigDir = origGlobalDir
+	})
+
+	path, err := resolveHookMemoryPath()
+	if err != nil {
+		t.Fatalf("resolveHookMemoryPath failed: %v", err)
+	}
+
+	want := filepath.Join(globalDir, "memory")
+	if path != want {
+		t.Fatalf("memory path = %q, want %q", path, want)
 	}
 }

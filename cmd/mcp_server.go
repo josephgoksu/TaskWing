@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -91,15 +92,20 @@ func mcpFormattedErrorResponse(formattedError string) (*mcpsdk.CallToolResultFor
 	}, nil
 }
 
-// initMCPRepository initializes the memory repository.
-// For MCP server, we use GetMemoryBasePathOrGlobal which allows fallback to global
-// config for sandboxed environments where project detection may fail.
+// initMCPRepository initializes the project-scoped memory repository.
+// Fail-fast behavior is intentional: MCP must not silently fall back to global memory,
+// otherwise it can serve context from the wrong project.
 func initMCPRepository() (*memory.Repository, error) {
-	// MCP server is a special case - it may run in sandboxed environments
-	// where project context isn't available. Use the fallback-enabled path.
-	memoryPath, err := config.GetMemoryBasePathOrGlobal()
+	memoryPath, err := config.GetMemoryBasePath()
 	if err != nil {
-		return nil, fmt.Errorf("determine memory path: %w", err)
+		switch {
+		case errors.Is(err, config.ErrNoTaskWingDir):
+			return nil, fmt.Errorf("project memory is not initialized. Run 'taskwing bootstrap' in this repository first")
+		case errors.Is(err, config.ErrProjectContextNotSet):
+			return nil, fmt.Errorf("project context is not initialized. Run this command from your project root and ensure '.taskwing/' exists")
+		default:
+			return nil, fmt.Errorf("determine memory path: %w", err)
+		}
 	}
 
 	repo, err := memory.NewDefaultRepository(memoryPath)
@@ -119,7 +125,7 @@ func runMCPServer(ctx context.Context) error {
 	fmt.Fprintln(os.Stderr, "TaskWing MCP Server starting...")
 
 	// Initialize memory repository with fallback paths
-	// Try: 1) configured path, 2) global ~/.taskwing/memory
+	// Project-scoped only (fail-fast if no .taskwing)
 	repo, err := initMCPRepository()
 	if err != nil {
 		return fmt.Errorf("failed to initialize memory repo: %w", err)
@@ -140,7 +146,7 @@ func runMCPServer(ctx context.Context) error {
 
 	// Create MCP server
 	impl := &mcpsdk.Implementation{
-		Name:    "taskwing",
+		Name:    "taskwing-mcp",
 		Version: version,
 	}
 
@@ -220,13 +226,19 @@ func runMCPServer(ctx context.Context) error {
 - complete: Mark task as completed with summary
 
 REQUIRED FIELDS BY ACTION:
-- next: session_id (required)
-- current: session_id (required)
-- start: task_id (required), session_id (required)
+- next: session_id (optional when called via MCP session, required otherwise)
+- current: session_id (optional when called via MCP session, required otherwise)
+- start: task_id (required), session_id (optional when called via MCP session)
 - complete: task_id (required)`,
 	}
 	mcpsdk.AddTool(server, taskTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.TaskToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
-		result, err := mcppresenter.HandleTaskTool(ctx, repo, params.Arguments)
+		defaultSessionID := ""
+		if session != nil {
+			if sid := strings.TrimSpace(session.ID()); sid != "" {
+				defaultSessionID = sid
+			}
+		}
+		result, err := mcppresenter.HandleTaskTool(ctx, repo, params.Arguments, defaultSessionID)
 		if err != nil {
 			return mcpErrorResponse(err)
 		}
@@ -248,10 +260,11 @@ REQUIRED FIELDS BY ACTION:
 - audit: Verify completed plan with build/test/semantic checks (auto-fixes failures)
 
 REQUIRED FIELDS BY ACTION:
-- clarify: goal (required)
+- clarify (first call): goal (required)
+- clarify (follow-up): clarify_session_id (required), answers (required unless auto_answer=true)
 - decompose: enriched_goal (required), plan_id (optional to continue existing draft)
 - expand: plan_id (required), plus either phase_id or phase_index
-- generate: goal (required), enriched_goal (required) - call clarify first to get enriched_goal
+- generate: goal (required), enriched_goal (required), clarify_session_id (required)
 - finalize: plan_id (required)
 - audit: none required (defaults to active plan)`,
 	}

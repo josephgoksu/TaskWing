@@ -4,19 +4,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"sync"
 )
-
-// planIDMCPDeprecationWarned ensures we only log the MCP deprecation warning once per process.
-var planIDMCPDeprecationWarned sync.Once
-
-// warnPlanIDMCPDeprecation logs a deprecation warning once per process run.
-func warnPlanIDMCPDeprecation() {
-	planIDMCPDeprecationWarned.Do(func() {
-		fmt.Fprintln(os.Stderr, "DEPRECATION WARNING: MCP parameter 'planId' is deprecated, use 'plan_id' instead")
-	})
-}
 
 // === Action Constants ===
 
@@ -153,9 +141,9 @@ type CodeToolParams struct {
 // Supports lifecycle actions: next, current, start, complete
 //
 // Required fields by action:
-//   - next: session_id
-//   - current: session_id
-//   - start: task_id, session_id
+//   - next: session_id (optional when MCP transport provides session identity)
+//   - current: session_id (optional when MCP transport provides session identity)
+//   - start: task_id, session_id (optional when MCP transport provides session identity)
 //   - complete: task_id
 type TaskToolParams struct {
 	// Action specifies which operation to perform.
@@ -168,11 +156,11 @@ type TaskToolParams struct {
 
 	// PlanID is the plan identifier.
 	// Optional for: next, current (defaults to active plan)
-	// Deprecated alias: planId (still accepted but plan_id is preferred)
 	PlanID string `json:"plan_id,omitempty"`
 
 	// SessionID is the unique AI session identifier.
-	// REQUIRED for: next, current, start (will error if empty for these actions)
+	// Optional for: next, current, start when MCP transport session identity is available.
+	// REQUIRED otherwise.
 	SessionID string `json:"session_id,omitempty"`
 
 	// Summary describes what was accomplished.
@@ -196,30 +184,23 @@ type TaskToolParams struct {
 	SkipUnpushedCheck bool `json:"skip_unpushed_check,omitempty"`
 }
 
-// taskToolParamsAlias is used for JSON unmarshaling to accept deprecated planId field.
 type taskToolParamsAlias TaskToolParams
 
-// taskToolParamsWithAlias includes both plan_id and deprecated planId for backward compatibility.
-type taskToolParamsWithAlias struct {
-	taskToolParamsAlias
-	PlanIDAlias string `json:"planId,omitempty"` // Deprecated: use plan_id
-}
-
-// UnmarshalJSON implements custom unmarshaling to accept deprecated planId field.
+// UnmarshalJSON enforces strict snake_case payloads for task tool params.
 func (p *TaskToolParams) UnmarshalJSON(data []byte) error {
-	var aux taskToolParamsWithAlias
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if _, hasLegacyPlanID := raw["planId"]; hasLegacyPlanID {
+		return fmt.Errorf("planId is no longer supported; use plan_id")
+	}
+
+	var aux taskToolParamsAlias
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-
-	*p = TaskToolParams(aux.taskToolParamsAlias)
-
-	// If plan_id is empty but planId alias was provided, use the alias
-	if p.PlanID == "" && aux.PlanIDAlias != "" {
-		p.PlanID = aux.PlanIDAlias
-		warnPlanIDMCPDeprecation()
-	}
-
+	*p = TaskToolParams(aux)
 	return nil
 }
 
@@ -276,14 +257,21 @@ type TaskInput struct {
 	Complexity         string   `json:"complexity,omitempty"`
 }
 
+// ClarifyAnswerInput is a structured answer to a clarification question.
+type ClarifyAnswerInput struct {
+	Question string `json:"question,omitempty"`
+	Answer   string `json:"answer"`
+}
+
 // PlanToolParams defines the parameters for the unified plan tool.
 // Supports planning actions: clarify, decompose, expand, generate, finalize, audit
 //
 // Required fields by action:
-//   - clarify: goal
+//   - clarify first call: goal
+//   - clarify follow-up: clarify_session_id (+ answers unless auto_answer=true)
 //   - decompose: plan_id (with enriched_goal) OR enriched_goal (creates new plan)
 //   - expand: plan_id, phase_id OR phase_index
-//   - generate: goal, enriched_goal (call clarify first to get enriched_goal)
+//   - generate: goal, enriched_goal, clarify_session_id
 //   - finalize: plan_id
 //   - audit: none (defaults to active plan)
 type PlanToolParams struct {
@@ -292,16 +280,21 @@ type PlanToolParams struct {
 	Action PlanAction `json:"action"`
 
 	// Goal is the user's development goal.
-	// REQUIRED for: clarify, generate (will error if empty for these actions)
+	// REQUIRED for: clarify first call, generate
+	// Optional for: clarify follow-up calls (loaded from clarify_session_id)
 	Goal string `json:"goal,omitempty"`
 
 	// EnrichedGoal is the full technical specification from clarify.
 	// REQUIRED for: generate, decompose (will error if empty; call clarify first to get this)
 	EnrichedGoal string `json:"enriched_goal,omitempty"`
 
-	// History is a JSON array of previous Q&A from clarify loop.
-	// Optional for: clarify (format: [{"q": "...", "a": "..."}, ...])
-	History string `json:"history,omitempty"`
+	// ClarifySessionID identifies an existing clarify session for follow-up rounds.
+	// REQUIRED for: clarify follow-up calls, generate
+	ClarifySessionID string `json:"clarify_session_id,omitempty"`
+
+	// Answers are user responses for the previous clarification round.
+	// REQUIRED for: clarify follow-up calls (unless auto_answer=true)
+	Answers []ClarifyAnswerInput `json:"answers,omitempty"`
 
 	// AutoAnswer uses knowledge graph to auto-answer clarifying questions.
 	// Optional for: clarify (default: false)
@@ -314,7 +307,6 @@ type PlanToolParams struct {
 	// PlanID is the plan to operate on.
 	// REQUIRED for: expand, finalize
 	// Optional for: decompose (creates new plan if not provided), audit (defaults to active plan)
-	// Deprecated alias: planId (still accepted but plan_id is preferred)
 	PlanID string `json:"plan_id,omitempty"`
 
 	// AutoFix attempts to automatically fix failures.
@@ -348,29 +340,26 @@ type PlanToolParams struct {
 	Feedback string `json:"feedback,omitempty"`
 }
 
-// planToolParamsAlias is used for JSON unmarshaling to accept deprecated planId field.
 type planToolParamsAlias PlanToolParams
 
-// planToolParamsWithAlias includes both plan_id and deprecated planId for backward compatibility.
-type planToolParamsWithAlias struct {
-	planToolParamsAlias
-	PlanIDAlias string `json:"planId,omitempty"` // Deprecated: use plan_id
-}
-
-// UnmarshalJSON implements custom unmarshaling to accept deprecated planId field.
+// UnmarshalJSON enforces strict snake_case payloads and rejects removed fields.
 func (p *PlanToolParams) UnmarshalJSON(data []byte) error {
-	var aux planToolParamsWithAlias
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if _, hasLegacyPlanID := raw["planId"]; hasLegacyPlanID {
+		return fmt.Errorf("planId is no longer supported; use plan_id")
+	}
+	if _, hasHistory := raw["history"]; hasHistory {
+		return fmt.Errorf("history is no longer supported; use clarify_session_id and answers")
+	}
+
+	var aux planToolParamsAlias
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
 
-	*p = PlanToolParams(aux.planToolParamsAlias)
-
-	// If plan_id is empty but planId alias was provided, use the alias
-	if p.PlanID == "" && aux.PlanIDAlias != "" {
-		p.PlanID = aux.PlanIDAlias
-		warnPlanIDMCPDeprecation()
-	}
-
+	*p = PlanToolParams(aux)
 	return nil
 }

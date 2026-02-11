@@ -273,7 +273,7 @@ func TestTaskListExitOnError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Run the CLI with the temp dir as the working directory
 	// This should fail because there's no memory.db
@@ -461,13 +461,13 @@ func setupTestRepo(t *testing.T) (*memory.Repository, func()) {
 
 	repo, err := memory.NewDefaultRepository(tmpDir)
 	if err != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("failed to create repository: %v", err)
 	}
 
 	cleanup := func() {
-		repo.Close()
-		os.RemoveAll(tmpDir)
+		_ = repo.Close()
+		_ = os.RemoveAll(tmpDir)
 	}
 
 	return repo, cleanup

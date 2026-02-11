@@ -2,7 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
-	"sync"
+	"strings"
 	"testing"
 )
 
@@ -114,34 +114,31 @@ func TestTaskToolParams_PlanIDSnakeCase(t *testing.T) {
 	}
 }
 
-// TestTaskToolParams_PlanIDCamelCaseAlias tests that planId is accepted as deprecated alias.
-func TestTaskToolParams_PlanIDCamelCaseAlias(t *testing.T) {
-	// Reset the deprecation warning flag for this test
-	planIDMCPDeprecationWarned = sync.Once{}
-
+// TestTaskToolParams_RejectLegacyPlanIDAlias tests that planId is rejected.
+func TestTaskToolParams_RejectLegacyPlanIDAlias(t *testing.T) {
 	jsonData := `{"action":"next","planId":"plan-789","session_id":"sess-456"}`
 
 	var params TaskToolParams
-	if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
-		t.Fatalf("Failed to unmarshal: %v", err)
+	err := json.Unmarshal([]byte(jsonData), &params)
+	if err == nil {
+		t.Fatal("expected unmarshal error for legacy planId")
 	}
-
-	if params.PlanID != "plan-789" {
-		t.Errorf("PlanID = %q, want %q (from planId alias)", params.PlanID, "plan-789")
+	if !strings.Contains(err.Error(), "planId") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-// TestTaskToolParams_SnakeCaseTakesPrecedence tests that plan_id takes precedence over planId.
-func TestTaskToolParams_SnakeCaseTakesPrecedence(t *testing.T) {
+// TestTaskToolParams_RejectWhenBothPlanIDFormsProvided ensures strict rejection when legacy key is present.
+func TestTaskToolParams_RejectWhenBothPlanIDFormsProvided(t *testing.T) {
 	jsonData := `{"action":"next","plan_id":"plan-primary","planId":"plan-alias","session_id":"sess-456"}`
 
 	var params TaskToolParams
-	if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
-		t.Fatalf("Failed to unmarshal: %v", err)
+	err := json.Unmarshal([]byte(jsonData), &params)
+	if err == nil {
+		t.Fatal("expected unmarshal error for legacy planId")
 	}
-
-	if params.PlanID != "plan-primary" {
-		t.Errorf("PlanID = %q, want %q (plan_id should take precedence)", params.PlanID, "plan-primary")
+	if !strings.Contains(err.Error(), "planId") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -159,34 +156,31 @@ func TestPlanToolParams_PlanIDSnakeCase(t *testing.T) {
 	}
 }
 
-// TestPlanToolParams_PlanIDCamelCaseAlias tests that planId is accepted as deprecated alias.
-func TestPlanToolParams_PlanIDCamelCaseAlias(t *testing.T) {
-	// Reset the deprecation warning flag for this test
-	planIDMCPDeprecationWarned = sync.Once{}
-
+// TestPlanToolParams_RejectLegacyPlanIDAlias tests that planId is rejected.
+func TestPlanToolParams_RejectLegacyPlanIDAlias(t *testing.T) {
 	jsonData := `{"action":"audit","planId":"plan-789"}`
 
 	var params PlanToolParams
-	if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
-		t.Fatalf("Failed to unmarshal: %v", err)
+	err := json.Unmarshal([]byte(jsonData), &params)
+	if err == nil {
+		t.Fatal("expected unmarshal error for legacy planId")
 	}
-
-	if params.PlanID != "plan-789" {
-		t.Errorf("PlanID = %q, want %q (from planId alias)", params.PlanID, "plan-789")
+	if !strings.Contains(err.Error(), "planId") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-// TestPlanToolParams_SnakeCaseTakesPrecedence tests that plan_id takes precedence over planId.
-func TestPlanToolParams_SnakeCaseTakesPrecedence(t *testing.T) {
+// TestPlanToolParams_RejectWhenBothPlanIDFormsProvided ensures strict rejection when legacy key is present.
+func TestPlanToolParams_RejectWhenBothPlanIDFormsProvided(t *testing.T) {
 	jsonData := `{"action":"audit","plan_id":"plan-primary","planId":"plan-alias"}`
 
 	var params PlanToolParams
-	if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
-		t.Fatalf("Failed to unmarshal: %v", err)
+	err := json.Unmarshal([]byte(jsonData), &params)
+	if err == nil {
+		t.Fatal("expected unmarshal error for legacy planId")
 	}
-
-	if params.PlanID != "plan-primary" {
-		t.Errorf("PlanID = %q, want %q (plan_id should take precedence)", params.PlanID, "plan-primary")
+	if !strings.Contains(err.Error(), "planId") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -208,11 +202,6 @@ func TestMCPPlanIDEmptyValues(t *testing.T) {
 			wantPlanID: "",
 		},
 		{
-			name:       "missing plan_id uses planId",
-			jsonData:   `{"action":"next","planId":"plan-fallback","session_id":"sess-1"}`,
-			wantPlanID: "plan-fallback",
-		},
-		{
 			name:       "both missing",
 			jsonData:   `{"action":"next","session_id":"sess-1"}`,
 			wantPlanID: "",
@@ -221,9 +210,6 @@ func TestMCPPlanIDEmptyValues(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Reset deprecation flag
-			planIDMCPDeprecationWarned = sync.Once{}
-
 			var params TaskToolParams
 			if err := json.Unmarshal([]byte(tc.jsonData), &params); err != nil {
 				t.Fatalf("Failed to unmarshal: %v", err)
@@ -231,6 +217,41 @@ func TestMCPPlanIDEmptyValues(t *testing.T) {
 
 			if params.PlanID != tc.wantPlanID {
 				t.Errorf("PlanID = %q, want %q", params.PlanID, tc.wantPlanID)
+			}
+		})
+	}
+}
+
+func TestMCPPlanIDLegacyAliasRejected(t *testing.T) {
+	tests := []struct {
+		name     string
+		jsonData string
+	}{
+		{
+			name:     "task tool rejects planId",
+			jsonData: `{"action":"next","planId":"plan-fallback","session_id":"sess-1"}`,
+		},
+		{
+			name:     "plan tool rejects planId",
+			jsonData: `{"action":"audit","planId":"plan-fallback"}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if strings.Contains(tc.name, "task tool") {
+				var params TaskToolParams
+				err := json.Unmarshal([]byte(tc.jsonData), &params)
+				if err == nil || !strings.Contains(err.Error(), "planId") {
+					t.Fatalf("expected planId rejection, got: %v", err)
+				}
+				return
+			}
+
+			var params PlanToolParams
+			err := json.Unmarshal([]byte(tc.jsonData), &params)
+			if err == nil || !strings.Contains(err.Error(), "planId") {
+				t.Fatalf("expected planId rejection, got: %v", err)
 			}
 		})
 	}
@@ -285,4 +306,59 @@ func TestMCPParamsPreserveOtherFields(t *testing.T) {
 		}
 	})
 
+}
+
+func TestPlanToolParams_ClarifySessionAndAnswers(t *testing.T) {
+	jsonData := `{
+		"action":"clarify",
+		"clarify_session_id":"clarify-123",
+		"answers":[
+			{"question":"Target users?","answer":"Backend team"},
+			{"answer":"Must support monorepo"}
+		]
+	}`
+
+	var params PlanToolParams
+	if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if params.ClarifySessionID != "clarify-123" {
+		t.Fatalf("ClarifySessionID = %q, want %q", params.ClarifySessionID, "clarify-123")
+	}
+	if got := len(params.Answers); got != 2 {
+		t.Fatalf("answers len = %d, want 2", got)
+	}
+	if params.Answers[0].Question != "Target users?" || params.Answers[0].Answer != "Backend team" {
+		t.Fatalf("first answer mismatch: %+v", params.Answers[0])
+	}
+	if params.Answers[1].Question != "" || params.Answers[1].Answer != "Must support monorepo" {
+		t.Fatalf("second answer mismatch: %+v", params.Answers[1])
+	}
+}
+
+func TestPlanToolParams_RejectsLegacyHistory(t *testing.T) {
+	jsonData := `{
+		"action":"clarify",
+		"goal":"Refactor API",
+		"history":"Q: old? A: yes"
+	}`
+
+	var params PlanToolParams
+	err := json.Unmarshal([]byte(jsonData), &params)
+	if err == nil {
+		t.Fatal("expected unmarshal error for legacy history field")
+	}
+	if got := err.Error(); got == "" || !containsAll(got, []string{"history", "clarify_session_id", "answers"}) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func containsAll(s string, terms []string) bool {
+	for _, term := range terms {
+		if !strings.Contains(s, term) {
+			return false
+		}
+	}
+	return true
 }

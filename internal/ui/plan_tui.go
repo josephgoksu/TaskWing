@@ -47,18 +47,18 @@ const (
 
 type PlanModel struct {
 	// State
-	State          PlanState
-	PreviousState  PlanState // For returning from overlays/cancellation
-	Err            error
-	InitialGoal    string
-	GoalSummary    string // Concise one-liner for UI display (<100 chars)
-	EnrichedGoal   string // Full technical specification for task generation
-	PlanID         string
-	PlanSummary    string
-	ThinkingStatus string // Dynamic status message for spinner
+	State            PlanState
+	PreviousState    PlanState // For returning from overlays/cancellation
+	Err              error
+	InitialGoal      string
+	ClarifySessionID string
+	GoalSummary      string // Concise one-liner for UI display (<100 chars)
+	EnrichedGoal     string // Full technical specification for task generation
+	PlanID           string
+	PlanSummary      string
+	ThinkingStatus   string // Dynamic status message for spinner
 
 	// Data
-	History        string   // Clarification history string
 	Msgs           []string // Visible chat log for viewport
 	ClarifyTurns   int
 	KGContext      string // Fetched knowledge graph context
@@ -209,20 +209,16 @@ func (m PlanModel) searchContext() tea.Msg {
 
 // runClarify runs clarification via PlanApp.Clarify for unified logic.
 // This ensures TUI and MCP/CLI use the exact same code path.
-func runClarify(ctx context.Context, planApp *app.PlanApp, goal, history string) tea.Cmd {
+func runClarify(ctx context.Context, planApp *app.PlanApp, opts app.ClarifyOptions) tea.Cmd {
 	return func() tea.Msg {
-		result, err := planApp.Clarify(ctx, app.ClarifyOptions{
-			Goal:       goal,
-			History:    history,
-			AutoAnswer: false, // TUI handles interactivity
-		})
+		result, err := planApp.Clarify(ctx, opts)
 		return MsgClarifyResult{Result: result, Err: err}
 	}
 }
 
 // RunGenerate runs plan generation via PlanApp.Generate.
 // It wraps the context with streaming callbacks so the TUI can visualize progress.
-func runGenerate(ctx context.Context, appLayer *app.PlanApp, goal, enrichedGoal string, stream *core.StreamingOutput) tea.Cmd {
+func runGenerate(ctx context.Context, appLayer *app.PlanApp, goal, clarifySessionID, enrichedGoal string, stream *core.StreamingOutput) tea.Cmd {
 	return func() tea.Msg {
 		// Callback Handler
 		// We use "planning" as component name to match expected stream events
@@ -232,9 +228,10 @@ func runGenerate(ctx context.Context, appLayer *app.PlanApp, goal, enrichedGoal 
 		// Call PlanApp.Generate
 		// This will: 1. Run agent (streaming events will fire), 2. Validate tasks, 3. Save to DB
 		res, err := appLayer.Generate(runCtx, app.GenerateOptions{
-			Goal:         goal,
-			EnrichedGoal: enrichedGoal,
-			Save:         true,
+			Goal:             goal,
+			ClarifySessionID: clarifySessionID,
+			EnrichedGoal:     enrichedGoal,
+			Save:             true,
 		})
 
 		return MsgGenerateResult{Result: res, Err: err}
@@ -253,15 +250,16 @@ func listenForStream(stream *core.StreamingOutput) tea.Cmd {
 }
 
 // runAutoAnswer triggers PlanApp.Clarify with auto-answer mode
-func runAutoAnswer(ctx context.Context, planApp *app.PlanApp, goal, history string) tea.Cmd {
+func runAutoAnswer(ctx context.Context, planApp *app.PlanApp, goal, clarifySessionID string) tea.Cmd {
 	return func() tea.Msg {
 		timeoutCtx, cancel := context.WithTimeout(ctx, LLMTimeoutSeconds*time.Second)
 		defer cancel()
 
 		result, err := planApp.Clarify(timeoutCtx, app.ClarifyOptions{
-			Goal:       goal,
-			History:    history,
-			AutoAnswer: true, // Let PlanApp handle auto-answering
+			Goal:             goal,
+			ClarifySessionID: clarifySessionID,
+			AutoAnswer:       true, // Let PlanApp handle auto-answering
+			MaxRounds:        5,
 		})
 
 		if err != nil && timeoutCtx.Err() == context.DeadlineExceeded {
@@ -281,18 +279,16 @@ func runAutoAnswer(ctx context.Context, planApp *app.PlanApp, goal, history stri
 
 // runSingleAutoAnswer auto-answers a single question using PlanApp
 // For single question auto-answer, we format it as history and call Clarify
-func runSingleAutoAnswer(ctx context.Context, planApp *app.PlanApp, goal, question string, qIdx int) tea.Cmd {
+func runSingleAutoAnswer(ctx context.Context, planApp *app.PlanApp, goal, clarifySessionID, question string, qIdx int) tea.Cmd {
 	return func() tea.Msg {
 		timeoutCtx, cancel := context.WithTimeout(ctx, LLMTimeoutSeconds*time.Second)
 		defer cancel()
 
-		// Format question as history context
-		history := fmt.Sprintf("Question requiring auto-answer: %s", question)
-
 		result, err := planApp.Clarify(timeoutCtx, app.ClarifyOptions{
-			Goal:       goal,
-			History:    history,
-			AutoAnswer: true,
+			Goal:             goal,
+			ClarifySessionID: clarifySessionID,
+			AutoAnswer:       true,
+			MaxRounds:        5,
 		})
 
 		if err != nil && timeoutCtx.Err() == context.DeadlineExceeded {
@@ -442,7 +438,7 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.HasUnsavedWork = true
 				currentQ := m.PendingQuestions[m.CurrentQIdx]
 				m.addMsg("SYSTEM", "Auto-generating answer... (Esc to cancel)")
-				cmds = append(cmds, runSingleAutoAnswer(m.Ctx, m.PlanApp, m.InitialGoal, currentQ, m.CurrentQIdx))
+				cmds = append(cmds, runSingleAutoAnswer(m.Ctx, m.PlanApp, m.InitialGoal, m.ClarifySessionID, currentQ, m.CurrentQIdx))
 				cmds = append(cmds, checkTimeout())
 				return m, tea.Batch(cmds...)
 			}
@@ -506,9 +502,17 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.TextInput.Reset()
 
 				if m.CurrentQIdx >= len(m.PendingQuestions) {
-					// All questions answered, transition to final spec review
-					m.State = StateClarifyingInput
-					m.transitionToFinalReview()
+					answers := buildClarifyAnswers(m.PendingQuestions, m.CollectedAnswers)
+					m.State = StateClarifyingThinking
+					m.ThinkingStatus = "Applying answers..."
+					m.Msgs = append(m.Msgs, StyleSubtle.Render("Updating specification..."))
+					cmds = append(cmds, runClarify(m.Ctx, m.PlanApp, app.ClarifyOptions{
+						Goal:             m.InitialGoal,
+						ClarifySessionID: m.ClarifySessionID,
+						Answers:          answers,
+						MaxRounds:        5,
+					}))
+					return m, tea.Batch(cmds...)
 				} else {
 					m.TextInput.Placeholder = "Type your answer or press [Tab] to auto-answer..."
 					m.TextInput.SetHeight(3)
@@ -521,9 +525,17 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Type == tea.KeyCtrlS {
 				// Save current answer
 				m.CollectedAnswers[m.CurrentQIdx] = strings.TrimSpace(m.TextInput.Value())
-				m.State = StateClarifyingInput
-				m.transitionToFinalReview()
-				return m, nil
+				answers := buildClarifyAnswers(m.PendingQuestions, m.CollectedAnswers)
+				m.State = StateClarifyingThinking
+				m.ThinkingStatus = "Applying answers..."
+				m.Msgs = append(m.Msgs, StyleSubtle.Render("Updating specification..."))
+				cmds = append(cmds, runClarify(m.Ctx, m.PlanApp, app.ClarifyOptions{
+					Goal:             m.InitialGoal,
+					ClarifySessionID: m.ClarifySessionID,
+					Answers:          answers,
+					MaxRounds:        5,
+				}))
+				return m, tea.Batch(cmds...)
 			}
 
 			m.TextInput, cmd = m.TextInput.Update(msg)
@@ -543,7 +555,7 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.AutoAnswering = true
 				m.LLMStartTime = time.Now()
 				m.addMsg("SYSTEM", "Auto-generating specification... (Esc to cancel)")
-				cmds = append(cmds, runAutoAnswer(m.Ctx, m.PlanApp, m.InitialGoal, m.History))
+				cmds = append(cmds, runAutoAnswer(m.Ctx, m.PlanApp, m.InitialGoal, m.ClarifySessionID))
 				cmds = append(cmds, checkTimeout())
 				return m, tea.Batch(cmds...)
 			}
@@ -559,14 +571,14 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.TextInput.SetHeight(DefaultTextareaHeight)
 				m.addMsg("USER", "Updated Specification:\n"+answer)
 
-				// Use this AS the history for the next turn
-				m.History += fmt.Sprintf("\nUser refined specification:\n%s\n", answer)
+				m.EnrichedGoal = answer
 				m.HasUnsavedWork = true
 
-				m.State = StateClarifyingThinking
-				m.ThinkingStatus = "Finalizing specification..."
-				m.Msgs = append(m.Msgs, StyleSubtle.Render("Refining goal..."))
-				cmds = append(cmds, runClarify(m.Ctx, m.PlanApp, m.InitialGoal, m.History))
+				m.State = StatePlanningPulse
+				m.ThinkingStatus = "Drafting implementation plan..."
+				m.Msgs = append(m.Msgs, StyleSubtle.Render("Generating tasks..."))
+				cmds = append(cmds, listenForStream(m.Stream))
+				cmds = append(cmds, runGenerate(m.Ctx, m.PlanApp, m.InitialGoal, m.ClarifySessionID, m.EnrichedGoal, m.Stream))
 				return m, tea.Batch(cmds...)
 			}
 
@@ -662,7 +674,10 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.State = StateClarifyingThinking
 		m.ThinkingStatus = "Agent is clarifying the goal..."
-		cmds = append(cmds, runClarify(m.Ctx, m.PlanApp, m.InitialGoal, m.History))
+		cmds = append(cmds, runClarify(m.Ctx, m.PlanApp, app.ClarifyOptions{
+			Goal:      m.InitialGoal,
+			MaxRounds: 5,
+		}))
 
 	// Clarify Result (unified via PlanApp.Clarify)
 	case MsgClarifyResult:
@@ -695,6 +710,9 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.GoalSummary = goalSummary
 		}
+		if result.ClarifySessionID != "" {
+			m.ClarifySessionID = result.ClarifySessionID
+		}
 
 		// Enforce at least one review pass (ClarifyTurns > 0) even if agent is ready
 		if (result.IsReadyToPlan && m.ClarifyTurns > 0) || m.ClarifyTurns >= 3 {
@@ -707,7 +725,7 @@ func (m PlanModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Start Pulse listener
 			cmds = append(cmds, listenForStream(m.Stream))
 			// Start Planning Agent via PlanApp.Generate
-			cmds = append(cmds, runGenerate(m.Ctx, m.PlanApp, m.InitialGoal, m.EnrichedGoal, m.Stream))
+			cmds = append(cmds, runGenerate(m.Ctx, m.PlanApp, m.InitialGoal, m.ClarifySessionID, m.EnrichedGoal, m.Stream))
 
 		} else {
 			// Spec-First Refinement
@@ -898,40 +916,20 @@ func (m *PlanModel) addMsg(msgType, content string) {
 	m.Viewport.GotoBottom()
 }
 
-// transitionToFinalReview sets up the final spec review state
-func (m *PlanModel) transitionToFinalReview() {
-	// Build enriched goal with Q&A
-	var qaSection strings.Builder
-	qaSection.WriteString("\n\n## Clarifications\n")
-	for i, q := range m.PendingQuestions {
-		ans := m.CollectedAnswers[i]
-		if ans == "" {
-			ans = "(skipped)"
+func buildClarifyAnswers(questions, answers []string) []app.ClarifyAnswer {
+	out := make([]app.ClarifyAnswer, 0, len(answers))
+	for i, answer := range answers {
+		answer = strings.TrimSpace(answer)
+		if answer == "" {
+			continue
 		}
-		qaSection.WriteString(fmt.Sprintf("**Q%d:** %s\n**A:** %s\n\n", i+1, q, ans))
+		entry := app.ClarifyAnswer{Answer: answer}
+		if i < len(questions) {
+			entry.Question = questions[i]
+		}
+		out = append(out, entry)
 	}
-	m.EnrichedGoal += qaSection.String()
-	m.History += qaSection.String()
-
-	// Set up for final review
-	m.TextInput.SetValue(m.EnrichedGoal)
-	m.TextInput.Placeholder = "Review and edit the final specification..."
-	lines := strings.Count(m.EnrichedGoal, "\n") + 1
-	estimatedLines := len(m.EnrichedGoal) / DefaultTextareaWidth
-	if estimatedLines > lines {
-		lines = estimatedLines
-	}
-	newHeight := lines + 2
-	if newHeight < DefaultTextareaHeight {
-		newHeight = DefaultTextareaHeight
-	}
-	if newHeight > MaxTextareaHeight {
-		newHeight = MaxTextareaHeight
-	}
-	m.TextInput.SetHeight(newHeight)
-	m.TextInput.Focus()
-
-	m.addMsg("SYSTEM", "Review the specification and press [Ctrl+S] to submit.")
+	return out
 }
 
 // formatUserFriendlyError converts technical errors to user-friendly messages (P2)

@@ -563,9 +563,9 @@ func TestProbeAIHealth(t *testing.T) {
 				for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-status", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
-				// Add settings.json with valid JSON
+				// Add settings.json with valid TaskWing hook commands
 				_ = os.MkdirAll(filepath.Join(dir, ".claude"), 0755)
-				_ = os.WriteFile(filepath.Join(dir, ".claude", "settings.json"), []byte(`{"hooks":{}}`), 0644)
+				_ = os.WriteFile(filepath.Join(dir, ".claude", "settings.json"), []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"taskwing hook session-init"}]}],"Stop":[{"hooks":[{"type":"command","command":"taskwing hook continue-check --max-tasks=5 --max-minutes=30"}]}],"SessionEnd":[{"hooks":[{"type":"command","command":"taskwing hook session-end"}]}]}}`), 0644)
 			},
 			expectStatus: HealthOK,
 		},
@@ -655,7 +655,7 @@ func TestProbeEnvironment(t *testing.T) {
 	for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-status", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 		_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 	}
-	_ = os.WriteFile(filepath.Join(tmpDir, ".claude", "settings.json"), []byte(`{"hooks":{}}`), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, ".claude", "settings.json"), []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"taskwing hook session-init"}]}],"Stop":[{"hooks":[{"type":"command","command":"taskwing hook continue-check --max-tasks=5 --max-minutes=30"}]}],"SessionEnd":[{"hooks":[{"type":"command","command":"taskwing hook session-end"}]}]}}`), 0644)
 
 	snap, err := ProbeEnvironment(tmpDir)
 	if err != nil {
@@ -843,7 +843,7 @@ func TestProbeAIHealth_AllAIs(t *testing.T) {
 				for _, name := range []string{"tw-brief", "tw-next", "tw-done", "tw-status", "tw-plan", "tw-debug", "tw-explain", "tw-simplify"} {
 					_ = os.WriteFile(filepath.Join(cmdDir, name+".md"), []byte("test"), 0644)
 				}
-				_ = os.WriteFile(filepath.Join(dir, ".codex", "settings.json"), []byte(`{"hooks":{}}`), 0644)
+				_ = os.WriteFile(filepath.Join(dir, ".codex", "settings.json"), []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"taskwing hook session-init"}]}],"Stop":[{"hooks":[{"type":"command","command":"taskwing hook continue-check --max-tasks=5 --max-minutes=30"}]}],"SessionEnd":[{"hooks":[{"type":"command","command":"taskwing hook session-end"}]}]}}`), 0644)
 			},
 			expectStatus: HealthOK,
 		},

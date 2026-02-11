@@ -14,14 +14,14 @@ func TestListPlans_TaskCountNotPlaceholderSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "memory.db")
 	store, err := NewSQLiteStore(dbPath)
 	if err != nil {
 		t.Fatalf("create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	// Create a plan
 	plan := &task.Plan{
@@ -117,7 +117,7 @@ func TestGetNextTask_SelectsLowestNumericPriority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	plan := &task.Plan{
 		ID:           "plan-priority-next",
@@ -173,7 +173,7 @@ func TestListTasksByPhase_OrdersByAscendingPriority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create store: %v", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	plan := &task.Plan{
 		ID:           "plan-phase-order",

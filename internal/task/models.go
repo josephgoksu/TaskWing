@@ -3,22 +3,10 @@ package task
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 )
-
-// planIDDeprecationWarned ensures we only log the deprecation warning once per process.
-var planIDDeprecationWarned sync.Once
-
-// warnPlanIDDeprecation logs a deprecation warning once per process run.
-func warnPlanIDDeprecation() {
-	planIDDeprecationWarned.Do(func() {
-		fmt.Fprintln(os.Stderr, "DEPRECATION WARNING: JSON field 'planId' is deprecated, use 'plan_id' instead")
-	})
-}
 
 // TaskStatus represents the lifecycle state of a task
 type TaskStatus string
@@ -109,6 +97,49 @@ type PlanDraftState struct {
 	LastUpdated     string   `json:"last_updated"`              // ISO8601 timestamp
 }
 
+// ClarifySessionState represents the lifecycle state of a clarify session.
+type ClarifySessionState string
+
+const (
+	ClarifySessionStateNew              ClarifySessionState = "new_session"
+	ClarifySessionStateAwaitingAnswers  ClarifySessionState = "awaiting_answers"
+	ClarifySessionStateReadyToPlan      ClarifySessionState = "ready_to_plan"
+	ClarifySessionStateMaxRoundsReached ClarifySessionState = "max_rounds_exceeded"
+)
+
+// ClarifySession stores persisted state for a multi-round clarification loop.
+type ClarifySession struct {
+	ID                   string              `json:"id"`
+	Goal                 string              `json:"goal"`
+	EnrichedGoal         string              `json:"enriched_goal,omitempty"`
+	GoalSummary          string              `json:"goal_summary,omitempty"`
+	State                ClarifySessionState `json:"state"`
+	RoundIndex           int                 `json:"round_index"`
+	MaxRounds            int                 `json:"max_rounds"`
+	MaxQuestionsPerRound int                 `json:"max_questions_per_round"`
+	CurrentQuestions     []string            `json:"current_questions,omitempty"`
+	IsReadyToPlan        bool                `json:"is_ready_to_plan"`
+	LastContextUsed      string              `json:"last_context_used,omitempty"`
+	CreatedAt            time.Time           `json:"created_at"`
+	UpdatedAt            time.Time           `json:"updated_at"`
+}
+
+// ClarifyTurn stores one round of clarify interaction.
+type ClarifyTurn struct {
+	ID               string    `json:"id"`
+	SessionID        string    `json:"session_id"`
+	RoundIndex       int       `json:"round_index"`
+	Questions        []string  `json:"questions,omitempty"`
+	Answers          []string  `json:"answers,omitempty"`
+	GoalSummary      string    `json:"goal_summary,omitempty"`
+	EnrichedGoal     string    `json:"enriched_goal,omitempty"`
+	IsReadyToPlan    bool      `json:"is_ready_to_plan"`
+	AutoAnswered     bool      `json:"auto_answered"`
+	MaxRoundsReached bool      `json:"max_rounds_reached"`
+	ContextSummary   string    `json:"context_summary,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
 // Task represents a discrete unit of work to be executed by an agent
 type Task struct {
 	ID                 string     `json:"id"`
@@ -168,31 +199,23 @@ func (t *Task) Validate() error {
 	return nil
 }
 
-// taskAlias is used for JSON unmarshaling to accept deprecated planId field.
 type taskAlias Task
 
-// taskWithAlias includes both plan_id and deprecated planId for backward compatibility.
-type taskWithAlias struct {
-	taskAlias
-	PlanIDAlias string `json:"planId,omitempty"` // Deprecated: use plan_id
-}
-
-// UnmarshalJSON implements custom unmarshaling to accept deprecated planId field.
-// If planId is provided but plan_id is empty, planId will be used with a deprecation warning.
+// UnmarshalJSON enforces strict snake_case payloads.
 func (t *Task) UnmarshalJSON(data []byte) error {
-	var aux taskWithAlias
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if _, hasLegacyPlanID := raw["planId"]; hasLegacyPlanID {
+		return fmt.Errorf("planId is no longer supported; use plan_id")
+	}
+
+	var aux taskAlias
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-
-	*t = Task(aux.taskAlias)
-
-	// If plan_id is empty but planId alias was provided, use the alias
-	if t.PlanID == "" && aux.PlanIDAlias != "" {
-		t.PlanID = aux.PlanIDAlias
-		warnPlanIDDeprecation()
-	}
-
+	*t = Task(aux)
 	return nil
 }
 
