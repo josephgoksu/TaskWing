@@ -67,16 +67,21 @@ func insertTaskTx(tx txExecutor, t *task.Task) error {
 		parentID = t.ParentTaskID
 	}
 
+	var phaseID interface{}
+	if t.PhaseID != "" {
+		phaseID = t.PhaseID
+	}
+
 	_, err = tx.Exec(`
 		INSERT INTO tasks (
-			id, plan_id, title, description,
+			id, plan_id, phase_id, title, description,
 			acceptance_criteria, validation_steps,
 			status, priority, complexity, assigned_agent, parent_task_id, context_summary,
 			scope, keywords, suggested_recall_queries,
 			claimed_by, claimed_at, completed_at, completion_summary, files_modified, expected_files,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, t.ID, t.PlanID, t.Title, t.Description,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, t.ID, t.PlanID, phaseID, t.Title, t.Description,
 		string(acJSON), string(vsJSON),
 		t.Status, t.Priority, t.Complexity, t.AssignedAgent, parentID, t.ContextSummary,
 		t.Scope, string(keywordsJSON), string(queriesJSON),
@@ -126,6 +131,9 @@ func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 	if p.Status == "" {
 		p.Status = task.PlanStatusDraft
 	}
+	if p.GenerationMode == "" {
+		p.GenerationMode = task.GenerationModeBatch // Default to batch for backward compat
+	}
 	now := time.Now().UTC()
 	if p.CreatedAt.IsZero() {
 		p.CreatedAt = now
@@ -138,10 +146,19 @@ func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 	}
 	defer func() { rollbackWithLog(tx, "task_store") }()
 
+	// Serialize draft state if present
+	var draftStateJSON interface{}
+	if p.DraftState != nil {
+		if data, err := json.Marshal(p.DraftState); err == nil {
+			draftStateJSON = string(data)
+		}
+	}
+
 	if _, err = tx.Exec(`
-		INSERT INTO plans (id, goal, enriched_goal, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, p.ID, p.Goal, p.EnrichedGoal, p.Status, p.CreatedAt.Format(time.RFC3339), p.UpdatedAt.Format(time.RFC3339)); err != nil {
+		INSERT INTO plans (id, goal, enriched_goal, status, draft_state, generation_mode, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, p.ID, p.Goal, p.EnrichedGoal, p.Status, draftStateJSON, p.GenerationMode,
+		p.CreatedAt.Format(time.RFC3339), p.UpdatedAt.Format(time.RFC3339)); err != nil {
 		return fmt.Errorf("insert plan: %w", err)
 	}
 
@@ -159,12 +176,12 @@ func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 func (s *SQLiteStore) GetPlan(id string) (*task.Plan, error) {
 	var p task.Plan
 	var createdAt, updatedAt string
-	var lastAuditReport sql.NullString
+	var lastAuditReport, draftStateJSON, generationMode sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, goal, enriched_goal, status, created_at, updated_at, last_audit_report
+		SELECT id, goal, enriched_goal, status, draft_state, generation_mode, created_at, updated_at, last_audit_report
 		FROM plans WHERE id = ?
-	`, id).Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &lastAuditReport)
+	`, id).Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &draftStateJSON, &generationMode, &createdAt, &updatedAt, &lastAuditReport)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("plan not found: %s", id)
@@ -177,6 +194,15 @@ func (s *SQLiteStore) GetPlan(id string) (*task.Plan, error) {
 	p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	if lastAuditReport.Valid {
 		p.LastAuditReport = lastAuditReport.String
+	}
+	if generationMode.Valid {
+		p.GenerationMode = task.GenerationMode(generationMode.String)
+	}
+	if draftStateJSON.Valid && draftStateJSON.String != "" {
+		var draftState task.PlanDraftState
+		if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err == nil {
+			p.DraftState = &draftState
+		}
 	}
 
 	// Fetch tasks
@@ -193,7 +219,8 @@ func (s *SQLiteStore) GetPlan(id string) (*task.Plan, error) {
 func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 	// Use a subquery to get task counts efficiently without loading all task data
 	rows, err := s.db.Query(`
-		SELECT p.id, p.goal, p.enriched_goal, p.status, p.created_at, p.updated_at, p.last_audit_report,
+		SELECT p.id, p.goal, p.enriched_goal, p.status, p.draft_state, p.generation_mode,
+		       p.created_at, p.updated_at, p.last_audit_report,
 		       (SELECT COUNT(*) FROM tasks t WHERE t.plan_id = p.id) as task_count
 		FROM plans p
 		ORDER BY p.created_at DESC
@@ -207,15 +234,25 @@ func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 	for rows.Next() {
 		var p task.Plan
 		var createdAt, updatedAt string
-		var lastAuditReport sql.NullString
+		var lastAuditReport, draftStateJSON, generationMode sql.NullString
 		var taskCount int
-		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &lastAuditReport, &taskCount); err != nil {
+		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &draftStateJSON, &generationMode,
+			&createdAt, &updatedAt, &lastAuditReport, &taskCount); err != nil {
 			return nil, fmt.Errorf("scan plan: %w", err)
 		}
 		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 		if lastAuditReport.Valid {
 			p.LastAuditReport = lastAuditReport.String
+		}
+		if generationMode.Valid {
+			p.GenerationMode = task.GenerationMode(generationMode.String)
+		}
+		if draftStateJSON.Valid && draftStateJSON.String != "" {
+			var draftState task.PlanDraftState
+			if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err == nil {
+				p.DraftState = &draftState
+			}
 		}
 		// Store task count for efficient list views without loading all tasks.
 		// Use plan.GetTaskCount() to get the count regardless of how the plan was loaded.
@@ -363,6 +400,7 @@ type taskRowScanner interface {
 // scanTaskRow scans a task row into a Task struct (DRY helper).
 func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	var t task.Task
+	var phaseID sql.NullString
 	var desc, acJSON, vsJSON sql.NullString
 	var parentID sql.NullString
 	var scope, keywordsJSON, queriesJSON, complexity sql.NullString
@@ -370,7 +408,7 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	var createdAt, updatedAt string
 
 	err := row.Scan(
-		&t.ID, &t.PlanID, &t.Title, &desc, &acJSON, &vsJSON,
+		&t.ID, &t.PlanID, &phaseID, &t.Title, &desc, &acJSON, &vsJSON,
 		&t.Status, &t.Priority, &complexity, &t.AssignedAgent, &parentID, &t.ContextSummary,
 		&scope, &keywordsJSON, &queriesJSON,
 		&claimedBy, &claimedAt, &completedAt, &completionSummary, &filesJSON, &expectedFilesJSON, &gitBaselineJSON,
@@ -380,6 +418,7 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 		return t, err
 	}
 
+	t.PhaseID = phaseID.String
 	t.Description = desc.String
 	t.Complexity = complexity.String
 	t.ParentTaskID = parentID.String
@@ -421,7 +460,7 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	return t, nil
 }
 
-const taskSelectColumns = `id, plan_id, title, description, acceptance_criteria, validation_steps,
+const taskSelectColumns = `id, plan_id, phase_id, title, description, acceptance_criteria, validation_steps,
        status, priority, complexity, assigned_agent, parent_task_id, context_summary,
        scope, keywords, suggested_recall_queries,
        claimed_by, claimed_at, completed_at, completion_summary, files_modified, expected_files, git_baseline,
@@ -631,7 +670,8 @@ func (s *SQLiteStore) LinkTaskToNode(taskID, nodeID, linkType string) error {
 
 // === Task Lifecycle Methods (for MCP tools) ===
 
-// GetNextTask returns the highest priority pending task from a plan whose dependencies are all completed.
+// GetNextTask returns the highest-urgency pending task from a plan whose dependencies are all completed.
+// Lower numeric values indicate higher urgency (e.g., 10 before 90).
 // Returns nil if no pending tasks exist or all pending tasks have incomplete dependencies.
 func (s *SQLiteStore) GetNextTask(planID string) (*task.Task, error) {
 	// Find pending tasks that have NO incomplete dependencies
@@ -647,7 +687,7 @@ func (s *SQLiteStore) GetNextTask(planID string) (*task.Task, error) {
 			JOIN tasks dep ON dep.id = td.depends_on
 			WHERE td.task_id = t.id AND dep.status != ?
 		)
-		ORDER BY t.priority DESC, t.created_at ASC
+		ORDER BY t.priority ASC, t.created_at ASC
 		LIMIT 1
 	`, planID, task.StatusPending, task.StatusCompleted)
 
@@ -850,7 +890,8 @@ func (s *SQLiteStore) CompleteTask(taskID, summary string, filesModified []strin
 // SearchPlans returns plans matching the query and status (with task counts).
 // Query searches in goal and enriched_goal.
 func (s *SQLiteStore) SearchPlans(query string, status task.PlanStatus) ([]task.Plan, error) {
-	q := `SELECT p.id, p.goal, p.enriched_goal, p.status, p.created_at, p.updated_at,
+	q := `SELECT p.id, p.goal, p.enriched_goal, p.status, p.draft_state, p.generation_mode,
+	             p.created_at, p.updated_at,
 	             (SELECT COUNT(*) FROM tasks t WHERE t.plan_id = p.id) as task_count
 	      FROM plans p WHERE 1=1`
 	args := []any{}
@@ -878,14 +919,25 @@ func (s *SQLiteStore) SearchPlans(query string, status task.PlanStatus) ([]task.
 	for rows.Next() {
 		var p task.Plan
 		var createdAt, updatedAt string
+		var draftStateJSON, generationMode sql.NullString
 		var taskCount int
-		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &taskCount); err != nil {
+		if err := rows.Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &draftStateJSON, &generationMode,
+			&createdAt, &updatedAt, &taskCount); err != nil {
 			return nil, fmt.Errorf("scan plan: %w", err)
 		}
 		p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
-		// Store task count in placeholder slice for display
-		p.Tasks = make([]task.Task, taskCount)
+		if generationMode.Valid {
+			p.GenerationMode = task.GenerationMode(generationMode.String)
+		}
+		if draftStateJSON.Valid && draftStateJSON.String != "" {
+			var draftState task.PlanDraftState
+			if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err == nil {
+				p.DraftState = &draftState
+			}
+		}
+		// Store task count for efficient display
+		p.TaskCount = taskCount
 		plans = append(plans, p)
 	}
 	if err := checkRowsErr(rows); err != nil {
@@ -900,14 +952,14 @@ func (s *SQLiteStore) SearchPlans(query string, status task.PlanStatus) ([]task.
 func (s *SQLiteStore) GetActivePlan() (*task.Plan, error) {
 	var p task.Plan
 	var createdAt, updatedAt string
-	var lastAuditReport sql.NullString
+	var lastAuditReport, draftStateJSON, generationMode sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT id, goal, enriched_goal, status, created_at, updated_at, last_audit_report
+		SELECT id, goal, enriched_goal, status, draft_state, generation_mode, created_at, updated_at, last_audit_report
 		FROM plans WHERE status = ?
 		ORDER BY updated_at DESC
 		LIMIT 1
-	`, task.PlanStatusActive).Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &createdAt, &updatedAt, &lastAuditReport)
+	`, task.PlanStatusActive).Scan(&p.ID, &p.Goal, &p.EnrichedGoal, &p.Status, &draftStateJSON, &generationMode, &createdAt, &updatedAt, &lastAuditReport)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -920,6 +972,15 @@ func (s *SQLiteStore) GetActivePlan() (*task.Plan, error) {
 	p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	if lastAuditReport.Valid {
 		p.LastAuditReport = lastAuditReport.String
+	}
+	if generationMode.Valid {
+		p.GenerationMode = task.GenerationMode(generationMode.String)
+	}
+	if draftStateJSON.Valid && draftStateJSON.String != "" {
+		var draftState task.PlanDraftState
+		if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err == nil {
+			p.DraftState = &draftState
+		}
 	}
 
 	// Fetch tasks
@@ -1025,4 +1086,283 @@ func (s *SQLiteStore) FindPlanIDsByPrefix(prefix string) ([]string, error) {
 	}
 
 	return ids, nil
+}
+
+// === Phase CRUD ===
+
+// phaseSelectColumns defines the columns to select for phase queries.
+const phaseSelectColumns = `id, plan_id, title, description, rationale, order_index, status, expected_tasks, created_at, updated_at`
+
+// scanPhaseRow scans a phase row into a Phase struct.
+func scanPhaseRow(row taskRowScanner) (task.Phase, error) {
+	var p task.Phase
+	var desc, rationale sql.NullString
+	var createdAt, updatedAt string
+
+	err := row.Scan(
+		&p.ID, &p.PlanID, &p.Title, &desc, &rationale,
+		&p.OrderIndex, &p.Status, &p.ExpectedTasks,
+		&createdAt, &updatedAt,
+	)
+	if err != nil {
+		return p, err
+	}
+
+	p.Description = desc.String
+	p.Rationale = rationale.String
+	p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	p.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+
+	return p, nil
+}
+
+// CreatePhase adds a new phase to a plan.
+func (s *SQLiteStore) CreatePhase(p *task.Phase) error {
+	if p.ID == "" {
+		p.ID = "phase-" + uuid.New().String()[:8]
+	}
+	if p.Status == "" {
+		p.Status = task.PhaseStatusPending
+	}
+	now := time.Now().UTC()
+	if p.CreatedAt.IsZero() {
+		p.CreatedAt = now
+	}
+	p.UpdatedAt = now
+
+	_, err := s.db.Exec(`
+		INSERT INTO phases (id, plan_id, title, description, rationale, order_index, status, expected_tasks, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, p.ID, p.PlanID, p.Title, p.Description, p.Rationale, p.OrderIndex, p.Status, p.ExpectedTasks,
+		p.CreatedAt.Format(time.RFC3339), p.UpdatedAt.Format(time.RFC3339))
+
+	if err != nil {
+		return fmt.Errorf("insert phase: %w", err)
+	}
+	return nil
+}
+
+// GetPhase retrieves a phase by ID.
+func (s *SQLiteStore) GetPhase(id string) (*task.Phase, error) {
+	row := s.db.QueryRow(`SELECT `+phaseSelectColumns+` FROM phases WHERE id = ?`, id)
+
+	p, err := scanPhaseRow(row)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("phase not found: %s", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query phase: %w", err)
+	}
+
+	return &p, nil
+}
+
+// ListPhases returns all phases for a plan, ordered by order_index.
+func (s *SQLiteStore) ListPhases(planID string) ([]task.Phase, error) {
+	rows, err := s.db.Query(`SELECT `+phaseSelectColumns+` FROM phases WHERE plan_id = ? ORDER BY order_index`, planID)
+	if err != nil {
+		return nil, fmt.Errorf("query phases: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var phases []task.Phase
+	for rows.Next() {
+		p, err := scanPhaseRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan phase: %w", err)
+		}
+		phases = append(phases, p)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list phases: %w", err)
+	}
+
+	return phases, nil
+}
+
+// UpdatePhase updates mutable phase fields.
+func (s *SQLiteStore) UpdatePhase(p *task.Phase) error {
+	if p.ID == "" {
+		return fmt.Errorf("phase id is required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	res, err := s.db.Exec(`
+		UPDATE phases
+		SET title = ?, description = ?, rationale = ?, order_index = ?, status = ?, expected_tasks = ?, updated_at = ?
+		WHERE id = ?
+	`, p.Title, p.Description, p.Rationale, p.OrderIndex, p.Status, p.ExpectedTasks, now, p.ID)
+
+	if err != nil {
+		return fmt.Errorf("update phase: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update phase rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("phase not found: %s", p.ID)
+	}
+
+	return nil
+}
+
+// UpdatePhaseStatus updates only the status of a phase.
+func (s *SQLiteStore) UpdatePhaseStatus(id string, status task.PhaseStatus) error {
+	if id == "" {
+		return fmt.Errorf("phase id is required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	res, err := s.db.Exec(`UPDATE phases SET status = ?, updated_at = ? WHERE id = ?`, status, now, id)
+	if err != nil {
+		return fmt.Errorf("update phase status: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update phase status rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("phase not found: %s", id)
+	}
+
+	return nil
+}
+
+// DeletePhase removes a phase. Tasks linked to this phase will have their phase_id set to NULL.
+func (s *SQLiteStore) DeletePhase(id string) error {
+	res, err := s.db.Exec(`DELETE FROM phases WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete phase: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete phase rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("phase not found: %s", id)
+	}
+	return nil
+}
+
+// ListTasksByPhase returns all tasks for a specific phase.
+func (s *SQLiteStore) ListTasksByPhase(phaseID string) ([]task.Task, error) {
+	rows, err := s.db.Query(`SELECT `+taskSelectColumns+` FROM tasks WHERE phase_id = ? ORDER BY priority ASC, created_at`, phaseID)
+	if err != nil {
+		return nil, fmt.Errorf("query tasks by phase: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var tasks []task.Task
+	for rows.Next() {
+		t, err := scanTaskRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan task: %w", err)
+		}
+		tasks = append(tasks, t)
+	}
+	if err := checkRowsErr(rows); err != nil {
+		return nil, fmt.Errorf("list tasks by phase: %w", err)
+	}
+
+	return tasks, nil
+}
+
+// CreatePhasesForPlan creates multiple phases for a plan atomically.
+func (s *SQLiteStore) CreatePhasesForPlan(planID string, phases []task.Phase) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { rollbackWithLog(tx, "create_phases") }()
+
+	now := time.Now().UTC()
+
+	for i := range phases {
+		p := &phases[i]
+		if p.ID == "" {
+			p.ID = "phase-" + uuid.New().String()[:8]
+		}
+		p.PlanID = planID
+		if p.Status == "" {
+			p.Status = task.PhaseStatusPending
+		}
+		if p.CreatedAt.IsZero() {
+			p.CreatedAt = now
+		}
+		p.UpdatedAt = now
+
+		_, err := tx.Exec(`
+			INSERT INTO phases (id, plan_id, title, description, rationale, order_index, status, expected_tasks, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, p.ID, p.PlanID, p.Title, p.Description, p.Rationale, p.OrderIndex, p.Status, p.ExpectedTasks,
+			p.CreatedAt.Format(time.RFC3339), p.UpdatedAt.Format(time.RFC3339))
+
+		if err != nil {
+			return fmt.Errorf("insert phase %s: %w", p.Title, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// UpdatePlanDraftState updates the draft state JSON for a plan.
+func (s *SQLiteStore) UpdatePlanDraftState(planID string, draftStateJSON string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	res, err := s.db.Exec(`UPDATE plans SET draft_state = ?, updated_at = ? WHERE id = ?`,
+		draftStateJSON, now, planID)
+	if err != nil {
+		return fmt.Errorf("update plan draft state: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update plan draft state rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("plan not found: %s", planID)
+	}
+
+	return nil
+}
+
+// UpdatePlanGenerationMode updates the generation mode for a plan.
+func (s *SQLiteStore) UpdatePlanGenerationMode(planID string, mode task.GenerationMode) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	res, err := s.db.Exec(`UPDATE plans SET generation_mode = ?, updated_at = ? WHERE id = ?`,
+		mode, now, planID)
+	if err != nil {
+		return fmt.Errorf("update plan generation mode: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update plan generation mode rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("plan not found: %s", planID)
+	}
+
+	return nil
+}
+
+// GetPlanWithPhases retrieves a plan with its phases and tasks.
+// This is the complete plan loader for interactive workflow operations.
+func (s *SQLiteStore) GetPlanWithPhases(id string) (*task.Plan, error) {
+	plan, err := s.GetPlan(id)
+	if err != nil {
+		return nil, err
+	}
+
+	phases, err := s.ListPhases(id)
+	if err != nil {
+		return nil, fmt.Errorf("list phases for plan: %w", err)
+	}
+	plan.Phases = phases
+
+	return plan, nil
 }

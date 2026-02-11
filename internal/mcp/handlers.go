@@ -15,7 +15,6 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
-	"github.com/josephgoksu/TaskWing/internal/policy"
 )
 
 // CodeToolResult represents the response from the unified code tool.
@@ -507,7 +506,7 @@ type TaskToolResult struct {
 
 // HandleTaskTool is the unified handler for all task lifecycle operations.
 // It routes to the appropriate service logic based on the action parameter.
-// Consolidates: task_next, task_current, task_start, task_complete
+// Supports lifecycle actions: next, current, start, complete
 func HandleTaskTool(ctx context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
 	// Validate action
 	if !params.Action.IsValid() {
@@ -703,21 +702,27 @@ type PlanToolResult struct {
 
 // HandlePlanTool is the unified handler for all plan operations.
 // It routes to the appropriate service logic based on the action parameter.
-// Consolidates: plan_clarify, plan_generate, audit_plan
+// Supports planning actions: clarify, decompose, expand, generate, finalize, audit
 func HandlePlanTool(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
 	// Validate action
 	if !params.Action.IsValid() {
 		return &PlanToolResult{
 			Action: string(params.Action),
-			Error:  fmt.Sprintf("invalid action %q, must be one of: clarify, generate, audit", params.Action),
+			Error:  fmt.Sprintf("invalid action %q, must be one of: clarify, decompose, expand, generate, finalize, audit", params.Action),
 		}, nil
 	}
 
 	switch params.Action {
 	case PlanActionClarify:
 		return handlePlanClarify(ctx, repo, params)
+	case PlanActionDecompose:
+		return handlePlanDecompose(ctx, repo, params)
+	case PlanActionExpand:
+		return handlePlanExpand(ctx, repo, params)
 	case PlanActionGenerate:
 		return handlePlanGenerate(ctx, repo, params)
+	case PlanActionFinalize:
+		return handlePlanFinalize(ctx, repo, params)
 	case PlanActionAudit:
 		return handlePlanAudit(ctx, repo, params)
 	default:
@@ -820,6 +825,143 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 	}, nil
 }
 
+// handlePlanDecompose implements the 'decompose' action - break goal into phases.
+// This is Stage 2 of the interactive planning workflow.
+func handlePlanDecompose(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
+	// Validate required fields
+	enrichedGoal := strings.TrimSpace(params.EnrichedGoal)
+	if enrichedGoal == "" {
+		return &PlanToolResult{
+			Action: "decompose",
+			Error:  "enriched_goal is required for decompose action",
+			Content: FormatMultiValidationError(
+				"decompose",
+				[]string{"enriched_goal"},
+				"First call `plan clarify` to refine your goal into an enriched specification, then pass `enriched_goal` to decompose.",
+			),
+		}, nil
+	}
+
+	// Use RoleBootstrap for planning operations
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	planApp := app.NewPlanApp(appCtx)
+
+	result, err := planApp.Decompose(ctx, app.DecomposeOptions{
+		PlanID:       params.PlanID,
+		Goal:         params.Goal,
+		EnrichedGoal: enrichedGoal,
+		Feedback:     params.Feedback,
+	})
+	if err != nil {
+		return &PlanToolResult{
+			Action: "decompose",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &PlanToolResult{
+		Action:  "decompose",
+		Content: FormatDecomposeResult(result),
+	}, nil
+}
+
+// handlePlanExpand implements the 'expand' action - generate tasks for a phase.
+// This is Stage 3 of the interactive planning workflow (repeated per phase).
+func handlePlanExpand(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
+	// Validate required fields
+	planID := strings.TrimSpace(params.PlanID)
+	if planID == "" {
+		return &PlanToolResult{
+			Action: "expand",
+			Error:  "plan_id is required for expand action",
+			Content: FormatMultiValidationError(
+				"expand",
+				[]string{"plan_id"},
+				"First call `plan decompose` to create phases, then pass `plan_id` and `phase_id` or `phase_index` to expand.",
+			),
+		}, nil
+	}
+
+	// Need either phase_id or phase_index
+	phaseID := strings.TrimSpace(params.PhaseID)
+	if phaseID == "" && params.PhaseIndex == nil {
+		return &PlanToolResult{
+			Action: "expand",
+			Error:  "either phase_id or phase_index is required for expand action",
+			Content: FormatMultiValidationError(
+				"expand",
+				[]string{"phase_id", "phase_index"},
+				"Provide the ID or 0-based index of the phase to expand.",
+			),
+		}, nil
+	}
+
+	// Use RoleBootstrap for planning operations
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	planApp := app.NewPlanApp(appCtx)
+
+	opts := app.ExpandOptions{
+		PlanID:   planID,
+		PhaseID:  phaseID,
+		Feedback: params.Feedback,
+	}
+	if params.PhaseIndex != nil {
+		opts.PhaseIndex = *params.PhaseIndex
+	} else {
+		opts.PhaseIndex = -1 // Signal to use PhaseID
+	}
+
+	result, err := planApp.Expand(ctx, opts)
+	if err != nil {
+		return &PlanToolResult{
+			Action: "expand",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &PlanToolResult{
+		Action:  "expand",
+		Content: FormatExpandResult(result),
+	}, nil
+}
+
+// handlePlanFinalize implements the 'finalize' action - save completed interactive plan.
+// This is Stage 4 of the interactive planning workflow.
+func handlePlanFinalize(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
+	// Validate required fields
+	planID := strings.TrimSpace(params.PlanID)
+	if planID == "" {
+		return &PlanToolResult{
+			Action: "finalize",
+			Error:  "plan_id is required for finalize action",
+			Content: FormatMultiValidationError(
+				"finalize",
+				[]string{"plan_id"},
+				"Provide the plan_id from the decompose step to finalize.",
+			),
+		}, nil
+	}
+
+	// Use RoleBootstrap for planning operations
+	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	planApp := app.NewPlanApp(appCtx)
+
+	result, err := planApp.Finalize(ctx, app.FinalizeOptions{
+		PlanID: planID,
+	})
+	if err != nil {
+		return &PlanToolResult{
+			Action: "finalize",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	return &PlanToolResult{
+		Action:  "finalize",
+		Content: FormatFinalizeResult(result),
+	}, nil
+}
+
 // handlePlanAudit implements the 'audit' action - verify and fix a completed plan.
 func handlePlanAudit(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
 	// Default autoFix to true
@@ -846,178 +988,5 @@ func handlePlanAudit(ctx context.Context, repo *memory.Repository, params PlanTo
 	return &PlanToolResult{
 		Action:  "audit",
 		Content: FormatAuditResult(result),
-	}, nil
-}
-
-// === Policy Tool Handler ===
-
-// PolicyToolResult represents the response from the unified policy tool.
-type PolicyToolResult struct {
-	Action  string `json:"action"`
-	Content string `json:"content"`
-	Error   string `json:"error,omitempty"`
-}
-
-// HandlePolicyTool is the unified handler for all policy operations.
-// It routes to the appropriate service logic based on the action parameter.
-// Consolidates: policy check, policy list, policy explain
-func HandlePolicyTool(ctx context.Context, params PolicyToolParams) (*PolicyToolResult, error) {
-	// Validate action
-	if !params.Action.IsValid() {
-		return &PolicyToolResult{
-			Action: string(params.Action),
-			Error:  fmt.Sprintf("invalid action %q, must be one of: check, list, explain", params.Action),
-		}, nil
-	}
-
-	switch params.Action {
-	case PolicyActionCheck:
-		return handlePolicyCheck(ctx, params)
-	case PolicyActionList:
-		return handlePolicyList(ctx, params)
-	case PolicyActionExplain:
-		return handlePolicyExplain(ctx, params)
-	default:
-		return &PolicyToolResult{
-			Action: string(params.Action),
-			Error:  fmt.Sprintf("unsupported action: %s", params.Action),
-		}, nil
-	}
-}
-
-// handlePolicyCheck implements the 'check' action - evaluate files against policies.
-func handlePolicyCheck(ctx context.Context, params PolicyToolParams) (*PolicyToolResult, error) {
-	// Validate required fields
-	if len(params.Files) == 0 {
-		return &PolicyToolResult{
-			Action: "check",
-			Error:  "files is required for check action",
-		}, nil
-	}
-
-	// Get project root for policy engine
-	projectRoot, err := config.GetProjectRoot()
-	if err != nil {
-		return &PolicyToolResult{
-			Action: "check",
-			Error:  fmt.Sprintf("get project root: %v", err),
-		}, nil
-	}
-
-	// Create policy engine
-	engine, err := policy.NewEngine(policy.EngineConfig{
-		WorkDir: projectRoot,
-	})
-	if err != nil {
-		return &PolicyToolResult{
-			Action: "check",
-			Error:  fmt.Sprintf("create policy engine: %v", err),
-		}, nil
-	}
-
-	if engine.PolicyCount() == 0 {
-		return &PolicyToolResult{
-			Action:  "check",
-			Content: "No policies loaded. Run 'tw policy init' to create the default policy.",
-		}, nil
-	}
-
-	// Build policy input with context
-	inputBuilder := policy.NewContextBuilder(projectRoot).
-		WithTask(params.TaskID, params.TaskTitle).
-		WithTaskFiles(params.Files, nil).
-		WithPlan(params.PlanID, params.PlanGoal)
-
-	// Evaluate against policies
-	decision, err := engine.Evaluate(ctx, inputBuilder.Build())
-	if err != nil {
-		return &PolicyToolResult{
-			Action: "check",
-			Error:  fmt.Sprintf("evaluate policies: %v", err),
-		}, nil
-	}
-
-	// Format the result
-	return &PolicyToolResult{
-		Action:  "check",
-		Content: FormatPolicyCheckResult(decision, params.Files),
-	}, nil
-}
-
-// handlePolicyList implements the 'list' action - list loaded policies.
-func handlePolicyList(ctx context.Context, params PolicyToolParams) (*PolicyToolResult, error) {
-	projectRoot, err := config.GetProjectRoot()
-	if err != nil {
-		return &PolicyToolResult{
-			Action: "list",
-			Error:  fmt.Sprintf("get project root: %v", err),
-		}, nil
-	}
-
-	policiesDir := policy.GetPoliciesPath(projectRoot)
-	loader := policy.NewOsLoader(policiesDir)
-
-	policies, err := loader.LoadAll()
-	if err != nil {
-		return &PolicyToolResult{
-			Action: "list",
-			Error:  fmt.Sprintf("load policies: %v", err),
-		}, nil
-	}
-
-	return &PolicyToolResult{
-		Action:  "list",
-		Content: FormatPolicyList(policies, policiesDir),
-	}, nil
-}
-
-// handlePolicyExplain implements the 'explain' action - explain policy rules.
-func handlePolicyExplain(ctx context.Context, params PolicyToolParams) (*PolicyToolResult, error) {
-	projectRoot, err := config.GetProjectRoot()
-	if err != nil {
-		return &PolicyToolResult{
-			Action: "explain",
-			Error:  fmt.Sprintf("get project root: %v", err),
-		}, nil
-	}
-
-	policiesDir := policy.GetPoliciesPath(projectRoot)
-	loader := policy.NewOsLoader(policiesDir)
-
-	policies, err := loader.LoadAll()
-	if err != nil {
-		return &PolicyToolResult{
-			Action: "explain",
-			Error:  fmt.Sprintf("load policies: %v", err),
-		}, nil
-	}
-
-	if len(policies) == 0 {
-		return &PolicyToolResult{
-			Action:  "explain",
-			Content: "No policies loaded. Run 'tw policy init' to create the default policy.",
-		}, nil
-	}
-
-	// If a specific policy name is provided, filter to that one
-	if params.PolicyName != "" {
-		for _, p := range policies {
-			if p.Name == params.PolicyName {
-				return &PolicyToolResult{
-					Action:  "explain",
-					Content: FormatPolicyExplain(p),
-				}, nil
-			}
-		}
-		return &PolicyToolResult{
-			Action: "explain",
-			Error:  fmt.Sprintf("policy not found: %s", params.PolicyName),
-		}, nil
-	}
-
-	// Explain all policies
-	return &PolicyToolResult{
-		Action:  "explain",
-		Content: FormatPoliciesExplain(policies),
 	}, nil
 }

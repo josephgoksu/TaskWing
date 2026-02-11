@@ -118,6 +118,51 @@ func (m *MockRepository) RemoveDependency(taskID, dependsOn string) error {
 	return nil
 }
 
+// Phase repository methods (for interactive plan generation)
+func (m *MockRepository) CreatePhase(p *task.Phase) error {
+	return nil
+}
+
+func (m *MockRepository) GetPhase(id string) (*task.Phase, error) {
+	return nil, nil
+}
+
+func (m *MockRepository) ListPhases(planID string) ([]task.Phase, error) {
+	return nil, nil
+}
+
+func (m *MockRepository) UpdatePhase(p *task.Phase) error {
+	return nil
+}
+
+func (m *MockRepository) UpdatePhaseStatus(id string, status task.PhaseStatus) error {
+	return nil
+}
+
+func (m *MockRepository) DeletePhase(id string) error {
+	return nil
+}
+
+func (m *MockRepository) CreatePhasesForPlan(planID string, phases []task.Phase) error {
+	return nil
+}
+
+func (m *MockRepository) ListTasksByPhase(phaseID string) ([]task.Task, error) {
+	return nil, nil
+}
+
+func (m *MockRepository) GetPlanWithPhases(id string) (*task.Plan, error) {
+	return nil, nil
+}
+
+func (m *MockRepository) UpdatePlanDraftState(planID string, draftStateJSON string) error {
+	return nil
+}
+
+func (m *MockRepository) UpdatePlanGenerationMode(planID string, mode task.GenerationMode) error {
+	return nil
+}
+
 func TestPlanApp_Generate_Failures(t *testing.T) {
 	// Placeholder test
 }

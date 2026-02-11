@@ -4,7 +4,7 @@ Package `bootstrap` provides the factory and runner for TaskWing's parallel agen
 
 ## Overview
 
-This package creates and coordinates the default set of analysis agents used during `tw bootstrap` to extract project knowledge:
+This package creates and coordinates the default set of analysis agents used during `taskwing bootstrap` to extract project knowledge:
 - **DocAgent**: Analyzes documentation files (README, ARCHITECTURE, etc.)
 - **CodeAgent**: Analyzes source code patterns and structure
 - **GitAgent**: Extracts decisions from git history and conventional commits

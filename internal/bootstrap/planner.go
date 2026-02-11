@@ -188,9 +188,8 @@ func ProbeEnvironment(basePath string) (*Snapshot, error) {
 	// Check .taskwing/ health
 	snap.Project = probeProjectHealth(basePath)
 
-	// Check each known AI integration
-	knownAIs := []string{"claude", "cursor", "gemini", "codex", "copilot"}
-	for _, ai := range knownAIs {
+	// Check each known AI integration from canonical catalog
+	for _, ai := range ValidAINames() {
 		health := probeAIHealth(basePath, ai)
 		snap.AIHealth[ai] = health
 

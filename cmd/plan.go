@@ -62,9 +62,12 @@ func init() {
 // Wrapper to handle repo lifecycle automatically
 func runWithService(runFunc func(svc *task.Service, cmd *cobra.Command, args []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		repo, err := openRepo() // Defined in root.go or similar (helper)
+		repo, err := openRepoOrHandleMissingMemory()
 		if err != nil {
 			return err
+		}
+		if repo == nil {
+			return nil
 		}
 		defer func() { _ = repo.Close() }()
 
@@ -83,10 +86,10 @@ var planCmd = &cobra.Command{
 	Long: `Create, view, and export development plans using AI agents.
 
 Examples:
-  tw plan new "Add OAuth2 authentication"
-  tw plan list
-  tw plan export latest
-  tw plan start latest`,
+  taskwing goal "Add OAuth2 authentication"
+  taskwing plan list
+  taskwing plan export latest
+  taskwing plan start latest`,
 }
 
 var planNewCmd = &cobra.Command{
@@ -100,9 +103,12 @@ var planNewCmd = &cobra.Command{
 		// Track user input for crash logging
 		logger.SetLastInput(fmt.Sprintf("plan new %q", goal))
 
-		repo, err := openRepo()
+		repo, err := openRepoOrHandleMissingMemory()
 		if err != nil {
-			return fmt.Errorf("open repo: %w", err)
+			return err
+		}
+		if repo == nil {
+			return nil
 		}
 		defer func() { _ = repo.Close() }()
 
@@ -546,7 +552,7 @@ Examples:
 					"message": "No active plan",
 				})
 			}
-			fmt.Println("No active plan. Set one with: tw plan start <plan-id>")
+			fmt.Println("No active plan. Set one with: taskwing goal \"<goal>\"")
 			return nil
 		}
 
@@ -677,6 +683,6 @@ func printPlanView(plan *task.Plan) {
 	}
 
 	fmt.Println("Next steps:")
-	fmt.Println("  • tw task list --plan " + plan.ID)
-	fmt.Println("  • tw context <query>")
+	fmt.Println("  • taskwing task list --plan " + plan.ID)
+	fmt.Println("  • /tw-next")
 }

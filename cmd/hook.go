@@ -58,8 +58,9 @@ const (
 )
 
 var hookCmd = &cobra.Command{
-	Use:   "hook",
-	Short: "Hook commands for Claude Code integration",
+	Use:    "hook",
+	Short:  "Hook commands for Claude Code integration",
+	Hidden: true,
 	Long: `Commands designed to be called by Claude Code hooks for autonomous task execution.
 
 These commands enable TaskWing to work with Claude Code's hook system to create
@@ -224,6 +225,11 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	// Open repository
 	repo, err := openRepo()
 	if err != nil {
+		if isMissingProjectMemoryError(err) {
+			return outputHookResponse(HookResponse{
+				Reason: "No project memory found. Run 'taskwing bootstrap' to initialize project memory.",
+			})
+		}
 		return outputHookResponse(HookResponse{
 			Reason: fmt.Sprintf("Failed to open repository: %v", err),
 		})

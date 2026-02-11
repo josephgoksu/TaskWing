@@ -179,7 +179,7 @@ AND NOT EXISTS (
     JOIN tasks dep ON dep.id = td.depends_on
     WHERE td.task_id = t.id AND dep.status != 'completed'
 )
-ORDER BY t.priority DESC, t.created_at ASC
+ORDER BY t.priority ASC, t.created_at ASC
 LIMIT 1
 ```
 
@@ -505,7 +505,7 @@ Please ensure your response is valid JSON matching the required schema.
 
 ```
 Task completed → No critical deviations →
-  IF more pending tasks: Hint "use task_next"
+  IF more pending tasks: Hint "use task action=next"
   ELSE: Trigger audit → IF passed: Create PR
 ```
 

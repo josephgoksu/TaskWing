@@ -74,20 +74,23 @@ func (a TaskAction) IsValid() bool {
 type PlanAction string
 
 const (
-	PlanActionClarify  PlanAction = "clarify"
-	PlanActionGenerate PlanAction = "generate"
-	PlanActionAudit    PlanAction = "audit"
+	PlanActionClarify   PlanAction = "clarify"   // Refine goal with questions (Stage 1)
+	PlanActionDecompose PlanAction = "decompose" // Break goal into phases (Stage 2 - interactive)
+	PlanActionExpand    PlanAction = "expand"    // Generate tasks for a phase (Stage 3 - interactive)
+	PlanActionGenerate  PlanAction = "generate"  // Generate all tasks at once (batch mode)
+	PlanActionFinalize  PlanAction = "finalize"  // Save completed interactive plan (Stage 4)
+	PlanActionAudit     PlanAction = "audit"     // Verify plan implementation
 )
 
 // ValidPlanActions returns all valid plan actions.
 func ValidPlanActions() []PlanAction {
-	return []PlanAction{PlanActionClarify, PlanActionGenerate, PlanActionAudit}
+	return []PlanAction{PlanActionClarify, PlanActionDecompose, PlanActionExpand, PlanActionGenerate, PlanActionFinalize, PlanActionAudit}
 }
 
 // IsValid checks if the action is a valid plan action.
 func (a PlanAction) IsValid() bool {
 	switch a {
-	case PlanActionClarify, PlanActionGenerate, PlanActionAudit:
+	case PlanActionClarify, PlanActionDecompose, PlanActionExpand, PlanActionGenerate, PlanActionFinalize, PlanActionAudit:
 		return true
 	}
 	return false
@@ -147,7 +150,7 @@ type CodeToolParams struct {
 }
 
 // TaskToolParams defines the parameters for the unified task tool.
-// Consolidates: task_next, task_current, task_start, task_complete
+// Supports lifecycle actions: next, current, start, complete
 //
 // Required fields by action:
 //   - next: session_id
@@ -255,16 +258,37 @@ type DebugToolParams struct {
 	FilePath string `json:"file_path,omitempty"`
 }
 
+// PhaseInput represents user-provided phase data for interactive mode.
+type PhaseInput struct {
+	Title         string `json:"title"`
+	Description   string `json:"description,omitempty"`
+	Rationale     string `json:"rationale,omitempty"`
+	ExpectedTasks int    `json:"expected_tasks,omitempty"`
+}
+
+// TaskInput represents user-provided task data for interactive mode.
+type TaskInput struct {
+	Title              string   `json:"title"`
+	Description        string   `json:"description,omitempty"`
+	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
+	ValidationSteps    []string `json:"validation_steps,omitempty"`
+	Priority           int      `json:"priority,omitempty"`
+	Complexity         string   `json:"complexity,omitempty"`
+}
+
 // PlanToolParams defines the parameters for the unified plan tool.
-// Consolidates: plan_clarify, plan_generate, audit_plan
+// Supports planning actions: clarify, decompose, expand, generate, finalize, audit
 //
 // Required fields by action:
 //   - clarify: goal
+//   - decompose: plan_id (with enriched_goal) OR enriched_goal (creates new plan)
+//   - expand: plan_id, phase_id OR phase_index
 //   - generate: goal, enriched_goal (call clarify first to get enriched_goal)
+//   - finalize: plan_id
 //   - audit: none (defaults to active plan)
 type PlanToolParams struct {
 	// Action specifies which operation to perform.
-	// Required. One of: clarify, generate, audit
+	// Required. One of: clarify, decompose, expand, generate, finalize, audit
 	Action PlanAction `json:"action"`
 
 	// Goal is the user's development goal.
@@ -272,7 +296,7 @@ type PlanToolParams struct {
 	Goal string `json:"goal,omitempty"`
 
 	// EnrichedGoal is the full technical specification from clarify.
-	// REQUIRED for: generate (will error if empty; call clarify first to get this)
+	// REQUIRED for: generate, decompose (will error if empty; call clarify first to get this)
 	EnrichedGoal string `json:"enriched_goal,omitempty"`
 
 	// History is a JSON array of previous Q&A from clarify loop.
@@ -287,14 +311,41 @@ type PlanToolParams struct {
 	// Optional for: generate (default: true)
 	Save *bool `json:"save,omitempty"`
 
-	// PlanID is the plan to audit.
-	// Optional for: audit (defaults to active plan)
+	// PlanID is the plan to operate on.
+	// REQUIRED for: expand, finalize
+	// Optional for: decompose (creates new plan if not provided), audit (defaults to active plan)
 	// Deprecated alias: planId (still accepted but plan_id is preferred)
 	PlanID string `json:"plan_id,omitempty"`
 
 	// AutoFix attempts to automatically fix failures.
 	// Optional for: audit (default: true)
 	AutoFix *bool `json:"auto_fix,omitempty"`
+
+	// === Interactive Mode Fields ===
+
+	// Mode specifies the generation mode.
+	// Optional. One of: "interactive", "batch" (default: "batch" for backward compatibility)
+	Mode string `json:"mode,omitempty"`
+
+	// PhaseID is the ID of the phase to expand.
+	// REQUIRED for: expand (if phase_index not provided)
+	PhaseID string `json:"phase_id,omitempty"`
+
+	// PhaseIndex is the 0-based index of the phase to expand.
+	// Optional for: expand (alternative to phase_id)
+	PhaseIndex *int `json:"phase_index,omitempty"`
+
+	// Phases is user-edited phase data for decompose feedback.
+	// Optional for: decompose (allows user modifications)
+	Phases []PhaseInput `json:"phases,omitempty"`
+
+	// Tasks is user-edited task data for expand feedback.
+	// Optional for: expand (allows user modifications)
+	Tasks []TaskInput `json:"tasks,omitempty"`
+
+	// Feedback is a regeneration hint when user wants changes.
+	// Optional for: decompose, expand (e.g., "split phase 2 into smaller chunks")
+	Feedback string `json:"feedback,omitempty"`
 }
 
 // planToolParamsAlias is used for JSON unmarshaling to accept deprecated planId field.
@@ -314,89 +365,6 @@ func (p *PlanToolParams) UnmarshalJSON(data []byte) error {
 	}
 
 	*p = PlanToolParams(aux.planToolParamsAlias)
-
-	// If plan_id is empty but planId alias was provided, use the alias
-	if p.PlanID == "" && aux.PlanIDAlias != "" {
-		p.PlanID = aux.PlanIDAlias
-		warnPlanIDMCPDeprecation()
-	}
-
-	return nil
-}
-
-// PolicyAction defines the valid actions for the unified policy tool.
-type PolicyAction string
-
-const (
-	PolicyActionCheck   PolicyAction = "check"
-	PolicyActionList    PolicyAction = "list"
-	PolicyActionExplain PolicyAction = "explain"
-)
-
-// ValidPolicyActions returns all valid policy actions.
-func ValidPolicyActions() []PolicyAction {
-	return []PolicyAction{PolicyActionCheck, PolicyActionList, PolicyActionExplain}
-}
-
-// IsValid checks if the action is a valid policy action.
-func (a PolicyAction) IsValid() bool {
-	switch a {
-	case PolicyActionCheck, PolicyActionList, PolicyActionExplain:
-		return true
-	}
-	return false
-}
-
-// PolicyToolParams defines the parameters for the unified policy tool.
-// Consolidates: policy check, policy list, policy explain
-type PolicyToolParams struct {
-	// Action specifies which operation to perform.
-	// Required. One of: check, list, explain
-	Action PolicyAction `json:"action"`
-
-	// Files is a list of file paths to check against policies.
-	// Required for: check
-	Files []string `json:"files,omitempty"`
-
-	// TaskID is the task context for policy evaluation.
-	// Optional for: check (provides task metadata to policies)
-	TaskID string `json:"task_id,omitempty"`
-
-	// TaskTitle is the task title for policy evaluation.
-	// Optional for: check
-	TaskTitle string `json:"task_title,omitempty"`
-
-	// PlanID is the plan context for policy evaluation.
-	// Optional for: check
-	// Deprecated alias: planId (still accepted but plan_id is preferred)
-	PlanID string `json:"plan_id,omitempty"`
-
-	// PlanGoal is the plan goal for policy evaluation.
-	// Optional for: check
-	PlanGoal string `json:"plan_goal,omitempty"`
-
-	// PolicyName is the name of a specific policy to explain.
-	// Optional for: explain (if not provided, lists all rules)
-	PolicyName string `json:"policy_name,omitempty"`
-}
-
-// policyToolParamsAlias is used for JSON unmarshaling to accept deprecated planId field.
-type policyToolParamsAlias PolicyToolParams
-
-// policyToolParamsWithAlias includes both plan_id and deprecated planId for backward compatibility.
-type policyToolParamsWithAlias struct {
-	policyToolParamsAlias
-	PlanIDAlias string `json:"planId,omitempty"` // Deprecated: use plan_id
-}
-
-// UnmarshalJSON implements custom unmarshaling to accept deprecated planId field.
-func (p *PolicyToolParams) UnmarshalJSON(data []byte) error {
-	var aux policyToolParamsWithAlias
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	*p = PolicyToolParams(aux.policyToolParamsAlias)
 
 	// If plan_id is empty but planId alias was provided, use the alias
 	if p.PlanID == "" && aux.PlanIDAlias != "" {

@@ -502,7 +502,7 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 
 	hint := "Great work! "
 	if pendingCount > 0 {
-		hint += fmt.Sprintf("There are %d more pending tasks. Use task_next to continue.", pendingCount)
+		hint += fmt.Sprintf("There are %d more pending tasks. Use task action=next to continue.", pendingCount)
 	} else if inProgressCount > 0 {
 		hint += fmt.Sprintf("There are %d tasks still in progress.", inProgressCount)
 	} else {
@@ -566,7 +566,7 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 				hint += fmt.Sprintf(" PR created: %s", prURL)
 			}
 		} else if auditStatus != "verified" {
-			hint += " PR not created - fix issues and run audit_plan again."
+			hint += " PR not created - fix issues and run plan action=audit again."
 		} else if !gitClient.IsGhInstalled() {
 			hint += " Install 'gh' CLI to auto-create PRs."
 		}

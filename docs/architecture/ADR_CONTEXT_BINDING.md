@@ -195,4 +195,3 @@ task:
 ## Related Documents
 
 - [PLANNING_FORENSIC_DOCUMENTATION.md](./PLANNING_FORENSIC_DOCUMENTATION.md) - Detailed planning pipeline analysis
-- [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md) - Overall system architecture

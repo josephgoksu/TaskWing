@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"encoding/json"
-	"strings"
 	"sync"
 	"testing"
 )
@@ -60,7 +59,10 @@ func TestPlanAction_IsValid(t *testing.T) {
 		want   bool
 	}{
 		{PlanActionClarify, true},
+		{PlanActionDecompose, true},
+		{PlanActionExpand, true},
 		{PlanActionGenerate, true},
+		{PlanActionFinalize, true},
 		{PlanActionAudit, true},
 		{"invalid", false},
 		{"", false},
@@ -91,36 +93,8 @@ func TestValidTaskActions(t *testing.T) {
 
 func TestValidPlanActions(t *testing.T) {
 	actions := ValidPlanActions()
-	if len(actions) != 3 {
-		t.Errorf("ValidPlanActions() returned %d actions, want 3", len(actions))
-	}
-}
-
-func TestValidPolicyActions(t *testing.T) {
-	actions := ValidPolicyActions()
-	if len(actions) != 3 {
-		t.Errorf("ValidPolicyActions() returned %d actions, want 3", len(actions))
-	}
-}
-
-func TestPolicyAction_IsValid(t *testing.T) {
-	tests := []struct {
-		action PolicyAction
-		want   bool
-	}{
-		{PolicyActionCheck, true},
-		{PolicyActionList, true},
-		{PolicyActionExplain, true},
-		{"invalid", false},
-		{"", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(string(tt.action), func(t *testing.T) {
-			if got := tt.action.IsValid(); got != tt.want {
-				t.Errorf("PolicyAction(%q).IsValid() = %v, want %v", tt.action, got, tt.want)
-			}
-		})
+	if len(actions) != 6 {
+		t.Errorf("ValidPlanActions() returned %d actions, want 6", len(actions))
 	}
 }
 
@@ -207,51 +181,6 @@ func TestPlanToolParams_SnakeCaseTakesPrecedence(t *testing.T) {
 	jsonData := `{"action":"audit","plan_id":"plan-primary","planId":"plan-alias"}`
 
 	var params PlanToolParams
-	if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
-		t.Fatalf("Failed to unmarshal: %v", err)
-	}
-
-	if params.PlanID != "plan-primary" {
-		t.Errorf("PlanID = %q, want %q (plan_id should take precedence)", params.PlanID, "plan-primary")
-	}
-}
-
-// TestPolicyToolParams_PlanIDSnakeCase tests that plan_id is correctly unmarshaled.
-func TestPolicyToolParams_PlanIDSnakeCase(t *testing.T) {
-	jsonData := `{"action":"check","plan_id":"plan-123","files":["main.go"]}`
-
-	var params PolicyToolParams
-	if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
-		t.Fatalf("Failed to unmarshal: %v", err)
-	}
-
-	if params.PlanID != "plan-123" {
-		t.Errorf("PlanID = %q, want %q", params.PlanID, "plan-123")
-	}
-}
-
-// TestPolicyToolParams_PlanIDCamelCaseAlias tests that planId is accepted as deprecated alias.
-func TestPolicyToolParams_PlanIDCamelCaseAlias(t *testing.T) {
-	// Reset the deprecation warning flag for this test
-	planIDMCPDeprecationWarned = sync.Once{}
-
-	jsonData := `{"action":"check","planId":"plan-789","files":["main.go"]}`
-
-	var params PolicyToolParams
-	if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
-		t.Fatalf("Failed to unmarshal: %v", err)
-	}
-
-	if params.PlanID != "plan-789" {
-		t.Errorf("PlanID = %q, want %q (from planId alias)", params.PlanID, "plan-789")
-	}
-}
-
-// TestPolicyToolParams_SnakeCaseTakesPrecedence tests that plan_id takes precedence over planId.
-func TestPolicyToolParams_SnakeCaseTakesPrecedence(t *testing.T) {
-	jsonData := `{"action":"check","plan_id":"plan-primary","planId":"plan-alias","files":["main.go"]}`
-
-	var params PolicyToolParams
 	if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
 		t.Fatalf("Failed to unmarshal: %v", err)
 	}
@@ -356,31 +285,4 @@ func TestMCPParamsPreserveOtherFields(t *testing.T) {
 		}
 	})
 
-	t.Run("PolicyToolParams", func(t *testing.T) {
-		jsonData := `{"action":"check","files":["main.go","lib.go"],"task_id":"task-1","task_title":"Fix bug","plan_goal":"Improve code"}`
-
-		var params PolicyToolParams
-		if err := json.Unmarshal([]byte(jsonData), &params); err != nil {
-			t.Fatalf("Failed to unmarshal: %v", err)
-		}
-
-		if params.Action != PolicyActionCheck {
-			t.Errorf("Action = %q, want %q", params.Action, PolicyActionCheck)
-		}
-		if len(params.Files) != 2 {
-			t.Errorf("Files length = %d, want 2", len(params.Files))
-		}
-		if params.TaskID != "task-1" {
-			t.Errorf("TaskID = %q, want %q", params.TaskID, "task-1")
-		}
-		if params.TaskTitle != "Fix bug" {
-			t.Errorf("TaskTitle = %q, want %q", params.TaskTitle, "Fix bug")
-		}
-		if params.PlanGoal != "Improve code" {
-			t.Errorf("PlanGoal = %q, want %q", params.PlanGoal, "Improve code")
-		}
-	})
 }
-
-// Suppress unused import warning
-var _ = strings.TrimSpace

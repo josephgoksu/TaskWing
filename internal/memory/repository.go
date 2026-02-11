@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"fmt"
+
+	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
 // Repository orchestrates access to both the database and the filesystem.
@@ -77,4 +79,61 @@ func (r *Repository) FindTaskIDsByPrefix(ctx context.Context, prefix string) ([]
 // The ctx parameter is accepted for interface compatibility but not currently used.
 func (r *Repository) FindPlanIDsByPrefix(ctx context.Context, prefix string) ([]string, error) {
 	return r.db.FindPlanIDsByPrefix(prefix)
+}
+
+// === Phase Repository Methods (delegate to SQLiteStore) ===
+
+// CreatePhase creates a new phase.
+func (r *Repository) CreatePhase(p *task.Phase) error {
+	return r.db.CreatePhase(p)
+}
+
+// GetPhase retrieves a phase by ID.
+func (r *Repository) GetPhase(id string) (*task.Phase, error) {
+	return r.db.GetPhase(id)
+}
+
+// ListPhases returns all phases for a plan.
+func (r *Repository) ListPhases(planID string) ([]task.Phase, error) {
+	return r.db.ListPhases(planID)
+}
+
+// UpdatePhase updates a phase.
+func (r *Repository) UpdatePhase(p *task.Phase) error {
+	return r.db.UpdatePhase(p)
+}
+
+// UpdatePhaseStatus updates the status of a phase.
+func (r *Repository) UpdatePhaseStatus(id string, status task.PhaseStatus) error {
+	return r.db.UpdatePhaseStatus(id, status)
+}
+
+// DeletePhase deletes a phase.
+func (r *Repository) DeletePhase(id string) error {
+	return r.db.DeletePhase(id)
+}
+
+// CreatePhasesForPlan creates multiple phases for a plan atomically.
+func (r *Repository) CreatePhasesForPlan(planID string, phases []task.Phase) error {
+	return r.db.CreatePhasesForPlan(planID, phases)
+}
+
+// ListTasksByPhase returns all tasks for a phase.
+func (r *Repository) ListTasksByPhase(phaseID string) ([]task.Task, error) {
+	return r.db.ListTasksByPhase(phaseID)
+}
+
+// GetPlanWithPhases retrieves a plan with its phases.
+func (r *Repository) GetPlanWithPhases(id string) (*task.Plan, error) {
+	return r.db.GetPlanWithPhases(id)
+}
+
+// UpdatePlanDraftState updates the draft state JSON for a plan.
+func (r *Repository) UpdatePlanDraftState(planID string, draftStateJSON string) error {
+	return r.db.UpdatePlanDraftState(planID, draftStateJSON)
+}
+
+// UpdatePlanGenerationMode updates the generation mode for a plan.
+func (r *Repository) UpdatePlanGenerationMode(planID string, mode task.GenerationMode) error {
+	return r.db.UpdatePlanGenerationMode(planID, mode)
 }

@@ -20,6 +20,7 @@ type Repository interface {
 
 	ListTasks(planID string) ([]Task, error)
 	GetTask(id string) (*Task, error)
+	CreateTask(t *Task) error
 	UpdateTaskStatus(id string, status TaskStatus) error
 	AddDependency(taskID, dependsOn string) error
 	RemoveDependency(taskID, dependsOn string) error
@@ -33,6 +34,19 @@ type Repository interface {
 
 	// Audit
 	UpdatePlanAuditReport(id string, status PlanStatus, auditReportJSON string) error
+
+	// Phase Management (Interactive Planning)
+	CreatePhase(p *Phase) error
+	GetPhase(id string) (*Phase, error)
+	ListPhases(planID string) ([]Phase, error)
+	UpdatePhase(p *Phase) error
+	UpdatePhaseStatus(id string, status PhaseStatus) error
+	DeletePhase(id string) error
+	CreatePhasesForPlan(planID string, phases []Phase) error
+	ListTasksByPhase(phaseID string) ([]Task, error)
+	GetPlanWithPhases(id string) (*Plan, error)
+	UpdatePlanDraftState(planID string, draftStateJSON string) error
+	UpdatePlanGenerationMode(planID string, mode GenerationMode) error
 }
 
 // Service encapsulates all business logic for managing Plans and Tasks.

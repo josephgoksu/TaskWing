@@ -110,9 +110,9 @@ Plan Progress: %d%% (%d/%d tasks completed)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 **Instructions**:
-1. First, call task_start MCP tool with task_id and session_id
+1. First, call MCP tool ` + "`task`" + ` with action=` + "`start`" + `, task_id, and session_id
 2. Implement the task following the patterns above
-3. When complete, call task_complete MCP tool with summary and files_modified
+3. When complete, call MCP tool ` + "`task`" + ` with action=` + "`complete`" + `, summary, and files_modified
 4. The Stop hook will automatically check for the next task
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

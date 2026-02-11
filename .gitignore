@@ -48,6 +48,7 @@ Thumbs.db
 .cursorrules
 .claude/
 .codex/
+.opencode/
 .gemini/
 
 # Test files and temporary test data

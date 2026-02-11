@@ -23,7 +23,5 @@ func (s *Server) registerRoutes() http.Handler {
 	mux.HandleFunc("GET /api/plans/{id}", s.handleGetPlan)
 	mux.HandleFunc("POST /api/tasks/promote", s.handlePromoteToTask)
 
-	mux.HandleFunc("OPTIONS /api/", s.handleCORS)
-
-	return corsMiddleware(mux)
+	return s.corsMiddleware(mux)
 }

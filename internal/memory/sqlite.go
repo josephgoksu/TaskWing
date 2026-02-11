@@ -61,6 +61,11 @@ func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
 	// Migrations - ignore errors for columns that already exist
 	_, _ = db.Exec(`ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'medium'`)
 
+	// Interactive planning migrations (phases support)
+	_, _ = db.Exec(`ALTER TABLE plans ADD COLUMN draft_state TEXT`)
+	_, _ = db.Exec(`ALTER TABLE plans ADD COLUMN generation_mode TEXT DEFAULT 'batch'`)
+	_, _ = db.Exec(`ALTER TABLE tasks ADD COLUMN phase_id TEXT REFERENCES phases(id) ON DELETE SET NULL`)
+
 	return store, nil
 }
 
@@ -140,14 +145,35 @@ func (s *SQLiteStore) initSchema() error {
 		goal TEXT NOT NULL,                -- Original user intent
 		enriched_goal TEXT,                -- Refined after clarification
 		status TEXT DEFAULT 'draft',       -- draft, active, completed, archived
+		draft_state TEXT,                  -- JSON: PlanDraftState for interactive mode resume
+		generation_mode TEXT DEFAULT 'batch', -- 'batch' or 'interactive'
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	);
+
+	-- Phases table (high-level work chunks for interactive planning)
+	CREATE TABLE IF NOT EXISTS phases (
+		id TEXT PRIMARY KEY,
+		plan_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		description TEXT,
+		rationale TEXT,
+		order_index INTEGER NOT NULL DEFAULT 0,
+		status TEXT NOT NULL DEFAULT 'pending', -- pending, expanded, skipped
+		expected_tasks INTEGER DEFAULT 0,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_phases_plan_id ON phases(plan_id);
+	CREATE INDEX IF NOT EXISTS idx_phases_order ON phases(plan_id, order_index);
 
 	-- Tasks table (atomic work units)
 	CREATE TABLE IF NOT EXISTS tasks (
 		id TEXT PRIMARY KEY,
 		plan_id TEXT NOT NULL,
+		phase_id TEXT,                     -- Optional: links task to a phase (interactive mode)
 		title TEXT NOT NULL,
 		description TEXT,
 		acceptance_criteria TEXT,          -- JSON array
@@ -161,6 +187,7 @@ func (s *SQLiteStore) initSchema() error {
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL,
 		FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+		FOREIGN KEY (phase_id) REFERENCES phases(id) ON DELETE SET NULL,
 		FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE SET NULL
 	);
 
@@ -568,8 +595,10 @@ func (s *SQLiteStore) initSchema() error {
 		}
 	}
 
-	// Add index for finding next available task efficiently
-	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_status_priority ON tasks(status, priority DESC)`)
+	// Ensure index ordering matches task urgency semantics (lower number = higher urgency).
+	// We drop/recreate to correct existing DBs that were created with DESC.
+	_, _ = s.db.Exec(`DROP INDEX IF EXISTS idx_tasks_status_priority`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_status_priority ON tasks(status, priority ASC)`)
 
 	// Migration: Add audit report column to plans table for audit agent
 	planMigrations := []struct {

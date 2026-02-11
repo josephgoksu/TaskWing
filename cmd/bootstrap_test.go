@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 )
 
 // TestInstallMCPServers_OpenCode tests that installMCPServers correctly installs OpenCode MCP config.
@@ -107,23 +109,15 @@ func TestAIConfigOrder_IncludesOpenCode(t *testing.T) {
 	}
 }
 
-// TestAIConfigs_OpenCodeEntry verifies opencode config entry exists with correct values.
-func TestAIConfigs_OpenCodeEntry(t *testing.T) {
-	cfg, ok := aiConfigs["opencode"]
+// TestAIDisplayNames_OpenCodeEntry verifies opencode metadata is exposed by canonical catalog helpers.
+func TestAIDisplayNames_OpenCodeEntry(t *testing.T) {
+	displayNames := bootstrap.AIDisplayNames()
+	displayName, ok := displayNames["opencode"]
 	if !ok {
-		t.Fatal("opencode entry not found in aiConfigs")
+		t.Fatal("opencode entry not found in canonical AI display names")
 	}
 
-	if cfg.name != "opencode" {
-		t.Errorf("name = %q, want %q", cfg.name, "opencode")
-	}
-	if cfg.displayName != "OpenCode" {
-		t.Errorf("displayName = %q, want %q", cfg.displayName, "OpenCode")
-	}
-	if cfg.commandsDir != ".opencode/skills" {
-		t.Errorf("commandsDir = %q, want %q", cfg.commandsDir, ".opencode/skills")
-	}
-	if cfg.fileExt != ".md" {
-		t.Errorf("fileExt = %q, want %q", cfg.fileExt, ".md")
+	if displayName != "OpenCode" {
+		t.Errorf("displayName = %q, want %q", displayName, "OpenCode")
 	}
 }

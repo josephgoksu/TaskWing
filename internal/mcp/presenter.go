@@ -12,7 +12,6 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
-	"github.com/josephgoksu/TaskWing/internal/policy"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -174,7 +173,7 @@ func FormatTaskCompletionBlocked(result *app.TaskResult) string {
 	sb.WriteString("### Next Steps\n\n")
 	sb.WriteString("1. Review the violations above\n")
 	sb.WriteString("2. Remove or modify the blocked files from your changes\n")
-	sb.WriteString("3. Retry task completion with `task_complete`\n")
+	sb.WriteString("3. Retry task completion with `task` action=`complete`\n")
 
 	return strings.TrimSpace(sb.String())
 }
@@ -475,7 +474,7 @@ func FormatDriftReport(report *app.DriftReport) string {
 	// No rules
 	if report.RulesChecked == 0 {
 		sb.WriteString("No architectural rules found in knowledge base.\n")
-		sb.WriteString("Run `tw bootstrap` to extract rules, or add rules with `tw add`.\n")
+		sb.WriteString("Run `taskwing bootstrap --force` to refresh extracted rules.\n")
 		return sb.String()
 	}
 
@@ -665,7 +664,7 @@ func FormatClarifyResult(result *app.ClarifyResult) string {
 		sb.WriteString("### Enriched Specification\n")
 		sb.WriteString(result.EnrichedGoal)
 		sb.WriteString("\n\n")
-		sb.WriteString("> **Next**: Call `plan_generate` with this `enriched_goal` to create tasks.\n")
+		sb.WriteString("> **Next**: Call `plan` with action=`generate` and this `enriched_goal` to create tasks.\n")
 	}
 
 	// Context used
@@ -786,6 +785,143 @@ func FormatAuditResult(result *app.AuditResult) string {
 	}
 	if result.Hint != "" {
 		sb.WriteString(fmt.Sprintf("> **Hint**: %s\n", result.Hint))
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatDecomposeResult formats plan decomposition output.
+func FormatDecomposeResult(result *app.DecomposeResult) string {
+	if result == nil {
+		return FormatError("No decomposition result.")
+	}
+
+	if !result.Success {
+		msg := result.Message
+		if msg == "" {
+			msg = "Decomposition failed with no details"
+		}
+		return FormatError(msg)
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("## 📋 Goal Decomposition\n\n")
+	sb.WriteString(fmt.Sprintf("**Plan ID**: `%s`\n", result.PlanID))
+	sb.WriteString(fmt.Sprintf("**Phases**: %d\n\n", len(result.Phases)))
+
+	// List phases
+	sb.WriteString("### Phases\n")
+	for i, phase := range result.Phases {
+		sb.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, phase.Title))
+		if phase.Description != "" {
+			sb.WriteString(fmt.Sprintf("   %s\n", phase.Description))
+		}
+		sb.WriteString(fmt.Sprintf("   _Expected tasks: %d_\n", phase.ExpectedTasks))
+	}
+	sb.WriteString("\n")
+
+	// Rationale
+	if result.Rationale != "" {
+		sb.WriteString("### Rationale\n")
+		sb.WriteString(result.Rationale)
+		sb.WriteString("\n\n")
+	}
+
+	// Hint
+	if result.Hint != "" {
+		sb.WriteString(fmt.Sprintf("> **Next**: %s\n", result.Hint))
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatExpandResult formats phase expansion output.
+func FormatExpandResult(result *app.ExpandResult) string {
+	if result == nil {
+		return FormatError("No expansion result.")
+	}
+
+	if !result.Success {
+		msg := result.Message
+		if msg == "" {
+			msg = "Expansion failed with no details"
+		}
+		return FormatError(msg)
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("## 🔧 Phase Expansion: %s\n\n", result.PhaseTitle))
+	sb.WriteString(fmt.Sprintf("**Plan ID**: `%s`\n", result.PlanID))
+	sb.WriteString(fmt.Sprintf("**Phase ID**: `%s`\n", result.PhaseID))
+	sb.WriteString(fmt.Sprintf("**Tasks Generated**: %d\n\n", len(result.Tasks)))
+
+	// List tasks
+	sb.WriteString("### Tasks\n")
+	for i, t := range result.Tasks {
+		complexityBadge := ""
+		if t.Complexity != "" {
+			complexityBadge = fmt.Sprintf(" [%s]", t.Complexity)
+		}
+		sb.WriteString(fmt.Sprintf("%d. **%s**%s (P%d)\n", i+1, t.Title, complexityBadge, t.Priority))
+		if t.Description != "" {
+			// Show first 100 chars of description
+			desc := t.Description
+			if len(desc) > 100 {
+				desc = desc[:97] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("   %s\n", desc))
+		}
+	}
+	sb.WriteString("\n")
+
+	// Progress indicator
+	if result.RemainingPhases > 0 {
+		sb.WriteString(fmt.Sprintf("**Remaining phases**: %d\n", result.RemainingPhases))
+		if result.NextPhaseTitle != "" {
+			sb.WriteString(fmt.Sprintf("**Next phase**: %s\n\n", result.NextPhaseTitle))
+		}
+	}
+
+	// Hint
+	if result.Hint != "" {
+		sb.WriteString(fmt.Sprintf("> **Next**: %s\n", result.Hint))
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatFinalizeResult formats plan finalization output.
+func FormatFinalizeResult(result *app.FinalizeResult) string {
+	if result == nil {
+		return FormatError("No finalization result.")
+	}
+
+	if !result.Success {
+		msg := result.Message
+		if msg == "" {
+			msg = "Finalization failed with no details"
+		}
+		return FormatError(msg)
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("## ✅ Plan Finalized\n\n")
+	sb.WriteString(fmt.Sprintf("**Plan ID**: `%s`\n", result.PlanID))
+	sb.WriteString(fmt.Sprintf("**Status**: %s\n", result.Status))
+	sb.WriteString(fmt.Sprintf("**Total Phases**: %d\n", result.TotalPhases))
+	sb.WriteString(fmt.Sprintf("**Total Tasks**: %d\n\n", result.TotalTasks))
+
+	// Message
+	if result.Message != "" {
+		sb.WriteString(fmt.Sprintf("%s\n\n", result.Message))
+	}
+
+	// Hint
+	if result.Hint != "" {
+		sb.WriteString(fmt.Sprintf("> **Next**: %s\n", result.Hint))
 	}
 
 	return strings.TrimSpace(sb.String())
@@ -1140,116 +1276,4 @@ func getIntFromMetadata(m map[string]any, key string) int {
 		return v
 	}
 	return 0
-}
-
-// === Policy Formatters ===
-
-// FormatPolicyCheckResult formats policy check results into Markdown.
-func FormatPolicyCheckResult(decision *policy.PolicyDecision, files []string) string {
-	if decision == nil {
-		return FormatError("No policy decision available.")
-	}
-
-	var sb strings.Builder
-
-	// Status header
-	if decision.IsAllowed() {
-		sb.WriteString("## ✅ Policy Check Passed\n\n")
-	} else {
-		sb.WriteString("## ❌ Policy Violations Detected\n\n")
-	}
-
-	// Files checked
-	sb.WriteString(fmt.Sprintf("**Files checked**: %d\n", len(files)))
-	sb.WriteString(fmt.Sprintf("**Decision ID**: `%s`\n\n", decision.DecisionID))
-
-	// List files
-	if len(files) > 0 {
-		sb.WriteString("### Files\n")
-		for _, f := range files {
-			sb.WriteString(fmt.Sprintf("- %s\n", f))
-		}
-		sb.WriteString("\n")
-	}
-
-	// Violations
-	if len(decision.Violations) > 0 {
-		sb.WriteString("### Violations\n")
-		for _, v := range decision.Violations {
-			sb.WriteString(fmt.Sprintf("- %s\n", v))
-		}
-	}
-
-	return strings.TrimSpace(sb.String())
-}
-
-// FormatPolicyList formats a list of policies into Markdown.
-func FormatPolicyList(policies []*policy.PolicyFile, policiesDir string) string {
-	var sb strings.Builder
-
-	sb.WriteString("## OPA Policies\n\n")
-	sb.WriteString(fmt.Sprintf("**Directory**: `%s`\n", policiesDir))
-	sb.WriteString(fmt.Sprintf("**Count**: %d policy file(s)\n\n", len(policies)))
-
-	if len(policies) == 0 {
-		sb.WriteString("No policies loaded.\n")
-		sb.WriteString("Run `tw policy init` to create the default policy.\n")
-		return sb.String()
-	}
-
-	sb.WriteString("### Loaded Policies\n")
-	for _, p := range policies {
-		sb.WriteString(fmt.Sprintf("- **%s** (`%s`)\n", p.Name, p.Path))
-	}
-
-	return strings.TrimSpace(sb.String())
-}
-
-// FormatPolicyExplain formats a single policy explanation into Markdown.
-func FormatPolicyExplain(p *policy.PolicyFile) string {
-	if p == nil {
-		return FormatError("No policy available.")
-	}
-
-	var sb strings.Builder
-
-	sb.WriteString(fmt.Sprintf("## Policy: %s\n\n", p.Name))
-	sb.WriteString(fmt.Sprintf("**Path**: `%s`\n\n", p.Path))
-	sb.WriteString("### Source\n")
-	sb.WriteString("```rego\n")
-	sb.WriteString(p.Content)
-	sb.WriteString("\n```\n")
-
-	return strings.TrimSpace(sb.String())
-}
-
-// FormatPoliciesExplain formats multiple policy explanations into Markdown.
-func FormatPoliciesExplain(policies []*policy.PolicyFile) string {
-	if len(policies) == 0 {
-		return "No policies loaded.\nRun `tw policy init` to create the default policy."
-	}
-
-	var sb strings.Builder
-
-	sb.WriteString(fmt.Sprintf("## OPA Policies (%d)\n\n", len(policies)))
-
-	for i, p := range policies {
-		if i > 0 {
-			sb.WriteString("\n---\n\n")
-		}
-		sb.WriteString(fmt.Sprintf("### %s\n\n", p.Name))
-		sb.WriteString(fmt.Sprintf("**Path**: `%s`\n\n", p.Path))
-		sb.WriteString("```rego\n")
-		// Limit to first 50 lines for token efficiency
-		lines := strings.Split(p.Content, "\n")
-		if len(lines) > 50 {
-			sb.WriteString(strings.Join(lines[:50], "\n"))
-			sb.WriteString(fmt.Sprintf("\n// ...%d more lines\n", len(lines)-50))
-		} else {
-			sb.WriteString(p.Content)
-		}
-		sb.WriteString("\n```\n")
-	}
-
-	return strings.TrimSpace(sb.String())
 }

@@ -23,8 +23,9 @@ import (
 
 // memoryCmd represents the memory command
 var memoryCmd = &cobra.Command{
-	Use:   "memory",
-	Short: "Manage project memory integrity",
+	Use:    "memory",
+	Short:  "Manage project memory integrity",
+	Hidden: true,
 	Long: `Manage the integrity of your project memory database.
 
 Commands for checking, repairing, and rebuilding the memory store.
@@ -160,7 +161,7 @@ Checks for:
 			// Warn about missing embeddings
 			if embStats.NodesWithoutEmbeddings > 0 {
 				fmt.Printf("⚠  %d nodes are missing embeddings.\n", embStats.NodesWithoutEmbeddings)
-				fmt.Println("   Run 'tw memory generate-embeddings' to backfill.")
+				fmt.Println("   Run 'taskwing memory generate-embeddings' to backfill.")
 				fmt.Println()
 			}
 
@@ -168,7 +169,7 @@ Checks for:
 			if embStats.MixedDimensions {
 				fmt.Println("⚠  WARNING: Mixed embedding dimensions detected!")
 				fmt.Println("   This can happen when switching between different embedding models.")
-				fmt.Println("   Run 'tw memory rebuild-embeddings' to regenerate all embeddings.")
+				fmt.Println("   Run 'taskwing memory rebuild-embeddings' to regenerate all embeddings.")
 				fmt.Println()
 			}
 		}
@@ -207,12 +208,12 @@ Checks for:
 					}
 					fmt.Printf("     %s\n", f)
 				}
-				fmt.Println("   Run 'tw bootstrap --force' to re-index the codebase.")
+				fmt.Println("   Run 'taskwing bootstrap --force' to re-index the codebase.")
 				fmt.Println()
 			}
 		} else if symbolStats != nil {
 			fmt.Println("💻 Code Symbol Index: (empty)")
-			fmt.Println("   Run 'tw bootstrap' to index your codebase.")
+			fmt.Println("   Run 'taskwing bootstrap' to index your codebase.")
 			fmt.Println()
 		}
 

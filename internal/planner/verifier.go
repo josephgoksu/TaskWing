@@ -4,13 +4,18 @@ package planner
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 )
+
+// verifyWarnOnce ensures we only log the no-op warning once per process.
+var verifyWarnOnce sync.Once
 
 // Verifier defines the interface for plan verification.
 type Verifier interface {
@@ -60,9 +65,13 @@ func NewPlanVerifierWithConfig(query *codeintel.QueryService, cfg VerifierConfig
 // - Dependency relationships
 //
 // Returns the verified (and potentially corrected) tasks.
+//
+// WARNING: This method is currently a NO-OP stub. The path extraction and correction
+// logic below exists but is never called. Implementation is pending.
 func (v *PlanVerifier) Verify(ctx context.Context, tasks []LLMTaskSchema) ([]LLMTaskSchema, error) {
-	// TODO: Implement verification logic in subsequent tasks
-	// For now, pass through unchanged
+	verifyWarnOnce.Do(func() {
+		slog.Debug("PlanVerifier.Verify is a no-op stub - verification logic not implemented")
+	})
 	return tasks, nil
 }
 

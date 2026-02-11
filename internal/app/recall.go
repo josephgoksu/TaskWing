@@ -199,10 +199,10 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 					if stats.NodesWithoutEmbeddings > 0 {
 						msg += fmt.Sprintf("; %d nodes missing embeddings", stats.NodesWithoutEmbeddings)
 					}
-					msg += ". Run 'tw memory rebuild-embeddings' to fix."
+					msg += ". Run 'taskwing memory rebuild-embeddings' to fix."
 					embeddingStatsMessage = msg
 				} else if stats.NodesWithoutEmbeddings > 0 {
-					embeddingStatsMessage = fmt.Sprintf("%d nodes missing embeddings. Run 'tw memory generate-embeddings' to backfill.", stats.NodesWithoutEmbeddings)
+					embeddingStatsMessage = fmt.Sprintf("%d nodes missing embeddings. Run 'taskwing memory generate-embeddings' to backfill.", stats.NodesWithoutEmbeddings)
 				}
 			}
 		}

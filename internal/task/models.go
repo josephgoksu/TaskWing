@@ -34,6 +34,23 @@ const (
 	StatusReady      TaskStatus = "ready"       // Dependencies met, ready for execution
 )
 
+// PhaseStatus represents the lifecycle state of a phase
+type PhaseStatus string
+
+const (
+	PhaseStatusPending  PhaseStatus = "pending"  // Not yet expanded into tasks
+	PhaseStatusExpanded PhaseStatus = "expanded" // Tasks have been generated
+	PhaseStatusSkipped  PhaseStatus = "skipped"  // User decided to skip this phase
+)
+
+// GenerationMode indicates how a plan was generated
+type GenerationMode string
+
+const (
+	GenerationModeBatch       GenerationMode = "batch"       // All tasks generated at once (legacy)
+	GenerationModeInteractive GenerationMode = "interactive" // Staged workflow with phases
+)
+
 // PlanStatus represents the lifecycle state of a plan
 type PlanStatus string
 
@@ -46,10 +63,57 @@ const (
 	PlanStatusArchived      PlanStatus = "archived"       // No longer active
 )
 
+// Phase represents a high-level work chunk in an interactive plan.
+// Phases are created during the "decompose" stage and expanded into tasks during "expand".
+type Phase struct {
+	ID            string      `json:"id"`
+	PlanID        string      `json:"plan_id"`
+	Title         string      `json:"title"`
+	Description   string      `json:"description"`
+	Rationale     string      `json:"rationale"`      // Why this phase exists and what it achieves
+	OrderIndex    int         `json:"order_index"`    // Sequence in the plan (0-based)
+	Status        PhaseStatus `json:"status"`         // pending, expanded, skipped
+	ExpectedTasks int         `json:"expected_tasks"` // Estimated number of tasks (from decomposition)
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
+
+	// Computed/joined fields (not stored directly)
+	Tasks []Task `json:"tasks,omitempty"` // Tasks belonging to this phase (when loaded)
+}
+
+// Validate checks if the phase has all required fields and valid data.
+func (p *Phase) Validate() error {
+	if strings.TrimSpace(p.Title) == "" {
+		return fmt.Errorf("phase title required")
+	}
+	if len(p.Title) > 200 {
+		return fmt.Errorf("phase title too long (max 200 chars)")
+	}
+	if p.OrderIndex < 0 {
+		return fmt.Errorf("phase order_index must be >= 0")
+	}
+	if p.ExpectedTasks < 0 {
+		return fmt.Errorf("phase expected_tasks must be >= 0")
+	}
+	return nil
+}
+
+// PlanDraftState stores the intermediate state during interactive plan generation.
+// This enables resume capability if the user stops midway through the workflow.
+type PlanDraftState struct {
+	CurrentStage    string   `json:"current_stage"`             // "clarify", "decompose", "expand", "finalize"
+	CurrentPhaseIdx int      `json:"current_phase_idx"`         // Which phase is being expanded (0-based)
+	EnrichedGoal    string   `json:"enriched_goal,omitempty"`   // From clarify stage
+	ClarifyHistory  string   `json:"clarify_history,omitempty"` // Q&A history
+	PhasesFeedback  []string `json:"phases_feedback,omitempty"` // User feedback on phases
+	LastUpdated     string   `json:"last_updated"`              // ISO8601 timestamp
+}
+
 // Task represents a discrete unit of work to be executed by an agent
 type Task struct {
 	ID                 string     `json:"id"`
 	PlanID             string     `json:"plan_id"`
+	PhaseID            string     `json:"phase_id,omitempty"` // Optional: links task to a phase (interactive mode)
 	Title              string     `json:"title"`
 	Description        string     `json:"description"`
 	Status             TaskStatus `json:"status"`
@@ -157,6 +221,11 @@ type Plan struct {
 
 	// Audit fields
 	LastAuditReport string `json:"lastAuditReport,omitempty"` // JSON-serialized AuditReport
+
+	// Interactive generation fields (Phase-based workflow)
+	Phases         []Phase         `json:"phases,omitempty"`          // High-level phases (interactive mode only)
+	DraftState     *PlanDraftState `json:"draft_state,omitempty"`     // Intermediate state for resume capability
+	GenerationMode GenerationMode  `json:"generation_mode,omitempty"` // "batch" or "interactive"
 }
 
 // GetTaskCount returns the number of tasks in this plan.

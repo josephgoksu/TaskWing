@@ -643,6 +643,14 @@ func checkHooksFile(settingsPath, aiName string) DoctorCheck {
 func checkActivePlan() DoctorCheck {
 	repo, err := openRepo()
 	if err != nil {
+		if isMissingProjectMemoryError(err) {
+			return DoctorCheck{
+				Name:    "Active Plan",
+				Status:  "warn",
+				Message: "No project memory found",
+				Hint:    "Run: taskwing bootstrap",
+			}
+		}
 		return DoctorCheck{
 			Name:    "Active Plan",
 			Status:  "warn",

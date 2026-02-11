@@ -73,6 +73,8 @@ func NewPostHogClient(cfg ClientConfig) (*PostHogClient, error) {
 		BatchSize: 10,
 		// Short interval since CLI exits quickly
 		Interval: 1 * time.Second,
+		// Telemetry must never pollute normal CLI output with transport warnings.
+		Logger: quietPostHogLogger{},
 	}
 
 	if cfg.Endpoint != "" {
@@ -168,3 +170,11 @@ func (c *NoopClient) Close() error { return nil }
 func NewNoopClient() *NoopClient {
 	return &NoopClient{}
 }
+
+// quietPostHogLogger suppresses PostHog client logs in normal CLI output.
+type quietPostHogLogger struct{}
+
+func (quietPostHogLogger) Debugf(string, ...interface{}) {}
+func (quietPostHogLogger) Logf(string, ...interface{})   {}
+func (quietPostHogLogger) Warnf(string, ...interface{})  {}
+func (quietPostHogLogger) Errorf(string, ...interface{}) {}

@@ -6,10 +6,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -27,6 +31,7 @@ import (
 
 var (
 	startPort    int
+	startHost    string
 	noDashboard  bool
 	noWatch      bool
 	dashboardURL string
@@ -42,11 +47,12 @@ var startCmd = &cobra.Command{
 
 This single command replaces running 'serve' and 'watch' separately.
 
-Examples:
-  taskwing start                    # Start everything
-  taskwing start --no-dashboard     # Don't open browser
-  taskwing start --no-watch         # Server only, no file watching
-  taskwing start --port 8080        # Use custom port`,
+	Examples:
+	  taskwing start                    # Start everything
+	  taskwing start --host 0.0.0.0     # Expose API on all interfaces
+	  taskwing start --no-dashboard     # Don't open browser
+	  taskwing start --no-watch         # Server only, no file watching
+	  taskwing start --port 8080        # Use custom port`,
 	RunE: runStart,
 }
 
@@ -55,6 +61,7 @@ func init() {
 
 	// Server flags
 	startCmd.Flags().IntVarP(&startPort, "port", "p", 5001, "API server port")
+	startCmd.Flags().StringVar(&startHost, "host", "127.0.0.1", "API server host bind address")
 	startCmd.Flags().BoolVar(&noDashboard, "no-dashboard", false, "Don't auto-open dashboard in browser")
 	startCmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't run watch mode (server only)")
 	startCmd.Flags().StringVar(&dashboardURL, "dashboard-url", "", "Dashboard URL (default: https://hub.taskwing.app, use http://localhost:5173 for local dev)")
@@ -68,6 +75,11 @@ func init() {
 
 func runStart(cmd *cobra.Command, args []string) error {
 	verbose := viper.GetBool("verbose")
+	startHost = strings.TrimSpace(startHost)
+	if startHost == "" {
+		startHost = "127.0.0.1"
+	}
+	startHost = strings.TrimPrefix(strings.TrimSuffix(startHost, "]"), "[")
 
 	// Get working directory
 	cwd, err := os.Getwd()
@@ -80,7 +92,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	fmt.Println("🚀 TaskWing Starting...")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Printf("📁 Project: %s\n", cwd)
-	fmt.Printf("🌐 API: http://localhost:%d\n", startPort)
+	fmt.Printf("🌐 API: %s\n", apiURL(startHost, startPort))
 	if !noWatch {
 		fmt.Println("👁️  Watch: enabled")
 	}
@@ -98,16 +110,23 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("configure LLM: %w", err)
 	}
 
+	resolvedDashboardURL := dashboardURL
+	if resolvedDashboardURL == "" {
+		resolvedDashboardURL = "https://hub.taskwing.app"
+	}
+
 	// Start HTTP API server
 	memoryPath, err := config.GetMemoryBasePath()
 	if err != nil {
 		return fmt.Errorf("get memory path: %w", err)
 	}
-	srv, err := server.New(startPort, cwd, memoryPath, GetVersion(), llmConfig)
+	srv, err := server.New(startHost, startPort, cwd, memoryPath, GetVersion(), buildAllowedOrigins(resolvedDashboardURL), llmConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create API server: %w", err)
 	}
-	srv.Start(&wg, errChan)
+	if err := srv.Start(&wg, errChan); err != nil {
+		return fmt.Errorf("failed to start API server: %w", err)
+	}
 
 	// Start watch mode if enabled
 	var watchAgent *impl.WatchAgent
@@ -121,17 +140,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Open dashboard in browser
 	if !noDashboard {
-		url := dashboardURL
-		if url == "" {
-			url = "https://hub.taskwing.app"
-		}
 		// Give server a moment to start
 		time.Sleep(500 * time.Millisecond)
-		if err := openBrowser(url); err != nil {
+		if err := openBrowser(resolvedDashboardURL); err != nil {
 			fmt.Printf("⚠️  Could not open browser: %v\n", err)
-			fmt.Printf("   Open manually: %s\n", url)
+			fmt.Printf("   Open manually: %s\n", resolvedDashboardURL)
 		} else {
-			fmt.Printf("🌐 Dashboard opened: %s\n", url)
+			fmt.Printf("🌐 Dashboard opened: %s\n", resolvedDashboardURL)
 		}
 	}
 
@@ -224,4 +239,34 @@ func openBrowser(url string) error {
 	}
 
 	return cmd.Start()
+}
+
+func buildAllowedOrigins(dashboardURL string) []string {
+	origins := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
+	addOrigin := func(origin string) {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			return
+		}
+		if _, ok := seen[origin]; ok {
+			return
+		}
+		seen[origin] = struct{}{}
+		origins = append(origins, origin)
+	}
+
+	addOrigin("http://localhost:5173")
+	addOrigin("http://127.0.0.1:5173")
+	addOrigin("https://hub.taskwing.app")
+
+	if parsed, err := url.Parse(dashboardURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		addOrigin(parsed.Scheme + "://" + parsed.Host)
+	}
+
+	return origins
+}
+
+func apiURL(host string, port int) string {
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
 }

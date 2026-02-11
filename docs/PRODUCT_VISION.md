@@ -1,5 +1,7 @@
 # TaskWing: AI-Native Task Management
 
+TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.
+
 ## Vision Statement
 
 **TaskWing is AI-native task management that actually understands your codebase.**
@@ -24,7 +26,7 @@ TaskWing extracts architectural knowledge from your codebase and uses it to:
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    USER INTERFACE                        │
-│  tw plan new "..."  │  tw plan start  │  tw plan done   │
+│  taskwing goal "..."  │  /tw-next  │  /tw-done   │
 └─────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -50,13 +52,13 @@ TaskWing extracts architectural knowledge from your codebase and uses it to:
 
 | Command | Purpose |
 |---------|---------|
-| `tw bootstrap` | Extract knowledge from codebase (one-time setup) |
-| `tw plan new "<goal>"` | Generate context-aware task plan |
-| `tw plan list` | Show all plans with status |
-| `tw plan start <name>` | Set active plan, update MCP context |
-| `tw plan status` | Show current plan progress |
-| `tw plan done <task>` | Mark task complete |
-| `tw mcp` | Start MCP server for AI tool integration |
+| `taskwing bootstrap` | Extract knowledge from codebase (one-time setup) |
+| `taskwing goal "<goal>"` | Generate and activate a context-aware plan |
+| `/tw-next` | Start the next task from your AI tool |
+| `/tw-done` | Complete the current task from your AI tool |
+| `taskwing task list` | Inspect generated tasks |
+| `taskwing plan status` | Show current plan progress |
+| `taskwing mcp` | Start MCP server for AI tool integration |
 
 ## Competitive Positioning
 
@@ -74,14 +76,14 @@ TaskWing extracts architectural knowledge from your codebase and uses it to:
 
 **Full workflow in one session:** Debug → Fix → Verify → Document
 
-See [PHILOSOPHY.md](architecture/PHILOSOPHY.md#real-world-case-study-debugging-a-revenue-impacting-bug) for the full case study.
+See the architecture notes in `docs/architecture/` for implementation details.
 
 ---
 
 ## Success Metrics
 
 1. **Task Accuracy**: Generated tasks reference correct files/patterns (target: 80%+)
-2. **Developer Adoption**: Daily active users running `tw plan`
+2. **Developer Adoption**: Daily active users running `taskwing goal`
 3. **Context Utilization**: MCP queries per plan execution
 4. **Time-to-Root-Cause**: Bug investigations with TaskWing context vs. without
 

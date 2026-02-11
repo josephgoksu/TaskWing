@@ -44,9 +44,12 @@ Examples:
 }
 
 func runTaskList(cmd *cobra.Command, args []string) error {
-	repo, err := openRepo()
+	repo, err := openRepoOrHandleMissingMemory()
 	if err != nil {
-		return fmt.Errorf("failed to open repository: %w", err)
+		return err
+	}
+	if repo == nil {
+		return nil
 	}
 	defer func() { _ = repo.Close() }()
 
@@ -66,7 +69,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		if isJSON() {
 			return printJSON([]any{})
 		}
-		fmt.Println("No plans found. Create one with: tw plan new \"Your goal\"")
+		fmt.Println("No plans found. Create one with: taskwing goal \"Your goal\"")
 		return nil
 	}
 
@@ -316,9 +319,12 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		idOrPrefix := args[0]
-		repo, err := openRepo()
+		repo, err := openRepoOrHandleMissingMemory()
 		if err != nil {
-			return fmt.Errorf("failed to open repository: %w", err)
+			return err
+		}
+		if repo == nil {
+			return nil
 		}
 		defer func() { _ = repo.Close() }()
 
@@ -379,9 +385,12 @@ var taskUpdateCmd = &cobra.Command{
 			return fmt.Errorf("invalid status: %s", statusStr)
 		}
 
-		repo, err := openRepo()
+		repo, err := openRepoOrHandleMissingMemory()
 		if err != nil {
 			return err
+		}
+		if repo == nil {
+			return nil
 		}
 		defer func() { _ = repo.Close() }()
 
@@ -421,9 +430,12 @@ When all tasks in a plan are completed:
 
 func runTaskComplete(cmd *cobra.Command, args []string) error {
 	taskID := args[0]
-	repo, err := openRepo()
+	repo, err := openRepoOrHandleMissingMemory()
 	if err != nil {
 		return err
+	}
+	if repo == nil {
+		return nil
 	}
 	defer func() { _ = repo.Close() }()
 
@@ -472,9 +484,12 @@ var taskDeleteCmd = &cobra.Command{
 		taskID := args[0]
 		force, _ := cmd.Flags().GetBool("force")
 
-		repo, err := openRepo()
+		repo, err := openRepoOrHandleMissingMemory()
 		if err != nil {
 			return err
+		}
+		if repo == nil {
+			return nil
 		}
 		defer func() { _ = repo.Close() }()
 
@@ -545,9 +560,12 @@ var (
 )
 
 func runTaskNext(cmd *cobra.Command, args []string) error {
-	repo, err := openRepo()
+	repo, err := openRepoOrHandleMissingMemory()
 	if err != nil {
 		return err
+	}
+	if repo == nil {
+		return nil
 	}
 	defer func() { _ = repo.Close() }()
 
@@ -637,9 +655,12 @@ var (
 )
 
 func runTaskCurrent(cmd *cobra.Command, args []string) error {
-	repo, err := openRepo()
+	repo, err := openRepoOrHandleMissingMemory()
 	if err != nil {
 		return err
+	}
+	if repo == nil {
+		return nil
 	}
 	defer func() { _ = repo.Close() }()
 
@@ -704,9 +725,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--session is required")
 	}
 
-	repo, err := openRepo()
+	repo, err := openRepoOrHandleMissingMemory()
 	if err != nil {
 		return err
+	}
+	if repo == nil {
+		return nil
 	}
 	defer func() { _ = repo.Close() }()
 
@@ -770,9 +794,12 @@ func runTaskAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("title cannot be empty")
 	}
 
-	repo, err := openRepo()
+	repo, err := openRepoOrHandleMissingMemory()
 	if err != nil {
 		return err
+	}
+	if repo == nil {
+		return nil
 	}
 	defer func() { _ = repo.Close() }()
 
@@ -801,7 +828,7 @@ func runTaskAdd(cmd *cobra.Command, args []string) error {
 		// Use active plan
 		plan, err := repo.GetActivePlan()
 		if err != nil || plan == nil {
-			return fmt.Errorf("no active plan. Use --plan to specify a plan, or run 'tw plan start <id>' to set an active plan")
+			return fmt.Errorf("no active plan. Use --plan to specify a plan, or run 'taskwing plan start <id>' to set an active plan")
 		}
 		planID = plan.ID
 	}

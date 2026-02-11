@@ -90,7 +90,7 @@ func NewExplainApp(ctx *Context) *ExplainApp {
 // Explain generates a comprehensive explanation for a symbol.
 func (a *ExplainApp) Explain(ctx context.Context, req ExplainRequest) (*ExplainResult, error) {
 	if a.queryService == nil {
-		return nil, fmt.Errorf("code intelligence not available (run 'tw bootstrap' first)")
+		return nil, fmt.Errorf("code intelligence not available (run 'taskwing bootstrap' first)")
 	}
 
 	// Set defaults

@@ -210,7 +210,7 @@ func runMCPServer(ctx context.Context) error {
 		return mcpMarkdownResponse(result.Content)
 	})
 
-	// Register unified 'task' tool - consolidates task_next, task_current, task_start, task_complete
+	// Register unified 'task' tool for lifecycle actions (next/current/start/complete)
 	taskTool := &mcpsdk.Tool{
 		Name: "task",
 		Description: `Unified task lifecycle tool. Use action parameter to select operation:
@@ -236,17 +236,23 @@ REQUIRED FIELDS BY ACTION:
 		return mcpMarkdownResponse(result.Content)
 	})
 
-	// Register unified 'plan' tool - consolidates plan_clarify, plan_generate, audit_plan
+	// Register unified 'plan' tool - consolidates clarify/decompose/expand/generate/finalize/audit operations
 	planTool := &mcpsdk.Tool{
 		Name: "plan",
 		Description: `Unified plan creation tool. Use action parameter to select operation:
 - clarify: Refine goal with clarifying questions (loop until is_ready_to_plan=true)
+- decompose: Break refined goal into high-level phases
+- expand: Expand a phase into detailed tasks
 - generate: Create plan with tasks from enriched goal
+- finalize: Finalize interactive plan after all phases are expanded
 - audit: Verify completed plan with build/test/semantic checks (auto-fixes failures)
 
 REQUIRED FIELDS BY ACTION:
 - clarify: goal (required)
+- decompose: enriched_goal (required), plan_id (optional to continue existing draft)
+- expand: plan_id (required), plus either phase_id or phase_index
 - generate: goal (required), enriched_goal (required) - call clarify first to get enriched_goal
+- finalize: plan_id (required)
 - audit: none required (defaults to active plan)`,
 	}
 	mcpsdk.AddTool(server, planTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.PlanToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
@@ -271,25 +277,6 @@ REQUIRED FIELDS BY ACTION:
 	}
 	mcpsdk.AddTool(server, debugTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.DebugToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		result, err := mcppresenter.HandleDebugTool(ctx, repo, params.Arguments)
-		if err != nil {
-			return mcpErrorResponse(err)
-		}
-		if result.Error != "" {
-			return mcpFormattedErrorResponse(mcppresenter.FormatError(result.Error))
-		}
-		return mcpMarkdownResponse(result.Content)
-	})
-
-	// Register 'policy' tool - OPA-powered policy enforcement for enterprise guardrails
-	policyTool := &mcpsdk.Tool{
-		Name: "policy",
-		Description: `Evaluate code changes against OPA policies for enterprise compliance.
-- check: Evaluate files against loaded Rego policies
-- list: List all loaded policy files
-- explain: Show policy rules and their purpose`,
-	}
-	mcpsdk.AddTool(server, policyTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.PolicyToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
-		result, err := mcppresenter.HandlePolicyTool(ctx, params.Arguments)
 		if err != nil {
 			return mcpErrorResponse(err)
 		}
@@ -367,7 +354,7 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params mcppres
 		return mcpValidationErrorResponse("content", "content is required")
 	}
 
-	// Use MemoryApp for add (same as CLI `tw add`)
+	// Use MemoryApp for add (same as CLI memory ingestion path)
 	// Use RoleBootstrap for knowledge ingestion (classification + embedding)
 	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	memoryApp := app.NewMemoryApp(appCtx)

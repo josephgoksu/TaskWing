@@ -24,11 +24,20 @@ func NewInitializer(basePath string) *Initializer {
 
 // ValidAINames returns the list of supported AI assistant names.
 func ValidAINames() []string {
-	names := make([]string, 0, len(aiHelpers))
-	for name := range aiHelpers {
-		names = append(names, name)
+	names := make([]string, 0, len(aiCatalog))
+	for _, ai := range aiCatalog {
+		names = append(names, ai.name)
 	}
 	return names
+}
+
+// AIDisplayNames returns AI display names keyed by id, in canonical catalog form.
+func AIDisplayNames() map[string]string {
+	display := make(map[string]string, len(aiCatalog))
+	for _, ai := range aiCatalog {
+		display[ai.name] = ai.displayName
+	}
+	return display
 }
 
 // Run executes the initialization process.
@@ -122,8 +131,10 @@ func (i *Initializer) createStructure(verbose bool) error {
 	return nil
 }
 
-// AI Config Definitions (Moved from cmd/bootstrap.go)
+// AI Config Definitions (single source of truth for AI integrations)
 type aiHelperConfig struct {
+	name           string
+	displayName    string
 	commandsDir    string
 	fileExt        string
 	singleFile     bool   // If true, generate a single file instead of directory with multiple files
@@ -131,15 +142,23 @@ type aiHelperConfig struct {
 	skillsDir      bool   // If true, use OpenCode-style skills directory structure
 }
 
-// Map AI name to config
-var aiHelpers = map[string]aiHelperConfig{
-	"claude":   {commandsDir: ".claude/commands", fileExt: ".md", singleFile: false},
-	"cursor":   {commandsDir: ".cursor/rules", fileExt: ".md", singleFile: false},
-	"gemini":   {commandsDir: ".gemini/commands", fileExt: ".toml", singleFile: false},
-	"codex":    {commandsDir: ".codex/commands", fileExt: ".md", singleFile: false},
-	"copilot":  {commandsDir: ".github", fileExt: ".md", singleFile: true, singleFileName: "copilot-instructions.md"},
-	"opencode": {commandsDir: ".opencode/commands", fileExt: ".md", singleFile: false, skillsDir: true},
+var aiCatalog = []aiHelperConfig{
+	{name: "claude", displayName: "Claude Code", commandsDir: ".claude/commands", fileExt: ".md", singleFile: false},
+	{name: "cursor", displayName: "Cursor", commandsDir: ".cursor/rules", fileExt: ".md", singleFile: false},
+	{name: "gemini", displayName: "Gemini CLI", commandsDir: ".gemini/commands", fileExt: ".toml", singleFile: false},
+	{name: "codex", displayName: "OpenAI Codex", commandsDir: ".codex/commands", fileExt: ".md", singleFile: false},
+	{name: "copilot", displayName: "GitHub Copilot", commandsDir: ".github", fileExt: ".md", singleFile: true, singleFileName: "copilot-instructions.md"},
+	{name: "opencode", displayName: "OpenCode", commandsDir: ".opencode/commands", fileExt: ".md", singleFile: false, skillsDir: true},
 }
+
+// Map AI name to config for O(1) lookups.
+var aiHelpers = func() map[string]aiHelperConfig {
+	cfg := make(map[string]aiHelperConfig, len(aiCatalog))
+	for _, ai := range aiCatalog {
+		cfg[ai.name] = ai
+	}
+	return cfg
+}()
 
 // TaskWingManagedFile is the marker file name written to directories managed by TaskWing.
 // This file indicates that TaskWing created and owns the directory, preventing false positives
@@ -159,13 +178,25 @@ var SlashCommands = []SlashCommand{
 	{"tw-brief", "brief", "Get compact project knowledge brief (decisions, patterns, constraints)"},
 	{"tw-next", "next", "Start next TaskWing task with full context"},
 	{"tw-done", "done", "Complete current task with architecture-aware summary"},
-	{"tw-context", "context", "Fetch additional context for current task"},
 	{"tw-status", "status", "Show current task status"},
-	{"tw-block", "block", "Mark current task as blocked"},
 	{"tw-plan", "plan", "Create development plan with goal"},
 	{"tw-debug", "debug", "Get systematic debugging help for issues"},
 	{"tw-explain", "explain", "Get deep-dive explanation of a code symbol"},
 	{"tw-simplify", "simplify", "Simplify code while preserving behavior"},
+}
+
+// SlashCommandNames returns slash command names (without /tw- prefix), in canonical order.
+func SlashCommandNames() []string {
+	names := make([]string, 0, len(SlashCommands))
+	for _, cmd := range SlashCommands {
+		names = append(names, cmd.SlashCmd)
+	}
+	return names
+}
+
+var removedLegacySlashCommands = []string{
+	"tw-context",
+	"tw-block",
 }
 
 // AIToolConfigVersion computes a version hash for the AI tool configuration.
@@ -204,6 +235,62 @@ func AIToolConfigVersion(aiName string) string {
 // ExpectedCommandCount returns the number of expected slash command files.
 func ExpectedCommandCount() int {
 	return len(SlashCommands)
+}
+
+func expectedSlashCommandFiles(ext string) map[string]struct{} {
+	expected := make(map[string]struct{}, len(SlashCommands))
+	for _, cmd := range SlashCommands {
+		expected[cmd.BaseName+ext] = struct{}{}
+	}
+	return expected
+}
+
+func managedSlashCommandBases() map[string]struct{} {
+	managed := make(map[string]struct{}, len(SlashCommands)+len(removedLegacySlashCommands))
+	for _, cmd := range SlashCommands {
+		managed[cmd.BaseName] = struct{}{}
+	}
+	for _, base := range removedLegacySlashCommands {
+		managed[base] = struct{}{}
+	}
+	return managed
+}
+
+func pruneStaleSlashCommands(commandsDir, ext string, verbose bool) error {
+	entries, err := os.ReadDir(commandsDir)
+	if err != nil {
+		return fmt.Errorf("read commands dir: %w", err)
+	}
+
+	expected := expectedSlashCommandFiles(ext)
+	managedBases := managedSlashCommandBases()
+
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if filepath.Ext(name) != ext {
+			continue
+		}
+		base := strings.TrimSuffix(name, ext)
+		if _, known := managedBases[base]; !known {
+			continue
+		}
+		if _, keep := expected[name]; keep {
+			continue
+		}
+
+		fullPath := filepath.Join(commandsDir, name)
+		if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale slash command %s: %w", name, err)
+		}
+		if verbose {
+			fmt.Printf("  ✓ Removed stale command %s\n", filepath.Join(commandsDir, name))
+		}
+	}
+
+	return nil
 }
 
 func (i *Initializer) CreateSlashCommands(aiName string, verbose bool) error {
@@ -267,6 +354,10 @@ description: %s
 		if verbose {
 			fmt.Printf("  ✓ Created %s/%s\n", cfg.commandsDir, fileName)
 		}
+	}
+
+	if err := pruneStaleSlashCommands(commandsDir, cfg.fileExt, verbose); err != nil {
+		return err
 	}
 
 	return nil
@@ -373,7 +464,7 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 	sb.WriteString("### Usage\n\n")
 	sb.WriteString("With MCP configured, you can use TaskWing tools via:\n")
 	sb.WriteString("- `@mcp taskwing recall \"query\"` - Search project knowledge\n")
-	sb.WriteString("- `@mcp taskwing task_next` - Get next task from plan\n")
+	sb.WriteString("- `@mcp taskwing task {\\\"action\\\":\\\"next\\\",\\\"session_id\\\":\\\"your-session\\\"}` - Get next task from plan\n")
 	sb.WriteString("- `@mcp taskwing remember \"content\"` - Store knowledge\n")
 
 	if err := os.WriteFile(filePath, []byte(sb.String()), 0644); err != nil {
@@ -459,6 +550,10 @@ description: %s
 		if verbose {
 			fmt.Printf("  ✓ Created %s/%s.md\n", cfg.commandsDir, cmd.BaseName)
 		}
+	}
+
+	if err := pruneStaleSlashCommands(commandsDir, ".md", verbose); err != nil {
+		return err
 	}
 
 	return nil
@@ -675,18 +770,17 @@ TaskWing provides project memory for AI assistants via MCP tools and slash comma
 |------|-------------|
 | ` + "`recall`" + ` | Retrieve project knowledge (decisions, patterns, constraints) |
 | ` + "`task`" + ` | Unified task lifecycle (next, current, start, complete) |
-| ` + "`plan`" + ` | Plan management (clarify, generate, audit) |
+| ` + "`plan`" + ` | Plan management (clarify, decompose, expand, generate, finalize, audit) |
 | ` + "`code`" + ` | Code intelligence (find, search, explain, callers, impact, simplify) |
 | ` + "`debug`" + ` | Diagnose issues systematically with AI-powered analysis |
 | ` + "`remember`" + ` | Store knowledge in project memory |
 
 ### CLI Commands
 ` + "```bash" + `
-tw bootstrap        # Initialize project memory (first-time setup)
-tw context "query"  # Search knowledge semantically
-tw add "content"    # Add knowledge to memory
-tw plan new "goal"  # Create development plan
-tw task list        # List tasks from active plan
+taskwing bootstrap   # Initialize project memory (first-time setup)
+taskwing goal "goal" # Create and activate a development plan
+taskwing task list   # List tasks from active plan
+taskwing plan status # Show progress of active plan
 ` + "```" + `
 
 ### Autonomous Task Execution (Hooks)

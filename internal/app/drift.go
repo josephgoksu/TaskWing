@@ -329,7 +329,7 @@ func (a *DriftApp) classifyRule(ctx context.Context, node memory.Node) (*Rule, e
 // detectViolations checks all rules against the codebase.
 func (a *DriftApp) detectViolations(ctx context.Context, rules []Rule, paths []string) ([]Violation, error) {
 	if a.queryService == nil {
-		return nil, fmt.Errorf("code intelligence not available (run 'tw bootstrap' first)")
+		return nil, fmt.Errorf("code intelligence not available (run 'taskwing bootstrap' first)")
 	}
 
 	var violations []Violation

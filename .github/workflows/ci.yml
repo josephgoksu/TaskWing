@@ -3,22 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
-      - '.github/workflows/ci.yml'
     tags-ignore:
       - 'v*'  # Don't run CI on tag pushes (release.yml handles it)
   pull_request:
     branches: [main]
-    paths:
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
-      - '.github/workflows/ci.yml'
 
 jobs:
   lint:

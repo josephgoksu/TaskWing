@@ -569,7 +569,7 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 		Goal:             opts.Goal,
 		EnrichedGoal:     opts.EnrichedGoal,
 		Message:          "Plan generated successfully",
-		Hint:             "Use task_next to begin working on the first task.",
+		Hint:             "Use task action=next to begin working on the first task.",
 		SemanticWarnings: semanticWarnings,
 		SemanticErrors:   semanticErrors,
 		ValidationStats:  validationStats,
@@ -614,8 +614,8 @@ func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, e
 	if plan == nil {
 		return &AuditResult{
 			Success: false,
-			Message: "No plan found. Create a plan first with plan_clarify and plan_generate.",
-			Hint:    "Use plan_clarify to start defining your development goal.",
+			Message: "No plan found. Create a plan first with plan action=clarify and then plan action=generate.",
+			Hint:    "Use plan action=clarify to start defining your development goal.",
 		}, nil
 	}
 
@@ -632,7 +632,7 @@ func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, e
 			Success: false,
 			PlanID:  plan.ID,
 			Message: "No completed tasks to impl. Complete tasks first.",
-			Hint:    "Use task_next to get the next pending task.",
+			Hint:    "Use task action=next to get the next pending task.",
 		}, nil
 	}
 
@@ -919,4 +919,539 @@ func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[strin
 	}
 
 	return tasks
+}
+
+// === Interactive Planning (Phase-based workflow) ===
+
+// PhaseGoalDecomposer defines the interface for the decomposition agent.
+type PhaseGoalDecomposer interface {
+	Run(ctx context.Context, input core.Input) (core.Output, error)
+	Close() error
+}
+
+// PhaseExpander defines the interface for the expand agent.
+type PhaseExpander interface {
+	Run(ctx context.Context, input core.Input) (core.Output, error)
+	Close() error
+}
+
+// DecomposeOptions configures the behavior of plan decomposition.
+type DecomposeOptions struct {
+	PlanID       string // Optional: existing plan to add phases to
+	Goal         string // Original user goal
+	EnrichedGoal string // Full technical specification
+	Feedback     string // Optional: regeneration hint
+}
+
+// DecomposeResult contains the result of plan decomposition.
+type DecomposeResult struct {
+	Success   bool         `json:"success"`
+	PlanID    string       `json:"plan_id,omitempty"`
+	Phases    []task.Phase `json:"phases,omitempty"`
+	Rationale string       `json:"rationale,omitempty"`
+	Message   string       `json:"message,omitempty"`
+	Hint      string       `json:"hint,omitempty"`
+}
+
+// ExpandOptions configures the behavior of phase expansion.
+type ExpandOptions struct {
+	PlanID     string // Required: plan containing the phase
+	PhaseID    string // Required if PhaseIndex < 0
+	PhaseIndex int    // 0-based index (use -1 to indicate PhaseID should be used)
+	Feedback   string // Optional: regeneration hint
+}
+
+// ExpandResult contains the result of phase expansion.
+type ExpandResult struct {
+	Success         bool        `json:"success"`
+	PlanID          string      `json:"plan_id,omitempty"`
+	PhaseID         string      `json:"phase_id,omitempty"`
+	PhaseTitle      string      `json:"phase_title,omitempty"`
+	Tasks           []task.Task `json:"tasks,omitempty"`
+	Rationale       string      `json:"rationale,omitempty"`
+	RemainingPhases int         `json:"remaining_phases,omitempty"`
+	NextPhaseTitle  string      `json:"next_phase_title,omitempty"`
+	Message         string      `json:"message,omitempty"`
+	Hint            string      `json:"hint,omitempty"`
+}
+
+// FinalizeOptions configures the behavior of plan finalization.
+type FinalizeOptions struct {
+	PlanID string // Required: plan to finalize
+}
+
+// FinalizeResult contains the result of plan finalization.
+type FinalizeResult struct {
+	Success     bool   `json:"success"`
+	PlanID      string `json:"plan_id,omitempty"`
+	Status      string `json:"status,omitempty"`
+	TotalPhases int    `json:"total_phases,omitempty"`
+	TotalTasks  int    `json:"total_tasks,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Hint        string `json:"hint,omitempty"`
+}
+
+// Decompose breaks an enriched goal into high-level phases (Stage 2).
+// If PlanID is empty, creates a new plan in draft status.
+// Returns phases for user review before expansion.
+func (a *PlanApp) Decompose(ctx context.Context, opts DecomposeOptions) (*DecomposeResult, error) {
+	if opts.EnrichedGoal == "" {
+		return &DecomposeResult{
+			Success: false,
+			Message: "enriched_goal is required (run Clarify first)",
+		}, nil
+	}
+
+	repo := a.Repo
+	llmCfg := a.ctx.LLMCfg
+
+	// Get or create plan
+	var plan *task.Plan
+	var err error
+
+	if opts.PlanID != "" {
+		plan, err = repo.GetPlan(opts.PlanID)
+		if err != nil {
+			return &DecomposeResult{
+				Success: false,
+				Message: fmt.Sprintf("Failed to get plan: %v", err),
+			}, nil
+		}
+	} else {
+		// Create new plan in draft status with interactive mode
+		plan = &task.Plan{
+			Goal:           opts.Goal,
+			EnrichedGoal:   opts.EnrichedGoal,
+			Status:         task.PlanStatusDraft,
+			GenerationMode: task.GenerationModeInteractive,
+		}
+		if err := repo.CreatePlan(plan); err != nil {
+			return &DecomposeResult{
+				Success: false,
+				Message: fmt.Sprintf("Failed to create plan: %v", err),
+			}, nil
+		}
+	}
+
+	// Fetch context from knowledge graph
+	ks := knowledge.NewService(a.ctx.Repo, llmCfg)
+	var contextStr string
+	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
+		if result, err := a.ContextRetriever(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
+			contextStr = result.Context
+		}
+	}
+
+	// Create and run DecompositionAgent
+	decomposeAgent := impl.NewDecompositionAgent(llmCfg)
+	defer func() { _ = decomposeAgent.Close() }()
+
+	input := core.Input{
+		ExistingContext: map[string]any{
+			"enriched_goal": opts.EnrichedGoal,
+			"context":       contextStr,
+			"feedback":      opts.Feedback,
+		},
+	}
+
+	output, err := decomposeAgent.Run(ctx, input)
+	if err != nil {
+		return &DecomposeResult{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: fmt.Sprintf("Decomposition agent failed: %v", err),
+		}, nil
+	}
+	if output.Error != nil {
+		return &DecomposeResult{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: fmt.Sprintf("Decomposition agent error: %v", output.Error),
+		}, nil
+	}
+
+	// Parse phases from output
+	if len(output.Findings) == 0 {
+		return &DecomposeResult{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: "No findings from decomposition agent",
+		}, nil
+	}
+
+	finding := output.Findings[0]
+	phases := a.parsePhasesFromMetadata(finding.Metadata)
+	rationale, _ := finding.Metadata["rationale"].(string)
+
+	if len(phases) == 0 {
+		return &DecomposeResult{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: "No phases generated",
+		}, nil
+	}
+
+	// Save phases to database
+	for i := range phases {
+		phases[i].PlanID = plan.ID
+		phases[i].OrderIndex = i
+	}
+
+	// Track if we created a new plan (for rollback on failure)
+	createdNewPlan := opts.PlanID == ""
+
+	if err := repo.CreatePhasesForPlan(plan.ID, phases); err != nil {
+		// Rollback: delete the plan we just created to avoid orphans
+		if createdNewPlan {
+			if delErr := repo.DeletePlan(plan.ID); delErr != nil {
+				slog.Warn("failed to rollback plan after phase creation failure",
+					"plan_id", plan.ID, "error", delErr)
+			}
+		}
+		return &DecomposeResult{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: fmt.Sprintf("Failed to save phases: %v", err),
+		}, nil
+	}
+
+	// Update plan draft state
+	draftState := &task.PlanDraftState{
+		CurrentStage:    "decompose",
+		CurrentPhaseIdx: 0,
+		EnrichedGoal:    opts.EnrichedGoal,
+		LastUpdated:     time.Now().UTC().Format(time.RFC3339),
+	}
+	if draftJSON, err := json.Marshal(draftState); err == nil {
+		_ = repo.UpdatePlanDraftState(plan.ID, string(draftJSON))
+	}
+
+	return &DecomposeResult{
+		Success:   true,
+		PlanID:    plan.ID,
+		Phases:    phases,
+		Rationale: rationale,
+		Message:   fmt.Sprintf("Created %d phases for review", len(phases)),
+		Hint:      "Review phases, then use plan expand to generate tasks for each phase.",
+	}, nil
+}
+
+// Expand generates detailed tasks for a single phase (Stage 3).
+// Call this for each phase after Decompose, in order.
+func (a *PlanApp) Expand(ctx context.Context, opts ExpandOptions) (*ExpandResult, error) {
+	if opts.PlanID == "" {
+		return &ExpandResult{
+			Success: false,
+			Message: "plan_id is required",
+		}, nil
+	}
+
+	repo := a.Repo
+	llmCfg := a.ctx.LLMCfg
+
+	// Get plan with phases
+	plan, err := repo.GetPlanWithPhases(opts.PlanID)
+	if err != nil {
+		return &ExpandResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to get plan: %v", err),
+		}, nil
+	}
+
+	if len(plan.Phases) == 0 {
+		return &ExpandResult{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: "Plan has no phases. Run decompose first.",
+		}, nil
+	}
+
+	// Find the phase to expand
+	var phase *task.Phase
+	if opts.PhaseIndex >= 0 {
+		if opts.PhaseIndex >= len(plan.Phases) {
+			return &ExpandResult{
+				Success: false,
+				PlanID:  plan.ID,
+				Message: fmt.Sprintf("Phase index %d out of range (0-%d)", opts.PhaseIndex, len(plan.Phases)-1),
+			}, nil
+		}
+		phase = &plan.Phases[opts.PhaseIndex]
+	} else if opts.PhaseID != "" {
+		for i := range plan.Phases {
+			if plan.Phases[i].ID == opts.PhaseID {
+				phase = &plan.Phases[i]
+				break
+			}
+		}
+		if phase == nil {
+			return &ExpandResult{
+				Success: false,
+				PlanID:  plan.ID,
+				Message: fmt.Sprintf("Phase not found: %s", opts.PhaseID),
+			}, nil
+		}
+	}
+
+	// Check if already expanded
+	if phase.Status == task.PhaseStatusExpanded {
+		existingTasks, _ := repo.ListTasksByPhase(phase.ID)
+		return &ExpandResult{
+			Success:    true,
+			PlanID:     plan.ID,
+			PhaseID:    phase.ID,
+			PhaseTitle: phase.Title,
+			Tasks:      existingTasks,
+			Message:    "Phase already expanded",
+			Hint:       "Use plan finalize when all phases are expanded.",
+		}, nil
+	}
+
+	// Fetch context from knowledge graph
+	ks := knowledge.NewService(a.ctx.Repo, llmCfg)
+	var contextStr string
+	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
+		if result, err := a.ContextRetriever(ctx, ks, phase.Title+" "+phase.Description, memoryPath); err == nil {
+			contextStr = result.Context
+		}
+	}
+
+	// Create and run ExpandAgent
+	expandAgent := impl.NewExpandAgent(llmCfg)
+	defer func() { _ = expandAgent.Close() }()
+
+	input := core.Input{
+		ExistingContext: map[string]any{
+			"phase_title":       phase.Title,
+			"phase_description": phase.Description,
+			"enriched_goal":     plan.EnrichedGoal,
+			"context":           contextStr,
+			"feedback":          opts.Feedback,
+		},
+	}
+
+	output, err := expandAgent.Run(ctx, input)
+	if err != nil {
+		return &ExpandResult{
+			Success: false,
+			PlanID:  plan.ID,
+			PhaseID: phase.ID,
+			Message: fmt.Sprintf("Expand agent failed: %v", err),
+		}, nil
+	}
+	if output.Error != nil {
+		return &ExpandResult{
+			Success: false,
+			PlanID:  plan.ID,
+			PhaseID: phase.ID,
+			Message: fmt.Sprintf("Expand agent error: %v", output.Error),
+		}, nil
+	}
+
+	// Parse tasks from output
+	if len(output.Findings) == 0 {
+		return &ExpandResult{
+			Success: false,
+			PlanID:  plan.ID,
+			PhaseID: phase.ID,
+			Message: "No findings from expand agent",
+		}, nil
+	}
+
+	finding := output.Findings[0]
+	tasks := a.parseTasksFromMetadata(ctx, finding.Metadata)
+	rationale, _ := finding.Metadata["rationale"].(string)
+
+	if len(tasks) == 0 {
+		return &ExpandResult{
+			Success: false,
+			PlanID:  plan.ID,
+			PhaseID: phase.ID,
+			Message: "No tasks generated for phase",
+		}, nil
+	}
+
+	// Link tasks to phase and save
+	for i := range tasks {
+		tasks[i].PlanID = plan.ID
+		tasks[i].PhaseID = phase.ID
+		if err := repo.CreateTask(&tasks[i]); err != nil {
+			return &ExpandResult{
+				Success: false,
+				PlanID:  plan.ID,
+				PhaseID: phase.ID,
+				Message: fmt.Sprintf("Failed to save task: %v", err),
+			}, nil
+		}
+	}
+
+	// Mark phase as expanded
+	if err := repo.UpdatePhaseStatus(phase.ID, task.PhaseStatusExpanded); err != nil {
+		slog.Warn("failed to update phase status", "phase_id", phase.ID, "error", err)
+	}
+
+	// Calculate remaining phases
+	remainingPhases := 0
+	var nextPhaseTitle string
+	for _, p := range plan.Phases {
+		if p.Status == task.PhaseStatusPending {
+			remainingPhases++
+			if nextPhaseTitle == "" && p.ID != phase.ID {
+				nextPhaseTitle = p.Title
+			}
+		}
+	}
+	// Account for current phase that was just expanded
+	if remainingPhases > 0 && phase.Status == task.PhaseStatusPending {
+		remainingPhases--
+	}
+
+	// Build hint
+	hint := "Phase expanded successfully."
+	if remainingPhases > 0 {
+		hint = fmt.Sprintf("Use plan expand to expand the next phase: %s", nextPhaseTitle)
+	} else {
+		hint = "All phases expanded. Use plan finalize to complete the plan."
+	}
+
+	return &ExpandResult{
+		Success:         true,
+		PlanID:          plan.ID,
+		PhaseID:         phase.ID,
+		PhaseTitle:      phase.Title,
+		Tasks:           tasks,
+		Rationale:       rationale,
+		RemainingPhases: remainingPhases,
+		NextPhaseTitle:  nextPhaseTitle,
+		Message:         fmt.Sprintf("Generated %d tasks for phase: %s", len(tasks), phase.Title),
+		Hint:            hint,
+	}, nil
+}
+
+// Finalize completes the interactive plan generation (Stage 4).
+// Sets the plan as active and clears draft state.
+func (a *PlanApp) Finalize(ctx context.Context, opts FinalizeOptions) (*FinalizeResult, error) {
+	if opts.PlanID == "" {
+		return &FinalizeResult{
+			Success: false,
+			Message: "plan_id is required",
+		}, nil
+	}
+
+	repo := a.Repo
+
+	// Get plan with phases and tasks
+	plan, err := repo.GetPlanWithPhases(opts.PlanID)
+	if err != nil {
+		return &FinalizeResult{
+			Success: false,
+			Message: fmt.Sprintf("Failed to get plan: %v", err),
+		}, nil
+	}
+
+	// Count expanded phases and pending
+	expandedCount := 0
+	pendingCount := 0
+	for _, phase := range plan.Phases {
+		switch phase.Status {
+		case task.PhaseStatusExpanded:
+			expandedCount++
+		case task.PhaseStatusPending:
+			pendingCount++
+		}
+	}
+
+	if pendingCount > 0 {
+		return &FinalizeResult{
+			Success:     false,
+			PlanID:      plan.ID,
+			TotalPhases: len(plan.Phases),
+			Message:     fmt.Sprintf("%d phases still pending expansion", pendingCount),
+			Hint:        "Use plan expand to expand remaining phases before finalizing.",
+		}, nil
+	}
+
+	// Get total task count
+	tasks, err := repo.ListTasks(plan.ID)
+	if err != nil {
+		return &FinalizeResult{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: fmt.Sprintf("Failed to list tasks: %v", err),
+		}, nil
+	}
+
+	// Set plan as active
+	if err := repo.SetActivePlan(plan.ID); err != nil {
+		return &FinalizeResult{
+			Success: false,
+			PlanID:  plan.ID,
+			Message: fmt.Sprintf("Failed to activate plan: %v", err),
+		}, nil
+	}
+
+	// Clear draft state
+	_ = repo.UpdatePlanDraftState(plan.ID, "")
+
+	return &FinalizeResult{
+		Success:     true,
+		PlanID:      plan.ID,
+		Status:      string(task.PlanStatusActive),
+		TotalPhases: len(plan.Phases),
+		TotalTasks:  len(tasks),
+		Message:     "Plan finalized and set as active",
+		Hint:        "Use task next to begin working on the first task.",
+	}, nil
+}
+
+// parsePhasesFromMetadata extracts phases from agent metadata.
+// Invalid phases (empty title, etc.) are skipped with a warning log.
+func (a *PlanApp) parsePhasesFromMetadata(metadata map[string]any) []task.Phase {
+	var phases []task.Phase
+
+	// Try typed slice first
+	if phasesRaw, ok := metadata["phases"].([]impl.PhaseOutput); ok {
+		for i, po := range phasesRaw {
+			phase := task.Phase{
+				Title:         po.Title,
+				Description:   po.Description,
+				Rationale:     po.Rationale,
+				ExpectedTasks: po.ExpectedTasks,
+				Status:        task.PhaseStatusPending,
+			}
+			if err := phase.Validate(); err != nil {
+				slog.Warn("skipping invalid phase from LLM", "index", i, "error", err)
+				continue
+			}
+			phases = append(phases, phase)
+		}
+		return phases
+	}
+
+	// Handle []any from JSON unmarshaling
+	if phasesAny, ok := metadata["phases"].([]any); ok {
+		for i, p := range phasesAny {
+			if pm, ok := p.(map[string]any); ok {
+				title, _ := pm["title"].(string)
+				desc, _ := pm["description"].(string)
+				rationale, _ := pm["rationale"].(string)
+				expectedTasks, _ := pm["expected_tasks"].(float64)
+
+				phase := task.Phase{
+					Title:         title,
+					Description:   desc,
+					Rationale:     rationale,
+					ExpectedTasks: int(expectedTasks),
+					Status:        task.PhaseStatusPending,
+				}
+				if err := phase.Validate(); err != nil {
+					slog.Warn("skipping invalid phase from LLM", "index", i, "error", err)
+					continue
+				}
+				phases = append(phases, phase)
+			}
+		}
+	}
+
+	return phases
 }

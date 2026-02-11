@@ -9,9 +9,9 @@ const slashNextContent = `# Start Next TaskWing Task with Full Context
 Execute these steps IN ORDER. Do not skip any step.
 
 ## Step 1: Get Next Task
-Call MCP tool ` + "`task_next`" + ` to retrieve the highest priority pending task:
+Call MCP tool ` + "`task`" + ` with action ` + "`next`" + ` to retrieve the highest-priority pending task:
 ` + "```json" + `
-{"session_id": "claude-session"}
+{"action": "next", "session_id": "claude-session"}
 ` + "```" + `
 
 Extract from the response:
@@ -44,9 +44,9 @@ Use ` + "`suggested_recall_queries`" + ` if available, otherwise extract keyword
 ` + "```" + `
 
 ## Step 4: Claim the Task
-Call MCP tool ` + "`task_start`" + `:
+Call MCP tool ` + "`task`" + ` with action ` + "`start`" + `:
 ` + "```json" + `
-{"task_id": "[task_id from step 1]", "session_id": "claude-session"}
+{"action": "start", "task_id": "[task_id from step 1]", "session_id": "claude-session"}
 ` + "```" + `
 
 ## Step 5: Present Unified Task Brief
@@ -91,13 +91,13 @@ Display in this format:
 ## Step 6: Begin Implementation
 Proceed with the task, following the patterns and respecting the constraints shown above.
 
-**CRITICAL**: You MUST call all MCP tools (task_next, recall x2, task_start) before showing the brief.
+**CRITICAL**: You MUST call all MCP tools (` + "`task(next)`" + `, ` + "`recall`" + ` x2, ` + "`task(start)`" + `) before showing the brief.
 
 ## Fallback (No MCP)
 ` + "```bash" + `
-tw task list                    # List all tasks
-tw task show TASK_ID            # View task details
-tw context -q "search term"     # Get context
+taskwing task list                    # List all tasks
+taskwing task list --status pending   # Identify next pending task
+taskwing plan status                  # Check active plan progress
 ` + "```" + `
 `
 
@@ -107,9 +107,9 @@ const slashDoneContent = `# Complete Task with Architecture-Aware Summary
 Execute these steps IN ORDER.
 
 ## Step 1: Get Current Task
-Call MCP tool ` + "`task_current`" + `:
+Call MCP tool ` + "`task`" + ` with action ` + "`current`" + `:
 ` + "```json" + `
-{"session_id": "claude-session"}
+{"action": "current", "session_id": "claude-session"}
 ` + "```" + `
 
 If no active task, inform user and stop.
@@ -136,9 +136,10 @@ Confirm alignment with codebase patterns.
 - Edge cases not handled
 
 ## Step 3: Mark Complete
-Call MCP tool ` + "`task_complete`" + `:
+Call MCP tool ` + "`task`" + ` with action ` + "`complete`" + `:
 ` + "```json" + `
 {
+  "action": "complete",
   "task_id": "[task_id]",
   "summary": "[The structured summary from Step 2]",
   "files_modified": ["path/to/file1.go", "path/to/file2.go"]
@@ -162,7 +163,7 @@ Use /tw-next to continue with next priority task.
 
 ## Fallback (No MCP)
 ` + "```bash" + `
-tw task complete TASK_ID
+taskwing task complete TASK_ID
 ` + "```" + `
 `
 
@@ -170,9 +171,9 @@ tw task complete TASK_ID
 const slashStatusContent = `# Show Current Task Status
 
 ## Step 1: Get Current Task
-Call MCP tool ` + "`task_current`" + `:
+Call MCP tool ` + "`task`" + ` with action ` + "`current`" + `:
 ` + "```json" + `
-{"session_id": "claude-session"}
+{"action": "current", "session_id": "claude-session"}
 ` + "```" + `
 
 If no active task:
@@ -206,17 +207,31 @@ Commands:
 
 ## Fallback (No MCP)
 ` + "```bash" + `
-tw task list --status in_progress
-tw plan list
+taskwing task list --status in_progress
+taskwing plan list
 ` + "```" + `
 `
 
 // slashPlanContent is the prompt content for /tw-plan
 const slashPlanContent = `# Create Development Plan with Goal
 
-**Usage:** ` + "`/tw-plan <your goal>`" + `
+**Usage:** ` + "`/tw-plan <your goal>`" + ` or ` + "`/tw-plan --batch <your goal>`" + `
 
 **Example:** ` + "`/tw-plan Add Stripe billing integration`" + `
+
+## Mode Selection
+
+The plan tool supports two modes:
+- **Interactive (default)**: Staged workflow with checkpoints at phases and tasks
+- **Batch (--batch flag)**: Original all-at-once generation
+
+Check if $ARGUMENTS contains "--batch" flag:
+- If yes: Use batch mode (Steps 1-4)
+- If no: Use interactive mode (Steps 1-8)
+
+---
+
+# BATCH MODE (when --batch is used)
 
 ## Step 0: Check for Goal
 
@@ -229,9 +244,9 @@ Use $ARGUMENTS as the goal and proceed to Step 1.
 
 ## Step 1: Initial Clarification
 
-Call MCP tool ` + "`plan_clarify`" + ` with the user's goal:
+Call MCP tool ` + "`plan`" + ` with action ` + "`clarify`" + ` and the user's goal:
 ` + "```json" + `
-{"goal": "[goal from Step 0]"}
+{"action": "clarify", "goal": "[goal from Step 0]"}
 ` + "```" + `
 
 Extract: questions, goal_summary, enriched_goal, is_ready_to_plan, context_used.
@@ -242,18 +257,19 @@ Extract: questions, goal_summary, enriched_goal, is_ready_to_plan, context_used.
 Present the questions to the user. Wait for user response.
 
 **If user says "auto":**
-Call plan_clarify again with auto_answer: true.
+Call ` + "`plan`" + ` again with action ` + "`clarify`" + ` and auto_answer: true.
 
 **If user provides answers:**
-Format answers as JSON and call plan_clarify again.
+Format answers as JSON and call ` + "`plan`" + ` again with action ` + "`clarify`" + `.
 
 Repeat until is_ready_to_plan is true.
 
 ## Step 3: Generate Plan
 
-When is_ready_to_plan is true, call MCP tool ` + "`plan_generate`" + `:
+When is_ready_to_plan is true, call MCP tool ` + "`plan`" + ` with action ` + "`generate`" + `:
 ` + "```json" + `
 {
+  "action": "generate",
   "goal": "$ARGUMENTS",
   "enriched_goal": "[enriched_goal from step 2]",
   "save": true
@@ -286,9 +302,149 @@ Display the generated plan:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` + "```" + `
 
+---
+
+# INTERACTIVE MODE (default when no --batch flag)
+
+## Step 1: Check for Goal (Same as Batch)
+
+**If $ARGUMENTS is empty or not provided:**
+Ask the user: "What do you want to build? Please describe your goal."
+Wait for user response, then use that as the goal.
+
+## Step 2: Clarify Goal
+
+Call MCP tool ` + "`plan`" + ` with action=clarify:
+` + "```json" + `
+{"action": "clarify", "goal": "[goal from Step 1]", "mode": "interactive"}
+` + "```" + `
+
+Ask clarifying questions until is_ready_to_plan is true.
+Save the plan_id and enriched_goal for subsequent steps.
+
+**CHECKPOINT 1**: User approves the enriched goal before proceeding.
+
+## Step 3: Decompose into Phases
+
+Call MCP tool ` + "`plan`" + ` with action=decompose:
+` + "```json" + `
+{
+  "action": "decompose",
+  "plan_id": "[plan_id from Step 2]",
+  "enriched_goal": "[enriched_goal from Step 2]"
+}
+` + "```" + `
+
+This returns 3-5 high-level phases. Present them to the user:
+
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 PROPOSED PHASES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Phase 1: [Title]
+[Description]
+Rationale: [Why this phase is needed]
+Expected tasks: [N]
+
+## Phase 2: [Title]
+...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+**CHECKPOINT 2**: Ask user to:
+- Approve phases as-is
+- Request regeneration with feedback
+- Skip specific phases
+
+## Step 4: Expand Each Phase (Loop)
+
+For each approved phase, call MCP tool ` + "`plan`" + ` with action=expand:
+` + "```json" + `
+{
+  "action": "expand",
+  "plan_id": "[plan_id]",
+  "phase_id": "[phase_id]"
+}
+` + "```" + `
+
+This returns 2-4 detailed tasks for the phase. Present them:
+
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 TASKS FOR PHASE: [Phase Title]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Task 1: [Title]
+Priority: [priority]
+Description: [description]
+Acceptance Criteria:
+- [criterion 1]
+- [criterion 2]
+
+## Task 2: [Title]
+...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Remaining phases: [N]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+**CHECKPOINT 3** (per phase): Ask user to:
+- Approve tasks and continue to next phase
+- Request regeneration with feedback
+- Skip this phase
+
+Repeat for each phase until all are expanded.
+
+## Step 5: Finalize Plan
+
+After all phases are expanded, call MCP tool ` + "`plan`" + ` with action=finalize:
+` + "```json" + `
+{
+  "action": "finalize",
+  "plan_id": "[plan_id]"
+}
+` + "```" + `
+
+## Step 6: Present Final Summary
+
+` + "```" + `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ PLAN FINALIZED: [plan_id]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Goal:** [goal]
+
+## Phases & Tasks
+
+### Phase 1: [Title]
+  1. [Task 1 title] (Priority: [P])
+  2. [Task 2 title] (Priority: [P])
+
+### Phase 2: [Title]
+  3. [Task 3 title] (Priority: [P])
+  4. [Task 4 title] (Priority: [P])
+
+...
+
+**Total:** [N] phases, [M] tasks
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 Plan saved and set as active.
+
+**Next steps:**
+- Run /tw-next to start working on the first task
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` + "```" + `
+
+---
+
 ## Fallback (No MCP)
 ` + "```bash" + `
-tw plan new "Your goal description"
+taskwing plan new "Your goal description"
+taskwing plan new --interactive "Your goal description"  # Interactive mode
+taskwing plan new --non-interactive "Your goal description"  # Batch mode
 ` + "```" + `
 `
 
@@ -421,7 +577,7 @@ Ask if the user wants help implementing any of the investigation steps or fixes.
 
 ## Fallback (No MCP)
 ` + "```bash" + `
-tw context -q "error handling [component]"
+taskwing plan status
 ` + "```" + `
 `
 
@@ -488,35 +644,29 @@ Display the analysis:
 
 Suggest related actions:
 - Explain a related symbol
-- View call graph with /tw-callers
+- View call graph with MCP tool ` + "`code`" + ` action ` + "`callers`" + `
 - See impact analysis
 
 ## Fallback (No MCP)
 ` + "```bash" + `
-tw explain <symbol_name>
-tw context -q "<symbol_name> usage"
+taskwing mcp
 ` + "```" + `
 `
 
 // slashBriefContent is the prompt content for /tw-brief
 const slashBriefContent = `# Project Knowledge Brief
 
-Run ` + "`taskwing list`" + ` to get the compact project knowledge inventory.
+Call MCP tool ` + "`recall`" + ` to get a compact project knowledge brief.
 
-This outputs all knowledge nodes grouped by type:
-- **Decisions**: Architectural choices and rationale
-- **Features**: Product capabilities and components
-- **Constraints**: Rules and limitations to follow
-- **Patterns**: Recurring architectural solutions
-- **Documentation**: README, CLAUDE.md, etc.
-
-The output is compact (bullet summaries only, no IDs or file paths) and token-efficient for AI context.
-
-## Usage
-
-` + "```bash" + `
-taskwing list
+Use:
+` + "```json" + `
+{"query":"project decisions patterns constraints", "answer": true}
 ` + "```" + `
 
-Present the output to prime the conversation with project knowledge.
+If you need broader coverage, run:
+` + "```json" + `
+{"all": true}
+` + "```" + `
+
+Present the returned summary and top results to prime the conversation with project knowledge.
 `

@@ -96,7 +96,7 @@ func detectProjectRoot() *project.Context {
 	ctx, err := project.Detect(cwd)
 	if err != nil {
 		// Log detection failure for debugging
-		// This is expected for non-project directories (e.g., running `tw help` from home)
+		// This is expected for non-project directories (e.g., running `taskwing help` from home)
 		if viper.GetBool("verbose") {
 			fmt.Fprintf(os.Stderr, "Project detection: %v (using global fallback for non-project commands)\n", err)
 		}

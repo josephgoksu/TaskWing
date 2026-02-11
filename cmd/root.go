@@ -50,11 +50,11 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "taskwing",
-	Short: "TaskWing - AI-Native Task Management",
-	Long: `TaskWing - AI-Native Task Management
+	Short: "TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.",
+	Long: `TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.
 
-Generate context-aware development tasks that actually match your architecture.
-No more generic AI suggestions that ignore your patterns, constraints, and decisions.`,
+Create a plan, execute tasks with your AI tool, and keep architecture context
+persistent across sessions.`,
 	PersistentPreRunE:  initTelemetry,
 	PersistentPostRunE: closeTelemetry,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -119,21 +119,11 @@ func initCrashHandler() {
 // getCommandHint returns a helpful hint for common command mistakes
 func getCommandHint(cmd string) string {
 	hints := map[string]string{
-		"export":  "Hint: To export a plan, use: tw plan export <plan-id>",
-		"search":  "Hint: To search knowledge, use: tw context \"<query>\"",
-		"query":   "Hint: To query knowledge, use: tw context \"<query>\"",
-		"find":    "Hint: To find knowledge, use: tw context \"<query>\"",
-		"plans":   "Hint: To list plans, use: tw plan list",
-		"tasks":   "Hint: To list tasks, use: tw task list",
-		"nodes":   "Hint: To list knowledge nodes, use: tw list",
-		"status":  "Hint: To check project status, use: tw memory check",
-		"check":   "Hint: To check memory integrity, use: tw memory check",
-		"doctor":  "Hint: To diagnose issues, use: tw memory check",
-		"create":  "Hint: To create a plan, use: tw plan new \"<goal>\"",
-		"new":     "Hint: To create a plan, use: tw plan new \"<goal>\"",
-		"embed":   "Hint: To generate embeddings, use: tw memory generate-embeddings",
-		"reset":   "Hint: To reset memory, use: tw memory reset",
-		"install": "Hint: To install MCP, use: tw mcp install",
+		"plans":   "Hint: To list plans, use: taskwing plan list",
+		"tasks":   "Hint: To list tasks, use: taskwing task list",
+		"create":  "Hint: To create and activate a plan, use: taskwing goal \"<goal>\"",
+		"new":     "Hint: To create and activate a plan, use: taskwing goal \"<goal>\"",
+		"install": "Hint: To install MCP, use: taskwing mcp install",
 	}
 
 	if hint, ok := hints[cmd]; ok {
@@ -144,6 +134,7 @@ func getCommandHint(cmd string) string {
 
 func init() {
 	cobra.OnInitialize(initConfig)
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
 
 	// Global flags
 	rootCmd.PersistentFlags().Bool("verbose", false, "Enable verbose output")

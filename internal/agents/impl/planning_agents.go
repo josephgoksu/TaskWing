@@ -277,6 +277,201 @@ func (a *PlanningAgent) Run(ctx context.Context, input core.Input) (core.Output,
 	), nil
 }
 
+// DecompositionAgent breaks enriched goals into high-level phases.
+// This is the second stage of interactive planning (after clarify).
+// Call Close() when done to release resources.
+type DecompositionAgent struct {
+	core.BaseAgent
+	chain       *core.DeterministicChain[DecompositionOutput]
+	modelCloser io.Closer
+}
+
+// PhaseOutput represents a single phase from decomposition.
+type PhaseOutput struct {
+	Title         string   `json:"title"`
+	Description   string   `json:"description"`
+	Rationale     string   `json:"rationale"`      // Why this phase is needed
+	ExpectedTasks int      `json:"expected_tasks"` // Estimated 2-4 tasks
+	Dependencies  []string `json:"dependencies"`   // Phase titles this depends on
+}
+
+// DecompositionOutput defines the structured response from the LLM.
+type DecompositionOutput struct {
+	Phases    []PhaseOutput `json:"phases"`
+	Rationale string        `json:"rationale"` // Overall decomposition reasoning
+}
+
+// NewDecompositionAgent creates a new agent for goal decomposition into phases.
+func NewDecompositionAgent(cfg llm.Config) *DecompositionAgent {
+	return &DecompositionAgent{
+		BaseAgent: core.NewBaseAgent("decomposition", "Breaks enriched goals into high-level phases", cfg),
+	}
+}
+
+// Close releases LLM resources. Safe to call multiple times.
+func (a *DecompositionAgent) Close() error {
+	if a.modelCloser != nil {
+		return a.modelCloser.Close()
+	}
+	return nil
+}
+
+// Run executes the decomposition using Eino Chain.
+func (a *DecompositionAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
+	if a.chain == nil {
+		chatModel, err := a.CreateCloseableChatModel(ctx)
+		if err != nil {
+			return core.Output{}, err
+		}
+		a.modelCloser = chatModel
+		chain, err := core.NewDeterministicChain[DecompositionOutput](
+			ctx,
+			a.Name(),
+			chatModel.BaseChatModel,
+			config.SystemPromptDecompositionAgent,
+		)
+		if err != nil {
+			return core.Output{}, fmt.Errorf("create chain: %w", err)
+		}
+		a.chain = chain
+	}
+
+	enrichedGoal, ok := input.ExistingContext["enriched_goal"].(string)
+	if !ok || enrichedGoal == "" {
+		return core.Output{}, fmt.Errorf("missing 'enriched_goal' in input context")
+	}
+
+	kgContext, _ := input.ExistingContext["context"].(string)
+	if kgContext == "" {
+		kgContext = "No specific knowledge graph context provided."
+	}
+
+	chainInput := map[string]any{
+		"EnrichedGoal": enrichedGoal,
+		"Context":      kgContext,
+	}
+
+	parsed, raw, duration, err := a.chain.Invoke(ctx, chainInput)
+	if err != nil {
+		return core.Output{
+			AgentName: a.Name(),
+			Error:     fmt.Errorf("chain invoke: %w", err),
+			Duration:  duration,
+			RawOutput: raw,
+		}, nil
+	}
+
+	return core.BuildOutput(
+		a.Name(),
+		[]core.Finding{{
+			Type:        "decomposition",
+			Title:       "Goal Decomposition",
+			Description: parsed.Rationale,
+			Metadata: map[string]any{
+				"phases":    parsed.Phases,
+				"rationale": parsed.Rationale,
+			},
+		}},
+		"JSON handled by Eino",
+		duration,
+	), nil
+}
+
+// ExpandAgent generates detailed tasks for a single phase.
+// This is the third stage of interactive planning (per-phase expansion).
+// Call Close() when done to release resources.
+type ExpandAgent struct {
+	core.BaseAgent
+	chain       *core.DeterministicChain[ExpandOutput]
+	modelCloser io.Closer
+}
+
+// ExpandOutput defines the structured response from phase expansion.
+type ExpandOutput struct {
+	Tasks     []PlanningTask `json:"tasks"`     // 2-4 tasks for this phase
+	Rationale string         `json:"rationale"` // Why these tasks accomplish the phase
+}
+
+// NewExpandAgent creates a new agent for expanding phases into tasks.
+func NewExpandAgent(cfg llm.Config) *ExpandAgent {
+	return &ExpandAgent{
+		BaseAgent: core.NewBaseAgent("expand", "Expands a phase into detailed tasks", cfg),
+	}
+}
+
+// Close releases LLM resources. Safe to call multiple times.
+func (a *ExpandAgent) Close() error {
+	if a.modelCloser != nil {
+		return a.modelCloser.Close()
+	}
+	return nil
+}
+
+// Run executes the phase expansion using Eino Chain.
+func (a *ExpandAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
+	if a.chain == nil {
+		chatModel, err := a.CreateCloseableChatModel(ctx)
+		if err != nil {
+			return core.Output{}, err
+		}
+		a.modelCloser = chatModel
+		chain, err := core.NewDeterministicChain[ExpandOutput](
+			ctx,
+			a.Name(),
+			chatModel.BaseChatModel,
+			config.SystemPromptExpandAgent,
+		)
+		if err != nil {
+			return core.Output{}, fmt.Errorf("create chain: %w", err)
+		}
+		a.chain = chain
+	}
+
+	phaseTitle, ok := input.ExistingContext["phase_title"].(string)
+	if !ok || phaseTitle == "" {
+		return core.Output{}, fmt.Errorf("missing 'phase_title' in input context")
+	}
+
+	phaseDescription, _ := input.ExistingContext["phase_description"].(string)
+	enrichedGoal, _ := input.ExistingContext["enriched_goal"].(string)
+	kgContext, _ := input.ExistingContext["context"].(string)
+	if kgContext == "" {
+		kgContext = "No specific knowledge graph context provided."
+	}
+
+	chainInput := map[string]any{
+		"PhaseTitle":       phaseTitle,
+		"PhaseDescription": phaseDescription,
+		"EnrichedGoal":     enrichedGoal,
+		"Context":          kgContext,
+	}
+
+	parsed, raw, duration, err := a.chain.Invoke(ctx, chainInput)
+	if err != nil {
+		return core.Output{
+			AgentName: a.Name(),
+			Error:     fmt.Errorf("chain invoke: %w", err),
+			Duration:  duration,
+			RawOutput: raw,
+		}, nil
+	}
+
+	return core.BuildOutput(
+		a.Name(),
+		[]core.Finding{{
+			Type:        "expansion",
+			Title:       "Phase Expansion: " + phaseTitle,
+			Description: parsed.Rationale,
+			Metadata: map[string]any{
+				"tasks":     parsed.Tasks,
+				"rationale": parsed.Rationale,
+			},
+		}},
+		"JSON handled by Eino",
+		duration,
+	), nil
+}
+
 func init() {
 	core.RegisterAgent("clarifying", func(cfg llm.Config, basePath string) core.Agent {
 		return NewClarifyingAgent(cfg)
@@ -284,4 +479,10 @@ func init() {
 	core.RegisterAgent("planning", func(cfg llm.Config, basePath string) core.Agent {
 		return NewPlanningAgent(cfg)
 	}, "Task Planning", "Decomposes goals into actionable tasks with dependencies")
+	core.RegisterAgent("decomposition", func(cfg llm.Config, basePath string) core.Agent {
+		return NewDecompositionAgent(cfg)
+	}, "Goal Decomposition", "Breaks enriched goals into high-level phases")
+	core.RegisterAgent("expand", func(cfg llm.Config, basePath string) core.Agent {
+		return NewExpandAgent(cfg)
+	}, "Phase Expansion", "Expands phases into detailed tasks")
 }

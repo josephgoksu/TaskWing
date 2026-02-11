@@ -228,7 +228,7 @@ func (s *MarkdownStore) GenerateArchitectureMD(data ArchitectureData, projectNam
 	// Footer
 	sb.WriteString("---\n\n")
 	sb.WriteString("_This document is automatically generated from TaskWing's project memory._\n")
-	sb.WriteString("_Use `tw bootstrap` to refresh or `tw add` to contribute new knowledge._\n")
+	sb.WriteString("_Use `taskwing bootstrap --force` to refresh project knowledge._\n")
 
 	// Write to file
 	archPath := filepath.Join(s.basePath, "ARCHITECTURE.md")

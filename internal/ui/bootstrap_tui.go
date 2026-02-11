@@ -243,13 +243,20 @@ func (m BootstrapModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					state.Err = msg.Err
 					state.Message = fmt.Sprintf("Error: %v", msg.Err)
 				} else if msg.Output != nil && msg.Output.Error != nil {
-					// Agent returned successfully but with an embedded error/warning
-					// This happens when agent processes data but finds nothing meaningful
-					state.Status = StatusDone // Show as done (not error) since agent completed
-					state.Err = nil           // Clear any intermediate retry errors
-					state.Result = msg.Output
-					state.Message = fmt.Sprintf("Warning: %v", msg.Output.Error)
-					m.Results = append(m.Results, *msg.Output)
+					// Treat complete git-agent failure as fatal. For other agents,
+					// preserve warning behavior for non-critical partial issues.
+					if msg.Name == "git" && len(msg.Output.Findings) == 0 {
+						state.Status = StatusError
+						state.Err = msg.Output.Error
+						state.Result = msg.Output
+						state.Message = fmt.Sprintf("Error: %v", msg.Output.Error)
+					} else {
+						state.Status = StatusDone
+						state.Err = nil // Clear any intermediate retry errors
+						state.Result = msg.Output
+						state.Message = fmt.Sprintf("Warning: %v", msg.Output.Error)
+						m.Results = append(m.Results, *msg.Output)
+					}
 				} else {
 					// Agent completed successfully - clear any intermediate errors
 					state.Status = StatusDone

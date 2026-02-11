@@ -5,14 +5,28 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/spf13/cobra"
 )
 
-// slashCmd is the parent command for dynamic slash command content
+var slashContents = map[string]string{
+	"next":     slashNextContent,
+	"done":     slashDoneContent,
+	"status":   slashStatusContent,
+	"plan":     slashPlanContent,
+	"brief":    slashBriefContent,
+	"simplify": slashSimplifyContent,
+	"debug":    slashDebugContent,
+	"explain":  slashExplainContent,
+}
+
 var slashCmd = &cobra.Command{
-	Use:   "slash",
-	Short: "Output slash command content for AI assistants",
+	Use:          "slash",
+	Short:        "Output slash command content for AI assistants",
+	SilenceUsage: true,
 	Long: `Outputs the full prompt content for slash commands.
 
 This command is called dynamically by AI assistant slash commands
@@ -22,88 +36,46 @@ Example:
   taskwing slash next     # Output /tw-next content
   taskwing slash done     # Output /tw-done content
   taskwing slash plan     # Output /tw-plan content`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return cmd.Help()
+		}
+		return fmt.Errorf("unknown slash command %q (available: %s)", args[0], strings.Join(availableSlashCommands(cmd), ", "))
+	},
+}
+
+func availableSlashCommands(cmd *cobra.Command) []string {
+	available := make([]string, 0, len(cmd.Commands()))
+	for _, sub := range cmd.Commands() {
+		if !sub.IsAvailableCommand() || sub.Name() == "help" {
+			continue
+		}
+		available = append(available, sub.Name())
+	}
+	sort.Strings(available)
+	return available
 }
 
 func init() {
 	rootCmd.AddCommand(slashCmd)
-	slashCmd.AddCommand(slashNextCmd)
-	slashCmd.AddCommand(slashDoneCmd)
-	slashCmd.AddCommand(slashStatusCmd)
-	slashCmd.AddCommand(slashPlanCmd)
-	slashCmd.AddCommand(slashBriefCmd)
-	slashCmd.AddCommand(slashSimplifyCmd)
-	slashCmd.AddCommand(slashDebugCmd)
-	slashCmd.AddCommand(slashExplainCmd)
-}
 
-// slashNextCmd outputs the /tw-next prompt content
-var slashNextCmd = &cobra.Command{
-	Use:   "next",
-	Short: "Output /tw-next command content",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(slashNextContent)
-	},
-}
+	for _, slash := range bootstrap.SlashCommands {
+		content, ok := slashContents[slash.SlashCmd]
+		if !ok {
+			continue
+		}
 
-// slashDoneCmd outputs the /tw-done prompt content
-var slashDoneCmd = &cobra.Command{
-	Use:   "done",
-	Short: "Output /tw-done command content",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(slashDoneContent)
-	},
-}
+		short := fmt.Sprintf("Output /%s command content", slash.BaseName)
+		c := &cobra.Command{
+			Use:   slash.SlashCmd,
+			Short: short,
+			Run: func(content string) func(*cobra.Command, []string) {
+				return func(cmd *cobra.Command, args []string) {
+					fmt.Print(content)
+				}
+			}(content),
+		}
 
-// slashStatusCmd outputs the /tw-status prompt content
-var slashStatusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Output /tw-status command content",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(slashStatusContent)
-	},
-}
-
-// slashPlanCmd outputs the /tw-plan prompt content
-var slashPlanCmd = &cobra.Command{
-	Use:   "plan",
-	Short: "Output /tw-plan command content",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(slashPlanContent)
-	},
-}
-
-// slashBriefCmd outputs the /tw-brief prompt content
-var slashBriefCmd = &cobra.Command{
-	Use:   "brief",
-	Short: "Output /tw-brief command content",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(slashBriefContent)
-	},
-}
-
-// slashSimplifyCmd outputs the /tw-simplify prompt content
-var slashSimplifyCmd = &cobra.Command{
-	Use:   "simplify",
-	Short: "Output /tw-simplify command content",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(slashSimplifyContent)
-	},
-}
-
-// slashDebugCmd outputs the /tw-debug prompt content
-var slashDebugCmd = &cobra.Command{
-	Use:   "debug",
-	Short: "Output /tw-debug command content",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(slashDebugContent)
-	},
-}
-
-// slashExplainCmd outputs the /tw-explain prompt content
-var slashExplainCmd = &cobra.Command{
-	Use:   "explain",
-	Short: "Output /tw-explain command content",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(slashExplainContent)
-	},
+		slashCmd.AddCommand(c)
+	}
 }

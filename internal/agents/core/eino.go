@@ -17,6 +17,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -115,8 +116,10 @@ func (c *DeterministicChain[T]) Invoke(ctx context.Context, input map[string]any
 			delay := calculateBackoffWithJitter(attempt)
 			errType := classifyError(lastErr)
 
-			log.Printf("[eino] chain=%s attempt=%d/%d error_type=%s delay=%v last_error=%v",
-				c.name, attempt, MaxRetries+1, errType, delay, lastErr)
+			if shouldLogRetryDetails() {
+				log.Printf("[eino] chain=%s attempt=%d/%d error_type=%s delay=%v last_error=%v",
+					c.name, attempt, MaxRetries+1, errType, delay, lastErr)
+			}
 
 			select {
 			case <-ctx.Done():
@@ -129,8 +132,10 @@ func (c *DeterministicChain[T]) Invoke(ctx context.Context, input map[string]any
 		if err == nil {
 			duration := time.Since(start)
 			if attempt > 0 {
-				log.Printf("[eino] chain=%s recovered after %d retries, total_duration=%v",
-					c.name, attempt, duration)
+				if shouldLogRetryDetails() {
+					log.Printf("[eino] chain=%s recovered after %d retries, total_duration=%v",
+						c.name, attempt, duration)
+				}
 			}
 			return output, "", duration, nil
 		}
@@ -150,9 +155,15 @@ func (c *DeterministicChain[T]) Invoke(ctx context.Context, input map[string]any
 
 	// All retries exhausted
 	duration := time.Since(start)
-	log.Printf("[eino] chain=%s exhausted all %d retries, total_duration=%v, last_error=%v",
-		c.name, MaxRetries+1, duration, lastErr)
+	if shouldLogRetryDetails() {
+		log.Printf("[eino] chain=%s exhausted all %d retries, total_duration=%v, last_error=%v",
+			c.name, MaxRetries+1, duration, lastErr)
+	}
 	return output, "", duration, fmt.Errorf("failed after %d attempts: %w", MaxRetries+1, lastErr)
+}
+
+func shouldLogRetryDetails() bool {
+	return viper.GetBool("verbose")
 }
 
 // calculateBackoffWithJitter returns exponential backoff delay with jitter.

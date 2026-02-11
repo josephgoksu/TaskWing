@@ -108,3 +108,117 @@ func TestGetTaskCount_UsesTaskCountIfSet(t *testing.T) {
 		t.Errorf("expected GetTaskCount()=5 (from TaskCount), got %d", plan.GetTaskCount())
 	}
 }
+
+func TestGetNextTask_SelectsLowestNumericPriority(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "memory.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer store.Close()
+
+	plan := &task.Plan{
+		ID:           "plan-priority-next",
+		Goal:         "Priority ordering test",
+		EnrichedGoal: "Priority ordering test",
+		Status:       task.PlanStatusActive,
+	}
+	if err := store.CreatePlan(plan); err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+
+	highUrgency := &task.Task{
+		ID:          "task-pri-10",
+		PlanID:      plan.ID,
+		Title:       "Priority 10",
+		Description: "Should be selected first",
+		Status:      task.StatusPending,
+		Priority:    10,
+	}
+	lowUrgency := &task.Task{
+		ID:          "task-pri-90",
+		PlanID:      plan.ID,
+		Title:       "Priority 90",
+		Description: "Should be selected later",
+		Status:      task.StatusPending,
+		Priority:    90,
+	}
+
+	if err := store.CreateTask(lowUrgency); err != nil {
+		t.Fatalf("create task priority 90: %v", err)
+	}
+	if err := store.CreateTask(highUrgency); err != nil {
+		t.Fatalf("create task priority 10: %v", err)
+	}
+
+	next, err := store.GetNextTask(plan.ID)
+	if err != nil {
+		t.Fatalf("get next task: %v", err)
+	}
+	if next == nil {
+		t.Fatal("expected next task, got nil")
+	}
+	if next.ID != highUrgency.ID {
+		t.Fatalf("expected next task %q, got %q", highUrgency.ID, next.ID)
+	}
+}
+
+func TestListTasksByPhase_OrdersByAscendingPriority(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "memory.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	defer store.Close()
+
+	plan := &task.Plan{
+		ID:           "plan-phase-order",
+		Goal:         "Phase order test",
+		EnrichedGoal: "Phase order test",
+		Status:       task.PlanStatusActive,
+	}
+	if err := store.CreatePlan(plan); err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+
+	phase := &task.Phase{
+		ID:         "phase-1",
+		PlanID:     plan.ID,
+		Title:      "Phase 1",
+		Status:     task.PhaseStatusExpanded,
+		OrderIndex: 0,
+	}
+	if err := store.CreatePhase(phase); err != nil {
+		t.Fatalf("create phase: %v", err)
+	}
+
+	tasks := []*task.Task{
+		{ID: "task-p90", PlanID: plan.ID, PhaseID: phase.ID, Title: "P90", Description: "P90", Status: task.StatusPending, Priority: 90},
+		{ID: "task-p10", PlanID: plan.ID, PhaseID: phase.ID, Title: "P10", Description: "P10", Status: task.StatusPending, Priority: 10},
+		{ID: "task-p50", PlanID: plan.ID, PhaseID: phase.ID, Title: "P50", Description: "P50", Status: task.StatusPending, Priority: 50},
+	}
+	for _, tt := range tasks {
+		if err := store.CreateTask(tt); err != nil {
+			t.Fatalf("create task %s: %v", tt.ID, err)
+		}
+	}
+
+	phaseTasks, err := store.ListTasksByPhase(phase.ID)
+	if err != nil {
+		t.Fatalf("list tasks by phase: %v", err)
+	}
+	if len(phaseTasks) != 3 {
+		t.Fatalf("expected 3 tasks, got %d", len(phaseTasks))
+	}
+
+	wantOrder := []string{"task-p10", "task-p50", "task-p90"}
+	for i, wantID := range wantOrder {
+		if phaseTasks[i].ID != wantID {
+			t.Fatalf("phase task order mismatch at index %d: got %s, want %s", i, phaseTasks[i].ID, wantID)
+		}
+	}
+}

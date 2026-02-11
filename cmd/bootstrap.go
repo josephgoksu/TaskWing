@@ -241,48 +241,63 @@ func executeInitProject(svc *bootstrap.Service, flags bootstrap.Flags, plan *boo
 	var selectedAIs []string
 
 	if plan.RequiresUserInput {
-		// Show appropriate prompt based on mode
-		switch plan.Mode {
-		case bootstrap.ModeFirstTime:
-			if len(plan.SuggestedAIs) > 0 {
-				fmt.Println("📋 Setting up local project")
-				fmt.Printf("🔍 Detected global config for: %s\n", strings.Join(plan.SuggestedAIs, ", "))
-			} else {
-				fmt.Println("🚀 First time setup")
+		// In non-interactive environments, avoid TTY prompts and use deterministic defaults.
+		if !ui.IsInteractive() {
+			switch {
+			case len(plan.AIsNeedingRepair) > 0:
+				selectedAIs = append(selectedAIs, plan.AIsNeedingRepair...)
+			case len(plan.SuggestedAIs) > 0:
+				selectedAIs = append(selectedAIs, plan.SuggestedAIs...)
 			}
-			fmt.Println()
-			fmt.Println("🤖 Which AI assistant(s) do you use?")
-			fmt.Println()
-			selectedAIs = promptAISelection(plan.SuggestedAIs...)
-
-		case bootstrap.ModeRepair:
-			if len(plan.AIsNeedingRepair) > 0 {
-				fmt.Println("🔧 Restoring missing AI configurations")
-				fmt.Printf("   Missing: %s\n", strings.Join(plan.AIsNeedingRepair, ", "))
-				fmt.Print("   Restore? [Y/n]: ")
-				var input string
-				_, _ = fmt.Scanln(&input)
-				input = strings.TrimSpace(strings.ToLower(input))
-				if input == "" || input == "y" || input == "yes" {
-					selectedAIs = plan.AIsNeedingRepair
+			if !flags.Quiet {
+				if len(selectedAIs) > 0 {
+					fmt.Printf("🤖 Non-interactive mode: configuring AI integrations for %s\n", strings.Join(selectedAIs, ", "))
 				} else {
-					fmt.Println()
-					fmt.Println("🤖 Which AI assistant(s) do you want to set up?")
-					selectedAIs = promptAISelection(plan.SuggestedAIs...)
+					fmt.Println("🤖 Non-interactive mode: no AI assistant selected; initializing project memory only")
 				}
 			}
+		} else {
+			// Show appropriate prompt based on mode
+			switch plan.Mode {
+			case bootstrap.ModeFirstTime:
+				if len(plan.SuggestedAIs) > 0 {
+					fmt.Println("📋 Setting up local project")
+					fmt.Printf("🔍 Detected global config for: %s\n", strings.Join(plan.SuggestedAIs, ", "))
+				} else {
+					fmt.Println("🚀 First time setup")
+				}
+				fmt.Println()
+				fmt.Println("🤖 Which AI assistant(s) do you use?")
+				fmt.Println()
+				selectedAIs = promptAISelection(plan.SuggestedAIs...)
 
-		case bootstrap.ModeReconfigure:
-			fmt.Println("🔧 No AI configurations found - let's set them up")
-			fmt.Println()
-			fmt.Println("🤖 Which AI assistant(s) do you use?")
-			fmt.Println()
-			selectedAIs = promptAISelection()
+			case bootstrap.ModeRepair:
+				if len(plan.AIsNeedingRepair) > 0 {
+					fmt.Println("🔧 Restoring missing AI configurations")
+					fmt.Printf("   Missing: %s\n", strings.Join(plan.AIsNeedingRepair, ", "))
+					fmt.Print("   Restore? [Y/n]: ")
+					var input string
+					_, _ = fmt.Scanln(&input)
+					input = strings.TrimSpace(strings.ToLower(input))
+					if input == "" || input == "y" || input == "yes" {
+						selectedAIs = plan.AIsNeedingRepair
+					} else {
+						fmt.Println()
+						fmt.Println("🤖 Which AI assistant(s) do you want to set up?")
+						selectedAIs = promptAISelection(plan.SuggestedAIs...)
+					}
+				}
+
+			case bootstrap.ModeReconfigure:
+				fmt.Println("🔧 No AI configurations found - let's set them up")
+				fmt.Println()
+				fmt.Println("🤖 Which AI assistant(s) do you use?")
+				fmt.Println()
+				selectedAIs = promptAISelection()
+			}
 		}
-
-		if len(selectedAIs) == 0 {
-			fmt.Println("\n⚠️  No AI assistants selected - skipping initialization")
-			return nil
+		if len(selectedAIs) == 0 && !flags.Quiet {
+			fmt.Println("\n⚠️  No AI assistants selected - continuing with local project initialization only")
 		}
 	}
 
@@ -490,7 +505,7 @@ func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg
 		BasePath:    cwd,
 		ProjectName: projectName,
 		Mode:        core.ModeBootstrap,
-		Verbose:     true,
+		Verbose:     flags.Verbose || flags.Debug,
 	}
 
 	stream := core.NewStreamingOutput(100)
@@ -501,7 +516,12 @@ func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg
 
 	// Run TUI
 	tuiModel := ui.NewBootstrapModel(ctx, input, agentsList, stream)
-	p := tea.NewProgram(tuiModel)
+	programOptions := []tea.ProgramOption{}
+	if !ui.IsInteractive() {
+		// Headless fallback for CI/non-TTY environments.
+		programOptions = append(programOptions, tea.WithInput(nil), tea.WithoutRenderer())
+	}
+	p := tea.NewProgram(tuiModel, programOptions...)
 	finalModel, err := p.Run()
 	if err != nil {
 		return fmt.Errorf("TUI error: %w", err)

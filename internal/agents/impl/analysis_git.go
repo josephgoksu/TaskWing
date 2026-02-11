@@ -20,12 +20,13 @@ import (
 
 const (
 	// Git analysis configuration
-	gitChunkSize      = 50  // Commits per chunk
-	gitMaxCommits     = 300 // Total commits to analyze
-	gitMaxChunks      = 6   // Maximum chunks to process
-	gitRecentMaxItems = 8   // Max findings for newest chunk
-	gitDecayFactor    = 0.6 // Each older chunk gets this fraction of previous max
-	gitMinItems       = 2   // Minimum findings per chunk
+	gitChunkSize      = 75               // Commits per chunk
+	gitMaxCommits     = 225              // Total commits to analyze
+	gitMaxChunks      = 3                // Maximum chunks to process
+	gitRecentMaxItems = 8                // Max findings for newest chunk
+	gitDecayFactor    = 0.6              // Each older chunk gets this fraction of previous max
+	gitMinItems       = 2                // Minimum findings per chunk
+	gitChunkTimeout   = 90 * time.Second // Hard timeout per chunk to bound runtime
 )
 
 // GitAgent analyzes git history to understand project evolution.
@@ -75,7 +76,7 @@ func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 	}
 
 	// Gather commits and split into chunks
-	chunks, projectMeta := gatherGitChunks(input.BasePath)
+	chunks, projectMeta := gatherGitChunks(input.BasePath, input.Verbose)
 	if len(chunks) == 0 {
 		return core.Output{AgentName: a.Name(), Error: fmt.Errorf("no git history available")}, nil
 	}
@@ -106,10 +107,13 @@ func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 			"CommitChunk": chunk,
 		}
 
-		parsed, _, _, err := a.chain.Invoke(ctx, chainInput)
+		chunkCtx, chunkCancel := context.WithTimeout(ctx, gitChunkTimeout)
+		parsed, _, _, err := a.chain.Invoke(chunkCtx, chainInput)
+		chunkCancel()
 		if err != nil {
-			// Log the error for debugging (Task 1: Error logging for chunk failures)
-			log.Printf("[git] chunk %d/%d parse failed: %v", i+1, chunksToProcess, err)
+			if input.Verbose {
+				log.Printf("[git] chunk %d/%d parse failed: %v", i+1, chunksToProcess, err)
+			}
 			chunksFailed++
 			continue // Skip failed chunks, don't abort entirely
 		}
@@ -138,8 +142,10 @@ func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 	}
 
 	// Task 4: Log processing summary for debugging
-	log.Printf("[git] Processed %d/%d chunks (%d failed), found %d milestones from %d commits",
-		chunksProcessed, chunksToProcess, chunksFailed, len(allFindings), totalCommits)
+	if input.Verbose {
+		log.Printf("[git] Processed %d/%d chunks (%d failed), found %d milestones from %d commits",
+			chunksProcessed, chunksToProcess, chunksFailed, len(allFindings), totalCommits)
+	}
 
 	// Task 2: Defensive check for empty results (similar to doc agent)
 	// Warn if we processed chunks but found nothing
@@ -226,7 +232,7 @@ func (a *GitAgent) parseFindings(parsed gitMilestonesResponse) []core.Finding {
 // When running in a monorepo (ProjectRoot != GitRoot), it scopes git analysis
 // to only include commits affecting the project subdirectory.
 // Requires project context to be set via config.SetProjectContext() - no fallbacks.
-func gatherGitChunks(basePath string) ([]string, string) {
+func gatherGitChunks(basePath string, verbose bool) ([]string, string) {
 	// DETERMINISTIC: Use project context from CLI init - no fallback detection
 	projectCtx := config.GetProjectContext()
 	// Note: projectCtx may be nil if running outside CLI context (e.g., tests)
@@ -234,10 +240,10 @@ func gatherGitChunks(basePath string) ([]string, string) {
 	scopePath := getGitScopePath(projectCtx)
 
 	// Task 6: Log input parameters for debugging
-	if projectCtx != nil {
+	if verbose && projectCtx != nil {
 		log.Printf("[git] gatherGitChunks called: basePath=%q, projectCtx.RootPath=%q, projectCtx.GitRoot=%q, projectCtx.IsMonorepo=%v, scopePath=%q",
 			basePath, projectCtx.RootPath, projectCtx.GitRoot, projectCtx.IsMonorepo, scopePath)
-	} else {
+	} else if verbose {
 		log.Printf("[git] gatherGitChunks called: basePath=%q, projectCtx=nil, scopePath=%q",
 			basePath, scopePath)
 	}
@@ -256,11 +262,15 @@ func gatherGitChunks(basePath string) ([]string, string) {
 	// Task 5: Add error logging when git command fails
 	out, err := cmd.Output()
 	if err != nil {
-		log.Printf("[git] git log command failed: %v (dir=%s, args=%v)", err, workDir, args)
+		if verbose {
+			log.Printf("[git] git log command failed: %v (dir=%s, args=%v)", err, workDir, args)
+		}
 		return nil, ""
 	}
 	if len(out) == 0 {
-		log.Printf("[git] git log returned empty output (dir=%s, args=%v)", workDir, args)
+		if verbose {
+			log.Printf("[git] git log returned empty output (dir=%s, args=%v)", workDir, args)
+		}
 		return nil, ""
 	}
 

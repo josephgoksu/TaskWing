@@ -172,7 +172,7 @@ func (s *Service) generateOverviewIfNeeded(ctx context.Context, repo *memory.Rep
 	}
 	if existing != nil {
 		if verbose {
-			fmt.Println("\n📋 Project overview already exists (use 'tw overview regenerate' to update)")
+			fmt.Println("\n📋 Project overview already exists (re-run bootstrap with --force to refresh)")
 		}
 		return nil
 	}

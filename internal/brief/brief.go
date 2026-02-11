@@ -12,7 +12,7 @@ import (
 )
 
 // GenerateCompactBrief generates a compact knowledge summary from the repository.
-// It mirrors the output of `taskwing list` - all nodes grouped by type with bullet summaries.
+// It is used for slash-command priming and hook context injection.
 // No node IDs, file paths, or embeddings are included.
 //
 // This function is used by:
@@ -25,7 +25,7 @@ func GenerateCompactBrief(repo *memory.Repository) (string, error) {
 	}
 
 	if len(nodes) == 0 {
-		return "No project memory found. Run `taskwing bootstrap` or add knowledge with `taskwing add`.", nil
+		return "No project memory found. Run `taskwing bootstrap`.", nil
 	}
 
 	return FormatNodesAsCompactBrief(nodes), nil

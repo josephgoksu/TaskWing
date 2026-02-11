@@ -40,7 +40,7 @@ Examples:
   taskwing mcp install all`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			fmt.Println("Please specify an editor: cursor, claude, claude-desktop, gemini, codex, copilot, opencode, or all")
+			fmt.Printf("Please specify an editor: %s\n", strings.Join(supportedMCPInstallTargets(), ", "))
 			os.Exit(1)
 		}
 
@@ -72,37 +72,73 @@ Examples:
 		fmt.Printf("Project: %s\n", cwd)
 
 		switch target {
-		case "cursor":
-			installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
-		case "claude":
-			installClaude(binPath, cwd)
-		case "claude-desktop":
-			installClaudeDesktop(binPath, cwd)
-		case "codex":
-			installCodexGlobal(binPath, cwd)
-		case "gemini":
-			installGeminiCLI(binPath, cwd)
-		case "copilot":
-			installCopilot(binPath, cwd)
-		case "opencode":
-			if err := installOpenCode(binPath, cwd); err != nil {
-				fmt.Printf("❌ Failed to install for OpenCode: %v\n", err)
-				os.Exit(1)
-			}
 		case "all":
-			installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
-			installClaude(binPath, cwd)
-			installCodexGlobal(binPath, cwd)
-			installGeminiCLI(binPath, cwd)
-			installCopilot(binPath, cwd)
-			if err := installOpenCode(binPath, cwd); err != nil {
-				fmt.Printf("⚠️  OpenCode install failed: %v\n", err)
+			for _, ai := range bootstrap.ValidAINames() {
+				if err := installMCPForTarget(ai, binPath, cwd); err != nil {
+					fmt.Printf("⚠️  %s install failed: %v\n", ai, err)
+				}
 			}
 		default:
-			fmt.Printf("Unknown editor: %s\n", target)
-			os.Exit(1)
+			if !isSupportedMCPInstallTarget(target) {
+				fmt.Printf("Unknown editor: %s\n", target)
+				os.Exit(1)
+			}
+			if err := installMCPForTarget(target, binPath, cwd); err != nil {
+				fmt.Printf("❌ Failed to install for %s: %v\n", target, err)
+				os.Exit(1)
+			}
 		}
 	},
+}
+
+func installMCPForTarget(target, binPath, cwd string) error {
+	switch target {
+	case "cursor":
+		installLocalMCP(cwd, ".cursor", "mcp.json", binPath)
+		return nil
+	case "claude":
+		installClaude(binPath, cwd)
+		return nil
+	case "claude-desktop":
+		installClaudeDesktop(binPath, cwd)
+		return nil
+	case "codex":
+		installCodexGlobal(binPath, cwd)
+		return nil
+	case "gemini":
+		installGeminiCLI(binPath, cwd)
+		return nil
+	case "copilot":
+		installCopilot(binPath, cwd)
+		return nil
+	case "opencode":
+		return installOpenCode(binPath, cwd)
+	default:
+		return fmt.Errorf("unsupported target")
+	}
+}
+
+func supportedMCPInstallTargets() []string {
+	targets := []string{}
+	for _, ai := range bootstrap.ValidAINames() {
+		switch ai {
+		case "claude":
+			targets = append(targets, "claude", "claude-desktop")
+		default:
+			targets = append(targets, ai)
+		}
+	}
+	targets = append(targets, "all")
+	return targets
+}
+
+func isSupportedMCPInstallTarget(target string) bool {
+	for _, supported := range supportedMCPInstallTargets() {
+		if target == supported {
+			return true
+		}
+	}
+	return false
 }
 
 func init() {
@@ -287,7 +323,7 @@ func installLocalMCP(projectDir, configDirName, configFileName, binPath string) 
 
 func installClaude(binPath, projectDir string) {
 	// Install for Claude Code CLI only
-	// Claude Desktop is skipped by default (use 'tw mcp install claude-desktop' if needed)
+	// Claude Desktop is skipped by default (use 'taskwing mcp install claude-desktop' if needed)
 	installClaudeCodeCLI(binPath, projectDir)
 }
 

@@ -704,11 +704,11 @@ func (s *Service) CheckEmbeddingConsistency() (*EmbeddingConsistencyCheck, error
 	}
 
 	if check.NeedsAttention {
-		fixHint := "Run 'tw memory rebuild-embeddings' to fix."
+		fixHint := "Run 'taskwing memory rebuild-embeddings' to fix."
 		if stats.MixedDimensions && stats.NodesWithoutEmbeddings > 0 {
-			fixHint = "Run 'tw memory rebuild-embeddings' to fix mixed dimensions and regenerate missing embeddings."
+			fixHint = "Run 'taskwing memory rebuild-embeddings' to fix mixed dimensions and regenerate missing embeddings."
 		} else if !stats.MixedDimensions && stats.NodesWithoutEmbeddings > 0 {
-			fixHint = "Run 'tw memory generate-embeddings' to backfill."
+			fixHint = "Run 'taskwing memory generate-embeddings' to backfill."
 		}
 		check.Message = fmt.Sprintf("Embedding issues: %s. %s", strings.Join(issues, "; "), fixHint)
 		slog.Warn("embedding consistency check failed",

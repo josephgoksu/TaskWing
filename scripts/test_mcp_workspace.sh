@@ -62,7 +62,7 @@ cd "$TEST_DIR"
 ORIGINAL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Create nodes by directly using the repository
-# For simplicity, we'll use the tw add command with workspace environment
+# For simplicity, we'll seed workspace data directly in the test setup
 # Note: In a real test, we'd set up the DB programmatically
 
 # Create a simple Go test that sets up the data and tests MCP

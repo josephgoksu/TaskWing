@@ -268,6 +268,33 @@ func TestCreateSlashCommands_UnknownAI(t *testing.T) {
 	}
 }
 
+func TestCreateSlashCommands_PrunesRemovedLegacyCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	cmdDir := filepath.Join(tmpDir, ".claude", "commands")
+	if err := os.MkdirAll(cmdDir, 0755); err != nil {
+		t.Fatalf("Failed to create commands dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cmdDir, "tw-context.md"), []byte("legacy"), 0644); err != nil {
+		t.Fatalf("Failed to write tw-context.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cmdDir, "tw-block.md"), []byte("legacy"), 0644); err != nil {
+		t.Fatalf("Failed to write tw-block.md: %v", err)
+	}
+
+	if err := init.CreateSlashCommands("claude", false); err != nil {
+		t.Fatalf("CreateSlashCommands(claude) failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(cmdDir, "tw-context.md")); !os.IsNotExist(err) {
+		t.Error("tw-context.md should be removed during slash command regeneration")
+	}
+	if _, err := os.Stat(filepath.Join(cmdDir, "tw-block.md")); !os.IsNotExist(err) {
+		t.Error("tw-block.md should be removed during slash command regeneration")
+	}
+}
+
 // Helper function to check string containment
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
@@ -498,6 +525,33 @@ func TestInitializer_OpenCode_AllCommandsCreated(t *testing.T) {
 		if _, err := os.Stat(cmdPath); os.IsNotExist(err) {
 			t.Errorf("Command not created for %s", cmd.BaseName)
 		}
+	}
+}
+
+func TestInitializer_OpenCode_PrunesRemovedLegacyCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	init := NewInitializer(tmpDir)
+
+	commandsDir := filepath.Join(tmpDir, ".opencode", "commands")
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		t.Fatalf("Failed to create commands dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(commandsDir, "tw-context.md"), []byte("legacy"), 0644); err != nil {
+		t.Fatalf("Failed to write tw-context.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(commandsDir, "tw-block.md"), []byte("legacy"), 0644); err != nil {
+		t.Fatalf("Failed to write tw-block.md: %v", err)
+	}
+
+	if err := init.CreateSlashCommands("opencode", false); err != nil {
+		t.Fatalf("CreateSlashCommands(opencode) failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(commandsDir, "tw-context.md")); !os.IsNotExist(err) {
+		t.Error("tw-context.md should be removed during OpenCode slash command regeneration")
+	}
+	if _, err := os.Stat(filepath.Join(commandsDir, "tw-block.md")); !os.IsNotExist(err) {
+		t.Error("tw-block.md should be removed during OpenCode slash command regeneration")
 	}
 }
 
