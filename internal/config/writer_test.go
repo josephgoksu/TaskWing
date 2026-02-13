@@ -183,6 +183,27 @@ verbose: true
 	}
 }
 
+func TestSaveBedrockRegion_Success(t *testing.T) {
+	tmpDir, cleanup := setupTestConfigDir(t)
+	defer cleanup()
+
+	if err := SaveBedrockRegion("us-east-1"); err != nil {
+		t.Fatalf("SaveBedrockRegion() error = %v", err)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(filepath.Join(tmpDir, "config.yaml"))
+	v.SetConfigType("yaml")
+	if err := v.ReadInConfig(); err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+
+	got := v.GetString("llm.bedrock.region")
+	if got != "us-east-1" {
+		t.Fatalf("llm.bedrock.region = %q, want %q", got, "us-east-1")
+	}
+}
+
 func TestDeleteAPIKeyForProvider_Success(t *testing.T) {
 	tmpDir, cleanup := setupTestConfigDir(t)
 	defer cleanup()

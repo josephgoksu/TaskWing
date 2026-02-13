@@ -6,24 +6,38 @@ TaskWing helps me turn a goal into executed tasks with persistent context across
 
 **TaskWing is AI-native task management that actually understands your codebase.**
 
-We don't just store tasks — we generate context-aware development plans by analyzing your architecture, patterns, and decisions. No more generic AI suggestions that ignore your constraints.
+We don't just store tasks. We generate context-aware development plans by analyzing your architecture, patterns, and decisions.
 
-## The Problem
+## Ecosystem Support
 
-Traditional task management (Jira, Asana, Linear) treats code as external. You write tasks manually, and AI assistants hallucinate solutions that don't fit your architecture.
+### Supported Models
 
-**Example:** You ask an AI to "add Stripe billing" and it suggests patterns you don't use, libraries you've banned, and ignores your existing payment infrastructure.
+<!-- TASKWING_PROVIDERS_START -->
+[![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
+[![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
+[![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-OpenAI--Compatible_Beta-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html)
+[![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
+<!-- TASKWING_PROVIDERS_END -->
 
-## The Solution
+### Works With
 
-TaskWing extracts architectural knowledge from your codebase and uses it to:
-1. **Generate accurate tasks** that reference your actual files and patterns
-2. **Enforce constraints** (e.g., "use types.gen.go", "secrets in SSM, not .env")
-3. **Provide context to AI tools** via MCP so every response is architecture-aware
+<!-- TASKWING_TOOLS_START -->
+[![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/claude-code)
+[![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex)
+[![Cursor](https://img.shields.io/badge/Cursor-111111?logo=cursor&logoColor=white)](https://cursor.com/)
+[![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-181717?logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
+[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
+[![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
+<!-- TASKWING_TOOLS_END -->
+
+<!-- TASKWING_LEGAL_START -->
+Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
+<!-- TASKWING_LEGAL_END -->
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    USER INTERFACE                        │
 │  taskwing goal "..."  │  /tw-next  │  /tw-done   │
@@ -50,51 +64,44 @@ TaskWing extracts architectural knowledge from your codebase and uses it to:
 
 ## Core Commands
 
-| Command | Purpose |
-|---------|---------|
-| `taskwing bootstrap` | Extract knowledge from codebase (one-time setup) |
-| `taskwing goal "<goal>"` | Generate and activate a context-aware plan |
-| `/tw-next` | Start the next task from your AI tool |
-| `/tw-done` | Complete the current task from your AI tool |
-| `taskwing task list` | Inspect generated tasks |
-| `taskwing plan status` | Show current plan progress |
-| `taskwing mcp` | Start MCP server for AI tool integration |
+<!-- TASKWING_COMMANDS_START -->
+- `taskwing bootstrap`
+- `taskwing goal "<goal>"`
+- `taskwing task`
+- `taskwing plan status`
+- `taskwing slash`
+- `taskwing mcp`
+- `taskwing doctor`
+- `taskwing config`
+- `taskwing start`
+<!-- TASKWING_COMMANDS_END -->
 
-## Competitive Positioning
+## MCP Tools
 
-| Tool | Approach | Limitation |
-|------|----------|------------|
-| **Jira/Asana** | Manual task creation | No codebase awareness |
-| **Linear** | Fast manual entry | No AI generation |
-| **GitHub Issues + Copilot** | AI suggestions | Generic, ignores architecture |
-| **TaskWing** | AI + Knowledge Graph | Tasks match YOUR patterns |
-
-## Proof: It Actually Works
-
-> "Found a revenue-impacting bug in 8 minutes. The AI recalled our trial policy mid-investigation, identified the root cause at `service.go:126`, implemented the fix, verified the build, and updated the docs — all in one session, all context-aware."
-> — Production debugging session, Jan 2026
-
-**Full workflow in one session:** Debug → Fix → Verify → Document
-
-See the architecture notes in `docs/architecture/` for implementation details.
-
----
+<!-- TASKWING_MCP_TOOLS_START -->
+| Tool | Description |
+|------|-------------|
+| `recall` | Retrieve project knowledge (decisions, patterns, constraints) |
+| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
+| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
+| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
+| `debug` | Diagnose issues systematically with AI-powered analysis |
+| `remember` | Store knowledge in project memory |
+<!-- TASKWING_MCP_TOOLS_END -->
 
 ## Success Metrics
 
-1. **Task Accuracy**: Generated tasks reference correct files/patterns (target: 80%+)
-2. **Developer Adoption**: Daily active users running `taskwing goal`
-3. **Context Utilization**: MCP queries per plan execution
-4. **Time-to-Root-Cause**: Bug investigations with TaskWing context vs. without
+1. Task accuracy: generated tasks reference correct files and patterns.
+2. Developer adoption: daily active users running `taskwing goal`.
+3. Context utilization: MCP queries per plan execution.
+4. Time-to-root-cause: bug investigations with TaskWing context vs. without.
 
 ## Monetization (Future)
 
 | Tier | Price | Features |
 |------|-------|----------|
-| **Open Source** | Free | Full CLI, local knowledge graph |
-| **Team** | $29/seat/mo | Shared knowledge graph, team sync |
-| **Enterprise** | Custom | SSO, audit, on-prem |
-
----
+| Open Source | Free | Full CLI, local knowledge graph |
+| Team | $29/seat/mo | Shared knowledge graph, team sync |
+| Enterprise | Custom | SSO, audit, on-prem |
 
 *The knowledge graph is the moat. Task management is the product.*

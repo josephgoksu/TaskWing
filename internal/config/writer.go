@@ -267,6 +267,38 @@ func SaveAPIKeyForProvider(provider, key string) error {
 	return v.WriteConfig()
 }
 
+// SaveBedrockRegion persists Bedrock region in global config.
+func SaveBedrockRegion(region string) error {
+	region = strings.TrimSpace(region)
+	if region == "" {
+		return fmt.Errorf("region cannot be empty")
+	}
+
+	configDir, err := GetGlobalConfigDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return err
+	}
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	v := viper.New()
+	v.SetConfigFile(configFile)
+	v.SetConfigType("yaml")
+	if err := v.ReadInConfig(); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	v.Set("llm.bedrock.region", region)
+	if err := v.WriteConfig(); err != nil {
+		// If file doesn't exist yet, create it.
+		if safeErr := v.SafeWriteConfigAs(configFile); safeErr != nil {
+			return safeErr
+		}
+	}
+	return nil
+}
+
 // DeleteAPIKeyForProvider removes the API key for a specific provider from the config.
 // This allows users to clear stored keys through the interactive config UI.
 //

@@ -41,11 +41,11 @@ The production MCP server (`taskwing-mcp`) uses the installed Homebrew binary. C
 # 2. Air auto-rebuilds ./bin/taskwing
 
 # 3. Test via local dev MCP (in Claude Code)
-# Use: mcp__taskwing-local-dev-mcp__explain_symbol, detect_drift, etc.
+# Use: mcp__taskwing-local-dev-mcp__task, mcp__taskwing-local-dev-mcp__plan, mcp__taskwing-local-dev-mcp__code
 
 # 4. Verify CLI works
-go run . explain NewRecallApp
-go run . drift
+go run . --help
+go run . doctor
 
 # 5. Run tests
 make test-quick
@@ -82,15 +82,17 @@ TaskWing gives AI coding assistants permanent memory. It extracts architectural 
 cmd/                          # Cobra CLI commands
 ├── root.go                   # Base command, global flags (--json, --verbose, --preview, --quiet)
 ├── bootstrap.go              # Auto-generate knowledge from repo
-├── add.go                    # Add knowledge (AI classifies type)
-├── context.go                # Semantic search with --answer for AI responses
-├── list.go                   # View knowledge by type
-├── memory.go                 # Maintenance: check/repair/rebuild-index
+├── goal.go                   # Goal-first flow: clarify -> generate -> activate
+├── knowledge.go              # View stored project knowledge nodes
+├── plan.go                   # Plan lifecycle management
+├── task.go                   # Task lifecycle management
+├── slash.go                  # Slash command content for assistants
 ├── mcp_server.go             # MCP server for AI tool integration
-├── plan.go                   # Plan management (new/list/start)
-├── task.go                   # Atomic task management
-├── hook.go                   # Claude Code hooks for autonomous execution
-└── eval.go                   # Evaluation benchmarks
+├── doctor.go                 # Diagnostics and integration repair
+├── config.go                 # Provider and runtime configuration
+├── start.go                  # Local API/dashboard runtime
+├── hook.go                   # Hook handlers used by assistant integrations
+└── version.go                # Version output
 
 internal/
 ├── memory/                   # Data layer
@@ -101,7 +103,7 @@ internal/
 │   ├── scanner.go            # Heuristic scanner
 │   └── llm_analyzer.go       # LLM-powered analysis with streaming
 ├── llm/
-│   └── client.go             # Multi-provider LLM factory (OpenAI, Ollama via Eino)
+│   └── client.go             # Multi-provider LLM factory (OpenAI, Anthropic, Gemini, Bedrock, Ollama via Eino)
 └── knowledge/
     ├── classify.go           # AI classification of knowledge types
     └── embed.go              # Embedding generation
@@ -131,13 +133,16 @@ Graph traversal uses recursive CTEs for GetDependencies/GetDependents.
 
 Uses CloudWeGo Eino for multi-provider support:
 - OpenAI: Set `OPENAI_API_KEY` or `TASKWING_LLM_APIKEY`
+- Anthropic: Set `ANTHROPIC_API_KEY` and `TASKWING_LLM_PROVIDER=anthropic`
+- Gemini: Set `GOOGLE_API_KEY` and `TASKWING_LLM_PROVIDER=gemini`
+- Bedrock: Set `BEDROCK_API_KEY`, `TASKWING_LLM_PROVIDER=bedrock`, and `TASKWING_LLM_BEDROCK_REGION=<region>`
 - Ollama: Set `TASKWING_LLM_PROVIDER=ollama` and `TASKWING_LLM_MODEL=<model>`
 
 **Bootstrap requires an LLM API key by default** to analyze architecture. Use `--skip-analyze` for CI/testing without LLM (hidden flag, deterministic mode only).
 
 ### MCP Server
 
-`taskwing mcp` starts a JSON-RPC stdio server exposing `recall` tool for AI assistants. Target token budget: 500-1000 tokens per context response.
+`taskwing mcp` starts a JSON-RPC stdio server exposing `recall`, `task`, `plan`, `code`, `debug`, and `remember` tools.
 
 ### Task Context Binding
 
@@ -160,10 +165,10 @@ See `docs/architecture/ADR_CONTEXT_BINDING.md` for full design rationale.
 TaskWing integrates with Claude Code's hook system for autonomous plan execution:
 
 ```bash
-tw hook session-init      # Initialize session tracking (SessionStart hook)
-tw hook continue-check    # Check if should continue to next task (Stop hook)
-tw hook session-end       # Cleanup session (SessionEnd hook)
-tw hook status            # View current session state
+taskwing hook session-init      # Initialize session tracking (SessionStart hook)
+taskwing hook continue-check    # Check if should continue to next task (Stop hook)
+taskwing hook session-end       # Cleanup session (SessionEnd hook)
+taskwing hook status            # View current session state
 ```
 
 **Circuit breakers** prevent runaway execution:
@@ -290,9 +295,35 @@ Interactive script that prompts for version, opens editor for notes, creates tag
 
 ## TaskWing Integration
 
-TaskWing provides project memory for AI assistants via MCP tools and slash commands.
+TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.
+
+### Supported Models
+
+<!-- TASKWING_PROVIDERS_START -->
+[![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
+[![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
+[![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-OpenAI--Compatible_Beta-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html)
+[![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
+<!-- TASKWING_PROVIDERS_END -->
+
+### Works With
+
+<!-- TASKWING_TOOLS_START -->
+[![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/claude-code)
+[![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex)
+[![Cursor](https://img.shields.io/badge/Cursor-111111?logo=cursor&logoColor=white)](https://cursor.com/)
+[![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-181717?logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
+[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
+[![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
+<!-- TASKWING_TOOLS_END -->
+
+<!-- TASKWING_LEGAL_START -->
+Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
+<!-- TASKWING_LEGAL_END -->
 
 ### Slash Commands
+
 - `/tw-brief` - Get compact project knowledge brief (decisions, patterns, constraints)
 - `/tw-next` - Start next task with architecture context
 - `/tw-done` - Complete current task with summary
@@ -302,24 +333,32 @@ TaskWing provides project memory for AI assistants via MCP tools and slash comma
 - `/tw-explain` - Get deep-dive explanation of a code symbol
 - `/tw-simplify` - Simplify code while preserving behavior
 
-### MCP Tools
+### Core Commands
+
+<!-- TASKWING_COMMANDS_START -->
+- `taskwing bootstrap`
+- `taskwing goal "<goal>"`
+- `taskwing task`
+- `taskwing plan status`
+- `taskwing slash`
+- `taskwing mcp`
+- `taskwing doctor`
+- `taskwing config`
+- `taskwing start`
+<!-- TASKWING_COMMANDS_END -->
+
+### MCP Tools (Canonical Contract)
+
+<!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
 |------|-------------|
 | `recall` | Retrieve project knowledge (decisions, patterns, constraints) |
-| `task` | Unified task lifecycle (next, current, start, complete) |
-| `plan` | Plan management (clarify, generate, audit) |
-| `code` | Code intelligence (find, search, explain, callers, impact, simplify) |
+| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
+| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
+| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
 | `debug` | Diagnose issues systematically with AI-powered analysis |
 | `remember` | Store knowledge in project memory |
-
-### CLI Commands
-```bash
-tw bootstrap        # Initialize project memory (first-time setup)
-tw context "query"  # Search knowledge semantically
-tw add "content"    # Add knowledge to memory
-tw plan new "goal"  # Create development plan
-tw task list        # List tasks from active plan
-```
+<!-- TASKWING_MCP_TOOLS_END -->
 
 ### Autonomous Task Execution (Hooks)
 

@@ -1,0 +1,9 @@
+- `taskwing bootstrap`
+- `taskwing goal "<goal>"`
+- `taskwing task`
+- `taskwing plan status`
+- `taskwing slash`
+- `taskwing mcp`
+- `taskwing doctor`
+- `taskwing config`
+- `taskwing start`

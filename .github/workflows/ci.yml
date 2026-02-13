@@ -9,6 +9,14 @@ on:
     branches: [main]
 
 jobs:
+  docs-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check docs consistency
+        run: ./scripts/check-doc-consistency.sh
+
   lint:
     runs-on: ubuntu-latest
     steps:

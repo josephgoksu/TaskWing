@@ -4,14 +4,17 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/telemetry"
 	"github.com/josephgoksu/TaskWing/internal/ui"
@@ -214,6 +217,9 @@ func runConfigSet(key, value string) error {
 		fmt.Println("Or set environment variables:")
 		fmt.Println("  TASKWING_LLM_PROVIDER=ollama")
 		fmt.Println("  TASKWING_LLM_MODEL=llama3.2")
+		fmt.Println("  TASKWING_LLM_PROVIDER=bedrock")
+		fmt.Println("  TASKWING_LLM_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0")
+		fmt.Println("  TASKWING_LLM_BEDROCK_REGION=us-east-1")
 		fmt.Println("Or edit ~/.taskwing/config.yaml directly.")
 		return nil
 
@@ -565,6 +571,11 @@ func configureBootstrapModel() error {
 	// Save as bootstrap model
 	configValue := fmt.Sprintf("%s:%s", selection.Provider, selection.Model)
 	viper.Set("llm.models.bootstrap", configValue)
+	if selection.Provider == llm.ProviderBedrock {
+		if err := ensureBedrockRegionConfigured(); err != nil {
+			return err
+		}
+	}
 
 	// Also set as default if not set
 	if !viper.IsSet("llm.provider") {
@@ -596,6 +607,11 @@ func configureQueryModel() error {
 	// Save as query model
 	configValue := fmt.Sprintf("%s:%s", selection.Provider, selection.Model)
 	viper.Set("llm.models.query", configValue)
+	if selection.Provider == llm.ProviderBedrock {
+		if err := ensureBedrockRegionConfigured(); err != nil {
+			return err
+		}
+	}
 
 	if err := writeConfig(); err != nil {
 		return err
@@ -712,6 +728,24 @@ func writeConfig() error {
 			}
 		}
 	}
+	return nil
+}
+
+func ensureBedrockRegionConfigured() error {
+	region := config.ResolveBedrockRegion()
+	if region == "" {
+		fmt.Print("AWS Bedrock region [us-east-1]: ")
+		reader := bufio.NewReader(os.Stdin)
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("read region: %w", err)
+		}
+		region = strings.TrimSpace(line)
+		if region == "" {
+			region = "us-east-1"
+		}
+	}
+	viper.Set("llm.bedrock.region", region)
 	return nil
 }
 

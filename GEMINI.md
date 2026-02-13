@@ -14,7 +14,7 @@
 *   **Language:** Go 1.24+
 *   **CLI Framework:** Cobra
 *   **Database:** SQLite (modernc.org/sqlite) - *Single source of truth*
-*   **LLM Orchestration:** CloudWeGo Eino (OpenAI, Ollama support)
+*   **LLM Orchestration:** CloudWeGo Eino (OpenAI, Anthropic, Gemini, Bedrock, Ollama support)
 *   **Frontend (Dashboard):**
     *   React 19
     *   Vite 7
@@ -96,7 +96,7 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
     *   Ensure MCP tests pass if modifying server logic.
     *   **New:** Unit tests for `internal/knowledge` and `internal/memory` are required.
 4.  **Style:** Follow standard Go idioms. Use `make lint` to enforce.
-5.  **LLM Integration:** Use the `internal/llm` client factory to support multiple providers (OpenAI, Ollama) agnostic of the specific API.
+5.  **LLM Integration:** Use the `internal/llm` client factory to support multiple providers (OpenAI, Anthropic, Gemini, Bedrock, Ollama) agnostic of the specific API.
 
 ## MCP Integration
 
@@ -183,7 +183,32 @@ Interactive script that prompts for version, opens editor for notes, creates tag
 
 ## TaskWing Integration
 
-TaskWing provides project memory for AI assistants via MCP tools and slash commands.
+TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.
+
+### Supported Models
+
+<!-- TASKWING_PROVIDERS_START -->
+[![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
+[![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
+[![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-OpenAI--Compatible_Beta-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html)
+[![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
+<!-- TASKWING_PROVIDERS_END -->
+
+### Works With
+
+<!-- TASKWING_TOOLS_START -->
+[![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/claude-code)
+[![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex)
+[![Cursor](https://img.shields.io/badge/Cursor-111111?logo=cursor&logoColor=white)](https://cursor.com/)
+[![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-181717?logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
+[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
+[![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
+<!-- TASKWING_TOOLS_END -->
+
+<!-- TASKWING_LEGAL_START -->
+Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
+<!-- TASKWING_LEGAL_END -->
 
 ### Slash Commands
 - `/tw-brief` - Get compact project knowledge brief (decisions, patterns, constraints)
@@ -195,24 +220,32 @@ TaskWing provides project memory for AI assistants via MCP tools and slash comma
 - `/tw-explain` - Get deep-dive explanation of a code symbol
 - `/tw-simplify` - Simplify code while preserving behavior
 
-### MCP Tools
+### Core Commands
+
+<!-- TASKWING_COMMANDS_START -->
+- `taskwing bootstrap`
+- `taskwing goal "<goal>"`
+- `taskwing task`
+- `taskwing plan status`
+- `taskwing slash`
+- `taskwing mcp`
+- `taskwing doctor`
+- `taskwing config`
+- `taskwing start`
+<!-- TASKWING_COMMANDS_END -->
+
+### MCP Tools (Canonical Contract)
+
+<!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
 |------|-------------|
 | `recall` | Retrieve project knowledge (decisions, patterns, constraints) |
-| `task` | Unified task lifecycle (next, current, start, complete) |
-| `plan` | Plan management (clarify, generate, audit) |
-| `code` | Code intelligence (find, search, explain, callers, impact, simplify) |
+| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
+| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
+| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
 | `debug` | Diagnose issues systematically with AI-powered analysis |
 | `remember` | Store knowledge in project memory |
-
-### CLI Commands
-```bash
-tw bootstrap        # Initialize project memory (first-time setup)
-tw context "query"  # Search knowledge semantically
-tw add "content"    # Add knowledge to memory
-tw plan new "goal"  # Create development plan
-tw task list        # List tasks from active plan
-```
+<!-- TASKWING_MCP_TOOLS_END -->
 
 ### Autonomous Task Execution (Hooks)
 

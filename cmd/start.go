@@ -67,10 +67,10 @@ func init() {
 	startCmd.Flags().StringVar(&dashboardURL, "dashboard-url", "", "Dashboard URL (default: https://hub.taskwing.app, use http://localhost:5173 for local dev)")
 
 	// LLM configuration (reuse from watch)
-	startCmd.Flags().String("provider", "", "LLM provider (openai, ollama, anthropic, gemini)")
+	startCmd.Flags().String("provider", "", "LLM provider (openai, ollama, anthropic, bedrock, gemini)")
 	startCmd.Flags().String("model", "", "Model to use")
 	startCmd.Flags().String("api-key", "", "LLM API key (or set provider-specific env var)")
-	startCmd.Flags().String("ollama-url", "http://localhost:11434", "Ollama server URL")
+	startCmd.Flags().String("ollama-url", "http://localhost:11434", "Ollama server URL (only used when provider=ollama)")
 }
 
 func runStart(cmd *cobra.Command, args []string) error {

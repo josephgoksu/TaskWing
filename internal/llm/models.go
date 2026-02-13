@@ -191,6 +191,116 @@ var ModelRegistry = []Model{
 	},
 
 	// ============================================
+	// AWS Bedrock OpenAI-Compatible Models (curated)
+	// Sources:
+	// - https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
+	// - https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
+	// ============================================
+	{
+		ID:         "anthropic.claude-sonnet-4-5-20250929-v1:0",
+		Provider:   "AWS Bedrock",
+		ProviderID: ProviderBedrock,
+		Aliases: []string{
+			"us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+			"eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+			"apac.anthropic.claude-sonnet-4-5-20250929-v1:0",
+		},
+		InputPer1M:       3.00,
+		OutputPer1M:      15.00,
+		IsDefault:        true,
+		SupportsThinking: true,
+		Category:         CategoryBalanced,
+		MaxInputTokens:   200_000,
+	},
+	{
+		ID:               "anthropic.claude-opus-4-6-v1",
+		Provider:         "AWS Bedrock",
+		ProviderID:       ProviderBedrock,
+		SupportsThinking: true,
+		Category:         CategoryReasoning,
+		MaxInputTokens:   200_000,
+	},
+	{
+		ID:               "anthropic.claude-opus-4-5-20251101-v1:0",
+		Provider:         "AWS Bedrock",
+		ProviderID:       ProviderBedrock,
+		SupportsThinking: true,
+		Category:         CategoryReasoning,
+		MaxInputTokens:   200_000,
+	},
+	{
+		ID:               "anthropic.claude-opus-4-1-20250805-v1:0",
+		Provider:         "AWS Bedrock",
+		ProviderID:       ProviderBedrock,
+		InputPer1M:       15.00,
+		OutputPer1M:      75.00,
+		SupportsThinking: true,
+		Category:         CategoryReasoning,
+		MaxInputTokens:   200_000,
+	},
+	{
+		ID:               "anthropic.claude-haiku-4-5-20251001-v1:0",
+		Provider:         "AWS Bedrock",
+		ProviderID:       ProviderBedrock,
+		SupportsThinking: true,
+		Category:         CategoryFast,
+		MaxInputTokens:   200_000,
+	},
+	{
+		ID:             "amazon.nova-premier-v1:0",
+		Provider:       "AWS Bedrock",
+		ProviderID:     ProviderBedrock,
+		Category:       CategoryReasoning,
+		MaxInputTokens: 200_000,
+	},
+	{
+		ID:             "amazon.nova-pro-v1:0",
+		Provider:       "AWS Bedrock",
+		ProviderID:     ProviderBedrock,
+		InputPer1M:     0.80,
+		OutputPer1M:    3.20,
+		Category:       CategoryBalanced,
+		MaxInputTokens: 200_000,
+	},
+	{
+		ID:             "amazon.nova-lite-v1:0",
+		Provider:       "AWS Bedrock",
+		ProviderID:     ProviderBedrock,
+		Category:       CategoryBalanced,
+		MaxInputTokens: 200_000,
+	},
+	{
+		ID:             "amazon.nova-micro-v1:0",
+		Provider:       "AWS Bedrock",
+		ProviderID:     ProviderBedrock,
+		Category:       CategoryFast,
+		MaxInputTokens: 200_000,
+	},
+	{
+		ID:             "meta.llama4-maverick-17b-instruct-v1:0",
+		Provider:       "AWS Bedrock",
+		ProviderID:     ProviderBedrock,
+		Category:       CategoryBalanced,
+		MaxInputTokens: 128_000,
+	},
+	{
+		ID:             "meta.llama4-scout-17b-instruct-v1:0",
+		Provider:       "AWS Bedrock",
+		ProviderID:     ProviderBedrock,
+		Category:       CategoryBalanced,
+		MaxInputTokens: 128_000,
+	},
+	{
+		ID:             "meta.llama3-3-70b-instruct-v1:0",
+		Provider:       "AWS Bedrock",
+		ProviderID:     ProviderBedrock,
+		InputPer1M:     0.72,
+		OutputPer1M:    0.72,
+		Category:       CategoryFast,
+		MaxInputTokens: 128_000,
+	},
+
+	// ============================================
 	// Google Gemini Models (2025)
 	// https://ai.google.dev/gemini-api/docs/models
 	// Note: Gemini 1.5 retired April 2025
@@ -403,6 +513,25 @@ func InferProvider(modelID string) (string, bool) {
 		return ProviderOpenAI, true
 	case strings.HasPrefix(modelID, "claude-"):
 		return ProviderAnthropic, true
+	case strings.HasPrefix(modelID, "anthropic."),
+		strings.HasPrefix(modelID, "amazon."),
+		strings.HasPrefix(modelID, "meta."),
+		strings.HasPrefix(modelID, "mistral."),
+		strings.HasPrefix(modelID, "cohere."),
+		strings.HasPrefix(modelID, "ai21."),
+		strings.HasPrefix(modelID, "deepseek."),
+		strings.HasPrefix(modelID, "openai."),
+		strings.HasPrefix(modelID, "google."),
+		strings.HasPrefix(modelID, "qwen."),
+		strings.HasPrefix(modelID, "moonshot."),
+		strings.HasPrefix(modelID, "minimax."),
+		strings.HasPrefix(modelID, "nvidia."),
+		strings.HasPrefix(modelID, "stability."),
+		strings.HasPrefix(modelID, "writer."),
+		strings.HasPrefix(modelID, "us."),
+		strings.HasPrefix(modelID, "eu."),
+		strings.HasPrefix(modelID, "apac."):
+		return ProviderBedrock, true
 	case strings.HasPrefix(modelID, "gemini-"):
 		return ProviderGemini, true
 	case strings.HasPrefix(modelID, "llama"), strings.HasPrefix(modelID, "mistral"), strings.HasPrefix(modelID, "codellama"), strings.HasPrefix(modelID, "phi"):
@@ -440,7 +569,7 @@ func GetModelsForProvider(providerID string) []ModelOption {
 			option: ModelOption{
 				ID:          m.ID,
 				DisplayName: m.ID,
-				PriceInfo:   formatPriceInfo(m.InputPer1M, m.OutputPer1M),
+				PriceInfo:   formatPriceInfo(m.ProviderID, m.InputPer1M, m.OutputPer1M),
 				IsDefault:   m.IsDefault,
 			},
 			totalPrice: m.InputPer1M + m.OutputPer1M,
@@ -463,9 +592,12 @@ func GetModelsForProvider(providerID string) []ModelOption {
 	return options
 }
 
-func formatPriceInfo(input, output float64) string {
+func formatPriceInfo(providerID string, input, output float64) string {
 	if input == 0 && output == 0 {
-		return "local/free"
+		if providerID == ProviderOllama {
+			return "local/free"
+		}
+		return "pricing varies"
 	}
 	return fmt.Sprintf("$%.2f/$%.2f per 1M tokens", input, output)
 }
@@ -535,7 +667,7 @@ func GetProviders() []ProviderInfo {
 
 	var providers []ProviderInfo
 	// Return in consistent order
-	providerOrder := []string{ProviderOpenAI, ProviderAnthropic, ProviderGemini, ProviderOllama}
+	providerOrder := []string{ProviderOpenAI, ProviderAnthropic, ProviderBedrock, ProviderGemini, ProviderOllama}
 	for _, id := range providerOrder {
 		if p, exists := providerMap[id]; exists {
 			envVar := GetEnvVarForProvider(id)
@@ -555,6 +687,7 @@ func GetProviders() []ProviderInfo {
 var providerEnvVars = map[string]string{
 	ProviderOpenAI:    "OPENAI_API_KEY",
 	ProviderAnthropic: "ANTHROPIC_API_KEY",
+	ProviderBedrock:   "BEDROCK_API_KEY",
 	ProviderGemini:    "GEMINI_API_KEY",
 	ProviderOllama:    "", // Local, no API key needed
 }
@@ -578,6 +711,10 @@ func GetEnvValueForProvider(providerID string) string {
 	// Gemini fallback: also check GOOGLE_API_KEY
 	if value == "" && providerID == ProviderGemini {
 		value = strings.TrimSpace(os.Getenv("GOOGLE_API_KEY"))
+	}
+	// Bedrock OpenAI-compatible fallback from AWS docs/examples.
+	if value == "" && providerID == ProviderBedrock {
+		value = strings.TrimSpace(os.Getenv("AWS_BEARER_TOKEN_BEDROCK"))
 	}
 
 	return value

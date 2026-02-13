@@ -17,6 +17,9 @@ const (
 	// ProviderGemini represents the Google Gemini provider
 	ProviderGemini = "gemini"
 
+	// ProviderBedrock represents AWS Bedrock OpenAI-compatible runtime
+	ProviderBedrock = "bedrock"
+
 	// ProviderTEI represents Text Embeddings Inference (embeddings only)
 	// TEI is a high-performance embedding server from Hugging Face
 	// See: https://github.com/huggingface/text-embeddings-inference
@@ -33,6 +36,9 @@ const (
 
 	// DefaultOllamaEmbeddingModel is the default embedding model for Ollama
 	DefaultOllamaEmbeddingModel = "nomic-embed-text"
+
+	// DefaultBedrockEmbeddingModel is the default embedding model for AWS Bedrock
+	DefaultBedrockEmbeddingModel = "amazon.titan-embed-text-v2:0"
 )
 
 // DefaultOllamaURL is the default URL for Ollama server

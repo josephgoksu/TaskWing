@@ -2,12 +2,17 @@ package config
 
 import (
 	"fmt"
+	"net/url"
+	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/spf13/viper"
 )
+
+var bedrockHostPattern = regexp.MustCompile(`^bedrock-runtime(-fips)?\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$`)
 
 // LoadLLMConfigForRole loads LLM configuration with role-based overrides.
 // It checks llm.models.<role> first (e.g., llm.models.query for RoleQuery),
@@ -66,16 +71,16 @@ func ParseModelSpec(spec string, role llm.ModelRole) (llm.Config, error) {
 	// Validate API key requirement (matching CLI behavior)
 	requiresKey := llmProvider == llm.ProviderOpenAI ||
 		llmProvider == llm.ProviderAnthropic ||
-		llmProvider == llm.ProviderGemini
+		llmProvider == llm.ProviderGemini ||
+		llmProvider == llm.ProviderBedrock
 
 	if requiresKey && apiKey == "" {
 		return llm.Config{}, fmt.Errorf("API key required for %s: set env var %s", provider, llm.GetEnvVarForProvider(provider))
 	}
 
-	// Get other config values from viper (matching CLI behavior)
-	baseURL := viper.GetString("llm.baseURL")
-	if baseURL == "" {
-		baseURL = viper.GetString("llm.ollamaURL") // Legacy
+	baseURL, err := ResolveProviderBaseURL(llmProvider)
+	if err != nil {
+		return llm.Config{}, err
 	}
 
 	// NOTE: Embedding config is NOT loaded here to match CLI behavior.
@@ -133,13 +138,10 @@ func LoadLLMConfig() (llm.Config, error) {
 	// Note: We don't error on missing API key here, as interactive mode might ask for it later.
 	// Or non-auth providers (Ollama) might not need it.
 
-	// 4. Base URL (Ollama or Custom)
-	baseURL := viper.GetString("llm.baseURL")
-	if baseURL == "" {
-		baseURL = viper.GetString("llm.ollamaURL") // Legacy
-	}
-	if baseURL == "" && llmProvider == llm.ProviderOllama {
-		baseURL = llm.DefaultOllamaURL
+	// 4. Base URL
+	baseURL, err := ResolveProviderBaseURL(llmProvider)
+	if err != nil {
+		return llm.Config{}, err
 	}
 
 	// 5. Embedding Model
@@ -167,6 +169,8 @@ func LoadLLMConfig() (llm.Config, error) {
 			embeddingModel = llm.DefaultOpenAIEmbeddingModel
 		case llm.ProviderOllama:
 			embeddingModel = llm.DefaultOllamaEmbeddingModel
+		case llm.ProviderBedrock:
+			embeddingModel = llm.DefaultBedrockEmbeddingModel
 		}
 	}
 
@@ -205,6 +209,81 @@ func LoadLLMConfig() (llm.Config, error) {
 		EmbeddingBaseURL:  embeddingBaseURL,
 		Timeout:           timeout,
 	}, nil
+}
+
+// ResolveProviderBaseURL returns the resolved base URL for a provider.
+// For Bedrock it enforces strict Bedrock OpenAI-compatible endpoint validation.
+func ResolveProviderBaseURL(provider llm.Provider) (string, error) {
+	switch provider {
+	case llm.ProviderOllama:
+		baseURL := strings.TrimSpace(viper.GetString("llm.baseURL"))
+		if baseURL == "" {
+			baseURL = strings.TrimSpace(viper.GetString("llm.ollamaURL")) // Legacy
+		}
+		if baseURL == "" {
+			baseURL = llm.DefaultOllamaURL
+		}
+		return baseURL, nil
+	case llm.ProviderBedrock:
+		return ResolveBedrockBaseURL()
+	default:
+		baseURL := strings.TrimSpace(viper.GetString("llm.baseURL"))
+		if baseURL == "" {
+			baseURL = strings.TrimSpace(viper.GetString("llm.ollamaURL")) // Legacy custom endpoint key
+		}
+		return baseURL, nil
+	}
+}
+
+// ResolveBedrockRegion returns Bedrock region from config first, then AWS env fallbacks.
+func ResolveBedrockRegion() string {
+	region := strings.TrimSpace(viper.GetString("llm.bedrock.region"))
+	if region != "" {
+		return region
+	}
+	region = strings.TrimSpace(os.Getenv("AWS_REGION"))
+	if region != "" {
+		return region
+	}
+	return strings.TrimSpace(os.Getenv("AWS_DEFAULT_REGION"))
+}
+
+// ResolveBedrockBaseURL returns a validated Bedrock OpenAI-compatible base URL.
+func ResolveBedrockBaseURL() (string, error) {
+	baseURL := strings.TrimSpace(viper.GetString("llm.bedrock.base_url"))
+	if baseURL == "" {
+		region := ResolveBedrockRegion()
+		if region == "" {
+			return "", fmt.Errorf("AWS Bedrock region is required: set llm.bedrock.region or AWS_REGION")
+		}
+		baseURL = fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com/openai/v1", region)
+	}
+	if err := ValidateBedrockBaseURL(baseURL); err != nil {
+		return "", fmt.Errorf("invalid llm.bedrock.base_url: %w", err)
+	}
+	return strings.TrimSuffix(baseURL, "/"), nil
+}
+
+// ValidateBedrockBaseURL validates strict Bedrock OpenAI-compatible endpoint policy.
+func ValidateBedrockBaseURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("parse URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("must use https")
+	}
+	if u.Hostname() == "" {
+		return fmt.Errorf("missing host")
+	}
+	if !bedrockHostPattern.MatchString(strings.ToLower(u.Hostname())) {
+		return fmt.Errorf("host %q is not a Bedrock runtime endpoint", u.Hostname())
+	}
+	path := strings.TrimSuffix(u.Path, "/")
+	if path != "/openai/v1" {
+		return fmt.Errorf("path must be /openai/v1")
+	}
+	return nil
 }
 
 // ResolveLLMTimeout resolves LLM timeout from config or env with defaults.

@@ -44,7 +44,7 @@ Bootstrap analyzes your codebase to extract architectural knowledge:
 Bootstrap does NOT adopt unmanaged AI config automatically and does NOT mutate
 global MCP in run mode. Use "taskwing doctor --fix" for explicit repair flows.
 
-Requires: OPENAI_API_KEY or TASKWING_LLM_APIKEY environment variable.
+Requires an LLM API key (set via 'taskwing config set' or provider-specific env var).
 
 Use --skip-analyze for CI/testing (deterministic, no LLM).`,
 	RunE: runBootstrap,
@@ -188,7 +188,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	if plan.RequiresLLMConfig {
 		llmCfg, err = getLLMConfigForRole(cmd, llm.RoleBootstrap)
 		if err != nil {
-			return fmt.Errorf("TaskWing requires an LLM API key to analyze your architecture.\nSet OPENAI_API_KEY or TASKWING_LLM_APIKEY environment variable.\nUse --skip-analyze for CI/testing without LLM: %w", err)
+			return fmt.Errorf("TaskWing requires an LLM API key to analyze your architecture.\nConfigure via 'taskwing config set' or set a provider-specific env var (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY, BEDROCK_API_KEY).\nUse --skip-analyze for CI/testing without LLM: %w", err)
 		}
 	}
 

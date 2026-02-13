@@ -59,8 +59,8 @@ type Config struct {
 	Provider       Provider
 	Model          string        // Chat model
 	EmbeddingModel string        // Embedding model (optional)
-	APIKey         string        // Required for OpenAI
-	BaseURL        string        // Required for Ollama (default: http://localhost:11434)
+	APIKey         string        // Required for cloud providers
+	BaseURL        string        // Optional custom endpoint (OpenAI-compatible/Ollama)
 	ThinkingBudget int           // Token budget for extended thinking (0 = disabled, only for supported models)
 	Timeout        time.Duration // Request timeout for chat completions (0 = no timeout)
 
@@ -111,6 +111,25 @@ func (g *genaiClientCloser) Close() error {
 	return nil
 }
 
+func newOpenAICompatibleChatModel(ctx context.Context, cfg Config, timeout time.Duration) (*CloseableChatModel, error) {
+	if cfg.APIKey == "" {
+		return nil, fmt.Errorf("%s API key is required", cfg.Provider)
+	}
+	chatCfg := &openai.ChatModelConfig{
+		Model:   cfg.Model,
+		APIKey:  cfg.APIKey,
+		Timeout: timeout,
+	}
+	if cfg.BaseURL != "" {
+		chatCfg.BaseURL = cfg.BaseURL
+	}
+	m, err := openai.NewChatModel(ctx, chatCfg)
+	if err != nil {
+		return nil, err
+	}
+	return &CloseableChatModel{BaseChatModel: m, closer: nil}, nil
+}
+
 // NewCloseableChatModel creates a ChatModel with proper resource management.
 // Callers MUST call Close() when done to release resources.
 func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel, error) {
@@ -118,18 +137,10 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 
 	switch cfg.Provider {
 	case ProviderOpenAI:
-		if cfg.APIKey == "" {
-			return nil, fmt.Errorf("OpenAI API key is required")
-		}
-		m, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-			Model:   cfg.Model,
-			APIKey:  cfg.APIKey,
-			Timeout: timeout,
-		})
-		if err != nil {
-			return nil, err
-		}
-		return &CloseableChatModel{BaseChatModel: m, closer: nil}, nil
+		return newOpenAICompatibleChatModel(ctx, cfg, timeout)
+
+	case ProviderBedrock:
+		return newOpenAICompatibleChatModel(ctx, cfg, timeout)
 
 	case ProviderOllama:
 		baseURL := cfg.BaseURL
@@ -214,7 +225,7 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("unsupported LLM provider: %s (supported: openai, ollama, anthropic, gemini)", cfg.Provider)
+		return nil, fmt.Errorf("unsupported LLM provider: %s (supported: openai, ollama, anthropic, bedrock, gemini)", cfg.Provider)
 	}
 }
 
@@ -229,6 +240,8 @@ func ValidateProvider(p string) (Provider, error) {
 		return ProviderAnthropic, nil
 	case ProviderGemini:
 		return ProviderGemini, nil
+	case ProviderBedrock:
+		return ProviderBedrock, nil
 	case ProviderTEI:
 		return ProviderTEI, nil
 	default:
@@ -259,16 +272,41 @@ func NewCloseableEmbedder(ctx context.Context, cfg Config) (*CloseableEmbedder, 
 	switch embeddingProvider {
 	case ProviderOpenAI:
 		if apiKey == "" {
-			return nil, fmt.Errorf("OpenAI API key is required")
+			return nil, fmt.Errorf("%s API key is required", embeddingProvider)
 		}
 		modelName := cfg.EmbeddingModel
 		if modelName == "" {
 			modelName = DefaultOpenAIEmbeddingModel
 		}
-		e, err := openaiEmbed.NewEmbedder(ctx, &openaiEmbed.EmbeddingConfig{
+		embeddingCfg := &openaiEmbed.EmbeddingConfig{
 			Model:  modelName,
 			APIKey: apiKey,
-		})
+		}
+		if baseURL != "" {
+			embeddingCfg.BaseURL = baseURL
+		}
+		e, err := openaiEmbed.NewEmbedder(ctx, embeddingCfg)
+		if err != nil {
+			return nil, err
+		}
+		return &CloseableEmbedder{Embedder: e, closer: nil}, nil
+
+	case ProviderBedrock:
+		if apiKey == "" {
+			return nil, fmt.Errorf("%s API key is required", embeddingProvider)
+		}
+		modelName := cfg.EmbeddingModel
+		if modelName == "" {
+			modelName = DefaultBedrockEmbeddingModel
+		}
+		embeddingCfg := &openaiEmbed.EmbeddingConfig{
+			Model:  modelName,
+			APIKey: apiKey,
+		}
+		if baseURL != "" {
+			embeddingCfg.BaseURL = baseURL
+		}
+		e, err := openaiEmbed.NewEmbedder(ctx, embeddingCfg)
 		if err != nil {
 			return nil, err
 		}

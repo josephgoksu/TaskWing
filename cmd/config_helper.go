@@ -4,8 +4,11 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -30,6 +33,7 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	}
 	apiKey, _ := cmd.Flags().GetString("api-key")
 	ollamaURL, _ := cmd.Flags().GetString("ollama-url")
+	ollamaURLSet := cmd.Flags().Changed("ollama-url")
 
 	// Track if we need to prompt for interactive setup
 	providerFromPrompt := false
@@ -103,7 +107,25 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	// Interactive Prompt for API Key (Only if needed for the selected provider)
 	requiresKey := llmProvider == llm.ProviderOpenAI ||
 		llmProvider == llm.ProviderAnthropic ||
-		llmProvider == llm.ProviderGemini
+		llmProvider == llm.ProviderGemini ||
+		llmProvider == llm.ProviderBedrock
+
+	bedrockRegion := ""
+	if llmProvider == llm.ProviderBedrock {
+		bedrockRegion = config.ResolveBedrockRegion()
+		if bedrockRegion == "" && ui.IsInteractive() {
+			inputRegion, promptErr := promptBedrockRegion()
+			if promptErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Bedrock region prompt failed: %v\n", promptErr)
+			} else {
+				bedrockRegion = inputRegion
+			}
+		}
+		if bedrockRegion == "" {
+			return llm.Config{}, fmt.Errorf("AWS Bedrock region is required: set config 'llm.bedrock.region' or env var AWS_REGION")
+		}
+		viper.Set("llm.bedrock.region", bedrockRegion)
+	}
 
 	if requiresKey && apiKey == "" {
 		// Only prompt if we are in an interactive terminal
@@ -130,6 +152,11 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 						fmt.Printf("✓ API key for %s saved to ~/.taskwing/config.yaml\n", provider)
 					}
 				}
+				if llmProvider == llm.ProviderBedrock {
+					if err := config.SaveBedrockRegion(bedrockRegion); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to save Bedrock region: %v\n", err)
+					}
+				}
 				// Also update Viper's in-memory config so subsequent calls in this process find the key
 				viper.Set(fmt.Sprintf("llm.apiKeys.%s", llmProvider), apiKey)
 			}
@@ -139,18 +166,34 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		if err := config.SaveGlobalLLMConfigWithModel(provider, model, apiKey); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to save config: %v\n", err)
 		}
+		if llmProvider == llm.ProviderBedrock {
+			if err := config.SaveBedrockRegion(bedrockRegion); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to save Bedrock region: %v\n", err)
+			}
+		}
 	}
 
 	if requiresKey && apiKey == "" {
 		return llm.Config{}, fmt.Errorf("API key required for %s: use --api-key, set config 'llm.apiKeys.%s', or set env var (%s)", provider, provider, llm.GetEnvVarForProvider(string(llmProvider)))
 	}
 
-	// 4. Base URL (Ollama)
-	if ollamaURL == "" {
-		ollamaURL = viper.GetString("llm.baseURL")
+	// 4. Base URL
+	baseURL := ""
+	switch llmProvider {
+	case llm.ProviderOllama, llm.ProviderOpenAI:
+		if ollamaURLSet {
+			baseURL = ollamaURL
+		}
+	case llm.ProviderBedrock:
+		// Bedrock endpoint is resolved from region/base_url config.
+	default:
+		// Keep default (empty) unless explicit llm.baseURL is configured for OpenAI-compatible runtimes.
 	}
-	if ollamaURL == "" {
-		ollamaURL = viper.GetString("llm.ollamaURL") // Legacy support
+	if baseURL == "" {
+		baseURL, err = config.ResolveProviderBaseURL(llmProvider)
+		if err != nil {
+			return llm.Config{}, err
+		}
 	}
 
 	// 5. Embedding Model
@@ -173,10 +216,25 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 		Model:          model,
 		EmbeddingModel: embeddingModel,
 		APIKey:         apiKey,
-		BaseURL:        ollamaURL,
+		BaseURL:        baseURL,
 		ThinkingBudget: thinkingBudget,
 		Timeout:        timeout,
 	}, nil
+}
+
+func promptBedrockRegion() (string, error) {
+	const defaultRegion = "us-east-1"
+	fmt.Printf("AWS Bedrock region [%s]: ", defaultRegion)
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	region := strings.TrimSpace(line)
+	if region == "" {
+		region = defaultRegion
+	}
+	return region, nil
 }
 
 // getLLMConfigForRole returns the appropriate LLM config for a specific role.
