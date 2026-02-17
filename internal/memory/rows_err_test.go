@@ -159,31 +159,6 @@ func TestListNodes_ErrorPropagation(t *testing.T) {
 	}
 }
 
-// TestListFeatures_ErrorPropagation tests that errors are propagated from ListFeatures.
-func TestListFeatures_ErrorPropagation(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "taskwing-rows-err-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	store, err := NewSQLiteStore(tmpDir)
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-
-	// Close the database
-	if err := store.Close(); err != nil {
-		t.Fatalf("failed to close store: %v", err)
-	}
-
-	// Now listing features should return an error
-	_, err = store.ListFeatures()
-	if err == nil {
-		t.Error("expected error when listing features on closed database, got nil")
-	}
-}
-
 // TestSearchPlans_ErrorPropagation tests that errors are propagated from SearchPlans.
 func TestSearchPlans_ErrorPropagation(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "taskwing-rows-err-test-*")
@@ -248,23 +223,9 @@ func TestRowsErrPropagation_TableDriven(t *testing.T) {
 			},
 		},
 		{
-			name: "ListFeatures",
-			testFunc: func(store *SQLiteStore) error {
-				_, err := store.ListFeatures()
-				return err
-			},
-		},
-		{
 			name: "ListNodes",
 			testFunc: func(store *SQLiteStore) error {
 				_, err := store.ListNodes("")
-				return err
-			},
-		},
-		{
-			name: "ListPatterns",
-			testFunc: func(store *SQLiteStore) error {
-				_, err := store.ListPatterns()
 				return err
 			},
 		},
@@ -286,13 +247,6 @@ func TestRowsErrPropagation_TableDriven(t *testing.T) {
 			name: "ListToolVersions",
 			testFunc: func(store *SQLiteStore) error {
 				_, err := store.ListToolVersions()
-				return err
-			},
-		},
-		{
-			name: "Check",
-			testFunc: func(store *SQLiteStore) error {
-				_, err := store.Check()
 				return err
 			},
 		},
@@ -398,13 +352,6 @@ func TestRowsErrPropagation_SuccessPath(t *testing.T) {
 		}
 	})
 
-	t.Run("ListFeatures", func(t *testing.T) {
-		_, err := store.ListFeatures()
-		if err != nil {
-			t.Errorf("ListFeatures failed: %v", err)
-		}
-	})
-
 	t.Run("Check", func(t *testing.T) {
 		_, err := store.Check()
 		if err != nil {
@@ -495,14 +442,6 @@ func TestErrorMessageContainsContext(t *testing.T) {
 				return err
 			},
 			contains: "node", // Should mention "node" somewhere in error
-		},
-		{
-			name: "ListFeatures",
-			testFunc: func() error {
-				_, err := store.ListFeatures()
-				return err
-			},
-			contains: "feature", // Should mention "feature" somewhere in error
 		},
 	}
 

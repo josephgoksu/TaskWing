@@ -57,6 +57,11 @@ const (
 	DefaultMaxSessionMinutes  = 30
 )
 
+const workflowContractBanner = `TaskWing Workflow Contract v1
+1) Do not start implementation before a clarified and approved plan/task checkpoint.
+2) Do not mark tasks done without fresh verification evidence.
+3) Do not propose debug fixes before root-cause evidence.`
+
 var hookCmd = &cobra.Command{
 	Use:    "hook",
 	Short:  "Hook commands for Claude Code integration",
@@ -408,9 +413,11 @@ Active Plan: %s
 The Stop hook is configured to automatically continue to the next task.
 Circuit breakers are configured in .claude/settings.json (defaults: %d tasks, %d min).
 
+%s
+
 Use /tw-next to start the first task, or it will auto-continue after each task.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-`, session.SessionID, session.StartedAt.Format("15:04:05"), planInfo, DefaultMaxTasksPerSession, DefaultMaxSessionMinutes)
+`, session.SessionID, session.StartedAt.Format("15:04:05"), planInfo, DefaultMaxTasksPerSession, DefaultMaxSessionMinutes, workflowContractBanner)
 
 	// Auto-inject project knowledge brief
 	if repo != nil {

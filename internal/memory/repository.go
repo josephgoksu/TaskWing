@@ -44,12 +44,7 @@ func (r *Repository) Check() ([]Issue, error) {
 
 // Repair attempts to fix integrity issues in the repository.
 func (r *Repository) Repair() error {
-	// 1. Repair DB issues
-	if err := r.db.Repair(); err != nil {
-		return err
-	}
-	// 2. Ensuring files match DB
-	return r.RebuildFiles()
+	return r.db.Repair()
 }
 
 // Close closes the underlying database connection.

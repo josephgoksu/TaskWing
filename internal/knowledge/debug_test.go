@@ -51,11 +51,6 @@ func (m *MockRepository) DeleteNodesByFiles(_ string, _ []string) error { return
 func (m *MockRepository) GetNodesByFiles(_ string, _ []string) ([]memory.Node, error) {
 	return nil, nil
 }
-func (m *MockRepository) CreateFeature(_ memory.Feature) error             { return nil }
-func (m *MockRepository) CreatePattern(_ memory.Pattern) error             { return nil }
-func (m *MockRepository) AddDecision(_ string, _ memory.Decision) error    { return nil }
-func (m *MockRepository) ListFeatures() ([]memory.Feature, error)          { return nil, nil }
-func (m *MockRepository) GetDecisions(_ string) ([]memory.Decision, error) { return nil, nil }
 func (m *MockRepository) LinkNodes(_, _, _ string, _ float64, _ map[string]any) error {
 	return nil
 }

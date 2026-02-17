@@ -108,7 +108,8 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	requiresKey := llmProvider == llm.ProviderOpenAI ||
 		llmProvider == llm.ProviderAnthropic ||
 		llmProvider == llm.ProviderGemini ||
-		llmProvider == llm.ProviderBedrock
+		llmProvider == llm.ProviderBedrock ||
+		llmProvider == llm.ProviderTaskWing
 
 	bedrockRegion := ""
 	if llmProvider == llm.ProviderBedrock {

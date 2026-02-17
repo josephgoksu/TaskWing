@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Focused `taskwing goal "<goal>"` command for one-shot clarify -> generate -> activate flow.
 - Hard-break CLI surface reduction to core execution workflow commands.
 - Local-only default server bind and strict CORS allowlist behavior.
+- Workflow contract documentation (`docs/WORKFLOW_CONTRACT_V1.md`) with hard-gate refusal language and KPIs.
+- Workflow operations docs for activation and feedback loops (`docs/WORKFLOW_PACK.md`, `docs/PROMPT_FAILURES_LOG.md`).
+- Prompt reliability tests for slash command contracts and cross-assistant command description parity.
 
 ### Changed
 
@@ -19,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - "TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions."
 - Updated slash and MCP prompt contracts to unified `task` and `plan` action-based interfaces.
 - Purged stale/outdated architecture documentation that no longer matches shipped behavior.
+- Reworked `/tw-plan`, `/tw-next`, `/tw-done`, and `/tw-debug` prompts as explicit process contracts with hard gates and refusal fallbacks.
+- Updated slash command descriptions to trigger-focused "Use when ..." phrasing across assistant command generation.
+- Session initialization output now injects TaskWing Workflow Contract v1 for hook-enabled assistants.
 
 ### Fixed
 

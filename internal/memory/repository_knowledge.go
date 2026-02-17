@@ -79,11 +79,6 @@ func (r *Repository) ClearAllKnowledge() error {
 	return r.db.ClearAllKnowledge()
 }
 
-// CreatePattern stores a new pattern in the DB.
-func (r *Repository) CreatePattern(p Pattern) error {
-	return r.db.CreatePattern(p)
-}
-
 // === FTS5 Hybrid Search ===
 
 // ListNodesWithEmbeddings returns all nodes with embeddings in a single query.

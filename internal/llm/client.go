@@ -142,6 +142,13 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 	case ProviderBedrock:
 		return newOpenAICompatibleChatModel(ctx, cfg, timeout)
 
+	case ProviderTaskWing:
+		// TaskWing managed service uses OpenAI-compatible API
+		if cfg.BaseURL == "" {
+			cfg.BaseURL = DefaultTaskWingURL
+		}
+		return newOpenAICompatibleChatModel(ctx, cfg, timeout)
+
 	case ProviderOllama:
 		baseURL := cfg.BaseURL
 		if baseURL == "" {
@@ -225,7 +232,7 @@ func NewCloseableChatModel(ctx context.Context, cfg Config) (*CloseableChatModel
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("unsupported LLM provider: %s (supported: openai, ollama, anthropic, bedrock, gemini)", cfg.Provider)
+		return nil, fmt.Errorf("unsupported LLM provider: %s (supported: taskwing, openai, ollama, anthropic, bedrock, gemini)", cfg.Provider)
 	}
 }
 
@@ -244,6 +251,8 @@ func ValidateProvider(p string) (Provider, error) {
 		return ProviderBedrock, nil
 	case ProviderTEI:
 		return ProviderTEI, nil
+	case ProviderTaskWing:
+		return ProviderTaskWing, nil
 	default:
 		return "", fmt.Errorf("unsupported provider: %s", p)
 	}
@@ -305,6 +314,29 @@ func NewCloseableEmbedder(ctx context.Context, cfg Config) (*CloseableEmbedder, 
 		}
 		if baseURL != "" {
 			embeddingCfg.BaseURL = baseURL
+		}
+		e, err := openaiEmbed.NewEmbedder(ctx, embeddingCfg)
+		if err != nil {
+			return nil, err
+		}
+		return &CloseableEmbedder{Embedder: e, closer: nil}, nil
+
+	case ProviderTaskWing:
+		if apiKey == "" {
+			return nil, fmt.Errorf("TASKWING_API_KEY is required for embeddings")
+		}
+		modelName := cfg.EmbeddingModel
+		if modelName == "" {
+			modelName = DefaultOpenAIEmbeddingModel // TaskWing uses OpenAI-compatible embeddings
+		}
+		taskwingBaseURL := baseURL
+		if taskwingBaseURL == "" {
+			taskwingBaseURL = DefaultTaskWingURL
+		}
+		embeddingCfg := &openaiEmbed.EmbeddingConfig{
+			Model:   modelName,
+			APIKey:  apiKey,
+			BaseURL: taskwingBaseURL,
 		}
 		e, err := openaiEmbed.NewEmbedder(ctx, embeddingCfg)
 		if err != nil {

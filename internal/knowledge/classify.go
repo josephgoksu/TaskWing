@@ -18,7 +18,7 @@ import (
 
 // ClassifyResult contains the AI-inferred classification of content.
 type ClassifyResult struct {
-	Type      string   `json:"type"`      // decision, feature, plan, note
+	Type      string   `json:"type"`      // decision, feature, constraint, pattern, plan, note
 	Summary   string   `json:"summary"`   // Extracted title/summary
 	Relations []string `json:"relations"` // Related topics/concepts
 }
@@ -63,7 +63,7 @@ func Classify(ctx context.Context, content string, cfg llm.Config) (*ClassifyRes
 	if err != nil {
 		// Fallback: try to extract from non-JSON response
 		return &ClassifyResult{
-			Type:    memory.NodeTypeNote,
+			Type:    memory.NodeTypeUnknown,
 			Summary: utils.Truncate(content, 100),
 		}, nil
 	}
@@ -83,13 +83,15 @@ func parseClassifyResponse(response string) (*ClassifyResult, error) {
 
 	// Validate type
 	validTypes := map[string]bool{
-		memory.NodeTypeDecision: true,
-		memory.NodeTypeFeature:  true,
-		memory.NodeTypePlan:     true,
-		memory.NodeTypeNote:     true,
+		memory.NodeTypeDecision:   true,
+		memory.NodeTypeFeature:    true,
+		memory.NodeTypeConstraint: true,
+		memory.NodeTypePattern:    true,
+		memory.NodeTypePlan:       true,
+		memory.NodeTypeNote:       true,
 	}
 	if !validTypes[result.Type] {
-		result.Type = memory.NodeTypeNote
+		result.Type = memory.NodeTypeUnknown
 	}
 
 	return &result, nil

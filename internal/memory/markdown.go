@@ -18,55 +18,17 @@ func NewMarkdownStore(basePath string) *MarkdownStore {
 	return &MarkdownStore{basePath: basePath}
 }
 
-func (s *MarkdownStore) WriteFeature(f Feature, decisions []Decision) error {
-	featuresDir := filepath.Join(s.basePath, "features")
-	if err := os.MkdirAll(featuresDir, 0755); err != nil {
-		return fmt.Errorf("create features dir: %w", err)
-	}
-
-	// Use the feature's FilePath if set, otherwise generate one
-	filePath := f.FilePath
-	if filePath == "" {
-		safeName := strings.ToLower(strings.ReplaceAll(f.Name, " ", "-"))
-		filePath = filepath.Join(featuresDir, safeName+".md")
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# %s\n\n", f.Name))
-	sb.WriteString(fmt.Sprintf("%s\n\n", f.OneLiner))
-
-	if len(decisions) > 0 {
-		sb.WriteString("## Decisions\n\n")
-		for _, d := range decisions {
-			sb.WriteString(fmt.Sprintf("### %s\n", d.Title))
-			sb.WriteString(fmt.Sprintf("- **Summary:** %s\n", d.Summary))
-			if d.Reasoning != "" {
-				sb.WriteString(fmt.Sprintf("- **Why:** %s\n", d.Reasoning))
-			}
-			if d.Tradeoffs != "" {
-				sb.WriteString(fmt.Sprintf("- **Trade-offs:** %s\n", d.Tradeoffs))
-			}
-			sb.WriteString(fmt.Sprintf("- **Date:** %s\n\n", d.CreatedAt.Format("2006-01-02")))
-		}
-	}
-
-	sb.WriteString("## Notes\n\n")
-	sb.WriteString("<!-- Add notes here -->\n")
-
-	return os.WriteFile(filePath, []byte(sb.String()), 0644)
-}
-
 func (s *MarkdownStore) RemoveFile(path string) error {
 	return os.Remove(path)
 }
 
-// ArchitectureData holds all knowledge needed to generate ARCHITECTURE.md
+// ArchitectureData holds all knowledge needed to generate ARCHITECTURE.md.
+// All data comes from the nodes table — the single source of truth.
 type ArchitectureData struct {
-	Features    []Feature
-	Decisions   map[string][]Decision // keyed by FeatureID
-	Patterns    []Node
-	Constraints []Node
-	AllNodes    []Node // For decisions not linked to features
+	Features    []Node // Nodes of type "feature"
+	Decisions   []Node // Nodes of type "decision"
+	Patterns    []Node // Nodes of type "pattern"
+	Constraints []Node // Nodes of type "constraint"
 }
 
 // GenerateArchitectureMD creates a comprehensive ARCHITECTURE.md file
@@ -108,38 +70,23 @@ func (s *MarkdownStore) GenerateArchitectureMD(data ArchitectureData, projectNam
 	// Features Section
 	sb.WriteString("## Features & Components\n\n")
 	sb.WriteString("Major functional areas and their architectural decisions.\n\n")
-	// Track seen decisions to avoid duplication in Key Decisions section
-	seenDecisions := make(map[string]bool)
 
 	if len(data.Features) == 0 {
 		sb.WriteString("_No features documented yet._\n\n")
 	} else {
-		// Sort features alphabetically
-		sortedFeatures := make([]Feature, len(data.Features))
+		// Sort features alphabetically by summary
+		sortedFeatures := make([]Node, len(data.Features))
 		copy(sortedFeatures, data.Features)
 		sort.Slice(sortedFeatures, func(i, j int) bool {
-			return sortedFeatures[i].Name < sortedFeatures[j].Name
+			return sortedFeatures[i].Summary < sortedFeatures[j].Summary
 		})
 
 		for _, f := range sortedFeatures {
-			sb.WriteString(fmt.Sprintf("### %s\n\n", f.Name))
-			sb.WriteString(fmt.Sprintf("%s\n\n", f.OneLiner))
-
-			// Feature-specific decisions
-			if decisions, ok := data.Decisions[f.ID]; ok && len(decisions) > 0 {
-				sb.WriteString("**Decisions:**\n\n")
-				for _, d := range decisions {
-					sb.WriteString(fmt.Sprintf("- **%s**: %s", d.Title, d.Summary))
-					if d.Reasoning != "" {
-						sb.WriteString(fmt.Sprintf(" — _Why: %s_", d.Reasoning))
-					}
-					sb.WriteString("\n")
-
-					// Track as seen
-					seenDecisions[d.Title] = true
-					seenDecisions[d.Summary] = true
-				}
-				sb.WriteString("\n")
+			sb.WriteString(fmt.Sprintf("### %s\n\n", f.Summary))
+			content := strings.TrimPrefix(f.Content, f.Summary)
+			content = strings.TrimSpace(content)
+			if content != "" {
+				sb.WriteString(fmt.Sprintf("%s\n\n", content))
 			}
 		}
 	}
@@ -170,28 +117,16 @@ func (s *MarkdownStore) GenerateArchitectureMD(data ArchitectureData, projectNam
 	}
 	sb.WriteString("---\n\n")
 
-	// Key Decisions Section (standalone decisions from nodes, not linked to features)
+	// Key Decisions Section
 	sb.WriteString("## Key Decisions\n\n")
 	sb.WriteString("Cross-cutting architectural decisions extracted from the codebase.\n\n")
 
-	// Filter nodes of type "decision" that aren't already shown under features
-	var standaloneDecisions []Node
-	for _, n := range data.AllNodes {
-		if n.Type == NodeTypeDecision {
-			// Skip if already shown under a feature
-			if seenDecisions[n.Summary] {
-				continue
-			}
-			standaloneDecisions = append(standaloneDecisions, n)
-		}
-	}
-
-	if len(standaloneDecisions) == 0 {
-		sb.WriteString("_No standalone decisions documented yet._\n\n")
+	if len(data.Decisions) == 0 {
+		sb.WriteString("_No decisions documented yet._\n\n")
 	} else {
 		// Group by source agent if available
 		byAgent := make(map[string][]Node)
-		for _, d := range standaloneDecisions {
+		for _, d := range data.Decisions {
 			agent := d.SourceAgent
 			if agent == "" {
 				agent = "general"

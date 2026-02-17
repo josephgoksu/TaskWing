@@ -72,7 +72,8 @@ func ParseModelSpec(spec string, role llm.ModelRole) (llm.Config, error) {
 	requiresKey := llmProvider == llm.ProviderOpenAI ||
 		llmProvider == llm.ProviderAnthropic ||
 		llmProvider == llm.ProviderGemini ||
-		llmProvider == llm.ProviderBedrock
+		llmProvider == llm.ProviderBedrock ||
+		llmProvider == llm.ProviderTaskWing
 
 	if requiresKey && apiKey == "" {
 		return llm.Config{}, fmt.Errorf("API key required for %s: set env var %s", provider, llm.GetEnvVarForProvider(provider))
@@ -226,6 +227,15 @@ func ResolveProviderBaseURL(provider llm.Provider) (string, error) {
 		return baseURL, nil
 	case llm.ProviderBedrock:
 		return ResolveBedrockBaseURL()
+	case llm.ProviderTaskWing:
+		baseURL := strings.TrimSpace(viper.GetString("llm.taskwing.base_url"))
+		if baseURL == "" {
+			baseURL = strings.TrimSpace(viper.GetString("llm.baseURL"))
+		}
+		if baseURL == "" {
+			baseURL = llm.DefaultTaskWingURL
+		}
+		return baseURL, nil
 	default:
 		baseURL := strings.TrimSpace(viper.GetString("llm.baseURL"))
 		if baseURL == "" {

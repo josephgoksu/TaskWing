@@ -11,9 +11,7 @@ type FindingType string
 const (
 	FindingTypeFeature    FindingType = "feature"
 	FindingTypeDecision   FindingType = "decision"
-	FindingTypeDependency FindingType = "dependency"
 	FindingTypePattern    FindingType = "pattern"
-	FindingTypeRisk       FindingType = "risk"
 	FindingTypeConstraint FindingType = "constraint"
 )
 

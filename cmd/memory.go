@@ -225,9 +225,6 @@ Checks for:
 		fmt.Printf("Found %d issues:\n\n", len(issues))
 		for i, issue := range issues {
 			fmt.Printf("%d. [%s] %s\n", i+1, issue.Type, issue.Message)
-			if issue.FeatureID != "" {
-				fmt.Printf("   Feature: %s\n", issue.FeatureID)
-			}
 		}
 
 		fmt.Println("\nRun 'taskwing memory repair' to fix these issues.")
@@ -284,10 +281,10 @@ Actions:
 // memory rebuild command
 var memoryRebuildCmd = &cobra.Command{
 	Use:   "rebuild-index",
-	Short: "Rebuild the index cache",
-	Long: `Regenerate the index.json cache from SQLite data.
+	Short: "Rebuild the FTS index",
+	Long: `Rebuild the full-text search index from SQLite data.
 
-This is useful if the cache is out of sync with the database.`,
+This is useful if the search index is out of sync with the database.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		memoryPath, err := config.GetMemoryBasePath()
 		if err != nil {
@@ -299,16 +296,12 @@ This is useful if the cache is out of sync with the database.`,
 		}
 		defer func() { _ = repo.Close() }()
 
-		if err := repo.RebuildFiles(); err != nil {
-			return fmt.Errorf("rebuild files: %w", err)
-		}
-		// Also rebuild index if repo has that method exposed or via internal db access
-		if err := repo.GetDB().RebuildIndex(); err != nil {
-			return fmt.Errorf("rebuild index: %w", err)
+		if err := repo.RebuildFTS(); err != nil {
+			return fmt.Errorf("rebuild FTS index: %w", err)
 		}
 
-		index, _ := repo.GetIndex()
-		fmt.Printf("✓ Index rebuilt with %d features\n", len(index.Features))
+		nodes, _ := repo.ListNodes("")
+		fmt.Printf("✓ FTS index rebuilt with %d nodes\n", len(nodes))
 		return nil
 	},
 }
@@ -850,13 +843,10 @@ Examples:
 		} else {
 			fmt.Printf("✓ Backfill complete: %d updated, %d unchanged, %d skipped\n", updated, unchanged, skipped)
 
-			// Regenerate markdown mirror if changes were made
+			// Rebuild FTS index if changes were made
 			if updated > 0 {
-				fmt.Println("Regenerating markdown mirror...")
-				if err := repo.RebuildFiles(); err != nil {
-					fmt.Printf("⚠  Warning: failed to rebuild markdown files: %v\n", err)
-				} else {
-					fmt.Println("✓ Markdown mirror updated")
+				if err := repo.RebuildFTS(); err != nil {
+					fmt.Printf("⚠  Warning: failed to rebuild FTS index: %v\n", err)
 				}
 			}
 		}

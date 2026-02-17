@@ -53,19 +53,13 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 		return err
 	}
 
-	// 3. Ingest Structured Data (Features, Decisions, Patterns, Constraints)
-	featuresCreated, decisionsCreated, patternsCreated, constraintsFound, err := s.ingestStructuredData(findings)
-	if err != nil {
-		return err
-	}
-
-	// 4. Link Knowledge Graph (evidence-based + semantic)
+	// 3. Link Knowledge Graph (evidence-based + semantic)
 	evidenceEdges, semanticEdges, err := s.linkKnowledgeGraph(verbose)
 	if err != nil {
 		return err
 	}
 
-	// 5. Process LLM-extracted relationships
+	// 4. Process LLM-extracted relationships
 	llmEdges := s.linkByLLMRelationships(relationships, nodesByTitle)
 
 	totalEdges := evidenceEdges + semanticEdges + llmEdges
@@ -75,8 +69,8 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 		if rejectedCount > 0 {
 			fmt.Printf("\n⚠️  Rejected %d findings with unverifiable evidence.\n", rejectedCount)
 		}
-		fmt.Printf("\n✅ Saved %d knowledge nodes (%d duplicates skipped), %d features, %d patterns, %d decisions, %d constraints, %d edges (%d evidence, %d semantic, %d llm) to memory.\n",
-			nodesCreated, skippedDuplicates, featuresCreated, patternsCreated, decisionsCreated, constraintsFound, totalEdges, evidenceEdges, semanticEdges, llmEdges)
+		fmt.Printf("\n✅ Saved %d knowledge nodes (%d duplicates skipped), %d edges (%d evidence, %d semantic, %d llm) to memory.\n",
+			nodesCreated, skippedDuplicates, totalEdges, evidenceEdges, semanticEdges, llmEdges)
 	}
 
 	return nil
@@ -265,120 +259,6 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 		}
 	}
 	return nodesCreated, skippedDuplicates, nodesByTitle, nil
-}
-
-// ingestStructuredData processes Features, Decisions, Patterns, and Constraints
-func (s *Service) ingestStructuredData(findings []core.Finding) (int, int, int, int, error) {
-	featuresCreated := 0
-	decisionsCreated := 0
-	patternsCreated := 0
-	constraintsFound := 0
-	featureIDByName := make(map[string]string)
-
-	// Load existing features
-	if existing, err := s.repo.ListFeatures(); err == nil {
-		for _, f := range existing {
-			featureIDByName[strings.ToLower(f.Name)] = f.ID
-		}
-	}
-
-	for _, f := range findings {
-		switch f.Type {
-		case core.FindingTypeFeature:
-			name := strings.TrimSpace(f.Title)
-			if name == "" {
-				continue
-			}
-			key := strings.ToLower(name)
-			if _, exists := featureIDByName[key]; exists {
-				continue
-			}
-
-			newID := "f-" + uuid.New().String()[:8]
-			if err := s.repo.CreateFeature(memory.Feature{
-				ID:        newID,
-				Name:      name,
-				OneLiner:  f.Description,
-				Status:    memory.FeatureStatusActive,
-				CreatedAt: time.Now(),
-			}); err == nil {
-				featureIDByName[key] = newID
-				featuresCreated++
-			}
-
-		case core.FindingTypePattern:
-			name := strings.TrimSpace(f.Title)
-			if name == "" {
-				continue
-			}
-			context, _ := f.Metadata["context"].(string)
-			solution, _ := f.Metadata["solution"].(string)
-			consequences, _ := f.Metadata["consequences"].(string)
-
-			if err := s.repo.CreatePattern(memory.Pattern{
-				Name:         name,
-				Context:      context,
-				Solution:     solution,
-				Consequences: consequences,
-			}); err == nil {
-				patternsCreated++
-			}
-
-		case core.FindingTypeDecision:
-			title := strings.TrimSpace(f.Title)
-			if title == "" {
-				continue
-			}
-			// Component inference
-			compName, _ := f.Metadata["component"].(string)
-			if compName == "" {
-				switch f.SourceAgent {
-				case "git":
-					compName = "Project Evolution"
-				case "deps":
-					compName = "Technology Stack"
-				default:
-					compName = "Core Architecture"
-				}
-			}
-
-			// Ensure feature exists
-			featKey := strings.ToLower(compName)
-			featID := featureIDByName[featKey]
-			if featID == "" {
-				featID = "f-" + uuid.New().String()[:8]
-				if err := s.repo.CreateFeature(memory.Feature{
-					ID:       featID,
-					Name:     compName,
-					OneLiner: "Auto-detected component",
-					Status:   memory.FeatureStatusActive,
-				}); err == nil {
-					featureIDByName[featKey] = featID
-					featuresCreated++
-				}
-			}
-
-			if featID != "" {
-				if err := s.repo.AddDecision(featID, memory.Decision{
-					Title:     title,
-					Summary:   f.Description,
-					Reasoning: f.Why,
-					Tradeoffs: f.Tradeoffs,
-				}); err == nil {
-					decisionsCreated++
-				}
-			}
-
-		case core.FindingTypeConstraint:
-			// Constraints are stored as nodes (already done in ingestNodesWithIndex)
-			// We just count them here for reporting
-			if strings.TrimSpace(f.Title) != "" {
-				constraintsFound++
-			}
-		}
-	}
-
-	return featuresCreated, decisionsCreated, patternsCreated, constraintsFound, nil
 }
 
 // linkKnowledgeGraph creates meaningful edges based on:

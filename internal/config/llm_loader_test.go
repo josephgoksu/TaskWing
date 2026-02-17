@@ -166,3 +166,66 @@ func TestLoadLLMConfig_Bedrock(t *testing.T) {
 		t.Fatalf("LoadLLMConfig() apiKey mismatch")
 	}
 }
+
+// ============================================
+// TaskWing managed provider tests
+// ============================================
+
+func TestResolveProviderBaseURL_TaskWing_Default(t *testing.T) {
+	resetViperForTest(t)
+	got, err := ResolveProviderBaseURL(llm.ProviderTaskWing)
+	if err != nil {
+		t.Fatalf("ResolveProviderBaseURL(taskwing) error = %v", err)
+	}
+	if got != llm.DefaultTaskWingURL {
+		t.Fatalf("ResolveProviderBaseURL(taskwing) = %q, want %q", got, llm.DefaultTaskWingURL)
+	}
+}
+
+func TestResolveProviderBaseURL_TaskWing_Custom(t *testing.T) {
+	resetViperForTest(t)
+	customURL := "https://custom.inference.example.com/v1"
+	viper.Set("llm.taskwing.base_url", customURL)
+	got, err := ResolveProviderBaseURL(llm.ProviderTaskWing)
+	if err != nil {
+		t.Fatalf("ResolveProviderBaseURL(taskwing) error = %v", err)
+	}
+	if got != customURL {
+		t.Fatalf("ResolveProviderBaseURL(taskwing) = %q, want %q", got, customURL)
+	}
+}
+
+func TestParseModelSpec_TaskWingProvider(t *testing.T) {
+	resetViperForTest(t)
+	t.Setenv("TASKWING_API_KEY", "tw-test-key")
+
+	cfg, err := ParseModelSpec("taskwing:taskwing-brain", llm.RoleBootstrap)
+	if err != nil {
+		t.Fatalf("ParseModelSpec(taskwing:taskwing-brain) error = %v", err)
+	}
+	if cfg.Provider != llm.ProviderTaskWing {
+		t.Fatalf("provider = %q, want %q", cfg.Provider, llm.ProviderTaskWing)
+	}
+	if cfg.Model != "taskwing-brain" {
+		t.Fatalf("model = %q, want taskwing-brain", cfg.Model)
+	}
+	if cfg.APIKey != "tw-test-key" {
+		t.Fatalf("apiKey = %q, want tw-test-key", cfg.APIKey)
+	}
+	if cfg.BaseURL != llm.DefaultTaskWingURL {
+		t.Fatalf("baseURL = %q, want %q", cfg.BaseURL, llm.DefaultTaskWingURL)
+	}
+}
+
+func TestParseModelSpec_TaskWingNoKey(t *testing.T) {
+	resetViperForTest(t)
+	t.Setenv("TASKWING_API_KEY", "")
+
+	_, err := ParseModelSpec("taskwing:taskwing-brain", llm.RoleBootstrap)
+	if err == nil {
+		t.Fatal("ParseModelSpec(taskwing:...) should fail without TASKWING_API_KEY")
+	}
+	if !strings.Contains(err.Error(), "TASKWING_API_KEY") {
+		t.Fatalf("error should mention TASKWING_API_KEY, got: %v", err)
+	}
+}

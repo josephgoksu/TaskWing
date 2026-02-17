@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -44,6 +45,17 @@ func NewMemoryApp(ctx *Context) *MemoryApp {
 func (a *MemoryApp) Add(ctx context.Context, content string, opts AddOptions) (*AddResult, error) {
 	if content == "" {
 		return nil, fmt.Errorf("content cannot be empty")
+	}
+
+	// Quality gate: minimum content length
+	trimmed := strings.TrimSpace(content)
+	if len(trimmed) < 20 {
+		return nil, fmt.Errorf("content too short (minimum 20 characters, got %d)", len(trimmed))
+	}
+
+	// Quality gate: reject noise content
+	if isNoiseContent(trimmed) {
+		return nil, fmt.Errorf("content rejected: appears to be placeholder or noise")
 	}
 
 	ks := knowledge.NewService(a.ctx.Repo, a.ctx.LLMCfg)
@@ -116,4 +128,31 @@ func (a *MemoryApp) Get(ctx context.Context, id string) (*knowledge.NodeResponse
 	// Score of 0 since this isn't a search result
 	resp := knowledge.NodeToResponse(*node, 0)
 	return &resp, nil
+}
+
+// isNoiseContent detects content that shouldn't be stored as knowledge:
+// single words, URL-only content, or common placeholder text.
+func isNoiseContent(content string) bool {
+	// Single word (no spaces)
+	if !strings.Contains(content, " ") {
+		return true
+	}
+
+	// URL-only content
+	lower := strings.ToLower(content)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		if !strings.Contains(content, " ") {
+			return true
+		}
+	}
+
+	// Common placeholder/test strings
+	placeholders := []string{"test", "hello world", "foo bar", "lorem ipsum", "asdf", "todo", "fixme"}
+	for _, p := range placeholders {
+		if lower == p {
+			return true
+		}
+	}
+
+	return false
 }

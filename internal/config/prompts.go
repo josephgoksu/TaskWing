@@ -445,7 +445,7 @@ TEXT:
 
 Respond in JSON format only:
 {
-  "type": "decision|feature|plan|note",
+  "type": "decision|feature|constraint|pattern|plan|note",
   "summary": "Brief 1-line summary (max 100 chars)",
   "relations": ["topic1", "topic2"]
 }
@@ -453,8 +453,10 @@ Respond in JSON format only:
 CLASSIFICATION RULES:
 - "decision": Explains WHY something was chosen, trade-offs, architectural choices
 - "feature": Describes WHAT a component/capability does
+- "constraint": A mandatory rule that MUST be followed (uses words like MUST, NEVER, ALWAYS, REQUIRED, CRITICAL)
+- "pattern": A recurring practice, workflow, or convention (e.g., "Repository Pattern", "CI/CD pipeline steps")
 - "plan": Future work, TODOs, proposed changes
-- "note": General information, documentation, context
+- "note": General information, documentation, context that doesn't fit above categories
 
 JSON ONLY, no explanation:`
 

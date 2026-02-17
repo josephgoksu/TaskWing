@@ -386,6 +386,29 @@ var ModelRegistry = []Model{
 		Category:       CategoryBalanced,
 		MaxInputTokens: 128_000,
 	},
+
+	// ============================================
+	// TaskWing Managed Models (fine-tuned, hosted)
+	// Optimized for architecture extraction tasks.
+	// Requires TASKWING_API_KEY. Endpoint configurable via llm.taskwing.base_url.
+	// ============================================
+	{
+		ID:             "taskwing-brain",
+		Provider:       "TaskWing",
+		ProviderID:     ProviderTaskWing,
+		Aliases:        []string{"taskwing-brain-7b"},
+		IsDefault:      true,
+		Category:       CategoryBalanced,
+		MaxInputTokens: 32_768,
+	},
+	{
+		ID:             "taskwing-brain-lite",
+		Provider:       "TaskWing",
+		ProviderID:     ProviderTaskWing,
+		Aliases:        []string{"taskwing-brain-4b"},
+		Category:       CategoryFast,
+		MaxInputTokens: 32_768,
+	},
 }
 
 // modelIndex is built at init time for fast lookups
@@ -534,6 +557,8 @@ func InferProvider(modelID string) (string, bool) {
 		return ProviderBedrock, true
 	case strings.HasPrefix(modelID, "gemini-"):
 		return ProviderGemini, true
+	case strings.HasPrefix(modelID, "taskwing-brain"):
+		return ProviderTaskWing, true
 	case strings.HasPrefix(modelID, "llama"), strings.HasPrefix(modelID, "mistral"), strings.HasPrefix(modelID, "codellama"), strings.HasPrefix(modelID, "phi"):
 		return ProviderOllama, true
 	}
@@ -594,10 +619,14 @@ func GetModelsForProvider(providerID string) []ModelOption {
 
 func formatPriceInfo(providerID string, input, output float64) string {
 	if input == 0 && output == 0 {
-		if providerID == ProviderOllama {
+		switch providerID {
+		case ProviderOllama:
 			return "local/free"
+		case ProviderTaskWing:
+			return "managed (see taskwing.dev)"
+		default:
+			return "pricing varies"
 		}
-		return "pricing varies"
 	}
 	return fmt.Sprintf("$%.2f/$%.2f per 1M tokens", input, output)
 }
@@ -667,7 +696,7 @@ func GetProviders() []ProviderInfo {
 
 	var providers []ProviderInfo
 	// Return in consistent order
-	providerOrder := []string{ProviderOpenAI, ProviderAnthropic, ProviderBedrock, ProviderGemini, ProviderOllama}
+	providerOrder := []string{ProviderTaskWing, ProviderOpenAI, ProviderAnthropic, ProviderBedrock, ProviderGemini, ProviderOllama}
 	for _, id := range providerOrder {
 		if p, exists := providerMap[id]; exists {
 			envVar := GetEnvVarForProvider(id)
@@ -689,7 +718,8 @@ var providerEnvVars = map[string]string{
 	ProviderAnthropic: "ANTHROPIC_API_KEY",
 	ProviderBedrock:   "BEDROCK_API_KEY",
 	ProviderGemini:    "GEMINI_API_KEY",
-	ProviderOllama:    "", // Local, no API key needed
+	ProviderOllama:    "",                 // Local, no API key needed
+	ProviderTaskWing:  "TASKWING_API_KEY", // Managed inference service
 }
 
 // GetEnvVarForProvider returns the environment variable name for a provider's API key.

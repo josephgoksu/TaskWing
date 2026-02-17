@@ -2,7 +2,6 @@ package memory
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -195,16 +194,13 @@ func TestMarkdownMirrorAfterWorkspaceUpdate(t *testing.T) {
 		t.Fatalf("UpdateNodeWorkspace failed: %v", err)
 	}
 
-	// Rebuild files (markdown mirror)
-	if err := repo.RebuildFiles(); err != nil {
-		t.Fatalf("RebuildFiles failed: %v", err)
+	// Verify node was updated
+	node, err := repo.GetNode("test-feature-001")
+	if err != nil {
+		t.Fatalf("GetNode failed: %v", err)
 	}
-
-	// Verify features directory exists
-	featuresDir := filepath.Join(tmpDir, "features")
-	if _, err := os.Stat(featuresDir); os.IsNotExist(err) {
-		// Features dir might not exist if no features to write - that's OK
-		t.Log("features directory does not exist (expected if no writable features)")
+	if node.Workspace != "osprey" {
+		t.Fatalf("expected workspace 'osprey', got %q", node.Workspace)
 	}
 }
 

@@ -6,43 +6,24 @@ import (
 
 // GenerateArchitectureMD creates a comprehensive ARCHITECTURE.md file
 // that consolidates all project knowledge into a single document.
+// All data is sourced from the nodes table — the single source of truth.
 func (r *Repository) GenerateArchitectureMD(projectName string) error {
-	// Gather all features
-	featureSummaries, err := r.db.ListFeatures()
-	if err != nil {
-		return fmt.Errorf("list features: %w", err)
-	}
-
-	features := make([]Feature, 0, len(featureSummaries))
-	decisions := make(map[string][]Decision)
-
-	for _, fs := range featureSummaries {
-		f, err := r.db.GetFeature(fs.ID)
-		if err != nil {
-			continue
-		}
-		features = append(features, *f)
-
-		// Get decisions for this feature
-		decs, err := r.db.GetDecisions(fs.ID)
-		if err == nil && len(decs) > 0 {
-			decisions[fs.ID] = decs
-		}
-	}
-
-	// Gather all nodes by type
 	allNodes, err := r.db.ListNodes("")
 	if err != nil {
 		return fmt.Errorf("list nodes: %w", err)
 	}
 
-	var patterns, constraints []Node
+	var features, decisions, patterns, constraints []Node
 	for _, n := range allNodes {
 		switch n.Type {
-		case NodeTypeConstraint:
-			constraints = append(constraints, n)
+		case NodeTypeFeature:
+			features = append(features, n)
+		case NodeTypeDecision:
+			decisions = append(decisions, n)
 		case NodeTypePattern:
 			patterns = append(patterns, n)
+		case NodeTypeConstraint:
+			constraints = append(constraints, n)
 		}
 	}
 
@@ -51,7 +32,6 @@ func (r *Repository) GenerateArchitectureMD(projectName string) error {
 		Decisions:   decisions,
 		Patterns:    patterns,
 		Constraints: constraints,
-		AllNodes:    allNodes,
 	}
 
 	return r.files.GenerateArchitectureMD(data, projectName)

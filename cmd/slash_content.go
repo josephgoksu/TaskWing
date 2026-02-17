@@ -6,6 +6,13 @@ package cmd
 // slashNextContent is the prompt content for /tw-next
 const slashNextContent = `# Start Next TaskWing Task with Full Context
 
+## TaskWing Workflow Contract v1 (Always On)
+1. No implementation before a clarified and approved plan/task checkpoint.
+2. No completion claim without fresh verification evidence.
+3. No debug fix proposal without root-cause evidence.
+
+If any gate fails, stop and request the missing approval or evidence.
+
 Execute these steps IN ORDER. Do not skip any step.
 
 ## Step 1: Get Next Task
@@ -90,10 +97,17 @@ Display in this format:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` + "```" + `
 
-## Step 6: Begin Implementation
+## Step 6: Implementation Start Gate (Hard Gate)
+Before writing or editing code, ask for an explicit checkpoint:
+"Implementation checkpoint: proceed with task [task_id] now?"
+
+If approval is missing or unclear, STOP and respond with:
+"REFUSAL: I can't start implementation yet. Plan/task checkpoint is incomplete. Please approve this task checkpoint first."
+
+## Step 7: Begin Implementation (Only After Approval)
 Proceed with the task, following the patterns and respecting the constraints shown above.
 
-**CRITICAL**: You MUST call all MCP tools (` + "`task(next)`" + `, ` + "`recall`" + ` x2, ` + "`task(start)`" + `) before showing the brief.
+**CRITICAL**: You MUST call all MCP tools (` + "`task(next)`" + `, ` + "`recall`" + ` x2, ` + "`task(start)`" + `) before showing the brief and before requesting implementation approval.
 
 ## Fallback (No MCP)
 ` + "```bash" + `
@@ -106,6 +120,11 @@ taskwing plan status                  # Check active plan progress
 // slashDoneContent is the prompt content for /tw-done
 const slashDoneContent = `# Complete Task with Architecture-Aware Summary
 
+## TaskWing Workflow Contract v1 (Always On)
+1. No implementation before a clarified and approved plan/task checkpoint.
+2. No completion claim without fresh verification evidence.
+3. No debug fix proposal without root-cause evidence.
+
 Execute these steps IN ORDER.
 
 ## Step 1: Get Current Task
@@ -116,7 +135,18 @@ Call MCP tool ` + "`task`" + ` with action ` + "`current`" + `:
 
 If no active task, inform user and stop.
 
-## Step 2: Generate Completion Report
+## Step 2: Collect Fresh Verification Evidence
+Run the most relevant verification commands for the task (tests, lint, build, or targeted checks).
+
+Document:
+- command run
+- exit status
+- short output snippet proving pass/fail
+
+If verification was not run in this completion attempt, STOP and respond with:
+"REFUSAL: I can't mark this task done yet. Verification evidence is missing. Run fresh checks and include the output."
+
+## Step 3: Generate Completion Report
 
 Create a structured summary covering:
 
@@ -137,7 +167,15 @@ Confirm alignment with codebase patterns.
 - Tests not written
 - Edge cases not handled
 
-## Step 3: Mark Complete
+## Step 4: Completion Gate (Hard Gate)
+Before calling ` + "`task complete`" + `, confirm:
+- evidence is fresh (from Step 2)
+- acceptance criteria status is explicit
+- unresolved failures are called out
+
+If any item is missing, STOP and use the refusal text above.
+
+## Step 5: Mark Complete
 Call MCP tool ` + "`task`" + ` with action ` + "`complete`" + `:
 ` + "```json" + `
 {
@@ -148,7 +186,7 @@ Call MCP tool ` + "`task`" + ` with action ` + "`complete`" + `:
 }
 ` + "```" + `
 
-## Step 4: Confirm to User
+## Step 6: Confirm to User
 
 Display:
 ` + "```" + `
@@ -171,6 +209,8 @@ taskwing task complete TASK_ID
 
 // slashStatusContent is the prompt content for /tw-status
 const slashStatusContent = `# Show Current Task Status
+
+This is a read-only status command. Do not use it to bypass plan, verification, or debug gates.
 
 ## Step 1: Get Current Task
 Call MCP tool ` + "`task`" + ` with action ` + "`current`" + `:
@@ -220,6 +260,16 @@ const slashPlanContent = `# Create Development Plan with Goal
 **Usage:** ` + "`/tw-plan <your goal>`" + ` or ` + "`/tw-plan --batch <your goal>`" + `
 
 **Example:** ` + "`/tw-plan Add Stripe billing integration`" + `
+
+## TaskWing Workflow Contract v1 (Always On)
+1. No implementation before a clarified and approved plan/task checkpoint.
+2. No completion claim without fresh verification evidence.
+3. No debug fix proposal without root-cause evidence.
+
+Hard gate for this command:
+- Do NOT generate, decompose, expand, or finalize a plan until the clarified goal checkpoint is explicitly approved.
+- If approval is missing, STOP and respond with:
+  "REFUSAL: I can't move past planning yet. Clarification checkpoint is incomplete. Please approve the clarified goal first."
 
 ## Mode Selection
 
@@ -273,7 +323,14 @@ Format answers as JSON and call ` + "`plan`" + ` again with action ` + "`clarify
 
 Repeat until is_ready_to_plan is true.
 
-## Step 3: Generate Plan
+## Step 3: Clarification Checkpoint Approval (Hard Gate)
+Before generating:
+- present enriched_goal and assumptions
+- ask for explicit approval ("approve", "yes", or equivalent)
+
+If approval is not explicit, STOP and use the refusal text above.
+
+## Step 4: Generate Plan
 
 When is_ready_to_plan is true, call MCP tool ` + "`plan`" + ` with action ` + "`generate`" + `:
 ` + "```json" + `
@@ -286,7 +343,7 @@ When is_ready_to_plan is true, call MCP tool ` + "`plan`" + ` with action ` + "`
 }
 ` + "```" + `
 
-## Step 4: Present Plan Summary
+## Step 5: Present Plan Summary
 
 Display the generated plan:
 ` + "```" + `
@@ -333,6 +390,7 @@ Ask clarifying questions until is_ready_to_plan is true.
 Save the clarify_session_id and enriched_goal for subsequent steps.
 
 **CHECKPOINT 1**: User approves the enriched goal before proceeding.
+If approval is not explicit, STOP and use the refusal text above.
 
 ## Step 3: Decompose into Phases
 
@@ -464,6 +522,7 @@ const slashSimplifyContent = `# Simplify Code
 **Usage:** ` + "`/tw-simplify [file_path or paste code]`" + `
 
 Reduce code complexity while preserving behavior.
+This command is optimization-only and must not bypass planning, verification, or debugging gates.
 
 ## Step 1: Get the Code
 
@@ -523,9 +582,12 @@ const slashDebugContent = `# Debug Issue
 
 **Example:** ` + "`/tw-debug API returns 500 on /users endpoint`" + `
 
-Get systematic debugging help using AI-powered analysis.
+## TaskWing Workflow Contract v1 (Always On)
+1. No implementation before a clarified and approved plan/task checkpoint.
+2. No completion claim without fresh verification evidence.
+3. No debug fix proposal without root-cause evidence.
 
-## Step 1: Gather Information
+## Phase 1: Capture Problem Statement
 
 **If $ARGUMENTS is empty:**
 Ask the user: "What issue are you experiencing? Please describe the problem, and optionally include any error messages or stack traces."
@@ -534,9 +596,9 @@ Wait for user response.
 **If $ARGUMENTS is provided:**
 Use $ARGUMENTS as the problem description.
 
-## Step 2: Call Debug Tool
+## Phase 2: Root-Cause Evidence Collection (Hard Gate)
+Call MCP tool ` + "`debug`" + ` with the best available evidence:
 
-Call MCP tool ` + "`debug`" + `:
 ` + "```json" + `
 {
   "problem": "[problem description]",
@@ -545,9 +607,17 @@ Call MCP tool ` + "`debug`" + `:
 }
 ` + "```" + `
 
-## Step 3: Present Analysis
+Do NOT propose fixes yet. First collect and present:
+- likely failing component
+- top hypotheses
+- concrete investigation commands
 
+If the response lacks root-cause evidence (only symptoms), STOP and respond with:
+"REFUSAL: I can't propose a fix yet. Root-cause evidence is missing. Run the investigation steps first and share results."
+
+## Phase 3: Present Investigation Plan
 Display the debug analysis:
+
 ` + "```" + `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔍 DEBUG ANALYSIS
@@ -581,9 +651,11 @@ Display the debug analysis:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` + "```" + `
 
-## Step 4: Offer to Help
+## Phase 4: Fix Proposal (Only After Evidence Gate Passes)
+After Phase 2 evidence is present, propose the smallest safe fix and ask whether to implement it now.
 
-Ask if the user wants help implementing any of the investigation steps or fixes.
+## Step 5: Offer to Help
+Ask if the user wants help running investigation steps or implementing the proposed fix.
 
 ## Fallback (No MCP)
 ` + "```bash" + `
@@ -599,6 +671,7 @@ const slashExplainContent = `# Explain Code Symbol
 **Example:** ` + "`/tw-explain NewRecallApp`" + `
 
 Get a deep-dive explanation of a code symbol including its purpose, usage patterns, and call graph.
+This is an analysis command and must not be used to bypass planning, verification, or debug gates.
 
 ## Step 1: Get the Symbol
 
@@ -665,6 +738,8 @@ taskwing mcp
 
 // slashBriefContent is the prompt content for /tw-brief
 const slashBriefContent = `# Project Knowledge Brief
+
+This is a context-priming command and must not be used to bypass planning, verification, or debug gates.
 
 Call MCP tool ` + "`recall`" + ` to get a compact project knowledge brief.
 

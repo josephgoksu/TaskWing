@@ -28,13 +28,6 @@ type Repository interface {
 	DeleteNodesByFiles(agent string, filePaths []string) error
 	GetNodesByFiles(agent string, filePaths []string) ([]memory.Node, error)
 
-	// Feature/Decision/Pattern operations
-	CreateFeature(f memory.Feature) error
-	CreatePattern(p memory.Pattern) error
-	AddDecision(featureID string, d memory.Decision) error
-	ListFeatures() ([]memory.Feature, error)
-	GetDecisions(featureID string) ([]memory.Decision, error)
-
 	// Graph edge operations
 	LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error
 	GetNodeEdges(nodeID string) ([]memory.NodeEdge, error)
@@ -602,7 +595,8 @@ Be concise and direct.
 	return resp.Content, nil
 }
 
-// AddNode process content (classifies, embeds) and saves it
+// AddNode process content (classifies, embeds) and saves it.
+// Uses UpsertNodeBySummary for dedup (Jaccard similarity on summaries).
 func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, error) {
 	node := &memory.Node{
 		Content:     input.Content,
@@ -610,6 +604,11 @@ func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, e
 		Summary:     input.Summary,
 		SourceAgent: input.SourceAgent,
 		CreatedAt:   input.Timestamp,
+	}
+
+	// Default source agent for remember path
+	if node.SourceAgent == "" {
+		node.SourceAgent = "remember"
 	}
 
 	if node.CreatedAt.IsZero() {
@@ -650,8 +649,8 @@ func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, e
 		}
 	}
 
-	// 3. Save to Repo
-	if err := s.repo.CreateNode(node); err != nil {
+	// 3. Save to Repo (upsert for dedup — matches by summary with Jaccard similarity)
+	if err := s.repo.UpsertNodeBySummary(*node); err != nil {
 		return nil, fmt.Errorf("save node: %w", err)
 	}
 

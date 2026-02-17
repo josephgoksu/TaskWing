@@ -211,27 +211,27 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_LEGAL_END -->
 
 ### Slash Commands
-- `/tw-brief` - Get compact project knowledge brief (decisions, patterns, constraints)
-- `/tw-next` - Start next task with architecture context
-- `/tw-done` - Complete current task with summary
-- `/tw-plan` - Create development plan from goal
-- `/tw-status` - Show current task status
-- `/tw-debug` - Get systematic debugging help for issues
-- `/tw-explain` - Get deep-dive explanation of a code symbol
-- `/tw-simplify` - Simplify code while preserving behavior
+- /tw-brief - Use when you need a compact project brief.
+- /tw-next - Use when you are ready to start the next approved task.
+- /tw-done - Use when implementation is verified and ready to complete.
+- /tw-plan - Use when you need to clarify a goal and build a plan.
+- /tw-status - Use when you need current task progress.
+- /tw-debug - Use when debugging must start from root-cause evidence.
+- /tw-explain - Use when you need a deep symbol explanation.
+- /tw-simplify - Use when you want to simplify code without behavior changes.
 
 ### Core Commands
 
 <!-- TASKWING_COMMANDS_START -->
-- `taskwing bootstrap`
-- `taskwing goal "<goal>"`
-- `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
-- `taskwing mcp`
-- `taskwing doctor`
-- `taskwing config`
-- `taskwing start`
+- taskwing bootstrap
+- taskwing goal "<goal>"
+- taskwing task
+- taskwing plan status
+- taskwing slash
+- taskwing mcp
+- taskwing doctor
+- taskwing config
+- taskwing start
 <!-- TASKWING_COMMANDS_END -->
 
 ### MCP Tools (Canonical Contract)
@@ -239,29 +239,31 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
 |------|-------------|
-| `recall` | Retrieve project knowledge (decisions, patterns, constraints) |
-| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
-| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
-| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
-| `debug` | Diagnose issues systematically with AI-powered analysis |
-| `remember` | Store knowledge in project memory |
+| recall | Retrieve project knowledge (decisions, patterns, constraints) |
+| task | Unified task lifecycle (next, current, start, complete) |
+| plan | Plan management (clarify, decompose, expand, generate, finalize, audit) |
+| code | Code intelligence (find, search, explain, callers, impact, simplify) |
+| debug | Diagnose issues systematically with AI-powered analysis |
+| remember | Store knowledge in project memory |
 <!-- TASKWING_MCP_TOOLS_END -->
 
 ### Autonomous Task Execution (Hooks)
 
 TaskWing integrates with Claude Code's hook system for autonomous plan execution:
 
-```bash
+~~~bash
 taskwing hook session-init      # Initialize session tracking (SessionStart hook)
 taskwing hook continue-check    # Check if should continue to next task (Stop hook)
 taskwing hook session-end       # Cleanup session (SessionEnd hook)
 taskwing hook status            # View current session state
-```
+~~~
 
-**Circuit breakers** prevent runaway execution:
-- `--max-tasks=5` - Stop after N tasks for human review
-- `--max-minutes=30` - Stop after N minutes
+Circuit breakers prevent runaway execution:
+- --max-tasks=5 stops after N tasks for human review.
+- --max-minutes=30 stops after N minutes.
 
-Configuration in `.claude/settings.json` enables auto-continuation through plans.
+Configuration in .claude/settings.json enables auto-continuation through plans.
+Hook commands prefer $CLAUDE_PROJECT_DIR/bin/taskwing and fall back to taskwing in PATH.
+If Claude Code is already running, use /hooks to review or reload hook changes.
 
 <!-- TASKWING_DOCS_END -->
