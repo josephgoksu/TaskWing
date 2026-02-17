@@ -217,6 +217,36 @@ func TestParseModelSpec_TaskWingProvider(t *testing.T) {
 	}
 }
 
+// Regression test: a stale llm.baseURL pointing to localhost must not leak into
+// cloud providers (OpenAI, Anthropic, Gemini). This was the root cause of bootstrap
+// agents hitting localhost:11434 despite being configured for OpenAI.
+func TestResolveProviderBaseURL_OpenAI_IgnoresLocalhostBaseURL(t *testing.T) {
+	resetViperForTest(t)
+	viper.Set("llm.baseURL", "http://localhost:11434")
+
+	got, err := ResolveProviderBaseURL(llm.ProviderOpenAI)
+	if err != nil {
+		t.Fatalf("ResolveProviderBaseURL(openai) error = %v", err)
+	}
+	if got != "" {
+		t.Fatalf("ResolveProviderBaseURL(openai) = %q, want empty (should ignore localhost baseURL)", got)
+	}
+}
+
+func TestResolveProviderBaseURL_OpenAI_AllowsCustomEndpoint(t *testing.T) {
+	resetViperForTest(t)
+	customURL := "https://my-proxy.example.com/v1"
+	viper.Set("llm.baseURL", customURL)
+
+	got, err := ResolveProviderBaseURL(llm.ProviderOpenAI)
+	if err != nil {
+		t.Fatalf("ResolveProviderBaseURL(openai) error = %v", err)
+	}
+	if got != customURL {
+		t.Fatalf("ResolveProviderBaseURL(openai) = %q, want %q", got, customURL)
+	}
+}
+
 func TestParseModelSpec_TaskWingNoKey(t *testing.T) {
 	resetViperForTest(t)
 	t.Setenv("TASKWING_API_KEY", "")

@@ -181,14 +181,14 @@ func getLLMConfig(cmd *cobra.Command) (llm.Config, error) {
 	// 4. Base URL
 	baseURL := ""
 	switch llmProvider {
-	case llm.ProviderOllama, llm.ProviderOpenAI:
+	case llm.ProviderOllama:
 		if ollamaURLSet {
 			baseURL = ollamaURL
 		}
 	case llm.ProviderBedrock:
 		// Bedrock endpoint is resolved from region/base_url config.
 	default:
-		// Keep default (empty) unless explicit llm.baseURL is configured for OpenAI-compatible runtimes.
+		// Cloud providers use their own defaults; --ollama-url flag is ignored.
 	}
 	if baseURL == "" {
 		baseURL, err = config.ResolveProviderBaseURL(llmProvider)

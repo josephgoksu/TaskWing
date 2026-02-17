@@ -14,6 +14,16 @@ import (
 
 var bedrockHostPattern = regexp.MustCompile(`^bedrock-runtime(-fips)?\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$`)
 
+// isLocalhost returns true if the URL points to a local address (localhost, 127.0.0.1, etc.)
+func isLocalhost(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0"
+}
+
 // LoadLLMConfigForRole loads LLM configuration with role-based overrides.
 // It checks llm.models.<role> first (e.g., llm.models.query for RoleQuery),
 // then falls back to the default llm.provider/model.
@@ -217,10 +227,7 @@ func LoadLLMConfig() (llm.Config, error) {
 func ResolveProviderBaseURL(provider llm.Provider) (string, error) {
 	switch provider {
 	case llm.ProviderOllama:
-		baseURL := strings.TrimSpace(viper.GetString("llm.baseURL"))
-		if baseURL == "" {
-			baseURL = strings.TrimSpace(viper.GetString("llm.ollamaURL")) // Legacy
-		}
+		baseURL := strings.TrimSpace(viper.GetString("llm.ollamaURL"))
 		if baseURL == "" {
 			baseURL = llm.DefaultOllamaURL
 		}
@@ -230,16 +237,16 @@ func ResolveProviderBaseURL(provider llm.Provider) (string, error) {
 	case llm.ProviderTaskWing:
 		baseURL := strings.TrimSpace(viper.GetString("llm.taskwing.base_url"))
 		if baseURL == "" {
-			baseURL = strings.TrimSpace(viper.GetString("llm.baseURL"))
-		}
-		if baseURL == "" {
 			baseURL = llm.DefaultTaskWingURL
 		}
 		return baseURL, nil
 	default:
+		// For cloud providers (OpenAI, Anthropic, Gemini), only use llm.baseURL
+		// if it looks like a real custom endpoint (not localhost Ollama).
+		// This prevents a stale llm.baseURL from routing cloud requests to localhost.
 		baseURL := strings.TrimSpace(viper.GetString("llm.baseURL"))
-		if baseURL == "" {
-			baseURL = strings.TrimSpace(viper.GetString("llm.ollamaURL")) // Legacy custom endpoint key
+		if baseURL != "" && isLocalhost(baseURL) {
+			return "", nil
 		}
 		return baseURL, nil
 	}
