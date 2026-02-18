@@ -58,7 +58,7 @@ func (s *MarkdownStore) GenerateArchitectureMD(data ArchitectureData, projectNam
 		for _, c := range data.Constraints {
 			sb.WriteString(fmt.Sprintf("### ⛔ %s\n\n", c.Summary))
 			// Content often includes the summary, so show the rest
-			content := strings.TrimPrefix(c.Content, c.Summary)
+			content := strings.TrimPrefix(c.Text(), c.Summary)
 			content = strings.TrimSpace(content)
 			if content != "" {
 				sb.WriteString(fmt.Sprintf("%s\n\n", content))
@@ -83,7 +83,7 @@ func (s *MarkdownStore) GenerateArchitectureMD(data ArchitectureData, projectNam
 
 		for _, f := range sortedFeatures {
 			sb.WriteString(fmt.Sprintf("### %s\n\n", f.Summary))
-			content := strings.TrimPrefix(f.Content, f.Summary)
+			content := strings.TrimPrefix(f.Text(), f.Summary)
 			content = strings.TrimSpace(content)
 			if content != "" {
 				sb.WriteString(fmt.Sprintf("%s\n\n", content))
@@ -101,7 +101,7 @@ func (s *MarkdownStore) GenerateArchitectureMD(data ArchitectureData, projectNam
 		for _, p := range data.Patterns {
 			sb.WriteString(fmt.Sprintf("### 🔄 %s\n\n", p.Summary))
 			// Format content as a code block if it looks like steps
-			content := strings.TrimPrefix(p.Content, p.Summary)
+			content := strings.TrimPrefix(p.Text(), p.Summary)
 			content = strings.TrimSpace(content)
 			if content != "" {
 				// Check if it's a multi-line workflow
@@ -149,7 +149,7 @@ func (s *MarkdownStore) GenerateArchitectureMD(data ArchitectureData, projectNam
 			for _, d := range nodes {
 				sb.WriteString(fmt.Sprintf("- **%s**", d.Summary))
 				// Add a snippet of content if it's different from summary
-				content := strings.TrimPrefix(d.Content, d.Summary)
+				content := strings.TrimPrefix(d.Text(), d.Summary)
 				content = strings.TrimSpace(content)
 				if content != "" && len(content) < 200 {
 					sb.WriteString(fmt.Sprintf(": %s", content))

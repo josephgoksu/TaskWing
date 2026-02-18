@@ -361,7 +361,7 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 						} else if typeFilter == "workflow" && n.Type == "pattern" {
 							// Check metadata for workflow tag
 							// We do a quick string check on the content for the "Steps:" marker
-							if strings.Contains(n.Content, "Steps:") {
+							if strings.Contains(n.Text(), "Steps:") {
 								match = true
 							}
 						}
@@ -560,7 +560,7 @@ func (s *Service) Ask(ctx context.Context, query string, contextNodes []ScoredNo
 
 	var contextParts []string
 	for _, sn := range contextNodes {
-		nodeContext := fmt.Sprintf("[%s] %s\n%s", sn.Node.Type, sn.Node.Summary, sn.Node.Content)
+		nodeContext := fmt.Sprintf("[%s] %s\n%s", sn.Node.Type, sn.Node.Summary, sn.Node.Text())
 		contextParts = append(contextParts, nodeContext)
 	}
 	retrievedContext := strings.Join(contextParts, "\n\n---\n\n")
@@ -967,7 +967,7 @@ func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*De
 			NodeType:        sn.Node.Type,
 			SourceAgent:     sn.Node.SourceAgent,
 			Summary:         sn.Node.Summary,
-			Content:         sn.Node.Content,
+			Content:         sn.Node.Text(),
 			FTSScore:        ns.ftsScore,
 			VectorScore:     ns.vectorScore,
 			CombinedScore:   ns.combined,

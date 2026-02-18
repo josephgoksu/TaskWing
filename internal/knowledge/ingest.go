@@ -168,22 +168,34 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 		return content
 	}
 	for _, n := range existingNodes {
-		existingByContent[dedupKey(n.Content)] = true
+		existingByContent[dedupKey(n.Text())] = true
 		// Also index existing nodes by title for relationship linking
 		nodesByTitle[strings.ToLower(n.Summary)] = n.ID
 	}
 
 	for _, f := range findings {
-		content := f.Title + "\n" + f.Description
-		if f.Why != "" {
-			content += "\n\nWhy: " + f.Why
+		// Build structured content preserving field boundaries for training data
+		sc := memory.StructuredContent{
+			Title:       f.Title,
+			Description: f.Description,
+			Why:         f.Why,
+			Tradeoffs:   f.Tradeoffs,
 		}
-		if f.Tradeoffs != "" {
-			content += "\nTradeoffs: " + f.Tradeoffs
+		for _, ev := range f.Evidence {
+			if ev.Snippet != "" {
+				sc.Snippets = append(sc.Snippets, memory.EvidenceSnippet{
+					FilePath: ev.FilePath,
+					Lines:    formatLines(ev.StartLine, ev.EndLine),
+					Code:     ev.Snippet,
+				})
+			}
 		}
+		contentJSON, _ := json.Marshal(sc)
 
-		// Deduplication
-		key := dedupKey(content)
+		// Deduplication: use Text() so structured JSON deduplicates correctly
+		// against existing plain-text nodes
+		tempNode := memory.Node{Content: string(contentJSON)}
+		key := dedupKey(tempNode.Text())
 		if existingByContent[key] {
 			skippedDuplicates++
 			continue
@@ -195,7 +207,7 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 			ID:          nodeID,
 			Type:        string(f.Type),
 			Summary:     f.Title,
-			Content:     content,
+			Content:     string(contentJSON),
 			SourceAgent: f.SourceAgent,
 			CreatedAt:   time.Now().UTC(),
 		}
@@ -243,9 +255,9 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 			}
 		}
 
-		// Generate embedding
+		// Generate embedding from formatted text (not raw JSON)
 		if s.llmCfg.APIKey != "" {
-			if embedding, err := GenerateEmbedding(ctx, content, s.llmCfg); err == nil {
+			if embedding, err := GenerateEmbedding(ctx, node.Text(), s.llmCfg); err == nil {
 				node.Embedding = embedding
 				if verbose {
 					fmt.Print(".")
@@ -520,6 +532,17 @@ var stopWordsIngest = map[string]bool{
 	"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
 	"with": true, "by": true, "is": true, "are": true, "was": true, "were": true,
 	"use": true, "using": true, "based": true, "via": true,
+}
+
+// formatLines returns a "start-end" range string, or just "start" if they're equal/end is zero.
+func formatLines(start, end int) string {
+	if start <= 0 {
+		return ""
+	}
+	if end > start {
+		return fmt.Sprintf("%d-%d", start, end)
+	}
+	return fmt.Sprintf("%d", start)
 }
 
 // wordTokens extracts significant words from a string for matching

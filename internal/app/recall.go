@@ -419,7 +419,7 @@ func (a *RecallApp) generateRAGAnswer(ctx context.Context, query string, nodes [
 	if len(nodes) > 0 {
 		contextParts = append(contextParts, "## Project Knowledge\n")
 		for _, sn := range nodes {
-			nodeContext := fmt.Sprintf("### [%s] %s\n%s", sn.Node.Type, sn.Node.Summary, sn.Node.Content)
+			nodeContext := fmt.Sprintf("### [%s] %s\n%s", sn.Node.Type, sn.Node.Summary, sn.Node.Text())
 			contextParts = append(contextParts, nodeContext)
 		}
 	}

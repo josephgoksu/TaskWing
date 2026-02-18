@@ -1,6 +1,11 @@
 package memory
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+)
 
 // Issue represents a problem found during integrity checks.
 type Issue struct {
@@ -83,6 +88,71 @@ func (n *Node) DebtWarning() string {
 		return warning
 	}
 	return ""
+}
+
+// StructuredContent holds structured fields from bootstrap findings.
+// Stored as JSON in Node.Content to preserve field boundaries for training data extraction.
+type StructuredContent struct {
+	Title       string            `json:"title"`
+	Description string            `json:"description"`
+	Why         string            `json:"why,omitempty"`
+	Tradeoffs   string            `json:"tradeoffs,omitempty"`
+	Snippets    []EvidenceSnippet `json:"snippets,omitempty"`
+}
+
+// EvidenceSnippet captures a code snippet from a source file.
+type EvidenceSnippet struct {
+	FilePath string `json:"file_path"`
+	Lines    string `json:"lines,omitempty"` // "45-67"
+	Code     string `json:"code"`
+}
+
+// Text returns human-readable text from Content.
+// For structured JSON content (from bootstrap), it formats the fields into readable text
+// identical to the old concatenation. For plain text content, it returns as-is.
+func (n *Node) Text() string {
+	if n.Content == "" {
+		return ""
+	}
+	sc := n.ParseStructuredContent()
+	if sc == nil {
+		return n.Content
+	}
+	var sb strings.Builder
+	sb.WriteString(sc.Title)
+	sb.WriteString("\n")
+	sb.WriteString(sc.Description)
+	if sc.Why != "" {
+		sb.WriteString("\n\nWhy: ")
+		sb.WriteString(sc.Why)
+	}
+	if sc.Tradeoffs != "" {
+		sb.WriteString("\nTradeoffs: ")
+		sb.WriteString(sc.Tradeoffs)
+	}
+	if len(sc.Snippets) > 0 {
+		sb.WriteString("\n\nEvidence:")
+		for _, s := range sc.Snippets {
+			sb.WriteString(fmt.Sprintf("\n  %s", s.FilePath))
+			if s.Lines != "" {
+				sb.WriteString(fmt.Sprintf(":%s", s.Lines))
+			}
+		}
+	}
+	return sb.String()
+}
+
+// ParseStructuredContent returns the parsed StructuredContent if Content is structured JSON,
+// or nil if it's plain text. Detection: Content starts with '{' and unmarshals with non-empty Title.
+func (n *Node) ParseStructuredContent() *StructuredContent {
+	if len(n.Content) == 0 || n.Content[0] != '{' {
+		return nil
+	}
+	var sc StructuredContent
+	if err := json.Unmarshal([]byte(n.Content), &sc); err != nil || sc.Title == "" {
+		return nil
+	}
+	return &sc
 }
 
 // NodeEdge represents a relationship between two nodes.

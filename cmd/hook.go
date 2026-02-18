@@ -358,7 +358,7 @@ func buildTaskContext(repo *memory.Repository, nextTask *task.Task, plan *task.P
 			adapted = append(adapted, task.RecallResult{
 				Summary: r.Node.Summary,
 				Type:    r.Node.Type,
-				Content: r.Node.Content,
+				Content: r.Node.Text(),
 			})
 		}
 		return adapted, nil

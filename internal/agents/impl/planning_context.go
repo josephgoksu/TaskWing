@@ -252,7 +252,7 @@ func RetrieveContext(ctx context.Context, ks *knowledge.Service, goal string, me
 		sb.WriteString("## MANDATORY ARCHITECTURAL CONSTRAINTS\n")
 		sb.WriteString("These rules MUST be obeyed by all generated tasks.\n\n")
 		for _, n := range constraintNodes {
-			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", n.Summary, n.Content))
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", n.Summary, n.Text()))
 		}
 		sb.WriteString("\n")
 		// Prepend to search log so it appears first
@@ -271,7 +271,7 @@ func RetrieveContext(ctx context.Context, ks *knowledge.Service, goal string, me
 	})
 
 	for _, node := range allNodes {
-		sb.WriteString(fmt.Sprintf("### [%s] %s\n%s\n", node.Node.Type, node.Node.Summary, node.Node.Content))
+		sb.WriteString(fmt.Sprintf("### [%s] %s\n%s\n", node.Node.Type, node.Node.Summary, node.Node.Text()))
 
 		// Append evidence file paths if available (Phase 2 feature)
 		if node.Node.Evidence != "" {

@@ -113,7 +113,7 @@ type Flags struct {
 	TraceFile   string   `json:"trace_file,omitempty"`
 	Verbose     bool     `json:"verbose"`
 	Quiet       bool     `json:"quiet"`
-	Debug       bool     `json:"debug"` // Enable debug logging (dumps project context, git paths, etc.)
+	Debug bool `json:"debug"` // Enable debug logging (dumps project context, git paths, etc.)
 }
 
 // Plan captures the decisions about what to do.

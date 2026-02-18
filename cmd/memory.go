@@ -386,7 +386,7 @@ Requires an API key for the configured provider (OpenAI/Gemini) or a local Ollam
 		generated := 0
 
 		for _, n := range toProcess {
-			embedding, err := knowledge.GenerateEmbedding(ctx, n.Content, llmCfg)
+			embedding, err := knowledge.GenerateEmbedding(ctx, n.Text(), llmCfg)
 			if err != nil {
 				fmt.Printf("  ✗ %s: %v\n", n.ID, err)
 				continue
@@ -526,7 +526,7 @@ WARNING: This can be expensive if you have many nodes and are using a paid API.`
 				continue
 			}
 
-			embedding, err := knowledge.GenerateEmbedding(ctx, fullNode.Content, llmCfg)
+			embedding, err := knowledge.GenerateEmbedding(ctx, fullNode.Text(), llmCfg)
 			if err != nil {
 				fmt.Printf("  ✗ %s: %v\n", n.ID, err)
 				failed++
@@ -935,7 +935,7 @@ func inferWorkspace(n *memory.Node, wsInfo *workspaceInfoCompat) string {
 	}
 
 	// Check if node content contains service-specific paths
-	content := n.Content + " " + n.Summary
+	content := n.Text() + " " + n.Summary
 	for _, svc := range wsInfo.Services {
 		// Look for patterns like "osprey/", "studio/src", etc.
 		patterns := []string{

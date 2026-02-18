@@ -69,7 +69,7 @@ func renderCompactList(byType map[string][]memory.Node, typeOrder []string) {
 		for _, n := range groupNodes {
 			summary := n.Summary
 			if summary == "" {
-				summary = utils.Truncate(n.Content, 60)
+				summary = utils.Truncate(n.Text(), 60)
 			}
 
 			// Add workspace badge if not root
@@ -103,7 +103,7 @@ func renderVerboseTable(byType map[string][]memory.Node, typeOrder []string) {
 		for _, n := range groupNodes {
 			summary := n.Summary
 			if summary == "" {
-				summary = utils.Truncate(n.Content, 40)
+				summary = utils.Truncate(n.Text(), 40)
 			}
 
 			agent := n.SourceAgent

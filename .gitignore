@@ -1,5 +1,6 @@
 # TaskWing data directories
 .taskwing/
+.taskwing-bak/
 .tasks/
 
 # TaskWing binary

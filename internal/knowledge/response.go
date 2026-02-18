@@ -44,7 +44,7 @@ func NodeToResponse(n memory.Node, matchScore float32) NodeResponse {
 		ID:                 n.ID,
 		Type:               n.Type,
 		Summary:            n.Summary,
-		Content:            n.Content,
+		Content:            n.Text(),
 		ConfidenceScore:    n.ConfidenceScore,
 		VerificationStatus: n.VerificationStatus,
 		MatchScore:         matchScore,

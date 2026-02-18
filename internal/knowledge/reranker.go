@@ -141,7 +141,7 @@ func rerankResults(ctx context.Context, reranker Reranker, query string, scored 
 	originalScores := make([]float32, len(scored))
 	for i, sn := range scored {
 		// Use content + summary for better reranking
-		documents[i] = sn.Node.Summary + "\n" + sn.Node.Content
+		documents[i] = sn.Node.Summary + "\n" + sn.Node.Text()
 		originalScores[i] = sn.Score
 	}
 

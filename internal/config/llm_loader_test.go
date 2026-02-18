@@ -199,15 +199,15 @@ func TestParseModelSpec_TaskWingProvider(t *testing.T) {
 	resetViperForTest(t)
 	t.Setenv("TASKWING_API_KEY", "tw-test-key")
 
-	cfg, err := ParseModelSpec("taskwing:taskwing-brain", llm.RoleBootstrap)
+	cfg, err := ParseModelSpec("taskwing:karluk", llm.RoleBootstrap)
 	if err != nil {
-		t.Fatalf("ParseModelSpec(taskwing:taskwing-brain) error = %v", err)
+		t.Fatalf("ParseModelSpec(taskwing:karluk) error = %v", err)
 	}
 	if cfg.Provider != llm.ProviderTaskWing {
 		t.Fatalf("provider = %q, want %q", cfg.Provider, llm.ProviderTaskWing)
 	}
-	if cfg.Model != "taskwing-brain" {
-		t.Fatalf("model = %q, want taskwing-brain", cfg.Model)
+	if cfg.Model != "karluk" {
+		t.Fatalf("model = %q, want karluk", cfg.Model)
 	}
 	if cfg.APIKey != "tw-test-key" {
 		t.Fatalf("apiKey = %q, want tw-test-key", cfg.APIKey)
@@ -251,7 +251,7 @@ func TestParseModelSpec_TaskWingNoKey(t *testing.T) {
 	resetViperForTest(t)
 	t.Setenv("TASKWING_API_KEY", "")
 
-	_, err := ParseModelSpec("taskwing:taskwing-brain", llm.RoleBootstrap)
+	_, err := ParseModelSpec("taskwing:karluk", llm.RoleBootstrap)
 	if err == nil {
 		t.Fatal("ParseModelSpec(taskwing:...) should fail without TASKWING_API_KEY")
 	}

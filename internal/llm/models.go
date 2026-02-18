@@ -388,25 +388,18 @@ var ModelRegistry = []Model{
 	},
 
 	// ============================================
-	// TaskWing Managed Models (fine-tuned, hosted)
+	// Karluk Models (fine-tuned, hosted via RunPod Serverless vLLM)
+	// Named after the Karluks — a prominent Turkic confederation that controlled Silk Road trade routes in 8th-century Central Asia.
 	// Optimized for architecture extraction tasks.
 	// Requires TASKWING_API_KEY. Endpoint configurable via llm.taskwing.base_url.
 	// ============================================
 	{
-		ID:             "taskwing-brain",
+		ID:             "karluk",
 		Provider:       "TaskWing",
 		ProviderID:     ProviderTaskWing,
-		Aliases:        []string{"taskwing-brain-7b"},
+		Aliases:        []string{"karluk-7b"},
 		IsDefault:      true,
 		Category:       CategoryBalanced,
-		MaxInputTokens: 32_768,
-	},
-	{
-		ID:             "taskwing-brain-lite",
-		Provider:       "TaskWing",
-		ProviderID:     ProviderTaskWing,
-		Aliases:        []string{"taskwing-brain-4b"},
-		Category:       CategoryFast,
 		MaxInputTokens: 32_768,
 	},
 }
@@ -557,7 +550,7 @@ func InferProvider(modelID string) (string, bool) {
 		return ProviderBedrock, true
 	case strings.HasPrefix(modelID, "gemini-"):
 		return ProviderGemini, true
-	case strings.HasPrefix(modelID, "taskwing-brain"):
+	case strings.HasPrefix(modelID, "karluk"):
 		return ProviderTaskWing, true
 	case strings.HasPrefix(modelID, "llama"), strings.HasPrefix(modelID, "mistral"), strings.HasPrefix(modelID, "codellama"), strings.HasPrefix(modelID, "phi"):
 		return ProviderOllama, true

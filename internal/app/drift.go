@@ -313,7 +313,7 @@ func (a *DriftApp) classifyRule(ctx context.Context, node memory.Node) (*Rule, e
 	return &Rule{
 		ID:          generateRuleID(node),
 		Name:        node.Summary,
-		Description: node.Content,
+		Description: node.Text(),
 		Type:        result.RuleType,
 		Source: RuleSource{
 			NodeID:    node.ID,
@@ -604,7 +604,7 @@ Rules for is_verifiable=false:
 - "We chose Go for performance" → not verifiable (design rationale)
 - "The team prefers simplicity" → not verifiable (principle)
 
-Return ONLY valid JSON, no explanations.`, node.Type, node.Summary, node.Content)
+Return ONLY valid JSON, no explanations.`, node.Type, node.Summary, node.Text())
 }
 
 func generateRuleID(node memory.Node) string {

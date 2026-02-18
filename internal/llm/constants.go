@@ -52,16 +52,11 @@ const DefaultOllamaURL = "http://localhost:11434"
 // DefaultTaskWingURL is the default base URL for the TaskWing managed inference service.
 // Served via RunPod Serverless vLLM (OpenAI-compatible).
 // Override per-project via llm.taskwing.base_url in .taskwing.yaml.
-const DefaultTaskWingURL = "https://api.runpod.ai/v2/taskwing-brain/openai/v1"
+const DefaultTaskWingURL = "https://api.runpod.ai/v2/karluk/openai/v1"
 
-// TaskWing Brain model constants (fine-tuned for architecture extraction)
-const (
-	// ModelTaskWingBrain is the primary fine-tuned model (Qwen2.5-Coder-7B based)
-	ModelTaskWingBrain = "taskwing-brain"
-
-	// ModelTaskWingBrainLite is the lightweight variant (Phi-4-Mini based)
-	ModelTaskWingBrainLite = "taskwing-brain-lite"
-)
+// ModelKarluk is the fine-tuned model for architecture extraction (Qwen3-8B based).
+// Named after the Karluks — a prominent Turkic confederation that controlled Silk Road trade routes in 8th-century Central Asia.
+const ModelKarluk = "karluk"
 
 // DefaultModelForProvider returns the default model ID for a given provider.
 // This is a convenience wrapper around GetDefaultModelID in models.go.

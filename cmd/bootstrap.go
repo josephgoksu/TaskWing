@@ -70,7 +70,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		TraceFile:   getStringFlag(cmd, "trace-file"),
 		Verbose:     viper.GetBool("verbose"),
 		Quiet:       viper.GetBool("quiet"),
-		Debug:       getBoolFlag(cmd, "debug"),
+		Debug: getBoolFlag(cmd, "debug"),
 	}
 
 	// Validate flags early - fail fast on contradictions
@@ -474,7 +474,7 @@ func init() {
 	bootstrapCmd.Flags().Bool("debug", false, "Enable debug logging (dumps project context, git paths, agent inputs)")
 	bootstrapCmd.Flags().Duration("timeout", 0, "LLM request timeout (e.g., 5m, 10m). Overrides TASKWING_LLM_TIMEOUT env var. Default: 5m")
 
-	// Hide --skip-analyze from main help (documented in CLAUDE.md)
+	// Hide internal flags from main help (documented in CLAUDE.md / finetune docs)
 	_ = bootstrapCmd.Flags().MarkHidden("skip-analyze")
 }
 
@@ -699,6 +699,8 @@ func setupTrace(stream *core.StreamingOutput, trace bool, traceFile string, trac
 	if !trace {
 		return func() {} // No-op cleanup
 	}
+	// Enable full payload capture so trace includes LLM messages and responses
+	stream.SetIncludePayloads(true)
 	if traceFile == "" {
 		traceFile = filepath.Join(cwd, ".taskwing", "logs", "bootstrap.trace.jsonl")
 	}

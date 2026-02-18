@@ -73,8 +73,8 @@ func TestGetProviders_IncludesTaskWing(t *testing.T) {
 			if p.EnvVar != "TASKWING_API_KEY" {
 				t.Fatalf("TaskWing provider EnvVar = %q, want TASKWING_API_KEY", p.EnvVar)
 			}
-			if p.DefaultModel != ModelTaskWingBrain {
-				t.Fatalf("TaskWing provider DefaultModel = %q, want %q", p.DefaultModel, ModelTaskWingBrain)
+			if p.DefaultModel != ModelKarluk {
+				t.Fatalf("TaskWing provider DefaultModel = %q, want %q", p.DefaultModel, ModelKarluk)
 			}
 			break
 		}
@@ -84,16 +84,14 @@ func TestGetProviders_IncludesTaskWing(t *testing.T) {
 	}
 }
 
-func TestGetModel_TaskWingBrain(t *testing.T) {
+func TestGetModel_Karluk(t *testing.T) {
 	tests := []struct {
 		modelID  string
 		wantNil  bool
 		wantProv string
 	}{
-		{ModelTaskWingBrain, false, ProviderTaskWing},
-		{ModelTaskWingBrainLite, false, ProviderTaskWing},
-		{"taskwing-brain-7b", false, ProviderTaskWing}, // alias
-		{"taskwing-brain-4b", false, ProviderTaskWing}, // alias
+		{ModelKarluk, false, ProviderTaskWing},
+		{"karluk-7b", false, ProviderTaskWing}, // alias
 	}
 	for _, tc := range tests {
 		t.Run(tc.modelID, func(t *testing.T) {
@@ -111,12 +109,11 @@ func TestGetModel_TaskWingBrain(t *testing.T) {
 	}
 }
 
-func TestInferProvider_TaskWingBrain(t *testing.T) {
+func TestInferProvider_Karluk(t *testing.T) {
 	tests := []string{
-		"taskwing-brain",
-		"taskwing-brain-7b",
-		"taskwing-brain-lite",
-		"taskwing-brain-custom",
+		"karluk",
+		"karluk-7b",
+		"karluk-custom",
 	}
 	for _, modelID := range tests {
 		provider, ok := InferProvider(modelID)
@@ -129,50 +126,42 @@ func TestInferProvider_TaskWingBrain(t *testing.T) {
 	}
 }
 
-func TestTaskWingBrain_ManagedPricing(t *testing.T) {
-	m := GetModel(ModelTaskWingBrain)
+func TestKarluk_ManagedPricing(t *testing.T) {
+	m := GetModel(ModelKarluk)
 	if m == nil {
-		t.Fatal("GetModel(taskwing-brain) = nil")
+		t.Fatal("GetModel(karluk) = nil")
 	}
 	// Managed models have $0 in registry (pricing is account-based, not per-token in registry)
-	cost := CalculateCost(ModelTaskWingBrain, 1_000_000, 1_000_000)
+	cost := CalculateCost(ModelKarluk, 1_000_000, 1_000_000)
 	if cost != 0 {
-		t.Fatalf("CalculateCost(taskwing-brain, 1M, 1M) = $%.4f, want $0.00", cost)
+		t.Fatalf("CalculateCost(karluk, 1M, 1M) = $%.4f, want $0.00", cost)
 	}
 }
 
-func TestTaskWingBrain_MaxInputTokens(t *testing.T) {
-	tokens := GetMaxInputTokens(ModelTaskWingBrain)
+func TestKarluk_MaxInputTokens(t *testing.T) {
+	tokens := GetMaxInputTokens(ModelKarluk)
 	if tokens != 32_768 {
-		t.Fatalf("GetMaxInputTokens(taskwing-brain) = %d, want 32768", tokens)
+		t.Fatalf("GetMaxInputTokens(karluk) = %d, want 32768", tokens)
 	}
 }
 
-func TestTaskWingBrain_Categories(t *testing.T) {
-	m := GetModel(ModelTaskWingBrain)
+func TestKarluk_Categories(t *testing.T) {
+	m := GetModel(ModelKarluk)
 	if m == nil {
-		t.Fatal("GetModel(taskwing-brain) = nil")
+		t.Fatal("GetModel(karluk) = nil")
 	}
 	if m.Category != CategoryBalanced {
-		t.Fatalf("taskwing-brain category = %q, want %q", m.Category, CategoryBalanced)
-	}
-
-	mLite := GetModel(ModelTaskWingBrainLite)
-	if mLite == nil {
-		t.Fatal("GetModel(taskwing-brain-lite) = nil")
-	}
-	if mLite.Category != CategoryFast {
-		t.Fatalf("taskwing-brain-lite category = %q, want %q", mLite.Category, CategoryFast)
+		t.Fatalf("karluk category = %q, want %q", m.Category, CategoryBalanced)
 	}
 }
 
-func TestTaskWingBrain_IsDefault(t *testing.T) {
+func TestKarluk_IsDefault(t *testing.T) {
 	m := GetDefaultModel(ProviderTaskWing)
 	if m == nil {
 		t.Fatal("GetDefaultModel(taskwing) = nil")
 	}
-	if m.ID != ModelTaskWingBrain {
-		t.Fatalf("GetDefaultModel(taskwing) = %q, want %q", m.ID, ModelTaskWingBrain)
+	if m.ID != ModelKarluk {
+		t.Fatalf("GetDefaultModel(taskwing) = %q, want %q", m.ID, ModelKarluk)
 	}
 }
 

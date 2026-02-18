@@ -75,7 +75,7 @@ func FormatNodesAsCompactBrief(nodes []memory.Node) string {
 		for _, n := range groupNodes {
 			summary := n.Summary
 			if summary == "" {
-				summary = utils.Truncate(n.Content, 60)
+				summary = utils.Truncate(n.Text(), 60)
 			}
 			fmt.Fprintf(&sb, "- %s\n", summary)
 		}

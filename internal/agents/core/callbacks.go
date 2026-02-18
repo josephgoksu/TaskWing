@@ -26,6 +26,7 @@ import (
 type CallbackHandler struct {
 	out             io.Writer
 	verbose         bool
+	includePayloads bool // When true, captures full LLM message/response content
 	startTimes      map[string]time.Time
 	mu              sync.Mutex
 	onStart         func(name string)
@@ -116,6 +117,17 @@ func (h *CallbackHandler) Build() callbacks.Handler {
 						if mInput != nil {
 							meta["messages"] = len(mInput.Messages)
 							meta["tools"] = len(mInput.Tools)
+							// Include full message content for trace payload capture
+							if h.includePayloads {
+								var msgs []map[string]string
+								for _, m := range mInput.Messages {
+									msgs = append(msgs, map[string]string{
+										"role":    string(m.Role),
+										"content": m.Content,
+									})
+								}
+								meta["messages_content"] = msgs
+							}
 						}
 					}
 					h.onNodeStartMeta(info.Name, string(info.Component), meta)
@@ -162,6 +174,10 @@ func (h *CallbackHandler) Build() callbacks.Handler {
 					if mOutput != nil && mOutput.Config != nil {
 						meta["model"] = mOutput.Config.Model
 					}
+					// Include full response content for trace payload capture
+					if h.includePayloads && mOutput != nil && mOutput.Message != nil {
+						meta["response_content"] = mOutput.Message.Content
+					}
 				}
 				h.onNodeEndMeta(info.Name, string(info.Component), meta)
 			}
@@ -185,11 +201,12 @@ func (h *CallbackHandler) Build() callbacks.Handler {
 
 // StreamingOutput provides a channel-based interface for real-time agent output
 type StreamingOutput struct {
-	Events    chan StreamEvent
-	done      chan struct{}
-	observers []func(StreamEvent)
-	mu        sync.RWMutex
-	closeOnce sync.Once
+	Events          chan StreamEvent
+	done            chan struct{}
+	observers       []func(StreamEvent)
+	mu              sync.RWMutex
+	closeOnce       sync.Once
+	includePayloads bool // When true, node events include full LLM message/response content
 }
 
 // StreamEvent represents a single event in the agent execution stream
@@ -265,6 +282,18 @@ func (s *StreamingOutput) Close() {
 	})
 }
 
+// SetIncludePayloads enables full LLM payload capture in trace events.
+// When enabled, node_start events include full message content and
+// node_end events include the full response text.
+func (s *StreamingOutput) SetIncludePayloads(v bool) {
+	s.includePayloads = v
+}
+
+// IncludePayloads returns whether full payload capture is enabled.
+func (s *StreamingOutput) IncludePayloads() bool {
+	return s.includePayloads
+}
+
 // AddObserver registers a callback that receives all events.
 func (s *StreamingOutput) AddObserver(fn func(StreamEvent)) {
 	if fn == nil {
@@ -278,6 +307,7 @@ func (s *StreamingOutput) AddObserver(fn func(StreamEvent)) {
 // CreateStreamingCallbackHandler creates a callback handler that emits to a stream
 func CreateStreamingCallbackHandler(agentName string, stream *StreamingOutput) *CallbackHandler {
 	handler := NewCallbackHandler()
+	handler.includePayloads = stream.IncludePayloads()
 
 	handler.
 		OnStart(func(name string) {

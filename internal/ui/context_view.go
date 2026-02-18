@@ -100,7 +100,7 @@ func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, 
 	// Build summary
 	summary := s.Node.Summary
 	if summary == "" {
-		runes := []rune(s.Node.Content)
+		runes := []rune(s.Node.Text())
 		if len(runes) > 60 {
 			summary = string(runes[:60]) + "..."
 		} else {
@@ -144,7 +144,7 @@ func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, 
 	}
 
 	// Content section for high-scoring results
-	cleanContent := getContentWithoutSummary(s.Node.Content, summary)
+	cleanContent := getContentWithoutSummary(s.Node.Text(), summary)
 	showContent := relativeScore > contentDisplayRelativeThreshold &&
 		s.Score > contentDisplayAbsoluteThreshold &&
 		cleanContent != ""
