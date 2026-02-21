@@ -336,16 +336,16 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ### Core Commands
 
 <!-- TASKWING_COMMANDS_START -->
-- taskwing bootstrap
-- taskwing goal "<goal>"
-- taskwing ask "<query>"
-- taskwing task
-- taskwing plan status
-- taskwing slash
-- taskwing mcp
-- taskwing doctor
-- taskwing config
-- taskwing start
+- `taskwing bootstrap`
+- `taskwing goal "<goal>"`
+- `taskwing ask "<query>"`
+- `taskwing task`
+- `taskwing plan status`
+- `taskwing slash`
+- `taskwing mcp`
+- `taskwing doctor`
+- `taskwing config`
+- `taskwing start`
 <!-- TASKWING_COMMANDS_END -->
 
 ### MCP Tools (Canonical Contract)
@@ -353,12 +353,12 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
 |------|-------------|
-| ask | Search project knowledge (decisions, patterns, constraints) |
-| task | Unified task lifecycle (next, current, start, complete) |
-| plan | Plan management (clarify, decompose, expand, generate, finalize, audit) |
-| code | Code intelligence (find, search, explain, callers, impact, simplify) |
-| debug | Diagnose issues systematically with AI-powered analysis |
-| remember | Store knowledge in project memory |
+| `ask` | Search project knowledge (decisions, patterns, constraints) |
+| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
+| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
+| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
+| `debug` | Diagnose issues systematically with AI-powered analysis |
+| `remember` | Store knowledge in project memory |
 <!-- TASKWING_MCP_TOOLS_END -->
 
 ### Autonomous Task Execution (Hooks)

@@ -67,6 +67,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
 - `taskwing goal "<goal>"`
+- `taskwing ask "<query>"`
 - `taskwing task`
 - `taskwing plan status`
 - `taskwing slash`

@@ -155,6 +155,7 @@ Recommended Bedrock model IDs:
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
 - `taskwing goal "<goal>"`
+- `taskwing ask "<query>"`
 - `taskwing task`
 - `taskwing plan status`
 - `taskwing slash`
