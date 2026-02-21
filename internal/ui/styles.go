@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 var (
 	// Colors
@@ -78,4 +82,51 @@ var (
 	StyleSelectActive = lipgloss.NewStyle().Foreground(ColorSelected).Bold(true)
 	StyleSelectDim    = lipgloss.NewStyle().Foreground(ColorDim)
 	StyleSelectBadge  = lipgloss.NewStyle().Foreground(ColorYellow).Bold(true)
+
+	// Table Styles (alternating rows)
+	ColorTableRowEven = lipgloss.Color("236") // Subtle dark background
+	ColorTableRowOdd  = lipgloss.Color("234") // Slightly darker
+	StyleTableRowEven = lipgloss.NewStyle().Foreground(ColorText)
+	StyleTableRowOdd  = lipgloss.NewStyle().Foreground(ColorText).Background(ColorTableRowOdd)
+	StyleTableHeader  = lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Underline(true)
+
+	// Doctor Check Styles
+	StyleCheckOK   = lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true)
+	StyleCheckWarn = lipgloss.NewStyle().Foreground(ColorWarning).Bold(true)
+	StyleCheckFail = lipgloss.NewStyle().Foreground(ColorError).Bold(true)
+	StyleCheckName = lipgloss.NewStyle().Foreground(ColorText).Bold(true)
+	StyleCheckHint = lipgloss.NewStyle().Foreground(ColorDim).Italic(true)
+
+	// Ask Output Styles
+	StyleAskHeader   = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Padding(0, 0)
+	StyleAskMeta     = lipgloss.NewStyle().Foreground(ColorDim)
+	StyleCitationPath = lipgloss.NewStyle().Foreground(ColorDim).Italic(true)
+	StyleCitationBadge = lipgloss.NewStyle().Foreground(ColorCyan).Bold(true)
 )
+
+// CategoryBadge returns a styled badge string for a knowledge node type.
+func CategoryBadge(nodeType string) string {
+	colors := map[string]lipgloss.Color{
+		"decision":      lipgloss.Color("205"), // Pink
+		"feature":       lipgloss.Color("75"),  // Blue
+		"constraint":    lipgloss.Color("214"), // Orange
+		"pattern":       lipgloss.Color("141"), // Purple
+		"plan":          lipgloss.Color("42"),  // Green
+		"note":          lipgloss.Color("252"), // White
+		"metadata":      lipgloss.Color("87"),  // Cyan
+		"documentation": lipgloss.Color("11"),  // Yellow
+	}
+
+	color, ok := colors[nodeType]
+	if !ok {
+		color = lipgloss.Color("241")
+	}
+
+	badge := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("0")).
+		Background(color).
+		Padding(0, 1).
+		Bold(true)
+
+	return badge.Render(strings.ToUpper(nodeType[:1]) + nodeType[1:])
+}

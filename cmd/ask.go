@@ -90,7 +90,20 @@ func runAsk(cmd *cobra.Command, args []string) error {
 		opts.StreamWriter = os.Stdout
 	}
 
+	// Show spinner during LLM query (non-JSON mode only)
+	var spin *ui.Spinner
+	if !isJSON() && generateAnswer {
+		spin = ui.NewSpinner("Generating answer...")
+		spin.Start()
+	} else if !isJSON() {
+		spin = ui.NewSpinner("Searching knowledge...")
+		spin.Start()
+	}
+
 	result, err := askApp.Query(cmd.Context(), query, opts)
+	if spin != nil {
+		spin.Stop()
+	}
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}

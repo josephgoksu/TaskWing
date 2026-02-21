@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/utils"
 )
@@ -43,46 +44,96 @@ func renderNodeListInternal(nodes []memory.Node, verbose bool) {
 		}
 	}
 
-	// Render Header Summary
-	fmt.Printf(" 🧠 Knowledge: %d nodes (%s)\n", totalCount, strings.Join(stats, " • "))
-	fmt.Println(StyleSubtle.Render(strings.Repeat("─", 50)))
+	// Render Header
+	headerBox := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorPrimary).
+		Padding(0, 1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorSecondary)
+
+	fmt.Println(headerBox.Render(fmt.Sprintf("Knowledge: %d nodes (%s)", totalCount, strings.Join(stats, " | "))))
+	fmt.Println()
 
 	if verbose {
-		// Verbose mode: Table with full metadata
 		renderVerboseTable(byType, typeOrder)
 	} else {
-		// Compact mode: Grouped bullet lists
-		renderCompactList(byType, typeOrder)
+		renderStyledTable(byType, typeOrder)
 	}
 }
 
-// renderCompactList renders nodes as compact grouped bullet lists.
-func renderCompactList(byType map[string][]memory.Node, typeOrder []string) {
-	for _, t := range typeOrder {
-		groupNodes := byType[t]
-		if len(groupNodes) == 0 {
-			continue
-		}
-
-		fmt.Println(StyleHeader.Render(fmt.Sprintf("%s %ss", TypeIcon(t), utils.ToTitle(t))))
-
-		for _, n := range groupNodes {
-			summary := n.Summary
-			if summary == "" {
-				summary = utils.Truncate(n.Text(), 60)
-			}
-
-			// Add workspace badge if not root
-			workspaceBadge := ""
-			if n.Workspace != "" && n.Workspace != "root" {
-				workspaceBadge = StyleSubtle.Render(fmt.Sprintf(" [%s]", n.Workspace))
-			}
-
-			// Compact: summary with optional workspace badge
-			fmt.Printf(" • %s%s\n", StyleTitle.Render(summary), workspaceBadge)
-		}
-		fmt.Println()
+// renderStyledTable renders all nodes in a single styled table with category badges.
+func renderStyledTable(byType map[string][]memory.Node, typeOrder []string) {
+	// Collect all nodes in order
+	type nodeRow struct {
+		node memory.Node
 	}
+	var rows []nodeRow
+
+	for _, t := range typeOrder {
+		for _, n := range byType[t] {
+			rows = append(rows, nodeRow{node: n})
+		}
+	}
+
+	if len(rows) == 0 {
+		return
+	}
+
+	// Column widths
+	const (
+		colBadge     = 15
+		colSummary   = 50
+		colWorkspace = 12
+	)
+
+	// Header
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Underline(true)
+	dimSep := StyleSubtle.Render("  ")
+
+	fmt.Printf("  %s%s%s%s%s\n",
+		headerStyle.Render(padRight("Category", colBadge)),
+		dimSep,
+		headerStyle.Render(padRight("Summary", colSummary)),
+		dimSep,
+		headerStyle.Render(padRight("Workspace", colWorkspace)),
+	)
+
+	// Separator
+	fmt.Printf("  %s\n", StyleSubtle.Render(strings.Repeat("─", colBadge+colSummary+colWorkspace+6)))
+
+	// Rows with alternating colors
+	for i, r := range rows {
+		summary := r.node.Summary
+		if summary == "" {
+			summary = utils.Truncate(r.node.Text(), colSummary)
+		}
+		if len(summary) > colSummary {
+			summary = summary[:colSummary-1] + "…"
+		}
+
+		workspace := r.node.Workspace
+		if workspace == "" {
+			workspace = "root"
+		}
+
+		badge := CategoryBadge(r.node.Type)
+
+		// Alternating row style
+		var rowStyle lipgloss.Style
+		if i%2 == 0 {
+			rowStyle = StyleTableRowEven
+		} else {
+			rowStyle = StyleTableRowOdd
+		}
+
+		fmt.Printf("  %s  %s  %s\n",
+			badge+strings.Repeat(" ", max(0, colBadge-lipgloss.Width(badge))),
+			rowStyle.Render(padRight(summary, colSummary)),
+			StyleSubtle.Render(padRight(workspace, colWorkspace)),
+		)
+	}
+	fmt.Println()
 }
 
 // renderVerboseTable renders nodes as a table with full metadata.
@@ -93,7 +144,7 @@ func renderVerboseTable(byType map[string][]memory.Node, typeOrder []string) {
 			continue
 		}
 
-		fmt.Println(StyleHeader.Render(fmt.Sprintf("%s %ss", TypeIcon(t), utils.ToTitle(t))))
+		fmt.Printf("  %s %s\n", CategoryBadge(t), StyleHeader.Render(fmt.Sprintf("%s %ss", TypeIcon(t), utils.ToTitle(t))))
 
 		table := &Table{
 			Headers:  []string{"ID", "Summary", "Workspace", "Created", "Agent"},
@@ -133,22 +184,22 @@ func renderVerboseTable(byType map[string][]memory.Node, typeOrder []string) {
 func TypeIcon(t string) string {
 	switch t {
 	case memory.NodeTypeDecision:
-		return "🎯"
+		return "D"
 	case memory.NodeTypeFeature:
-		return "📦"
+		return "F"
 	case memory.NodeTypeConstraint:
-		return "⚠️"
+		return "C"
 	case memory.NodeTypePattern:
-		return "🧩"
+		return "P"
 	case memory.NodeTypePlan:
-		return "📋"
+		return "PL"
 	case memory.NodeTypeNote:
-		return "📝"
+		return "N"
 	case memory.NodeTypeMetadata:
-		return "📊"
+		return "M"
 	case memory.NodeTypeDocumentation:
-		return "📄"
+		return "DOC"
 	default:
-		return "❓"
+		return "?"
 	}
 }

@@ -171,41 +171,43 @@ func runDoctor(cmd *cobra.Command) error {
 	}
 
 	// Human-readable output
-	fmt.Println("🩺 TaskWing Doctor")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	headerStyle := ui.StyleHeader.Bold(true)
+	divider := ui.StyleSubtle.Render(strings.Repeat("━", 55))
+
+	fmt.Println()
+	fmt.Println(headerStyle.Render("TaskWing Doctor"))
+	fmt.Println(divider)
 	fmt.Println()
 
-	// Print all checks
+	// Print all checks with styled output
 	for _, c := range checks {
-		printCheck(c)
+		printStyledCheck(c)
 	}
 
 	if opts.Fix {
 		fmt.Println()
-		fmt.Println("🔧 Repair Summary")
-		fmt.Printf("   Planned: %d\n", len(repairPlan))
-		fmt.Printf("   Applied: %d\n", len(appliedRepairs))
-		fmt.Printf("   Skipped: %d\n", len(skippedRepairs))
-		fmt.Printf("   Blocked: %d\n", len(blockedRepairs))
+		fmt.Println(headerStyle.Render("Repair Summary"))
+		fmt.Printf("  Planned: %d  Applied: %d  Skipped: %d  Blocked: %d\n",
+			len(repairPlan), len(appliedRepairs), len(skippedRepairs), len(blockedRepairs))
 		for _, action := range blockedRepairs {
-			fmt.Printf("   ⊘ %s/%s: %s\n", action.AI, action.Component, action.Reason)
+			fmt.Printf("  %s %s/%s: %s\n", ui.StyleCheckFail.Render("BLOCKED"), action.AI, action.Component, action.Reason)
 		}
 		for _, action := range skippedRepairs {
-			fmt.Printf("   ⊘ %s/%s: %s\n", action.AI, action.Component, action.Reason)
+			fmt.Printf("  %s %s/%s: %s\n", ui.StyleCheckWarn.Render("SKIPPED"), action.AI, action.Component, action.Reason)
 		}
 	}
 
 	fmt.Println()
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println(divider)
 
-	// Summary and next steps
+	// Summary with styled status
 	if hasErrors {
-		fmt.Println("❌ Issues found. Fix the errors above before continuing.")
+		fmt.Println(ui.StyleCheckFail.Render("  FAIL") + "  Issues found. Fix the errors above before continuing.")
 	} else if hasWarnings {
-		fmt.Println("⚠️  Warnings found. Review the warnings above.")
+		fmt.Println(ui.StyleCheckWarn.Render("  WARN") + "  Warnings found. Review the warnings above.")
 		printNextSteps(checks)
 	} else {
-		fmt.Println("✅ Everything looks good!")
+		fmt.Println(ui.StyleCheckOK.Render("  PASS") + "  Everything looks good!")
 		printNextSteps(checks)
 	}
 
@@ -237,19 +239,26 @@ func makeGlobalMCPMap(ais []string) map[string]bool {
 }
 
 func printCheck(c DoctorCheck) {
-	var icon string
+	printStyledCheck(c)
+}
+
+func printStyledCheck(c DoctorCheck) {
+	var statusBadge string
 	switch c.Status {
 	case "ok":
-		icon = "✅"
+		statusBadge = ui.StyleCheckOK.Render("  ✔ PASS")
 	case "warn":
-		icon = "⚠️ "
+		statusBadge = ui.StyleCheckWarn.Render("  ⚠ WARN")
 	case "fail":
-		icon = "❌"
+		statusBadge = ui.StyleCheckFail.Render("  ✖ FAIL")
 	}
 
-	fmt.Printf("%s %s: %s\n", icon, c.Name, c.Message)
+	name := ui.StyleCheckName.Render(c.Name)
+	msg := ui.StyleText.Render(c.Message)
+
+	fmt.Printf("%s  %s: %s\n", statusBadge, name, msg)
 	if c.Hint != "" && c.Status != "ok" {
-		fmt.Printf("   └─ %s\n", c.Hint)
+		fmt.Printf("         %s\n", ui.StyleCheckHint.Render("└─ "+c.Hint))
 	}
 }
 
