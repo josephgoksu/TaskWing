@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/google/uuid"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 )
@@ -599,6 +600,7 @@ Be concise and direct.
 // Uses UpsertNodeBySummary for dedup (Jaccard similarity on summaries).
 func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, error) {
 	node := &memory.Node{
+		ID:          "n-" + uuid.New().String()[:8],
 		Content:     input.Content,
 		Type:        input.Type,
 		Summary:     input.Summary,
