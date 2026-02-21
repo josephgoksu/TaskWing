@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.24.x'
           cache: true  # Enable Go module caching
 
       - name: Lint
@@ -37,7 +37,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.24.x'
           cache: true  # Enable Go module caching
 
       - name: Test

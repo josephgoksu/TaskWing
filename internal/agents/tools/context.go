@@ -12,6 +12,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/patterns"
+	"github.com/josephgoksu/TaskWing/internal/safepath"
 )
 
 // Package-level config file map (avoid allocation on every call)
@@ -133,7 +134,15 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 	seen := make(map[string]bool) // Key: relative path (lowercase) for consistent deduplication
 
 	gatherFromDir := func(dir, prefix string, maxLen int) {
-		entries, err := os.ReadDir(dir)
+		safeDir, err := safepath.ValidateAbsPath(g.BasePath, dir)
+		if err != nil {
+			// If dir == g.BasePath itself, allow it.
+			if dir != g.BasePath {
+				return
+			}
+			safeDir = dir
+		}
+		entries, err := os.ReadDir(safeDir)
 		if err != nil {
 			return
 		}
@@ -157,7 +166,11 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			if seen[key] {
 				continue
 			}
-			content, err := os.ReadFile(filepath.Join(dir, name))
+			filePath, joinErr := safepath.SafeJoin(g.BasePath, relPath)
+			if joinErr != nil {
+				continue
+			}
+			content, err := os.ReadFile(filePath)
 			if err != nil {
 				continue
 			}
@@ -197,7 +210,11 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			// Check if subdir has its own internal/pkg/src
 			for _, subPkgDir := range []string{"internal", "pkg", "src"} {
 				subPath := filepath.Join(entry.Name(), subPkgDir)
-				if info, err := os.Stat(filepath.Join(g.BasePath, subPath)); err == nil && info.IsDir() {
+				fullSub, joinErr := safepath.SafeJoin(g.BasePath, subPath)
+				if joinErr != nil {
+					continue
+				}
+				if info, err := os.Stat(fullSub); err == nil && info.IsDir() {
 					packageDirs = append(packageDirs, subPath)
 				}
 			}
@@ -310,7 +327,11 @@ func (g *ContextGatherer) GatherKeyFiles() string {
 		}
 		seen[keyLower] = true
 
-		content, err := os.ReadFile(filepath.Join(g.BasePath, relPath))
+		fullPath, joinErr := safepath.SafeJoin(g.BasePath, relPath)
+		if joinErr != nil {
+			continue
+		}
+		content, err := os.ReadFile(fullPath)
 		if err != nil {
 			continue
 		}
@@ -338,79 +359,86 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 	maxPerFile := 3000
 
 	// GitHub Actions
-	ghWorkflows := filepath.Join(g.BasePath, ".github", "workflows")
-	if entries, err := os.ReadDir(ghWorkflows); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := entry.Name()
-			if !strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml") {
-				continue
-			}
-			if g.budget != nil && g.budget.IsExhausted() {
-				break
-			}
-			content, err := os.ReadFile(filepath.Join(ghWorkflows, name))
-			if err != nil {
-				continue
-			}
-			truncated := len(content) > maxPerFile
-			if truncated {
-				content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
-			}
-			relPath := filepath.Join(".github", "workflows", name)
+	ghWorkflows, ghErr := safepath.SafeJoin(g.BasePath, filepath.Join(".github", "workflows"))
+	if ghErr == nil {
+		if entries, err := os.ReadDir(ghWorkflows); err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				name := entry.Name()
+				if !strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml") {
+					continue
+				}
+				if g.budget != nil && g.budget.IsExhausted() {
+					break
+				}
+				wfPath, wfErr := safepath.SafeJoin(g.BasePath, filepath.Join(".github", "workflows", name))
+				if wfErr != nil {
+					continue
+				}
+				content, err := os.ReadFile(wfPath)
+				if err != nil {
+					continue
+				}
+				truncated := len(content) > maxPerFile
+				if truncated {
+					content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
+				}
+				relPath := filepath.Join(".github", "workflows", name)
 
-			formatted := fmt.Sprintf("## %s\n```yaml\n%s\n```\n\n", relPath, string(content))
-			if !g.checkBudget(formatted) {
-				g.recordSkip(relPath, "token budget exhausted")
-				break
-			}
+				formatted := fmt.Sprintf("## %s\n```yaml\n%s\n```\n\n", relPath, string(content))
+				if !g.checkBudget(formatted) {
+					g.recordSkip(relPath, "token budget exhausted")
+					break
+				}
 
-			// Track this file read for coverage reporting
-			g.recordRead(relPath, content, truncated)
-			sb.WriteString(formatted)
+				g.recordRead(relPath, content, truncated)
+				sb.WriteString(formatted)
+			}
 		}
 	}
 
 	// GitLab CI
-	gitlabCI := filepath.Join(g.BasePath, ".gitlab-ci.yml")
-	if content, err := os.ReadFile(gitlabCI); err == nil {
-		if g.budget != nil && g.budget.IsExhausted() {
-			g.recordSkip(".gitlab-ci.yml", "token budget exhausted (prio)")
-		} else {
-			truncated := len(content) > maxPerFile
-			if truncated {
-				content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
-			}
-			formatted := fmt.Sprintf("## .gitlab-ci.yml\n```yaml\n%s\n```\n\n", string(content))
-			if g.checkBudget(formatted) {
-				// Track this file read for coverage reporting
-				g.recordRead(".gitlab-ci.yml", content, truncated)
-				sb.WriteString(formatted)
+	gitlabPath, glErr := safepath.SafeJoin(g.BasePath, ".gitlab-ci.yml")
+	if glErr == nil {
+		if content, err := os.ReadFile(gitlabPath); err == nil {
+			if g.budget != nil && g.budget.IsExhausted() {
+				g.recordSkip(".gitlab-ci.yml", "token budget exhausted (prio)")
 			} else {
-				g.recordSkip(".gitlab-ci.yml", "token budget exhausted")
+				truncated := len(content) > maxPerFile
+				if truncated {
+					content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
+				}
+				formatted := fmt.Sprintf("## .gitlab-ci.yml\n```yaml\n%s\n```\n\n", string(content))
+				if g.checkBudget(formatted) {
+					g.recordRead(".gitlab-ci.yml", content, truncated)
+					sb.WriteString(formatted)
+				} else {
+					g.recordSkip(".gitlab-ci.yml", "token budget exhausted")
+				}
 			}
 		}
 	}
 
 	// CircleCI
-	circleCI := filepath.Join(g.BasePath, ".circleci", "config.yml")
-	if content, err := os.ReadFile(circleCI); err == nil {
-		if g.budget != nil && g.budget.IsExhausted() {
-			g.recordSkip(".circleci/config.yml", "token budget exhausted (prio)")
-		} else {
-			truncated := len(content) > maxPerFile
-			if truncated {
-				content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
-			}
-			formatted := fmt.Sprintf("## .circleci/config.yml\n```yaml\n%s\n```\n\n", string(content))
-			if g.checkBudget(formatted) {
-				// Track this file read for coverage reporting
-				g.recordRead(".circleci/config.yml", content, truncated)
-				sb.WriteString(formatted)
+	circlePath, ccErr := safepath.SafeJoin(g.BasePath, filepath.Join(".circleci", "config.yml"))
+	if ccErr == nil {
+		if content, err := os.ReadFile(circlePath); err == nil {
+			if g.budget != nil && g.budget.IsExhausted() {
+				g.recordSkip(".circleci/config.yml", "token budget exhausted (prio)")
 			} else {
-				g.recordSkip(".circleci/config.yml", "token budget exhausted")
+				truncated := len(content) > maxPerFile
+				if truncated {
+					content = append(content[:maxPerFile], []byte("\n...[truncated]")...)
+				}
+				formatted := fmt.Sprintf("## .circleci/config.yml\n```yaml\n%s\n```\n\n", string(content))
+				if g.checkBudget(formatted) {
+					g.recordRead(".circleci/config.yml", content, truncated)
+					sb.WriteString(formatted)
+				} else {
+					g.recordSkip(".circleci/config.yml", "token budget exhausted")
+				}
 			}
 		}
 	}
@@ -422,7 +450,11 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 func (g *ContextGatherer) GatherSpecificFiles(files []string) string {
 	var sb strings.Builder
 	for _, relPath := range files {
-		content, err := os.ReadFile(filepath.Join(g.BasePath, relPath))
+		fullPath, joinErr := safepath.SafeJoin(g.BasePath, relPath)
+		if joinErr != nil {
+			continue
+		}
+		content, err := os.ReadFile(fullPath)
 		if err != nil {
 			continue
 		}
@@ -467,7 +499,11 @@ func (g *ContextGatherer) GatherSourceCode() string {
 			g.recordSkip(relPath, "character budget exhausted")
 			return false
 		}
-		fullPath := filepath.Join(g.BasePath, relPath)
+		fullPath, joinErr := safepath.SafeJoin(g.BasePath, relPath)
+		if joinErr != nil {
+			g.recordSkip(relPath, "path validation failed")
+			return false
+		}
 		info, err := os.Stat(fullPath)
 		if err != nil || info.IsDir() {
 			return false

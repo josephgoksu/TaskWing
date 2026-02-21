@@ -13,6 +13,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/safepath"
 	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
@@ -203,6 +204,13 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	if req.ProjectPath == "" {
 		req.ProjectPath = s.cwd
 	}
+
+	validatedPath, err := safepath.ValidateAbsPath(s.cwd, req.ProjectPath)
+	if err != nil {
+		http.Error(w, "invalid project path", http.StatusBadRequest)
+		return
+	}
+	req.ProjectPath = validatedPath
 
 	if _, err := os.Stat(req.ProjectPath); os.IsNotExist(err) {
 		http.Error(w, "project path does not exist", http.StatusBadRequest)

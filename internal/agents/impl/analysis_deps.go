@@ -15,6 +15,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/tools"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/safepath"
 )
 
 // DepsAgent analyzes dependencies to understand technology choices.
@@ -191,9 +192,10 @@ func gatherDepsWithTracking(basePath string, budget *tools.ContextBudget) (strin
 			if budget.IsExhausted() {
 				break
 			}
-			fullPath := file
-			if !strings.HasPrefix(file, "/") {
-				fullPath = basePath + "/" + strings.TrimPrefix(file, "./")
+			relFile := strings.TrimPrefix(file, "./")
+			fullPath, pathErr := safepath.SafeJoin(basePath, relFile)
+			if pathErr != nil {
+				continue
 			}
 			content, err := readFileWithLimit(fullPath, 2000)
 			if err != nil {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/patterns"
+	"github.com/josephgoksu/TaskWing/internal/safepath"
 )
 
 // ChunkConfig configures the chunking behavior.
@@ -229,7 +230,14 @@ func (c *CodeChunker) groupIntoChunks(files []prioritizedFile) []FileChunk {
 	maxPerFile := 8000 // Max characters per file to prevent one huge file from dominating
 
 	for _, pf := range files {
-		fullPath := filepath.Join(c.basePath, pf.relPath)
+		fullPath, err := safepath.SafeJoin(c.basePath, pf.relPath)
+		if err != nil {
+			c.coverage.FilesSkipped = append(c.coverage.FilesSkipped, SkipRecord{
+				Path:   pf.relPath,
+				Reason: fmt.Sprintf("path validation: %v", err),
+			})
+			continue
+		}
 		content, err := os.ReadFile(fullPath)
 		if err != nil {
 			c.coverage.FilesSkipped = append(c.coverage.FilesSkipped, SkipRecord{

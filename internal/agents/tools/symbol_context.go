@@ -11,6 +11,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/safepath"
 	"github.com/spf13/viper"
 
 	_ "modernc.org/sqlite" // SQLite driver
@@ -46,7 +47,10 @@ type SymbolContext struct {
 // Returns nil if the index is not available (fallback to raw files).
 func NewSymbolContext(basePath string, llmCfg llm.Config) (*SymbolContext, error) {
 	// Try to open the database
-	dbPath := filepath.Join(basePath, ".taskwing", "memory", "memory.db")
+	dbPath, err := safepath.SafeJoin(basePath, filepath.Join(".taskwing", "memory", "memory.db"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid db path: %w", err)
+	}
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("index not available: %s", dbPath)
 	}
