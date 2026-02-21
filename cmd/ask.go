@@ -86,17 +86,19 @@ func runAsk(cmd *cobra.Command, args []string) error {
 	opts.GenerateAnswer = generateAnswer
 	opts.Workspace = workspace
 
-	if generateAnswer {
+	// Only stream raw text for JSON mode; for TUI we show spinner then styled output
+	if generateAnswer && isJSON() {
 		opts.StreamWriter = os.Stdout
 	}
 
-	// Show spinner during LLM query (non-JSON mode only)
+	// Show spinner during query (non-JSON mode only)
 	var spin *ui.Spinner
-	if !isJSON() && generateAnswer {
-		spin = ui.NewSpinner("Generating answer...")
-		spin.Start()
-	} else if !isJSON() {
-		spin = ui.NewSpinner("Searching knowledge...")
+	if !isJSON() {
+		if generateAnswer {
+			spin = ui.NewSpinner("Generating answer...")
+		} else {
+			spin = ui.NewSpinner("Searching knowledge...")
+		}
 		spin.Start()
 	}
 
