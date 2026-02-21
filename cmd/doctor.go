@@ -238,10 +238,6 @@ func makeGlobalMCPMap(ais []string) map[string]bool {
 	return out
 }
 
-func printCheck(c DoctorCheck) {
-	printStyledCheck(c)
-}
-
 func printStyledCheck(c DoctorCheck) {
 	var statusBadge string
 	switch c.Status {

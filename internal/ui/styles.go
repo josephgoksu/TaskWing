@@ -98,9 +98,9 @@ var (
 	StyleCheckHint = lipgloss.NewStyle().Foreground(ColorDim).Italic(true)
 
 	// Ask Output Styles
-	StyleAskHeader   = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Padding(0, 0)
-	StyleAskMeta     = lipgloss.NewStyle().Foreground(ColorDim)
-	StyleCitationPath = lipgloss.NewStyle().Foreground(ColorDim).Italic(true)
+	StyleAskHeader     = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Padding(0, 0)
+	StyleAskMeta       = lipgloss.NewStyle().Foreground(ColorDim)
+	StyleCitationPath  = lipgloss.NewStyle().Foreground(ColorDim).Italic(true)
 	StyleCitationBadge = lipgloss.NewStyle().Foreground(ColorCyan).Bold(true)
 )
 
