@@ -119,8 +119,9 @@ func (v *Agent) checkEvidence(evidence core.Evidence) core.EvidenceCheckResult {
 		return result
 	}
 
-	// Detect git evidence by explicit type or path prefix
-	if evidence.EvidenceType == "git" || strings.HasPrefix(evidence.FilePath, ".git") {
+	// Detect git evidence by explicit type, path prefix, or embedded .git path
+	// (multi-repo paths look like "serviceDir/.git/logs/HEAD")
+	if evidence.EvidenceType == "git" || strings.HasPrefix(evidence.FilePath, ".git") || strings.Contains(evidence.FilePath, "/.git/") {
 		return v.verifyGitEvidence(evidence)
 	}
 
@@ -212,9 +213,17 @@ func (v *Agent) verifyGitEvidence(evidence core.Evidence) core.EvidenceCheckResu
 		return result
 	}
 
+	// Determine git working directory.
+	// For workspace-relative paths like "serviceDir/.git/logs/HEAD",
+	// extract the service directory and use it as the git root.
+	gitDir := v.basePath
+	if idx := strings.Index(evidence.FilePath, "/.git/"); idx > 0 {
+		gitDir = filepath.Join(v.basePath, evidence.FilePath[:idx])
+	}
+
 	// Run git log to fetch recent commit history
 	cmd := exec.Command("git", "log", "--all", "--oneline", "-500")
-	cmd.Dir = v.basePath
+	cmd.Dir = gitDir
 	out, err := cmd.Output()
 	if err != nil {
 		result.ErrorMessage = "git log failed: " + err.Error()

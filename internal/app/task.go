@@ -186,9 +186,9 @@ func (a *TaskApp) Next(ctx context.Context, opts TaskNextOptions) (*TaskResult, 
 	}
 
 	// Build hint
-	hint := "Call recall tool with suggested queries for context before starting work."
-	if len(nextTask.SuggestedRecallQueries) > 0 {
-		hint = fmt.Sprintf("Call recall tool with queries: %v", nextTask.SuggestedRecallQueries)
+	hint := "Call ask tool with suggested queries for context before starting work."
+	if len(nextTask.SuggestedAskQueries) > 0 {
+		hint = fmt.Sprintf("Call ask tool with queries: %v", nextTask.SuggestedAskQueries)
 	}
 
 	// Build rich context
@@ -308,9 +308,9 @@ func (a *TaskApp) Start(ctx context.Context, opts TaskStartOptions) (*TaskResult
 
 	plan, _ := repo.GetPlan(startedTask.PlanID)
 
-	hint := "Call recall tool with suggested queries for relevant context."
-	if len(startedTask.SuggestedRecallQueries) > 0 {
-		hint = fmt.Sprintf("Call recall tool with queries: %v", startedTask.SuggestedRecallQueries)
+	hint := "Call ask tool with suggested queries for relevant context."
+	if len(startedTask.SuggestedAskQueries) > 0 {
+		hint = fmt.Sprintf("Call ask tool with queries: %v", startedTask.SuggestedAskQueries)
 	}
 
 	return &TaskResult{
@@ -649,16 +649,16 @@ func (a *TaskApp) executeGitWorkflow(plan *task.Plan, skipUnpushedCheck bool) (*
 	return gitClient.StartPlanWorkflow(plan.ID, plan.Goal, skipUnpushedCheck)
 }
 
-// buildRichContext creates markdown context for a task using RecallApp.
+// buildRichContext creates markdown context for a task using AskApp.
 func (a *TaskApp) buildRichContext(ctx context.Context, t *task.Task, plan *task.Plan) string {
 	if plan == nil {
 		return ""
 	}
 
-	// Create a search function that uses RecallApp
-	recallApp := NewRecallApp(a.ctx)
-	searchFunc := func(ctx context.Context, query string, limit int) ([]task.RecallResult, error) {
-		result, err := recallApp.Query(ctx, query, RecallOptions{
+	// Create a search function that uses AskApp
+	askApp := NewAskApp(a.ctx)
+	searchFunc := func(ctx context.Context, query string, limit int) ([]task.AskResult, error) {
+		result, err := askApp.Query(ctx, query, AskOptions{
 			Limit:          limit,
 			GenerateAnswer: false,
 		})
@@ -666,9 +666,9 @@ func (a *TaskApp) buildRichContext(ctx context.Context, t *task.Task, plan *task
 			return nil, err
 		}
 
-		var adapted []task.RecallResult
+		var adapted []task.AskResult
 		for _, r := range result.Results {
-			adapted = append(adapted, task.RecallResult{
+			adapted = append(adapted, task.AskResult{
 				Summary: r.Summary,
 				Type:    r.Type,
 				Content: r.Content,

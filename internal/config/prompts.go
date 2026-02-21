@@ -369,7 +369,7 @@ ESSENTIAL complexity (business requirements) from ACCIDENTAL complexity (tech de
 - Patterns marked "legacy" or "deprecated" in comments
 
 **Why This Matters:**
-When AI agents recall these patterns, high-debt items will include warnings like:
+When AI agents retrieve these patterns, high-debt items will include warnings like:
 "⚠️ TECHNICAL DEBT: Consider not propagating this pattern."
 This prevents AI from accidentally spreading tech debt across the codebase.
 

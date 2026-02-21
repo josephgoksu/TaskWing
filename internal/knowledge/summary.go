@@ -8,7 +8,7 @@ import (
 // This centralizes summary logic so CLI and MCP usage remains consistent.
 // Includes the project overview (if available) at the top of the response.
 func (s *Service) GetProjectSummary(ctx context.Context) (ProjectSummary, error) {
-	// Fetch project overview first (prepended to all recall responses)
+	// Fetch project overview first (prepended to all ask responses)
 	var overviewInfo *ProjectOverviewInfo
 	if overview, err := s.repo.GetProjectOverview(); err == nil && overview != nil {
 		overviewInfo = &ProjectOverviewInfo{

@@ -32,9 +32,9 @@ type SymbolResponse struct {
 	Location   string `json:"location"` // "file:line" for easy navigation
 }
 
-// RecallResult contains the complete result of a knowledge search.
+// AskResult contains the complete result of a knowledge search.
 // This is the canonical response type used by both CLI and MCP.
-type RecallResult struct {
+type AskResult struct {
 	Query          string                   `json:"query"`
 	RewrittenQuery string                   `json:"rewritten_query,omitempty"`
 	Pipeline       string                   `json:"pipeline"`
@@ -46,8 +46,8 @@ type RecallResult struct {
 	Warning        string                   `json:"warning,omitempty"`
 }
 
-// RecallOptions configures the behavior of a recall query.
-type RecallOptions struct {
+// AskOptions configures the behavior of an ask query.
+type AskOptions struct {
 	Limit          int       // Maximum number of knowledge results (default: 5)
 	SymbolLimit    int       // Maximum number of symbol results (default: 5)
 	GenerateAnswer bool      // Whether to generate a RAG answer
@@ -62,9 +62,9 @@ type RecallOptions struct {
 	IncludeRoot bool   // When Workspace is set, also include 'root' workspace nodes (default: true)
 }
 
-// DefaultRecallOptions returns sensible defaults for recall queries.
-func DefaultRecallOptions() RecallOptions {
-	return RecallOptions{
+// DefaultAskOptions returns sensible defaults for ask queries.
+func DefaultAskOptions() AskOptions {
+	return AskOptions{
 		Limit:          5,
 		SymbolLimit:    5,
 		GenerateAnswer: false,
@@ -120,15 +120,15 @@ func ResolveWorkspace(explicitWorkspace string, autoDetect bool) (string, error)
 	return "", nil // Empty means all workspaces
 }
 
-// RecallApp provides knowledge retrieval operations.
+// AskApp provides knowledge retrieval operations.
 // This is THE implementation - CLI and MCP both call these methods.
-type RecallApp struct {
+type AskApp struct {
 	ctx *Context
 }
 
-// NewRecallApp creates a new recall application service.
-func NewRecallApp(ctx *Context) *RecallApp {
-	return &RecallApp{ctx: ctx}
+// NewAskApp creates a new ask application service.
+func NewAskApp(ctx *Context) *AskApp {
+	return &AskApp{ctx: ctx}
 }
 
 // Query performs semantic search with optional RAG answer generation.
@@ -139,7 +139,7 @@ func NewRecallApp(ctx *Context) *RecallApp {
 // 4. Reranking (if enabled)
 // 5. Graph expansion (if enabled)
 // 6. Answer generation (if requested)
-func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions) (*RecallResult, error) {
+func (a *AskApp) Query(ctx context.Context, query string, opts AskOptions) (*AskResult, error) {
 	if opts.Limit <= 0 {
 		opts.Limit = 5
 	}
@@ -308,7 +308,7 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 		}
 	}
 
-	return &RecallResult{
+	return &AskResult{
 		Query:          query,
 		RewrittenQuery: rewrittenQuery,
 		Pipeline:       pipeline,
@@ -323,7 +323,7 @@ func (a *RecallApp) Query(ctx context.Context, query string, opts RecallOptions)
 
 // searchSymbols searches the code intelligence index for matching symbols.
 // It prioritizes public symbols over private ones.
-func (a *RecallApp) searchSymbols(ctx context.Context, query string, limit int) []SymbolResponse {
+func (a *AskApp) searchSymbols(ctx context.Context, query string, limit int) []SymbolResponse {
 	// Get database handle from repository
 	store := a.ctx.Repo.GetDB()
 	if store == nil {
@@ -379,7 +379,7 @@ func (a *RecallApp) searchSymbols(ctx context.Context, query string, limit int) 
 
 // Summary returns a high-level overview of the project's knowledge base.
 // Use this when no query is provided.
-func (a *RecallApp) Summary(ctx context.Context) (*knowledge.ProjectSummary, error) {
+func (a *AskApp) Summary(ctx context.Context) (*knowledge.ProjectSummary, error) {
 	ks := knowledge.NewService(a.ctx.Repo, a.ctx.LLMCfg)
 	summary, err := ks.GetProjectSummary(ctx)
 	if err != nil {
@@ -390,7 +390,7 @@ func (a *RecallApp) Summary(ctx context.Context) (*knowledge.ProjectSummary, err
 
 // getRawSymbols retrieves raw codeintel.Symbol objects for source code fetching.
 // This is the core symbol retrieval - searchSymbols wraps it with response conversion.
-func (a *RecallApp) getRawSymbols(ctx context.Context, query string, limit int) []codeintel.Symbol {
+func (a *AskApp) getRawSymbols(ctx context.Context, query string, limit int) []codeintel.Symbol {
 	store := a.ctx.Repo.GetDB()
 	if store == nil {
 		return nil
@@ -411,7 +411,7 @@ func (a *RecallApp) getRawSymbols(ctx context.Context, query string, limit int) 
 // generateRAGAnswer creates an answer using both knowledge nodes and code snippets.
 // This is the core of Code-Based RAG: answers are grounded in actual source code.
 // If streamWriter is provided, tokens are streamed as they arrive.
-func (a *RecallApp) generateRAGAnswer(ctx context.Context, query string, nodes []knowledge.ScoredNode, snippets []CodeSnippet, streamWriter io.Writer) (string, error) {
+func (a *AskApp) generateRAGAnswer(ctx context.Context, query string, nodes []knowledge.ScoredNode, snippets []CodeSnippet, streamWriter io.Writer) (string, error) {
 	// Build context from both sources
 	var contextParts []string
 

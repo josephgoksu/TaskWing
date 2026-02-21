@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test script for MCP workspace filtering functionality.
 #
-# This script tests that the MCP recall tool correctly handles workspace filtering
+# This script tests that the MCP ask tool correctly handles workspace filtering
 # by sending JSON-RPC requests to the local dev MCP server.
 #
 # Prerequisites:
@@ -12,9 +12,9 @@
 #   ./scripts/test_mcp_workspace.sh
 #
 # The script tests:
-# 1. recall without workspace filter (returns all)
-# 2. recall with workspace="api" (returns api + root)
-# 3. recall with workspace="api" and all=true (returns all, ignoring workspace)
+# 1. ask without workspace filter (returns all)
+# 2. ask with workspace="api" (returns api + root)
+# 3. ask with workspace="api" and all=true (returns all, ignoring workspace)
 
 set -e
 
@@ -114,13 +114,13 @@ func main() {
     fmt.Println("Example requests:")
     fmt.Println("")
     fmt.Println("No filter (all workspaces):")
-    fmt.Println(`  {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recall","arguments":{"query":"pattern"}}}`)
+    fmt.Println(`  {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ask","arguments":{"query":"pattern"}}}`)
     fmt.Println("")
     fmt.Println("With workspace filter:")
-    fmt.Println(`  {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall","arguments":{"query":"pattern","workspace":"api"}}}`)
+    fmt.Println(`  {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ask","arguments":{"query":"pattern","workspace":"api"}}}`)
     fmt.Println("")
     fmt.Println("With workspace filter and all=true (ignores workspace):")
-    fmt.Println(`  {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"recall","arguments":{"query":"pattern","workspace":"api","all":true}}}`)
+    fmt.Println(`  {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ask","arguments":{"query":"pattern","workspace":"api","all":true}}}`)
 }
 EOF
 
@@ -137,7 +137,7 @@ echo "3. Knowledge service tests: go test ./internal/knowledge/... -run TestWork
 echo
 echo "For manual MCP testing with the local dev server:"
 echo "1. Ensure nodes exist in your memory DB"
-echo "2. Run: echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"recall\",\"arguments\":{\"query\":\"pattern\",\"workspace\":\"api\"}}}' | ./bin/taskwing mcp"
+echo "2. Run: echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"ask\",\"arguments\":{\"query\":\"pattern\",\"workspace\":\"api\"}}}' | ./bin/taskwing mcp"
 echo
 echo "Expected behavior:"
 echo "- workspace=\"api\" returns api nodes + root nodes"

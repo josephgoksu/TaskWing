@@ -42,7 +42,7 @@ type Node struct {
 
 	// Debt Classification fields (v2.2+)
 	// Distinguishes essential complexity from accidental complexity (technical debt).
-	// When AI recalls context, high-debt patterns include warnings to prevent propagation.
+	// When AI retrieves context, high-debt patterns include warnings to prevent propagation.
 
 	// DebtScore indicates how much this represents technical debt (0.0 = clean, 1.0 = pure debt)
 	DebtScore float64 `json:"debtScore,omitempty"`

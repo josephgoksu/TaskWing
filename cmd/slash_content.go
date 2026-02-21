@@ -28,12 +28,12 @@ Extract from the response:
 - scope (e.g., "auth", "vectorsearch", "api")
 - keywords array
 - acceptance_criteria
-- suggested_recall_queries
+- suggested_ask_queries
 
 If no task returned, inform user: "No pending tasks. Use 'taskwing plan list' to check plan status."
 
 ## Step 2: Fetch Scope-Relevant Context
-Call MCP tool ` + "`recall`" + ` with query based on task scope:
+Call MCP tool ` + "`ask`" + ` with query based on task scope:
 ` + "```json" + `
 {"query": "[task.scope] patterns constraints decisions"}
 ` + "```" + `
@@ -46,8 +46,8 @@ Examples:
 Extract: patterns, constraints, related decisions.
 
 ## Step 3: Fetch Task-Specific Context
-Call MCP tool ` + "`recall`" + ` with keywords from the task.
-Use ` + "`suggested_recall_queries`" + ` if available, otherwise extract keywords from title.
+Call MCP tool ` + "`ask`" + ` with keywords from the task.
+Use ` + "`suggested_ask_queries`" + ` if available, otherwise extract keywords from title.
 ` + "```json" + `
 {"query": "[keywords from task title/description]"}
 ` + "```" + `
@@ -81,7 +81,7 @@ Display in this format:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ## Relevant Patterns
-[Patterns from recall that apply to this task]
+[Patterns from ask that apply to this task]
 
 ## Constraints
 [Constraints that must be respected]
@@ -107,7 +107,7 @@ If approval is missing or unclear, STOP and respond with:
 ## Step 7: Begin Implementation (Only After Approval)
 Proceed with the task, following the patterns and respecting the constraints shown above.
 
-**CRITICAL**: You MUST call all MCP tools (` + "`task(next)`" + `, ` + "`recall`" + ` x2, ` + "`task(start)`" + `) before showing the brief and before requesting implementation approval.
+**CRITICAL**: You MUST call all MCP tools (` + "`task(next)`" + `, ` + "`ask`" + ` x2, ` + "`task(start)`" + `) before showing the brief and before requesting implementation approval.
 
 ## Fallback (No MCP)
 ` + "```bash" + `
@@ -243,7 +243,7 @@ Scope: [scope]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Commands:
   /tw-done    - Complete this task
-  /tw-brief   - Fetch more context
+  /tw-ask     - Fetch more context
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` + "```" + `
 
@@ -668,7 +668,7 @@ const slashExplainContent = `# Explain Code Symbol
 
 **Usage:** ` + "`/tw-explain <symbol_name>`" + `
 
-**Example:** ` + "`/tw-explain NewRecallApp`" + `
+**Example:** ` + "`/tw-explain NewAskApp`" + `
 
 Get a deep-dive explanation of a code symbol including its purpose, usage patterns, and call graph.
 This is an analysis command and must not be used to bypass planning, verification, or debug gates.
@@ -736,12 +736,12 @@ taskwing mcp
 ` + "```" + `
 `
 
-// slashBriefContent is the prompt content for /tw-brief
-const slashBriefContent = `# Project Knowledge Brief
+// slashAskContent is the prompt content for /tw-ask
+const slashAskContent = `# Project Knowledge Brief
 
 This is a context-priming command and must not be used to bypass planning, verification, or debug gates.
 
-Call MCP tool ` + "`recall`" + ` to get a compact project knowledge brief.
+Call MCP tool ` + "`ask`" + ` to get a compact project knowledge brief.
 
 Use:
 ` + "```json" + `
@@ -754,4 +754,24 @@ If you need broader coverage, run:
 ` + "```" + `
 
 Present the returned summary and top results to prime the conversation with project knowledge.
+`
+
+// slashRememberContent is the prompt content for /tw-remember
+const slashRememberContent = `# Store Knowledge in Project Memory
+
+This is a persistence command and must not be used to bypass planning, verification, or debug gates.
+
+Call MCP tool ` + "`remember`" + ` to persist a decision, pattern, or insight to project memory.
+
+Use:
+` + "```json" + `
+{"content": "[the knowledge to store]"}
+` + "```" + `
+
+Optionally specify a type (decision, pattern, constraint, note):
+` + "```json" + `
+{"content": "[the knowledge to store]", "type": "decision"}
+` + "```" + `
+
+The content will be classified automatically using AI if no type is provided.
 `

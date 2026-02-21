@@ -100,7 +100,7 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 
 ## MCP Integration
 
-TaskWing exposes a `recall` tool. When working on this feature:
+TaskWing exposes an `ask` tool. When working on this feature:
 *   Ensure responses stay within token budgets (500-1000 tokens).
 *   Test with `taskwing mcp` locally or use `make test-mcp`.
 
@@ -211,20 +211,22 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_LEGAL_END -->
 
 ### Slash Commands
-- /tw-brief - Use when you need a compact project brief.
-- /tw-next - Use when you are ready to start the next approved task.
-- /tw-done - Use when implementation is verified and ready to complete.
-- /tw-plan - Use when you need to clarify a goal and build a plan.
-- /tw-status - Use when you need current task progress.
-- /tw-debug - Use when debugging must start from root-cause evidence.
-- /tw-explain - Use when you need a deep symbol explanation.
-- /tw-simplify - Use when you want to simplify code without behavior changes.
+- /tw-ask - Use when you need to search project knowledge (decisions, patterns, constraints).
+- /tw-remember - Use when you want to persist a decision, pattern, or insight to project memory.
+- /tw-next - Use when you are ready to start the next approved TaskWing task with full context.
+- /tw-done - Use when implementation is verified and you are ready to complete the current task.
+- /tw-status - Use when you need current task progress and acceptance criteria status.
+- /tw-plan - Use when you need to clarify a goal and build an approved execution plan.
+- /tw-debug - Use when an issue requires root-cause-first debugging before proposing fixes.
+- /tw-explain - Use when you need a deep explanation of a code symbol and its call graph.
+- /tw-simplify - Use when you want to simplify code while preserving behavior.
 
 ### Core Commands
 
 <!-- TASKWING_COMMANDS_START -->
 - taskwing bootstrap
 - taskwing goal "<goal>"
+- taskwing ask "<query>"
 - taskwing task
 - taskwing plan status
 - taskwing slash
@@ -239,7 +241,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
 |------|-------------|
-| recall | Retrieve project knowledge (decisions, patterns, constraints) |
+| ask | Search project knowledge (decisions, patterns, constraints) |
 | task | Unified task lifecycle (next, current, start, complete) |
 | plan | Plan management (clarify, decompose, expand, generate, finalize, audit) |
 | code | Code intelligence (find, search, explain, callers, impact, simplify) |

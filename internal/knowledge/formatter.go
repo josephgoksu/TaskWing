@@ -1,4 +1,4 @@
-// Package knowledge provides compact Markdown formatting for recall results.
+// Package knowledge provides compact Markdown formatting for ask results.
 // This formatter produces token-efficient output by grouping nodes by type
 // and removing all JSON metadata and embedding data.
 package knowledge
@@ -13,7 +13,7 @@ import (
 	"golang.org/x/text/language"
 )
 
-// CompactFormatter produces condensed Markdown output for recall results.
+// CompactFormatter produces condensed Markdown output for ask results.
 // It groups nodes by type and strips all unnecessary metadata to minimize tokens.
 type CompactFormatter struct {
 	// MaxContentLen limits content preview length per node (default: 120)

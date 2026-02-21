@@ -27,11 +27,11 @@ At task creation time (`PlanApp.parseTasksFromMetadata`):
 
 ```go
 // internal/app/plan.go
-t.EnrichAIFields()  // Generates SuggestedRecallQueries
+t.EnrichAIFields()  // Generates SuggestedAskQueries
 
-// Execute recall queries and embed context
-if a.TaskEnricher != nil && len(t.SuggestedRecallQueries) > 0 {
-    if contextSummary, err := a.TaskEnricher(ctx, t.SuggestedRecallQueries); err == nil {
+// Execute ask queries and embed context
+if a.TaskEnricher != nil && len(t.SuggestedAskQueries) > 0 {
+    if contextSummary, err := a.TaskEnricher(ctx, t.SuggestedAskQueries); err == nil {
         t.ContextSummary = contextSummary  // Embedded in task record
     }
 }
@@ -47,10 +47,10 @@ At task presentation time (`FormatRichContext`):
 // internal/task/presentation.go
 if t.ContextSummary != "" {
     // Use pre-computed early-bound context (preferred)
-    recallContext = "\n" + t.ContextSummary
-} else if len(t.SuggestedRecallQueries) > 0 && searchFn != nil {
+    askContext = "\n" + t.ContextSummary
+} else if len(t.SuggestedAskQueries) > 0 && searchFn != nil {
     // Fallback: Fetch context dynamically
-    for _, query := range t.SuggestedRecallQueries {
+    for _, query := range t.SuggestedAskQueries {
         results, _ := searchFn(ctx, query, 3)
         // ... aggregate results
     }
@@ -73,11 +73,11 @@ if t.ContextSummary != "" {
 │                          ▼                                               │
 │  2. EnrichAIFields() generates:                                          │
 │     - Scope (inferred from keywords)                                     │
-│     - SuggestedRecallQueries (3 queries)                                 │
+│     - SuggestedAskQueries (3 queries)                                 │
 │                          │                                               │
 │                          ▼                                               │
-│  3. TaskEnricher executes ALL recall queries                             │
-│     - Calls RecallApp.Query() for each query                             │
+│  3. TaskEnricher executes ALL ask queries                             │
+│     - Calls AskApp.Query() for each query                             │
 │     - Aggregates results (deduped by summary)                            │
 │     - Truncates content to 200 chars                                     │
 │                          │                                               │
@@ -98,7 +98,7 @@ if t.ContextSummary != "" {
 │  2. Check: Does Task.ContextSummary exist?                               │
 │     ├── YES: Use it directly (fast path)                                 │
 │     │                                                                    │
-│     └── NO: Execute SuggestedRecallQueries (fallback)                    │
+│     └── NO: Execute SuggestedAskQueries (fallback)                    │
 │             - Fetch fresh context from knowledge graph                   │
 │             - Deduplicate by summary                                     │
 │             - Truncate content to 300 chars for display                  │
@@ -116,13 +116,13 @@ if t.ContextSummary != "" {
 |------|------|
 | **Reliable**: Context always available | **Staleness**: May not reflect latest knowledge |
 | **Fast**: No runtime queries needed | **Storage**: Increases task record size |
-| **Offline-capable**: Works without recall service | **One-time**: Context frozen at creation time |
+| **Offline-capable**: Works without ask service | **One-time**: Context frozen at creation time |
 
 ### Late Binding
 
 | Pros | Cons |
 |------|------|
-| **Fresh**: Always reflects current knowledge | **Service dependency**: Requires recall service |
+| **Fresh**: Always reflects current knowledge | **Service dependency**: Requires ask service |
 | **Lighter storage**: Queries stored, not results | **Slower**: N queries per task display |
 | **Adaptable**: Queries can evolve | **Unreliable**: May fail if service down |
 
@@ -143,8 +143,8 @@ if t.ContextSummary != "" {
 
 1. **Tasks created with embedded context** - AI assistants receive relevant architectural decisions immediately
 2. **Backward compatible** - Old tasks (without `ContextSummary`) still work via late binding
-3. **Resilient** - System works even if recall service is temporarily unavailable (uses cached context)
-4. **Efficient** - Avoids repeated recall queries during task execution
+3. **Resilient** - System works even if ask service is temporarily unavailable (uses cached context)
+4. **Efficient** - Avoids repeated ask queries during task execution
 
 ### Negative
 
@@ -168,7 +168,7 @@ if t.ContextSummary != "" {
 |------|----------------|
 | `internal/task/models.go` | `EnrichAIFields()` - scope inference, keyword extraction, query generation |
 | `internal/task/scope_config.go` | Configurable scope keywords via viper |
-| `internal/app/plan.go` | `TaskEnricher` - executes recall queries at creation time |
+| `internal/app/plan.go` | `TaskEnricher` - executes ask queries at creation time |
 | `internal/task/presentation.go` | `FormatRichContext()` - early binding display with late binding fallback |
 
 ### Configuration

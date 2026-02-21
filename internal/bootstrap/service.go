@@ -76,6 +76,25 @@ func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.Workspac
 		// Aggregate findings - workspace tagging happens at agent level via Input.Workspace
 		// We still set metadata["service"] for backward compatibility with ingestion
 		findings := core.AggregateFindings(results)
+
+		// Make evidence paths workspace-relative so verification resolves correctly.
+		// Evidence paths from agents are relative to servicePath, but verification
+		// uses s.basePath (workspace root). Prefixing with the service directory
+		// makes filepath.Join(workspaceRoot, "serviceDir/path") resolve correctly.
+		serviceRelPath, relErr := filepath.Rel(s.basePath, servicePath)
+		if relErr != nil {
+			serviceErrors = append(serviceErrors, fmt.Sprintf("%s: compute relative path: %s", serviceName, relErr.Error()))
+			continue
+		}
+		for i := range findings {
+			for j := range findings[i].Evidence {
+				ev := &findings[i].Evidence[j]
+				if ev.FilePath != "" && !filepath.IsAbs(ev.FilePath) {
+					ev.FilePath = filepath.Join(serviceRelPath, ev.FilePath)
+				}
+			}
+		}
+
 		for i := range findings {
 			findings[i].Title = fmt.Sprintf("[%s] %s", serviceName, findings[i].Title)
 			if findings[i].Metadata == nil {

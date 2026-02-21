@@ -112,7 +112,7 @@ type TaskPlanner interface {
 	Close() error
 }
 
-// TaskContextEnricher executes recall queries and returns aggregated context for a task.
+// TaskContextEnricher executes ask queries and returns aggregated context for a task.
 // This is used during task creation to populate ContextSummary (early binding).
 // See docs/architecture/ADR_CONTEXT_BINDING.md for the full context binding design.
 type TaskContextEnricher func(ctx context.Context, queries []string) (string, error)
@@ -130,7 +130,7 @@ type PlanApp struct {
 	ClarifierFactory func(llm.Config) GoalsClarifier
 	PlannerFactory   func(llm.Config) TaskPlanner
 	ContextRetriever func(ctx context.Context, ks *knowledge.Service, goal, memoryPath string) (impl.SearchStrategyResult, error)
-	// TaskEnricher executes recall queries to populate task ContextSummary.
+	// TaskEnricher executes ask queries to populate task ContextSummary.
 	// If nil, tasks will not have embedded context (legacy behavior).
 	TaskEnricher TaskContextEnricher
 }
@@ -148,23 +148,23 @@ func NewPlanApp(ctx *Context) *PlanApp {
 		},
 		ContextRetriever: impl.RetrieveContext,
 	}
-	// Initialize default TaskEnricher using RecallApp
+	// Initialize default TaskEnricher using AskApp
 	pa.TaskEnricher = pa.defaultTaskEnricher
 	return pa
 }
 
-// defaultTaskEnricher executes all recall queries and aggregates results into a context summary.
+// defaultTaskEnricher executes all ask queries and aggregates results into a context summary.
 // This is the production implementation; tests can override TaskEnricher for mocking.
 func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (string, error) {
 	if len(queries) == 0 {
 		return "", nil
 	}
 
-	recallApp := NewRecallApp(a.ctx)
+	askApp := NewAskApp(a.ctx)
 	var contextParts []string
 
 	for _, query := range queries {
-		result, err := recallApp.Query(ctx, query, RecallOptions{
+		result, err := askApp.Query(ctx, query, AskOptions{
 			Limit:          3, // 3 results per query
 			GenerateAnswer: false,
 			IncludeSymbols: false, // Keep context focused on knowledge, not symbols
@@ -1110,9 +1110,9 @@ func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[strin
 			}
 			t.EnrichAIFields()
 
-			// Populate ContextSummary by executing recall queries
-			if a.TaskEnricher != nil && len(t.SuggestedRecallQueries) > 0 {
-				if contextSummary, err := a.TaskEnricher(ctx, t.SuggestedRecallQueries); err == nil && contextSummary != "" {
+			// Populate ContextSummary by executing ask queries
+			if a.TaskEnricher != nil && len(t.SuggestedAskQueries) > 0 {
+				if contextSummary, err := a.TaskEnricher(ctx, t.SuggestedAskQueries); err == nil && contextSummary != "" {
 					t.ContextSummary = contextSummary
 				}
 			}
@@ -1197,9 +1197,9 @@ func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[strin
 				}
 				newTask.EnrichAIFields()
 
-				// Populate ContextSummary by executing recall queries
-				if a.TaskEnricher != nil && len(newTask.SuggestedRecallQueries) > 0 {
-					if contextSummary, err := a.TaskEnricher(ctx, newTask.SuggestedRecallQueries); err == nil && contextSummary != "" {
+				// Populate ContextSummary by executing ask queries
+				if a.TaskEnricher != nil && len(newTask.SuggestedAskQueries) > 0 {
+					if contextSummary, err := a.TaskEnricher(ctx, newTask.SuggestedAskQueries); err == nil && contextSummary != "" {
 						newTask.ContextSummary = contextSummary
 					}
 				}

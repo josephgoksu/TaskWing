@@ -9,7 +9,7 @@ import (
 )
 
 // CodeIntelApp provides code intelligence operations through the app layer.
-// This follows the same pattern as RecallApp, TaskApp, etc.
+// This follows the same pattern as AskApp, TaskApp, etc.
 type CodeIntelApp struct {
 	ctx *Context
 }

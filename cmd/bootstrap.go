@@ -226,7 +226,16 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 func executeAction(ctx context.Context, action bootstrap.Action, svc *bootstrap.Service, cwd string, flags bootstrap.Flags, plan *bootstrap.Plan, llmCfg llm.Config) error {
 	switch action {
 	case bootstrap.ActionInitProject:
-		return executeInitProject(svc, flags, plan)
+		if err := executeInitProject(svc, flags, plan); err != nil {
+			return err
+		}
+		// Re-detect project context now that local .taskwing/ exists.
+		// Without this, the cached context still points to ~/.taskwing/ (HOME)
+		// and all subsequent DB operations write to the wrong database.
+		if freshCtx, err := project.Detect(cwd); err == nil {
+			_ = config.SetProjectContext(freshCtx)
+		}
+		return nil
 
 	case bootstrap.ActionGenerateAIConfigs:
 		return executeGenerateAIConfigs(svc, flags, plan)
@@ -764,7 +773,7 @@ func checkAgentFailures(agents []*ui.AgentState) error {
 }
 
 // runCodeIndexing runs the code intelligence indexer on the codebase.
-// This extracts symbols (functions, types, etc.) for enhanced search and MCP recall.
+// This extracts symbols (functions, types, etc.) for enhanced search and MCP ask.
 func runCodeIndexing(ctx context.Context, basePath string, forceIndex, isQuiet bool) error {
 	// Open repository to get database handle
 	repo, err := openRepo()

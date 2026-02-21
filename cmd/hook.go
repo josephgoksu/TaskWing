@@ -341,21 +341,21 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 func buildTaskContext(repo *memory.Repository, nextTask *task.Task, plan *task.Plan) string {
 	ctx := context.Background()
 
-	// Get knowledge service for recall context
+	// Get knowledge service for ask context
 	llmCfg, _ := getLLMConfigFromViper()
 	ks := knowledge.NewService(repo, llmCfg)
 
 	// Create search adapter that wraps knowledge.Service for the task package
-	searchFn := func(ctx context.Context, query string, limit int) ([]task.RecallResult, error) {
+	searchFn := func(ctx context.Context, query string, limit int) ([]task.AskResult, error) {
 		searchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		results, err := ks.Search(searchCtx, query, limit)
 		if err != nil {
 			return nil, err
 		}
-		var adapted []task.RecallResult
+		var adapted []task.AskResult
 		for _, r := range results {
-			adapted = append(adapted, task.RecallResult{
+			adapted = append(adapted, task.AskResult{
 				Summary: r.Node.Summary,
 				Type:    r.Node.Type,
 				Content: r.Node.Text(),

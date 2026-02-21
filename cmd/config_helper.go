@@ -243,7 +243,7 @@ func promptBedrockRegion() (string, error) {
 //
 // Role-specific config keys:
 //   - llm.models.bootstrap: "provider:model" for bootstrap/planning tasks
-//   - llm.models.query: "provider:model" for context/recall queries
+//   - llm.models.query: "provider:model" for context/ask queries
 //
 // If no role-specific config is set, falls back to getLLMConfig().
 func getLLMConfigForRole(cmd *cobra.Command, role llm.ModelRole) (llm.Config, error) {

@@ -16,7 +16,7 @@ import (
 // No node IDs, file paths, or embeddings are included.
 //
 // This function is used by:
-// - /tw-brief slash command
+// - /tw-ask slash command (project knowledge brief)
 // - SessionStart hook auto-injection
 func GenerateCompactBrief(repo *memory.Repository) (string, error) {
 	nodes, err := repo.ListNodes("")

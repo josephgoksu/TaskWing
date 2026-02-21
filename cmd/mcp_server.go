@@ -28,7 +28,7 @@ var mcpCmd = &cobra.Command{
 	Long: `Start a Model Context Protocol (MCP) server to enable AI tools like Claude Code,
 Cursor, and other AI assistants to interact with TaskWing project memory.
 
-The MCP server provides the recall tool that gives AI tools access to:
+The MCP server provides the ask tool that gives AI tools access to:
 - Knowledge nodes (decisions, features, plans, notes)
 - Semantic search across project memory
 - Relationships between components
@@ -161,10 +161,10 @@ func runMCPServer(ctx context.Context) error {
 
 	server := mcpsdk.NewServer(impl, serverOpts)
 
-	// Register recall tool - retrieves stored codebase knowledge for AI context
+	// Register ask tool - retrieves stored codebase knowledge for AI context
 	tool := &mcpsdk.Tool{
-		Name:        "recall",
-		Description: "Retrieve codebase architecture knowledge: decisions, patterns, constraints, and features. Returns an AI-synthesized answer and relevant context by default. Use {\"query\":\"search term\"} for semantic search.",
+		Name:        "ask",
+		Description: "Search project knowledge: decisions, patterns, constraints, and code symbols. Returns an AI-synthesized answer and relevant context by default. Use {\"query\":\"search term\"} for semantic search.",
 	}
 
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
@@ -309,17 +309,17 @@ REQUIRED FIELDS BY ACTION:
 
 // handleNodeContext returns context using the knowledge.Service (same as CLI).
 // This ensures MCP and CLI use identical search logic with zero drift.
-// Uses the app.RecallApp for all business logic - single source of truth.
+// Uses the app.AskApp for all business logic - single source of truth.
 func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcppresenter.ProjectContextParams) (*mcpsdk.CallToolResultFor[any], error) {
 	// Create app context with query role - respects llm.models.query config (same as CLI)
 	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
-	recallApp := app.NewRecallApp(appCtx)
+	askApp := app.NewAskApp(appCtx)
 
 	query := strings.TrimSpace(params.Query)
 
 	// No query = return project summary
 	if query == "" {
-		summary, err := recallApp.Summary(ctx)
+		summary, err := askApp.Summary(ctx)
 		if err != nil {
 			return mcpErrorResponse(fmt.Errorf("get summary: %w", err))
 		}
@@ -338,10 +338,10 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcpp
 	}
 
 	// Execute query via app layer (ALL business logic delegated)
-	// Include symbols in MCP recall for enhanced context
+	// Include symbols in MCP ask for enhanced context
 	// Note: Only generate answer if explicitly requested (params.Answer=true)
 	// to avoid expensive LLM calls on every search
-	result, err := recallApp.Query(ctx, query, app.RecallOptions{
+	result, err := askApp.Query(ctx, query, app.AskOptions{
 		Limit:          5,
 		SymbolLimit:    5,
 		GenerateAnswer: params.Answer, // Only when explicitly requested
@@ -354,7 +354,7 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcpp
 	}
 
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(mcppresenter.FormatRecall(result))
+	return mcpMarkdownResponse(mcppresenter.FormatAsk(result))
 }
 
 // === Shared Tool Handlers ===

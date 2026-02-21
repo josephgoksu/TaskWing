@@ -290,16 +290,16 @@ func handleCodeSimplify(ctx context.Context, repo *memory.Repository, params Cod
 
 	// Get architectural context for better simplification
 	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
-	recallApp := app.NewRecallApp(appCtx)
+	askApp := app.NewAskApp(appCtx)
 
 	var kgContext string
 	if filePath != "" {
-		result, err := recallApp.Query(ctx, "patterns and constraints for "+filePath, app.RecallOptions{
+		result, err := askApp.Query(ctx, "patterns and constraints for "+filePath, app.AskOptions{
 			Limit:          3,
 			GenerateAnswer: false,
 		})
 		if err == nil && result != nil {
-			kgContext = formatRecallContext(result)
+			kgContext = formatAskContext(result)
 		}
 	}
 
@@ -405,8 +405,8 @@ func validateAndResolvePath(requestedPath string, projectRoot string) (string, e
 	return absPath, nil
 }
 
-// formatRecallContext formats recall results for agent context.
-func formatRecallContext(result *app.RecallResult) string {
+// formatAskContext formats ask results for agent context.
+func formatAskContext(result *app.AskResult) string {
 	if result == nil || len(result.Results) == 0 {
 		return ""
 	}
@@ -440,7 +440,7 @@ func HandleDebugTool(ctx context.Context, repo *memory.Repository, params DebugT
 
 	// Get architectural context for better diagnosis
 	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
-	recallApp := app.NewRecallApp(appCtx)
+	askApp := app.NewAskApp(appCtx)
 
 	var kgContext string
 	// Build context query from problem and file path
@@ -449,12 +449,12 @@ func HandleDebugTool(ctx context.Context, repo *memory.Repository, params DebugT
 		contextQuery = params.FilePath + " " + problem
 	}
 
-	result, err := recallApp.Query(ctx, contextQuery, app.RecallOptions{
+	result, err := askApp.Query(ctx, contextQuery, app.AskOptions{
 		Limit:          5,
 		GenerateAnswer: false,
 	})
 	if err == nil && result != nil {
-		kgContext = formatRecallContext(result)
+		kgContext = formatAskContext(result)
 	}
 
 	// Create and run the DebugAgent

@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-// RecallSearchFunc is the signature for a context/recall search function.
+// AskSearchFunc is the signature for a context/ask search function.
 // This breaks the import cycle by avoiding direct dependency on knowledge.Service.
-type RecallSearchFunc func(ctx context.Context, query string, limit int) ([]RecallResult, error)
+type AskSearchFunc func(ctx context.Context, query string, limit int) ([]AskResult, error)
 
-// RecallResult is a minimal struct for context search results.
-type RecallResult struct {
+// AskResult is a minimal struct for context search results.
+type AskResult struct {
 	Summary string
 	Type    string
 	Content string
@@ -23,16 +23,16 @@ type RecallResult struct {
 // Context Binding Strategy (see docs/architecture/ADR_CONTEXT_BINDING.md):
 // - Early binding: Uses Task.ContextSummary if available (populated at creation)
 // - Late binding: Falls back to searchFn if ContextSummary is empty (backward compatibility)
-func FormatRichContext(ctx context.Context, t *Task, p *Plan, searchFn RecallSearchFunc) string {
-	var recallContext string
+func FormatRichContext(ctx context.Context, t *Task, p *Plan, searchFn AskSearchFunc) string {
+	var askContext string
 
 	// Early binding: Use pre-computed ContextSummary if available
 	if t.ContextSummary != "" {
-		recallContext = "\n" + t.ContextSummary
-	} else if len(t.SuggestedRecallQueries) > 0 && searchFn != nil {
+		askContext = "\n" + t.ContextSummary
+	} else if len(t.SuggestedAskQueries) > 0 && searchFn != nil {
 		// Late binding fallback: Fetch context dynamically using ALL queries
-		var allResults []RecallResult
-		for _, query := range t.SuggestedRecallQueries {
+		var allResults []AskResult
+		for _, query := range t.SuggestedAskQueries {
 			results, err := searchFn(ctx, query, 3)
 			if err == nil {
 				allResults = append(allResults, results...)
@@ -56,7 +56,7 @@ func FormatRichContext(ctx context.Context, t *Task, p *Plan, searchFn RecallSea
 				}
 				sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", r.Summary, r.Type, content))
 			}
-			recallContext = sb.String()
+			askContext = sb.String()
 		}
 	}
 
@@ -102,8 +102,8 @@ Plan Progress: %d%% (%d/%d tasks completed)
 		}
 	}
 
-	if recallContext != "" {
-		contextStr += recallContext
+	if askContext != "" {
+		contextStr += askContext
 	}
 
 	contextStr += `
