@@ -155,6 +155,7 @@ Recommended Bedrock model IDs:
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
 - `taskwing goal "<goal>"`
+- `taskwing ask "<query>"`
 - `taskwing task`
 - `taskwing plan status`
 - `taskwing slash`
@@ -169,7 +170,7 @@ Recommended Bedrock model IDs:
 <!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
 |------|-------------|
-| `recall` | Retrieve project knowledge (decisions, patterns, constraints) |
+| `ask` | Search project knowledge (decisions, patterns, constraints) |
 | `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
 | `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
 | `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |

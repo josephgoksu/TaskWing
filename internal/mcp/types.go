@@ -206,7 +206,7 @@ func (p *TaskToolParams) UnmarshalJSON(data []byte) error {
 
 // === MCP Tool Parameters (non-unified) ===
 
-// ProjectContextParams defines the parameters for the recall tool.
+// ProjectContextParams defines the parameters for the ask tool.
 type ProjectContextParams struct {
 	Query     string `json:"query,omitempty"`
 	Answer    bool   `json:"answer,omitempty"`    // If true, generate RAG answer using LLM

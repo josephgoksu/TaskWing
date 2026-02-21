@@ -593,7 +593,7 @@ func (s *SQLiteStore) initSchema() error {
 	}{
 		{"scope", "ALTER TABLE tasks ADD COLUMN scope TEXT"},                                       // e.g., "auth", "api", "vectorsearch"
 		{"keywords", "ALTER TABLE tasks ADD COLUMN keywords TEXT"},                                 // JSON array of extracted keywords
-		{"suggested_recall_queries", "ALTER TABLE tasks ADD COLUMN suggested_recall_queries TEXT"}, // JSON array of pre-computed queries
+		{"suggested_ask_queries", "ALTER TABLE tasks ADD COLUMN suggested_ask_queries TEXT"}, // JSON array of pre-computed ask queries
 		{"claimed_by", "ALTER TABLE tasks ADD COLUMN claimed_by TEXT"},                             // Session ID that claimed this task
 		{"claimed_at", "ALTER TABLE tasks ADD COLUMN claimed_at TEXT"},                             // Timestamp when claimed
 		{"completed_at", "ALTER TABLE tasks ADD COLUMN completed_at TEXT"},                         // Timestamp when completed
@@ -633,6 +633,10 @@ func (s *SQLiteStore) initSchema() error {
 			}
 		}
 	}
+
+	// Migration: Rename legacy column suggested_recall_queries → suggested_ask_queries.
+	// SQLite supports RENAME COLUMN since 3.25.0 (2018). Silently ignore if column doesn't exist.
+	_, _ = s.db.Exec(`ALTER TABLE tasks RENAME COLUMN suggested_recall_queries TO suggested_ask_queries`)
 
 	// Ensure index ordering matches task urgency semantics (lower number = higher urgency).
 	// We drop/recreate to correct existing DBs that were created with DESC.

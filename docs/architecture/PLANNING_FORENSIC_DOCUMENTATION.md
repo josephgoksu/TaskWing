@@ -28,7 +28,7 @@
 **What it observes:**
 - User-provided goals and answers
 - Git working directory state
-- Project knowledge context (via recall)
+- Project knowledge context (via ask)
 
 **What it does NOT control:**
 - Actual code execution by AI agents
@@ -348,7 +348,7 @@ CREATE TABLE tasks (
     context_summary TEXT,
     scope TEXT,
     keywords TEXT,              -- JSON array
-    suggested_recall_queries TEXT,  -- JSON array
+    suggested_ask_queries TEXT,    -- JSON array
     claimed_by TEXT,
     claimed_at TEXT,
     completed_at TEXT,

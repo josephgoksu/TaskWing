@@ -159,7 +159,7 @@ type Task struct {
 	// AI integration fields - for MCP tool context fetching
 	Scope                  string   `json:"scope,omitempty"`                  // e.g., "auth", "api", "vectorsearch"
 	Keywords               []string `json:"keywords,omitempty"`               // Extracted from title/description
-	SuggestedRecallQueries []string `json:"suggestedRecallQueries,omitempty"` // Pre-computed queries for recall tool
+	SuggestedAskQueries []string `json:"suggestedAskQueries,omitempty"` // Pre-computed queries for ask tool
 
 	// Session tracking - for AI tool state management
 	ClaimedBy   string    `json:"claimedBy,omitempty"`   // Session ID that claimed this task
@@ -292,7 +292,7 @@ var stopWords = map[string]bool{
 	"so": true, "than": true, "too": true, "very": true, "just": true, "also": true,
 }
 
-// EnrichAIFields populates Scope, Keywords, and SuggestedRecallQueries from title/description.
+// EnrichAIFields populates Scope, Keywords, and SuggestedAskQueries from title/description.
 // Call this before CreateTask to ensure AI integration fields are set.
 //
 // This is part of the early binding context strategy - see docs/architecture/ADR_CONTEXT_BINDING.md
@@ -311,7 +311,7 @@ var stopWords = map[string]bool{
 //   - Highest-scoring scope wins; defaults to "general" if no matches
 //   - Scopes are configurable via task.scopes in .taskwing.yaml
 //
-// 3. RECALL QUERY GENERATION:
+// 3. ASK QUERY GENERATION:
 //   - Query 1: "<scope> patterns constraints decisions" - domain-specific architecture
 //   - Query 2: Top 5 keywords joined - content-specific search
 //   - Query 3: Simplified title words - intent-focused search
@@ -382,7 +382,7 @@ func (t *Task) EnrichAIFields() {
 		t.Scope = effectiveScope
 	}
 
-	// Generate suggested recall queries
+	// Generate suggested ask queries
 	var queries []string
 
 	// Query 1: Scope-based patterns and constraints
@@ -413,5 +413,5 @@ func (t *Task) EnrichAIFields() {
 		queries = append(queries, strings.Join(titleKw, " "))
 	}
 
-	t.SuggestedRecallQueries = queries
+	t.SuggestedAskQueries = queries
 }

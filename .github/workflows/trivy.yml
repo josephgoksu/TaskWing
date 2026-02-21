@@ -1,0 +1,71 @@
+name: Trivy Security Scan
+
+on:
+  push:
+    branches: [main]
+    tags-ignore:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1' # Weekly Monday 06:00 UTC
+
+jobs:
+  vulnerability-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner (filesystem)
+        uses: aquasecurity/trivy-action@0.34.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-fs.sarif
+
+      - name: Upload Trivy filesystem results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-filesystem
+
+  binary-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Build binary
+        run: |
+          make build
+          mkdir -p scan-target
+          cp taskwing scan-target/
+
+      - name: Run Trivy on compiled binary
+        uses: aquasecurity/trivy-action@0.34.0
+        with:
+          scan-type: rootfs
+          scan-ref: ./scan-target
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-binary.sarif
+
+      - name: Upload Trivy binary results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-binary.sarif
+          category: trivy-binary

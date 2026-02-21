@@ -381,7 +381,7 @@ func (s *Server) handlePromoteToTask(w http.ResponseWriter, r *http.Request) {
 		Status:      task.StatusPending,
 		Priority:    50,
 	}
-	// Populate AI integration fields (scope, keywords, suggested_recall_queries)
+	// Populate AI integration fields (scope, keywords, suggested_ask_queries)
 	newTask.EnrichAIFields()
 
 	if err := s.repo.CreateTask(newTask); err != nil {

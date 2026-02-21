@@ -94,16 +94,6 @@ func NewPostHogClient(cfg ClientConfig) (*PostHogClient, error) {
 	}, nil
 }
 
-// newPostHogClientWithEnqueuer creates a client with a custom enqueuer (for testing).
-func newPostHogClientWithEnqueuer(enq enqueuer, cfg *Config, version string) *PostHogClient {
-	return &PostHogClient{
-		client:      enq,
-		config:      cfg,
-		version:     version,
-		initialized: true,
-	}
-}
-
 // Track sends an event asynchronously.
 // Returns immediately without blocking the CLI.
 // No-op if telemetry is disabled or client is not initialized.

@@ -134,7 +134,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 			Validation             []string `json:"validation_steps"`
 			Scope                  string   `json:"scope"`
 			Keywords               []string `json:"keywords"`
-			SuggestedRecallQueries []string `json:"suggestedRecallQueries"`
+			SuggestedAskQueries []string `json:"suggestedAskQueries"`
 		}
 		var jsonTasks []taskJSON
 		for _, tp := range allTasks {
@@ -152,7 +152,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 				Validation:             t.ValidationSteps,
 				Scope:                  t.Scope,
 				Keywords:               t.Keywords,
-				SuggestedRecallQueries: t.SuggestedRecallQueries,
+				SuggestedAskQueries: t.SuggestedAskQueries,
 			})
 		}
 		return printJSON(jsonTasks)

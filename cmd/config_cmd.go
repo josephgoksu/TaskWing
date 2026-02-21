@@ -593,7 +593,7 @@ func configureBootstrapModel() error {
 
 func configureQueryModel() error {
 	fmt.Println("\n⚡ Configure Fast Queries Model")
-	fmt.Println("   Used for: context lookups, recall (cheaper, faster)")
+	fmt.Println("   Used for: context lookups, ask queries (cheaper, faster)")
 	fmt.Println()
 
 	selection, err := ui.PromptLLMSelection()

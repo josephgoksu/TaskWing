@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/memory"
 )
 
 const (
@@ -302,6 +303,101 @@ func getContentWithoutSummary(content, summary string) string {
 		return strings.TrimLeft(remainder, "\n\r\t ")
 	}
 	return content
+}
+
+// RenderAskResult displays a complete AskResult from the ask pipeline.
+// This is the primary rendering function for the `taskwing ask` command.
+func RenderAskResult(result *app.AskResult, verbose bool) {
+	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	sectionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
+	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	// Title
+	if result.Answer != "" {
+		fmt.Println()
+		fmt.Println(titleStyle.Render(fmt.Sprintf("📖 %s", result.Query)))
+	} else {
+		fmt.Println(titleStyle.Render(fmt.Sprintf("🔍 Results for: \"%s\"", result.Query)))
+	}
+
+	// Pipeline info
+	fmt.Println(metaStyle.Render(fmt.Sprintf("  Pipeline: %s", result.Pipeline)))
+	if result.RewrittenQuery != "" {
+		fmt.Println(metaStyle.Render(fmt.Sprintf("  Rewritten: %s", result.RewrittenQuery)))
+	}
+
+	// Warning
+	if result.Warning != "" {
+		fmt.Println()
+		fmt.Println(RenderWarningPanel("Warning", result.Warning))
+	}
+
+	// Answer (only render if not already streamed — streaming writes directly to stdout)
+	if result.Answer != "" {
+		fmt.Println()
+		fmt.Println(RenderInfoPanel("Answer", result.Answer))
+	}
+
+	// Knowledge results
+	if len(result.Results) > 0 {
+		fmt.Println()
+		fmt.Println(sectionStyle.Render("📚 Knowledge"))
+
+		// Convert NodeResponse to ScoredNode for the existing panel renderer
+		scored := nodeResponsesToScoredNodes(result.Results)
+
+		var maxScore float32 = 0.01
+		for _, s := range scored {
+			if s.Score > maxScore {
+				maxScore = s.Score
+			}
+		}
+
+		for i, s := range scored {
+			renderScoredNodePanel(i+1, s, maxScore, verbose)
+		}
+	}
+
+	// Code symbols
+	if len(result.Symbols) > 0 {
+		fmt.Println()
+		fmt.Println(sectionStyle.Render("💻 Code Symbols"))
+
+		for i, sym := range result.Symbols {
+			renderSymbolPanel(i+1, sym, verbose)
+		}
+	}
+
+	// No results
+	if len(result.Results) == 0 && len(result.Symbols) == 0 && result.Answer == "" {
+		fmt.Println()
+		fmt.Println(metaStyle.Render("  No results found. Try a different query or run 'taskwing bootstrap' to populate memory."))
+	}
+
+	// Summary line
+	if result.Total > 0 || result.TotalSymbols > 0 {
+		fmt.Println()
+		fmt.Println(metaStyle.Render(fmt.Sprintf("  %d knowledge result(s), %d symbol(s)", result.Total, result.TotalSymbols)))
+	}
+}
+
+// nodeResponsesToScoredNodes converts NodeResponse slice to ScoredNode slice
+// for reuse with the existing renderScoredNodePanel renderer.
+func nodeResponsesToScoredNodes(responses []knowledge.NodeResponse) []knowledge.ScoredNode {
+	scored := make([]knowledge.ScoredNode, len(responses))
+	for i, r := range responses {
+		scored[i] = knowledge.ScoredNode{
+			Node: &memory.Node{
+				ID:          r.ID,
+				Type:        r.Type,
+				Summary:     r.Summary,
+				Content:     r.Content,
+				SourceAgent: "", // Not available in NodeResponse
+			},
+			Score: r.MatchScore,
+		}
+	}
+	return scored
 }
 
 // symbolKindIcon returns an icon for a symbol kind.

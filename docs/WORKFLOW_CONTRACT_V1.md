@@ -47,5 +47,5 @@ KPI:
 ## Operating Policy
 
 - These gates are hard blockers for core workflow commands.
-- Commands that are primarily read-only (`/tw-brief`, `/tw-status`, `/tw-explain`, `/tw-simplify`) remain lightweight but must not bypass these gates.
+- Commands that are primarily read-only (`/tw-ask`, `/tw-status`, `/tw-explain`, `/tw-simplify`) remain lightweight but must not bypass these gates.
 - Prompt regressions against this contract are release blockers.

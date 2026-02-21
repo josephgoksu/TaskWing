@@ -17,10 +17,10 @@ import (
 	"golang.org/x/text/language"
 )
 
-// FormatRecall converts a RecallResult into token-efficient Markdown.
+// FormatAsk converts an AskResult into token-efficient Markdown.
 // Structure: Answer (if present) -> Knowledge -> Symbols
 // Includes debt warnings for patterns/decisions marked as technical debt.
-func FormatRecall(result *app.RecallResult) string {
+func FormatAsk(result *app.AskResult) string {
 	if result == nil {
 		return "No results found."
 	}

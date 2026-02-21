@@ -56,9 +56,9 @@ func insertTaskTx(tx txExecutor, t *task.Task) error {
 	if err != nil {
 		return fmt.Errorf("marshal keywords for task %s: %w", t.ID, err)
 	}
-	queriesJSON, err := json.Marshal(t.SuggestedRecallQueries)
+	queriesJSON, err := json.Marshal(t.SuggestedAskQueries)
 	if err != nil {
-		return fmt.Errorf("marshal suggested_recall_queries for task %s: %w", t.ID, err)
+		return fmt.Errorf("marshal suggested ask queries for task %s: %w", t.ID, err)
 	}
 	filesJSON, err := json.Marshal(t.FilesModified)
 	if err != nil {
@@ -84,7 +84,7 @@ func insertTaskTx(tx txExecutor, t *task.Task) error {
 			id, plan_id, phase_id, title, description,
 			acceptance_criteria, validation_steps,
 			status, priority, complexity, assigned_agent, parent_task_id, context_summary,
-			scope, keywords, suggested_recall_queries,
+			scope, keywords, suggested_ask_queries,
 			claimed_by, claimed_at, completed_at, completion_summary, files_modified, expected_files,
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -657,7 +657,7 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 		_ = json.Unmarshal([]byte(keywordsJSON.String), &t.Keywords)
 	}
 	if queriesJSON.Valid && queriesJSON.String != "" {
-		_ = json.Unmarshal([]byte(queriesJSON.String), &t.SuggestedRecallQueries)
+		_ = json.Unmarshal([]byte(queriesJSON.String), &t.SuggestedAskQueries)
 	}
 	if filesJSON.Valid && filesJSON.String != "" {
 		_ = json.Unmarshal([]byte(filesJSON.String), &t.FilesModified)
@@ -674,7 +674,7 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 
 const taskSelectColumns = `id, plan_id, phase_id, title, description, acceptance_criteria, validation_steps,
        status, priority, complexity, assigned_agent, parent_task_id, context_summary,
-       scope, keywords, suggested_recall_queries,
+       scope, keywords, suggested_ask_queries,
        claimed_by, claimed_at, completed_at, completion_summary, files_modified, expected_files, git_baseline,
        created_at, updated_at`
 

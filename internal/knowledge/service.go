@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/schema"
+	"github.com/google/uuid"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 )
@@ -289,14 +290,14 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 	minResultThreshold := float32(cfg.MinResultScoreThreshold)
 
 	// Two-stage retrieval: fetch more candidates for reranking
-	// Stage 1 (Recall): Fetch Top-25 candidates using hybrid search
-	recallLimit := cfg.RerankTopK
-	if recallLimit <= 0 {
-		recallLimit = 25 // Default recall candidates
+	// Stage 1 (Candidate retrieval): Fetch Top-25 candidates using hybrid search
+	candidateLimit := cfg.RerankTopK
+	if candidateLimit <= 0 {
+		candidateLimit = 25 // Default candidates
 	}
 	if !cfg.RerankingEnabled {
 		// If reranking disabled, just fetch what we need
-		recallLimit = limit * 2 // Fetch 2x for graph expansion buffer
+		candidateLimit = limit * 2 // Fetch 2x for graph expansion buffer
 	}
 
 	// Collect results from both search methods
@@ -305,7 +306,7 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 
 	// 1. FTS5 keyword search (fast, no API call, always works)
 	// Note: FTS currently searches all types. We filter later.
-	ftsResults, err := s.repo.SearchFTS(query, recallLimit)
+	ftsResults, err := s.repo.SearchFTS(query, candidateLimit)
 	if err != nil {
 		// FTS5 errors are logged but don't fail the search
 		// FTS5 may be unavailable on some systems (missing extension)
@@ -401,9 +402,9 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 		return scored[i].Score > scored[j].Score
 	})
 
-	// Limit to recall candidates before reranking
-	if len(scored) > recallLimit {
-		scored = scored[:recallLimit]
+	// Limit to candidates before reranking
+	if len(scored) > candidateLimit {
+		scored = scored[:candidateLimit]
 	}
 
 	// 4. Stage 2 (Precision): Rerank using TEI if enabled
@@ -599,6 +600,7 @@ Be concise and direct.
 // Uses UpsertNodeBySummary for dedup (Jaccard similarity on summaries).
 func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, error) {
 	node := &memory.Node{
+		ID:          "n-" + uuid.New().String()[:8],
 		Content:     input.Content,
 		Type:        input.Type,
 		Summary:     input.Summary,
@@ -793,9 +795,9 @@ func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*De
 	vectorWeight := float32(cfg.VectorWeight)
 	vectorThreshold := float32(cfg.VectorScoreThreshold)
 
-	recallLimit := cfg.RerankTopK
-	if recallLimit <= 0 {
-		recallLimit = 25
+	candidateLimit := cfg.RerankTopK
+	if candidateLimit <= 0 {
+		candidateLimit = 25
 	}
 
 	// Track individual scores per node
@@ -828,7 +830,7 @@ func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*De
 
 	// 2. FTS5 keyword search
 	startFTS := time.Now()
-	ftsResults, err := s.repo.SearchFTS(query, recallLimit)
+	ftsResults, err := s.repo.SearchFTS(query, candidateLimit)
 	if err == nil && len(ftsResults) > 0 {
 		pipeline = append(pipeline, "FTS")
 		for _, r := range ftsResults {
@@ -899,8 +901,8 @@ func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*De
 		return scored[i].Score > scored[j].Score
 	})
 
-	if len(scored) > recallLimit {
-		scored = scored[:recallLimit]
+	if len(scored) > candidateLimit {
+		scored = scored[:candidateLimit]
 	}
 	response.TotalCandidates = len(scored)
 
