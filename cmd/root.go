@@ -50,8 +50,8 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "taskwing",
-	Short: "TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.",
-	Long: `TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.
+	Short: "TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.",
+	Long: `TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.
 
 Create a plan, execute tasks with your AI tool, and keep architecture context
 persistent across sessions.`,

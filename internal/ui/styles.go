@@ -87,7 +87,7 @@ var (
 	ColorTableRowEven = lipgloss.Color("236") // Subtle dark background
 	ColorTableRowOdd  = lipgloss.Color("234") // Slightly darker
 	StyleTableRowEven = lipgloss.NewStyle().Foreground(ColorText)
-	StyleTableRowOdd  = lipgloss.NewStyle().Foreground(ColorText).Background(ColorTableRowOdd)
+	StyleTableRowOdd  = lipgloss.NewStyle().Foreground(ColorDim)
 	StyleTableHeader  = lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Underline(true)
 
 	// Doctor Check Styles

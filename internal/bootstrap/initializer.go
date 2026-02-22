@@ -1007,7 +1007,7 @@ const taskwingDocSectionHeader = `
 
 ## TaskWing Integration
 
-TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.
+TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.
 
 ### Supported Models
 

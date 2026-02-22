@@ -5,6 +5,10 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/josephgoksu/TaskWing)](https://goreportcard.com/report/github.com/josephgoksu/TaskWing)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+<p align="center">
+  <img src="demos/ask.gif" alt="TaskWing ask demo" width="800">
+</p>
+
 ## Supported Models
 
 <!-- TASKWING_PROVIDERS_START -->

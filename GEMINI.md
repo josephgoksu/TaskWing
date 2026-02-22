@@ -5,36 +5,39 @@
 **TaskWing** is an AI-native task management CLI that gives AI tools "project memory." It extracts architectural decisions, patterns, and constraints from your codebase and makes them queryable by AI assistants (like Gemini, Claude, Cursor) via the Model Context Protocol (MCP).
 
 **Core Value Proposition:**
-*   **Auto-extraction:** Uses LLM inference to extract architecture from code.
-*   **Semantic Search:** Query decisions and trade-offs.
-*   **MCP Integration:** Exposes knowledge to AI agents.
+
+- **Auto-extraction:** Uses LLM inference to extract architecture from code.
+- **Semantic Search:** Query decisions and trade-offs.
+- **MCP Integration:** Exposes knowledge to AI agents.
 
 ## Tech Stack
 
-*   **Language:** Go 1.24+
-*   **CLI Framework:** Cobra
-*   **Database:** SQLite (modernc.org/sqlite) - *Single source of truth*
-*   **LLM Orchestration:** CloudWeGo Eino (OpenAI, Anthropic, Gemini, Bedrock, Ollama support)
-*   **Frontend (Dashboard):**
-    *   React 19
-    *   Vite 7
-    *   Tailwind CSS 4
-    *   Shadcn/UI
-    *   Bun (likely runtime/package manager)
+- **Language:** Go 1.24+
+- **CLI Framework:** Cobra
+- **Database:** SQLite (modernc.org/sqlite) - _Single source of truth_
+- **LLM Orchestration:** CloudWeGo Eino (OpenAI, Anthropic, Gemini, Bedrock, Ollama support)
+- **Frontend (Dashboard):**
+  - React 19
+  - Vite 7
+  - Tailwind CSS 4
+  - Shadcn/UI
+  - Bun (likely runtime/package manager)
 
 ## Architecture
 
 The system is composed of a CLI tool with an embedded MCP server and a web dashboard.
 
 ### Core Layers (`internal/`)
-*   **Memory (`internal/memory`):** Repository pattern. Encapsulates SQLite (Source of Truth) and Markdown (Snapshot).
-*   **Bootstrap (`internal/bootstrap`):** Analyzes codebases.
-    *   `scanner.go`: Heuristic analysis (fast, basic).
-    *   `llm_analyzer.go`: Deep analysis using LLMs.
-*   **Knowledge (`internal/knowledge`):** `KnowledgeService` centralizes intelligence (RAG, Embeddings, Search).
-*   **LLM (`internal/llm`):** Interface for AI providers via Eino (Factory pattern).
+
+- **Memory (`internal/memory`):** Repository pattern. Encapsulates SQLite (Source of Truth) and Markdown (Snapshot).
+- **Bootstrap (`internal/bootstrap`):** Analyzes codebases.
+  - `scanner.go`: Heuristic analysis (fast, basic).
+  - `llm_analyzer.go`: Deep analysis using LLMs.
+- **Knowledge (`internal/knowledge`):** `KnowledgeService` centralizes intelligence (RAG, Embeddings, Search).
+- **LLM (`internal/llm`):** Interface for AI providers via Eino (Factory pattern).
 
 ### Storage Model (`.taskwing/memory/`)
+
 1.  **`memory.db`**: SQLite database. **The canonical source of truth.**
 2.  **`index.json`**: Cached index for fast retrieval.
 3.  **`features/*.md`**: Human-readable snapshots (generated via Repository). Do not edit manually.
@@ -60,50 +63,50 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 
 ### Backend / CLI
 
-| Command | Description |
-| :--- | :--- |
-| `make build` | Build the `taskwing` binary |
-| `make test` | Run all tests (Unit, Integration, MCP) |
-| `make test-unit` | Run only unit tests |
-| `make test-mcp` | Run MCP protocol tests |
-| `make lint` | Run formatters and `golangci-lint` |
-| `make dev-setup` | Install dev dependencies |
+| Command          | Description                            |
+| :--------------- | :------------------------------------- |
+| `make build`     | Build the `taskwing` binary            |
+| `make test`      | Run all tests (Unit, Integration, MCP) |
+| `make test-unit` | Run only unit tests                    |
+| `make test-mcp`  | Run MCP protocol tests                 |
+| `make lint`      | Run formatters and `golangci-lint`     |
+| `make dev-setup` | Install dev dependencies               |
 
 ### CLI Commands
 
-| Command | Description |
-| :--- | :--- |
-| `taskwing bootstrap` | Initialize project memory |
-| `taskwing goal` | Create and activate a plan |
-| `taskwing plan` | Manage development plans |
-| `taskwing task` | Manage execution tasks |
-| `taskwing start` | Start API/watch/dashboard services |
-| `taskwing slash` | Output slash command prompts for AI tools |
+| Command              | Description                               |
+| :------------------- | :---------------------------------------- |
+| `taskwing bootstrap` | Initialize project memory                 |
+| `taskwing goal`      | Create and activate a plan                |
+| `taskwing plan`      | Manage development plans                  |
+| `taskwing task`      | Manage execution tasks                    |
+| `taskwing start`     | Start API/watch/dashboard services        |
+| `taskwing slash`     | Output slash command prompts for AI tools |
 
 ### Frontend (`dashboard/`)
 
-| Command | Description |
-| :--- | :--- |
+| Command                   | Description                   |
+| :------------------------ | :---------------------------- |
 | `bun dev` / `npm run dev` | Start Vite development server |
-| `bun build` | Build for production |
+| `bun build`               | Build for production          |
 
 ## Development Conventions
 
 1.  **Source of Truth:** Always treat SQLite as the source of truth. The `Repository` handles synchronization.
 2.  **Global Flags:** CLI commands should respect global flags like `--json`, `--verbose`, `--preview`.
 3.  **Testing:**
-    *   Use `make test-quick` for rapid iteration.
-    *   Ensure MCP tests pass if modifying server logic.
-    *   **New:** Unit tests for `internal/knowledge` and `internal/memory` are required.
+    - Use `make test-quick` for rapid iteration.
+    - Ensure MCP tests pass if modifying server logic.
+    - **New:** Unit tests for `internal/knowledge` and `internal/memory` are required.
 4.  **Style:** Follow standard Go idioms. Use `make lint` to enforce.
 5.  **LLM Integration:** Use the `internal/llm` client factory to support multiple providers (OpenAI, Anthropic, Gemini, Bedrock, Ollama) agnostic of the specific API.
 
 ## MCP Integration
 
 TaskWing exposes an `ask` tool. When working on this feature:
-*   Ensure responses stay within token budgets (500-1000 tokens).
-*   Test with `taskwing mcp` locally or use `make test-mcp`.
 
+- Ensure responses stay within token budgets (500-1000 tokens).
+- Test with `taskwing mcp` locally or use `make test-mcp`.
 
 ### Autonomous Task Execution (Hooks)
 
@@ -117,6 +120,7 @@ taskwing hook status            # View current session state
 ```
 
 **Circuit breakers** prevent runaway execution:
+
 - `--max-tasks=5` - Stop after N tasks for human review
 - `--max-minutes=30` - Stop after N minutes
 
@@ -138,6 +142,7 @@ Use `./bin/taskwing` during development, `taskwing` for testing production behav
 When user says "let's release", "create a release", or similar:
 
 1. **Analyze changes** since last tag:
+
    ```bash
    git log $(git describe --tags --abbrev=0)..HEAD --oneline
    ```
@@ -155,6 +160,7 @@ When user says "let's release", "create a release", or similar:
 4. **Get user approval** before proceeding
 
 5. **Execute release**:
+
    ```bash
    # Create annotated tag with release notes (no source file changes needed)
    git tag -a vX.Y.Z -m "Release notes here..."
@@ -183,34 +189,41 @@ Interactive script that prompts for version, opens editor for notes, creates tag
 
 ## TaskWing Integration
 
-TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.
+TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.
 
 ### Supported Models
 
 <!-- TASKWING_PROVIDERS_START -->
+
 [![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
 [![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
 [![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-OpenAI--Compatible_Beta-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html)
 [![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
+
 <!-- TASKWING_PROVIDERS_END -->
 
 ### Works With
 
 <!-- TASKWING_TOOLS_START -->
+
 [![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/claude-code)
 [![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex)
 [![Cursor](https://img.shields.io/badge/Cursor-111111?logo=cursor&logoColor=white)](https://cursor.com/)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-181717?logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
 [![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
+
 <!-- TASKWING_TOOLS_END -->
 
 <!-- TASKWING_LEGAL_START -->
+
 Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
+
 <!-- TASKWING_LEGAL_END -->
 
 ### Slash Commands
+
 - /tw-ask - Use when you need to search project knowledge (decisions, patterns, constraints).
 - /tw-remember - Use when you want to persist a decision, pattern, or insight to project memory.
 - /tw-next - Use when you are ready to start the next approved TaskWing task with full context.
@@ -224,6 +237,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ### Core Commands
 
 <!-- TASKWING_COMMANDS_START -->
+
 - `taskwing bootstrap`
 - `taskwing goal "<goal>"`
 - `taskwing ask "<query>"`
@@ -239,28 +253,31 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ### MCP Tools (Canonical Contract)
 
 <!-- TASKWING_MCP_TOOLS_START -->
-| Tool | Description |
-|------|-------------|
-| `ask` | Search project knowledge (decisions, patterns, constraints) |
-| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
-| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
-| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
-| `debug` | Diagnose issues systematically with AI-powered analysis |
-| `remember` | Store knowledge in project memory |
+
+| Tool       | Description                                                                         |
+| ---------- | ----------------------------------------------------------------------------------- |
+| `ask`      | Search project knowledge (decisions, patterns, constraints)                         |
+| `task`     | Unified task lifecycle (`next`, `current`, `start`, `complete`)                     |
+| `plan`     | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
+| `code`     | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`)    |
+| `debug`    | Diagnose issues systematically with AI-powered analysis                             |
+| `remember` | Store knowledge in project memory                                                   |
+
 <!-- TASKWING_MCP_TOOLS_END -->
 
 ### Autonomous Task Execution (Hooks)
 
 TaskWing integrates with Claude Code's hook system for autonomous plan execution:
 
-~~~bash
+```bash
 taskwing hook session-init      # Initialize session tracking (SessionStart hook)
 taskwing hook continue-check    # Check if should continue to next task (Stop hook)
 taskwing hook session-end       # Cleanup session (SessionEnd hook)
 taskwing hook status            # View current session state
-~~~
+```
 
 Circuit breakers prevent runaway execution:
+
 - --max-tasks=5 stops after N tasks for human review.
 - --max-minutes=30 stops after N minutes.
 

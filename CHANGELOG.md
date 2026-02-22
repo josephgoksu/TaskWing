@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Updated product messaging to the focused motto:
-  - "TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions."
+  - "TaskWing helps turn a goal into executed tasks with persistent context across AI sessions."
 - Updated slash and MCP prompt contracts to unified `task` and `plan` action-based interfaces.
 - Purged stale/outdated architecture documentation that no longer matches shipped behavior.
 - Reworked `/tw-plan`, `/tw-next`, `/tw-done`, and `/tw-debug` prompts as explicit process contracts with hard gates and refusal fallbacks.

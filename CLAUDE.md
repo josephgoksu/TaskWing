@@ -13,10 +13,10 @@ Use `./bin/taskwing` during development, `taskwing` for testing production behav
 
 Two MCP servers are available for testing:
 
-| MCP Server | Binary | Use Case |
-|------------|--------|----------|
-| `taskwing-mcp` | Production (`taskwing`) | Stable features, production testing |
-| `taskwing-local-dev-mcp` | Development (`./bin/taskwing`) | Testing new/changed features |
+| MCP Server               | Binary                         | Use Case                            |
+| ------------------------ | ------------------------------ | ----------------------------------- |
+| `taskwing-mcp`           | Production (`taskwing`)        | Stable features, production testing |
+| `taskwing-local-dev-mcp` | Development (`./bin/taskwing`) | Testing new/changed features        |
 
 ### Testing New Features
 
@@ -29,6 +29,7 @@ When developing new MCP tools or modifying existing ones:
 ### Important: MCP Server Caching
 
 The production MCP server (`taskwing-mcp`) uses the installed Homebrew binary. Changes to code are **NOT reflected** until:
+
 - You rebuild: `make build && brew reinstall taskwing` (if using Homebrew)
 - Or test with: `go run . mcp` directly
 
@@ -123,6 +124,7 @@ internal/
 ### Database Schema
 
 Three main tables in SQLite:
+
 - `features`: id, name, one_liner, status, tags (JSON), file_path, decision_count
 - `decisions`: id, feature_id, title, summary, reasoning, tradeoffs
 - `edges`: from_feature, to_feature, edge_type (depends_on, extends, replaces, related)
@@ -132,6 +134,7 @@ Graph traversal uses recursive CTEs for GetDependencies/GetDependents.
 ### LLM Integration
 
 Uses CloudWeGo Eino for multi-provider support:
+
 - OpenAI: Set `OPENAI_API_KEY` or `TASKWING_LLM_APIKEY`
 - Anthropic: Set `ANTHROPIC_API_KEY` and `TASKWING_LLM_PROVIDER=anthropic`
 - Gemini: Set `GOOGLE_API_KEY` and `TASKWING_LLM_PROVIDER=gemini`
@@ -154,6 +157,7 @@ Tasks receive architectural context via a **hybrid early+late binding** approach
 This ensures tasks always have relevant architecture context while maintaining backward compatibility with older tasks.
 
 **Key files**:
+
 - `internal/app/plan.go` - TaskEnricher executes queries at creation time
 - `internal/task/presentation.go` - FormatRichContext() handles display with fallback
 - `internal/task/scope_config.go` - Configurable scope keywords for context matching
@@ -172,6 +176,7 @@ taskwing hook status            # View current session state
 ```
 
 **Circuit breakers** prevent runaway execution:
+
 - `--max-tasks=5` - Stop after N tasks for human review
 - `--max-minutes=30` - Stop after N minutes
 
@@ -199,12 +204,15 @@ See `docs/development/AUTONOMOUS_HOOKS.md` for full documentation.
 We follow [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH` — but **err on the side of NOT bumping**.
 
 ### Golden Rule: Batch Changes
+
 - Do NOT bump version for every small fix
 - Accumulate related fixes/improvements, then bump ONCE
 - Multiple bug fixes in one session = ONE patch bump, not multiple
 
 ### PATCH (x.x.X) - Most changes go here
+
 Increment when:
+
 - Bug fixes
 - Internal refactoring (no user-visible change)
 - Performance improvements
@@ -217,7 +225,9 @@ Increment when:
 Examples: JSON repair logic, retry improvements, file tracking fixes
 
 ### MINOR (x.X.0) - User-visible new features only
+
 Increment when:
+
 - New CLI command users can run
 - New flag users can pass
 - New output format users can see
@@ -228,12 +238,15 @@ Increment when:
 Examples: new `taskwing goal` command, new `--format` flag, adding Gemini provider
 
 ### MAJOR (X.0.0) - Breaking changes only
+
 Increment when:
+
 - Removing commands, flags, or config options
 - Changing command behavior incompatibly
 - Changing config/database format without migration
 
 ### Decision Checklist
+
 1. Is this visible to users running CLI commands? No → probably no bump needed yet
 2. Does it break existing workflows? → MAJOR
 3. Does it add new user-facing capability? → MINOR
@@ -250,6 +263,7 @@ Increment when:
 When user says "let's release", "create a release", or similar:
 
 1. **Analyze changes** since last tag:
+
    ```bash
    git log $(git describe --tags --abbrev=0)..HEAD --oneline
    ```
@@ -267,6 +281,7 @@ When user says "let's release", "create a release", or similar:
 4. **Get user approval** before proceeding
 
 5. **Execute release**:
+
    ```bash
    # Create annotated tag with release notes (no source file changes needed)
    git tag -a vX.Y.Z -m "Release notes here..."
@@ -295,34 +310,41 @@ Interactive script that prompts for version, opens editor for notes, creates tag
 
 ## TaskWing Integration
 
-TaskWing helps me turn a goal into executed tasks with persistent context across AI sessions.
+TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.
 
 ### Supported Models
 
 <!-- TASKWING_PROVIDERS_START -->
+
 [![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
 [![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
 [![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-OpenAI--Compatible_Beta-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html)
 [![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
+
 <!-- TASKWING_PROVIDERS_END -->
 
 ### Works With
 
 <!-- TASKWING_TOOLS_START -->
+
 [![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/claude-code)
 [![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex)
 [![Cursor](https://img.shields.io/badge/Cursor-111111?logo=cursor&logoColor=white)](https://cursor.com/)
 [![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-181717?logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
 [![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
 [![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
+
 <!-- TASKWING_TOOLS_END -->
 
 <!-- TASKWING_LEGAL_START -->
+
 Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
+
 <!-- TASKWING_LEGAL_END -->
 
 ### Slash Commands
+
 - /tw-ask - Use when you need to search project knowledge (decisions, patterns, constraints).
 - /tw-remember - Use when you want to persist a decision, pattern, or insight to project memory.
 - /tw-next - Use when you are ready to start the next approved TaskWing task with full context.
@@ -336,6 +358,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ### Core Commands
 
 <!-- TASKWING_COMMANDS_START -->
+
 - `taskwing bootstrap`
 - `taskwing goal "<goal>"`
 - `taskwing ask "<query>"`
@@ -351,28 +374,31 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ### MCP Tools (Canonical Contract)
 
 <!-- TASKWING_MCP_TOOLS_START -->
-| Tool | Description |
-|------|-------------|
-| `ask` | Search project knowledge (decisions, patterns, constraints) |
-| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
-| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
-| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
-| `debug` | Diagnose issues systematically with AI-powered analysis |
-| `remember` | Store knowledge in project memory |
+
+| Tool       | Description                                                                         |
+| ---------- | ----------------------------------------------------------------------------------- |
+| `ask`      | Search project knowledge (decisions, patterns, constraints)                         |
+| `task`     | Unified task lifecycle (`next`, `current`, `start`, `complete`)                     |
+| `plan`     | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
+| `code`     | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`)    |
+| `debug`    | Diagnose issues systematically with AI-powered analysis                             |
+| `remember` | Store knowledge in project memory                                                   |
+
 <!-- TASKWING_MCP_TOOLS_END -->
 
 ### Autonomous Task Execution (Hooks)
 
 TaskWing integrates with Claude Code's hook system for autonomous plan execution:
 
-~~~bash
+```bash
 taskwing hook session-init      # Initialize session tracking (SessionStart hook)
 taskwing hook continue-check    # Check if should continue to next task (Stop hook)
 taskwing hook session-end       # Cleanup session (SessionEnd hook)
 taskwing hook status            # View current session state
-~~~
+```
 
 Circuit breakers prevent runaway execution:
+
 - --max-tasks=5 stops after N tasks for human review.
 - --max-minutes=30 stops after N minutes.
 
