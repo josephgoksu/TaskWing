@@ -16,16 +16,12 @@
 - **CLI Framework:** Cobra
 - **Database:** SQLite (modernc.org/sqlite) - _Single source of truth_
 - **LLM Orchestration:** CloudWeGo Eino (OpenAI, Anthropic, Gemini, Bedrock, Ollama support)
-- **Frontend (Dashboard):**
-  - React 19
-  - Vite 7
-  - Tailwind CSS 4
-  - Shadcn/UI
-  - Bun (likely runtime/package manager)
+- **Desktop App:** Native macOS (Swift, SwiftUI, grpc-swift v2)
+- **Server Protocol:** gRPC (plaintext, localhost only)
 
 ## Architecture
 
-The system is composed of a CLI tool with an embedded MCP server and a web dashboard.
+The system is composed of a CLI tool with an embedded MCP server and a gRPC server for the native macOS desktop app.
 
 ### Core Layers (`internal/`)
 
@@ -53,8 +49,10 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 │   ├── knowledge/        # Vector search & classification
 │   ├── llm/              # LLM client factories
 │   ├── memory/           # SQLite storage implementation
+│   ├── grpc/             # gRPC server (thin adapters over app/)
 │   └── ui/               # TUI components (Bubble Tea)
-├── dashboard/            # React/Vite web frontend
+├── proto/                # Protocol Buffer definitions
+├── gen/                  # Generated code (Go protobuf/gRPC stubs)
 ├── docs/                 # Documentation (MCP, Roadmap, etc.)
 └── Makefile              # Build & Test automation
 ```
@@ -80,15 +78,15 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 | `taskwing goal`      | Create and activate a plan                |
 | `taskwing plan`      | Manage development plans                  |
 | `taskwing task`      | Manage execution tasks                    |
-| `taskwing start`     | Start API/watch/dashboard services        |
+| `taskwing start`     | Start gRPC server and watch mode (`--project` for explicit context) |
 | `taskwing slash`     | Output slash command prompts for AI tools |
 
-### Frontend (`dashboard/`)
+### Proto Generation
 
-| Command                   | Description                   |
-| :------------------------ | :---------------------------- |
-| `bun dev` / `npm run dev` | Start Vite development server |
-| `bun build`               | Build for production          |
+| Command                | Description                              |
+| :--------------------- | :--------------------------------------- |
+| `make proto-generate`  | Generate Go gRPC stubs from .proto files |
+| `make proto-lint`      | Lint proto files with buf                |
 
 ## Development Conventions
 

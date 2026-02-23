@@ -180,6 +180,29 @@ uninstall:
 	rm -f $(HOME)/.local/bin/$(BINARY_NAME)
 	@echo "✅ TaskWing uninstalled"
 
+# ─── Proto / gRPC ───────────────────────────────────────────────────────────
+
+# Generate Go code from proto definitions
+.PHONY: proto-generate
+proto-generate:
+	@echo "🔧 Generating Go code from proto definitions..."
+	cd proto && buf generate
+	@echo "✅ Proto generation complete: gen/go/taskwing/v1/"
+
+# Lint proto files
+.PHONY: proto-lint
+proto-lint:
+	@echo "🔍 Linting proto files..."
+	cd proto && buf lint
+	@echo "✅ Proto lint passed"
+
+# Detect breaking changes vs main branch
+.PHONY: proto-breaking
+proto-breaking:
+	@echo "🔍 Checking for breaking proto changes..."
+	cd proto && buf breaking --against '../.git#subdir=proto'
+	@echo "✅ No breaking changes detected"
+
 # Run MCP server for testing
 .PHONY: mcp-server
 mcp-server: build
@@ -209,6 +232,11 @@ help:
 	@echo "Quality Commands:"
 	@echo "  lint        - Run linting and formatting"
 	@echo "  coverage    - Generate test coverage report"
+	@echo ""
+	@echo "Proto Commands:"
+	@echo "  proto-generate - Generate Go code from proto definitions"
+	@echo "  proto-lint     - Lint proto files"
+	@echo "  proto-breaking - Detect breaking proto changes vs main"
 	@echo ""
 	@echo "Development Commands:"
 	@echo "  dev-setup   - Setup development environment"

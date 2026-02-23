@@ -91,7 +91,7 @@ cmd/                          # Cobra CLI commands
 ├── mcp_server.go             # MCP server for AI tool integration
 ├── doctor.go                 # Diagnostics and integration repair
 ├── config.go                 # Provider and runtime configuration
-├── start.go                  # Local API/dashboard runtime
+├── start.go                  # gRPC server and watch mode runtime (`--project` supported)
 ├── hook.go                   # Hook handlers used by assistant integrations
 └── version.go                # Version output
 

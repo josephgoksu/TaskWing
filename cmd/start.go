@@ -7,24 +7,22 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
-	"runtime"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/config"
+	twgrpc "github.com/josephgoksu/TaskWing/internal/grpc"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
-	"github.com/josephgoksu/TaskWing/internal/server"
+	"github.com/josephgoksu/TaskWing/internal/project"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -32,25 +30,23 @@ import (
 var (
 	startPort    int
 	startHost    string
-	noDashboard  bool
+	startProject string
 	noWatch      bool
-	dashboardURL string
 )
 
 var startCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start TaskWing with API server, watch mode, and dashboard",
+	Short: "Start the TaskWing server and watch mode",
 	Long: `Start TaskWing with all services running:
-  - HTTP API server for dashboard communication
+  - gRPC server for desktop app communication
   - Watch mode for continuous file analysis
-  - Auto-open dashboard in browser
 
-This single command replaces running 'serve' and 'watch' separately.
+Connect with the TaskWing desktop app or grpcurl.
 
 	Examples:
 	  taskwing start                    # Start everything
-	  taskwing start --host 0.0.0.0     # Expose API on all interfaces
-	  taskwing start --no-dashboard     # Don't open browser
+	  taskwing start --host 0.0.0.0     # Expose server on all interfaces
+	  taskwing start --project ~/repo    # Use explicit project directory
 	  taskwing start --no-watch         # Server only, no file watching
 	  taskwing start --port 8080        # Use custom port`,
 	RunE: runStart,
@@ -60,11 +56,10 @@ func init() {
 	rootCmd.AddCommand(startCmd)
 
 	// Server flags
-	startCmd.Flags().IntVarP(&startPort, "port", "p", 5001, "API server port")
-	startCmd.Flags().StringVar(&startHost, "host", "127.0.0.1", "API server host bind address")
-	startCmd.Flags().BoolVar(&noDashboard, "no-dashboard", false, "Don't auto-open dashboard in browser")
+	startCmd.Flags().IntVarP(&startPort, "port", "p", 5001, "Server port")
+	startCmd.Flags().StringVar(&startHost, "host", "127.0.0.1", "Server host bind address")
+	startCmd.Flags().StringVar(&startProject, "project", "", "Project directory to use (must contain .taskwing)")
 	startCmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't run watch mode (server only)")
-	startCmd.Flags().StringVar(&dashboardURL, "dashboard-url", "", "Dashboard URL (default: https://hub.taskwing.app, use http://localhost:5173 for local dev)")
 
 	// LLM configuration (reuse from watch)
 	startCmd.Flags().String("provider", "", "LLM provider (openai, ollama, anthropic, bedrock, gemini)")
@@ -81,6 +76,33 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 	startHost = strings.TrimPrefix(strings.TrimSuffix(startHost, "]"), "[")
 
+	if startProject != "" {
+		projectPath, err := resolveStartProject(startProject)
+		if err != nil {
+			return err
+		}
+		if err := os.Chdir(projectPath); err != nil {
+			return fmt.Errorf("change directory to project %s: %w", projectPath, err)
+		}
+
+		ctx, err := project.Detect(projectPath)
+		if err != nil {
+			return fmt.Errorf("detect project context from %s: %w", projectPath, err)
+		}
+		if err := config.SetProjectContext(ctx); err != nil {
+			return fmt.Errorf("set project context for %s: %w", projectPath, err)
+		}
+	} else {
+		// CWD fallback: auto-detect project from working directory
+		// (same pattern as detectProjectRoot in config.go)
+		cwd, cwdErr := os.Getwd()
+		if cwdErr == nil {
+			if ctx, err := project.Detect(cwd); err == nil {
+				_ = config.SetProjectContext(ctx)
+			}
+		}
+	}
+
 	// Get working directory
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -92,7 +114,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 	fmt.Println("🚀 TaskWing Starting...")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Printf("📁 Project: %s\n", cwd)
-	fmt.Printf("🌐 API: %s\n", apiURL(startHost, startPort))
+	fmt.Printf("🌐 Server: %s\n", net.JoinHostPort(startHost, strconv.Itoa(startPort)))
+	if startHost != "127.0.0.1" && startHost != "localhost" {
+		fmt.Println("⚠️  Plaintext gRPC is exposed on a non-loopback host. Use only in trusted local networks.")
+	}
 	if !noWatch {
 		fmt.Println("👁️  Watch: enabled")
 	}
@@ -110,22 +135,18 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("configure LLM: %w", err)
 	}
 
-	resolvedDashboardURL := dashboardURL
-	if resolvedDashboardURL == "" {
-		resolvedDashboardURL = "https://hub.taskwing.app"
-	}
-
-	// Start HTTP API server
+	// Start gRPC server
 	memoryPath, err := config.GetMemoryBasePath()
 	if err != nil {
 		return fmt.Errorf("get memory path: %w", err)
 	}
-	srv, err := server.New(startHost, startPort, cwd, memoryPath, GetVersion(), buildAllowedOrigins(resolvedDashboardURL), llmConfig)
+	listenAddr := net.JoinHostPort(startHost, strconv.Itoa(startPort))
+	srv, err := twgrpc.New(listenAddr, memoryPath, twgrpc.WithVersion(GetVersion()))
 	if err != nil {
-		return fmt.Errorf("failed to create API server: %w", err)
+		return fmt.Errorf("failed to create gRPC server: %w", err)
 	}
 	if err := srv.Start(&wg, errChan); err != nil {
-		return fmt.Errorf("failed to start API server: %w", err)
+		return fmt.Errorf("failed to start gRPC server: %w", err)
 	}
 
 	// Start watch mode if enabled
@@ -133,25 +154,14 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if !noWatch {
 		watchAgent, err = startWatchMode(cwd, verbose, llmConfig, &wg, errChan)
 		if err != nil {
-			_ = srv.Shutdown(context.Background())
+			srv.Shutdown(context.Background())
 			return fmt.Errorf("failed to start watch mode: %w", err)
-		}
-	}
-
-	// Open dashboard in browser
-	if !noDashboard {
-		// Give server a moment to start
-		time.Sleep(500 * time.Millisecond)
-		if err := openBrowser(resolvedDashboardURL); err != nil {
-			fmt.Printf("⚠️  Could not open browser: %v\n", err)
-			fmt.Printf("   Open manually: %s\n", resolvedDashboardURL)
-		} else {
-			fmt.Printf("🌐 Dashboard opened: %s\n", resolvedDashboardURL)
 		}
 	}
 
 	fmt.Println()
 	fmt.Println("✅ TaskWing is running! Press Ctrl+C to stop")
+	fmt.Println("   Connect with the TaskWing desktop app or grpcurl.")
 	fmt.Println()
 
 	// Handle graceful shutdown
@@ -171,13 +181,9 @@ func runStart(cmd *cobra.Command, args []string) error {
 		watchAgent.Stop()
 	}
 
-	// Shutdown HTTP server with timeout
-	fmt.Println("   Stopping API server...")
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		fmt.Printf("   ⚠️  Server shutdown error: %v\n", err)
-	}
+	// Shutdown gRPC server
+	fmt.Println("   Stopping gRPC server...")
+	srv.Shutdown(context.Background())
 
 	wg.Wait()
 	fmt.Println("✅ TaskWing stopped")
@@ -223,50 +229,30 @@ func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sy
 	return watchAgent, nil
 }
 
-// openBrowser opens the URL in the default browser
-func openBrowser(url string) error {
-	var cmd *exec.Cmd
-
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+func resolveStartProject(projectFlag string) (string, error) {
+	trimmed := strings.TrimSpace(projectFlag)
+	if trimmed == "" {
+		return "", fmt.Errorf("project path is empty")
 	}
 
-	return cmd.Start()
-}
-
-func buildAllowedOrigins(dashboardURL string) []string {
-	origins := make([]string, 0, 4)
-	seen := make(map[string]struct{}, 4)
-	addOrigin := func(origin string) {
-		origin = strings.TrimSpace(origin)
-		if origin == "" {
-			return
-		}
-		if _, ok := seen[origin]; ok {
-			return
-		}
-		seen[origin] = struct{}{}
-		origins = append(origins, origin)
+	absPath, err := filepath.Abs(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("resolve project path %q: %w", trimmed, err)
 	}
 
-	addOrigin("http://localhost:5173")
-	addOrigin("http://127.0.0.1:5173")
-	addOrigin("https://hub.taskwing.app")
-
-	if parsed, err := url.Parse(dashboardURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-		addOrigin(parsed.Scheme + "://" + parsed.Host)
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return "", fmt.Errorf("project path does not exist: %s", absPath)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("project path is not a directory: %s", absPath)
 	}
 
-	return origins
-}
+	taskwingDir := filepath.Join(absPath, ".taskwing")
+	taskwingInfo, err := os.Stat(taskwingDir)
+	if err != nil || !taskwingInfo.IsDir() {
+		return "", fmt.Errorf("invalid project %s: missing .taskwing directory (run 'taskwing bootstrap')", absPath)
+	}
 
-func apiURL(host string, port int) string {
-	return "http://" + net.JoinHostPort(host, strconv.Itoa(port))
+	return absPath, nil
 }

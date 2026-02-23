@@ -9,15 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **gRPC server** (`internal/grpc/`) replacing HTTP REST API — 5 services: Plan, Task, Knowledge, CodeIntel, Server.
+- Server-streaming RPCs: `StreamActivity`, `GenerateStream`, `SearchStream` for incremental updates.
+- gRPC health protocol and reflection for debugging with `grpcurl`.
+- Proto definitions (`proto/taskwing/v1/`) with buf toolchain for code generation.
 - Focused `taskwing goal "<goal>"` command for one-shot clarify -> generate -> activate flow.
 - Hard-break CLI surface reduction to core execution workflow commands.
-- Local-only default server bind and strict CORS allowlist behavior.
 - Workflow contract documentation (`docs/WORKFLOW_CONTRACT_V1.md`) with hard-gate refusal language and KPIs.
 - Workflow operations docs for activation and feedback loops (`docs/WORKFLOW_PACK.md`, `docs/PROMPT_FAILURES_LOG.md`).
 - Prompt reliability tests for slash command contracts and cross-assistant command description parity.
 
 ### Changed
 
+- **`taskwing start`** now launches a gRPC server (was HTTP). Connect with the macOS desktop app or `grpcurl`.
 - Updated product messaging to the focused motto:
   - "TaskWing helps turn a goal into executed tasks with persistent context across AI sessions."
 - Updated slash and MCP prompt contracts to unified `task` and `plan` action-based interfaces.
@@ -25,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reworked `/tw-plan`, `/tw-next`, `/tw-done`, and `/tw-debug` prompts as explicit process contracts with hard gates and refusal fallbacks.
 - Updated slash command descriptions to trigger-focused "Use when ..." phrasing across assistant command generation.
 - Session initialization output now injects TaskWing Workflow Contract v1 for hook-enabled assistants.
+
+### Removed
+
+- **`internal/server/`** HTTP REST API package (replaced by `internal/grpc/`).
+- CLI flags `--dashboard-url` and `--no-dashboard` (web dashboard removed).
+- Browser auto-open on `taskwing start`.
+- CORS middleware and allowed origins configuration.
 
 ### Fixed
 

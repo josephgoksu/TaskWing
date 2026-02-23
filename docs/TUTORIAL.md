@@ -92,13 +92,20 @@ taskwing mcp
 
 ## 6. Local Runtime (Optional)
 
-Run TaskWing API/dashboard tooling locally:
+Run the TaskWing gRPC server locally (used by the macOS desktop app):
 
 ```bash
 taskwing start
 ```
 
-Default bind is `127.0.0.1`.
+Default bind is `127.0.0.1:5001` (plaintext gRPC, no TLS).
+Connect with the TaskWing desktop app or debug with `grpcurl -plaintext localhost:5001 list`.
+
+To force explicit project context (recommended for desktop integration):
+
+```bash
+taskwing start --project /absolute/path/to/project
+```
 
 ## 7. Troubleshooting
 
