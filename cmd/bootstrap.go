@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -195,6 +196,22 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	// Initialize Service
 	svc := bootstrap.NewService(cwd, llmCfg)
 
+	// Prompt for repo selection in multi-repo workspaces.
+	// This must happen before the action loop because ActionInitProject may not
+	// be in the plan (e.g., ModeRun), but ActionLLMAnalyze still needs SelectedRepos.
+	if plan.RequiresRepoSelection && slices.Contains(plan.Actions, bootstrap.ActionLLMAnalyze) {
+		if ui.IsInteractive() {
+			fmt.Println()
+			fmt.Printf("📦 Found %d repositories\n\n", len(plan.DetectedRepos))
+			plan.SelectedRepos = promptRepoSelection(plan.DetectedRepos)
+		} else {
+			plan.SelectedRepos = plan.DetectedRepos
+			if !flags.Quiet {
+				fmt.Printf("📦 Non-interactive mode: bootstrapping all %d repositories\n", len(plan.DetectedRepos))
+			}
+		}
+	}
+
 	// Execute actions in order
 	for _, action := range plan.Actions {
 		if err := executeAction(cmd.Context(), action, svc, cwd, flags, plan, llmCfg); err != nil {
@@ -250,7 +267,7 @@ func executeAction(ctx context.Context, action bootstrap.Action, svc *bootstrap.
 		return executeExtractMetadata(ctx, svc, flags)
 
 	case bootstrap.ActionLLMAnalyze:
-		return executeLLMAnalyze(ctx, svc, cwd, flags, llmCfg)
+		return executeLLMAnalyze(ctx, svc, cwd, flags, llmCfg, plan)
 
 	default:
 		return fmt.Errorf("unknown action: %s", action)
@@ -442,7 +459,7 @@ func executeExtractMetadata(ctx context.Context, svc *bootstrap.Service, flags b
 }
 
 // executeLLMAnalyze runs LLM-powered deep analysis.
-func executeLLMAnalyze(ctx context.Context, svc *bootstrap.Service, cwd string, flags bootstrap.Flags, llmCfg llm.Config) error {
+func executeLLMAnalyze(ctx context.Context, svc *bootstrap.Service, cwd string, flags bootstrap.Flags, llmCfg llm.Config, plan *bootstrap.Plan) error {
 	// Detect workspace type
 	ws, err := project.DetectWorkspace(cwd)
 	if err != nil {
@@ -451,6 +468,10 @@ func executeLLMAnalyze(ctx context.Context, svc *bootstrap.Service, cwd string, 
 
 	// Handle multi-repo workspaces
 	if ws.IsMultiRepo() {
+		// Scope to user-selected repos
+		if len(plan.SelectedRepos) > 0 {
+			ws.Services = plan.SelectedRepos
+		}
 		return runMultiRepoBootstrap(ctx, svc, ws, flags.Preview)
 	}
 
@@ -650,7 +671,7 @@ func runMultiRepoBootstrap(ctx context.Context, svc *bootstrap.Service, ws *proj
 	fmt.Println("")
 	ui.RenderPageHeader("TaskWing Multi-Repo Bootstrap", fmt.Sprintf("Workspace: %s | Services: %d", ws.Name, ws.ServiceCount()))
 
-	fmt.Printf("📦 Detected %d services. Running parallel analysis...\n", ws.ServiceCount())
+	fmt.Printf("📦 Analyzing %d services. Running parallel analysis...\n", ws.ServiceCount())
 
 	findings, relationships, errs, err := svc.RunMultiRepoAnalysis(ctx, ws)
 	if err != nil {
@@ -672,6 +693,21 @@ func runMultiRepoBootstrap(ctx context.Context, svc *bootstrap.Service, ws *proj
 	}
 
 	return svc.IngestDirectly(ctx, findings, relationships, viper.GetBool("quiet"))
+}
+
+// promptRepoSelection prompts the user to select which repositories to bootstrap.
+// Returns all repos on error or cancel to avoid silent no-op.
+func promptRepoSelection(repos []string) []string {
+	selected, err := ui.PromptRepoSelection(repos)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Repo selection failed: %v — analyzing all repositories\n", err)
+		return repos
+	}
+	if selected == nil {
+		fmt.Println("⚠️  Selection cancelled — analyzing all repositories")
+		return repos
+	}
+	return selected
 }
 
 // installMCPServers handles the binary installation calls (kept in CLI layer)

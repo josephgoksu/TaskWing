@@ -7,6 +7,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/josephgoksu/TaskWing/internal/project"
 )
 
 // BootstrapMode represents the high-level mode of operation.
@@ -97,6 +99,9 @@ type Snapshot struct {
 	// Code stats
 	FileCount      int  `json:"file_count"`
 	IsLargeProject bool `json:"is_large_project"` // > threshold
+
+	// Workspace
+	Workspace *project.WorkspaceInfo `json:"workspace,omitempty"`
 }
 
 // Flags captures all CLI flags in a structured way.
@@ -139,6 +144,11 @@ type Plan struct {
 
 	// Execution state (populated during execution, not planning)
 	SelectedAIs []string `json:"selected_ais,omitempty"` // User's actual AI selection
+
+	// Multi-repo workspace selection
+	DetectedRepos       []string `json:"detected_repos,omitempty"`
+	SelectedRepos       []string `json:"selected_repos,omitempty"`
+	RequiresRepoSelection bool   `json:"requires_repo_selection"`
 
 	// Error state
 	Error        error  `json:"-"`
@@ -218,6 +228,11 @@ func ProbeEnvironment(basePath string) (*Snapshot, error) {
 	// Count source files (for large project detection)
 	snap.FileCount = countSourceFiles(basePath)
 	snap.IsLargeProject = snap.FileCount > 5000
+
+	// Detect workspace type (single, monorepo, multi-repo)
+	if ws, err := project.DetectWorkspace(basePath); err == nil {
+		snap.Workspace = ws
+	}
 
 	return snap, nil
 }
@@ -310,6 +325,12 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		// Fallback - shouldn't happen but be explicit
 		plan.Mode = ModeRun
 		plan.DetectedState = "Existing setup"
+	}
+
+	// Detect multi-repo workspace and set repo selection fields
+	if snap.Workspace != nil && snap.Workspace.Type == project.WorkspaceTypeMultiRepo {
+		plan.DetectedRepos = snap.Workspace.Services
+		plan.RequiresRepoSelection = true
 	}
 
 	// Now determine actions based on mode and flags
@@ -787,6 +808,10 @@ func FormatPlanSummary(plan *Plan, quiet bool) string {
 	// Detailed output (not in quiet mode)
 	if !quiet {
 		fmt.Fprintf(&sb, "\nDetected: %s\n", plan.DetectedState)
+
+		if plan.RequiresRepoSelection && len(plan.DetectedRepos) > 0 {
+			fmt.Fprintf(&sb, "Workspace: Multi-repo (%d repositories detected)\n", len(plan.DetectedRepos))
+		}
 
 		if len(plan.Actions) > 0 {
 			sb.WriteString("\nActions:\n")
