@@ -249,9 +249,13 @@ func sanitizeControlChars(input string) string {
 			continue
 		}
 
-		if c == '\\' && inString {
-			result.WriteByte(c)
-			escaped = true
+		if c == '\\' {
+			if inString {
+				result.WriteByte(c)
+				escaped = true
+			}
+			// Outside strings, backslashes are invalid JSON — strip them.
+			// Common in LLM output: literal \n between values, regex snippets, etc.
 			continue
 		}
 
