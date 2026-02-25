@@ -4,6 +4,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,7 +154,10 @@ func handleCodeExplain(ctx context.Context, repo *memory.Repository, params Code
 	}
 
 	// Get base path for source code fetching
-	basePath, _ := config.GetProjectRoot()
+	basePath, err := config.GetProjectRoot()
+	if err != nil {
+		slog.Debug("GetProjectRoot failed in explain handler", "error", err)
+	}
 
 	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
 	appCtx.BasePath = basePath
@@ -267,7 +271,10 @@ func handleCodeSimplify(ctx context.Context, repo *memory.Repository, params Cod
 
 	// If file_path provided, read the file content
 	if filePath != "" && code == "" {
-		projectRoot, _ := config.GetProjectRoot()
+		projectRoot, err := config.GetProjectRoot()
+		if err != nil {
+			slog.Debug("GetProjectRoot failed in simplify handler", "error", err)
+		}
 
 		// Validate path to prevent traversal attacks
 		resolvedPath, err := validateAndResolvePath(filePath, projectRoot)
