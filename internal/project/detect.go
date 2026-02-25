@@ -3,6 +3,9 @@ package project
 import (
 	"errors"
 	"path/filepath"
+	"strings"
+
+	"github.com/spf13/afero"
 )
 
 // ErrNoProjectFound is returned when no project root could be detected.
@@ -87,7 +90,7 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 					RootPath:   current,
 					MarkerType: MarkerTaskWing,
 					GitRoot:    gitRoot,
-					IsMonorepo: gitRoot != "" && gitRoot != current,
+					IsMonorepo: gitRoot != "" && (gitRoot != current || d.hasNestedProjects(current)),
 				}, nil
 			}
 		}
@@ -127,7 +130,7 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 			RootPath:   gitRoot,
 			MarkerType: MarkerGit,
 			GitRoot:    gitRoot,
-			IsMonorepo: false,
+			IsMonorepo: d.hasNestedProjects(gitRoot),
 		}, nil
 	}
 
@@ -188,4 +191,124 @@ func (d *detector) findGitRoot(startPath string) string {
 		current = parent
 	}
 	return ""
+}
+
+// nestedProjectMarkers are the files that indicate a directory is a project.
+// Shared with workspace.go's isProjectDir for consistency.
+var nestedProjectMarkers = []string{
+	"package.json",
+	"go.mod",
+	"Cargo.toml",
+	"pom.xml",
+	"pyproject.toml",
+	"build.gradle",
+	"requirements.txt",
+	"Dockerfile",
+}
+
+// alwaysSkipDirs is a minimal safety-net for directories that should never be
+// considered as project subdirectories, even when .gitignore is absent or unreadable.
+// These are generated/vendored directories that commonly contain nested manifests.
+var alwaysSkipDirs = map[string]bool{
+	"node_modules": true,
+	"vendor":       true,
+	"__pycache__":  true,
+}
+
+// hasNestedProjects checks if a directory contains multiple subdirectories
+// that look like independent projects (each with their own manifest file).
+// This detects monorepo roots where RootPath == GitRoot but the directory
+// structure clearly contains multiple services/packages.
+//
+// Directories are skipped if they match .gitignore patterns, the alwaysSkipDirs
+// safety net, or are hidden (dot-prefixed).
+//
+// Requires at least 2 nested project directories to return true,
+// reducing false positives for repos with a single nested manifest.
+func (d *detector) hasNestedProjects(dir string) bool {
+	ignored := d.loadGitignore(dir)
+
+	entries, err := afero.ReadDir(d.fs, dir)
+	if err != nil {
+		return false
+	}
+
+	count := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") || alwaysSkipDirs[name] || ignored[name] {
+			continue
+		}
+		if d.isProjectDir(filepath.Join(dir, name)) {
+			count++
+			if count >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// loadGitignore reads .gitignore from dir and returns a set of directory names
+// that should be ignored. It handles the common gitignore patterns:
+//   - Simple names: "dist", "build"
+//   - Directory markers: "dist/", "build/"
+//   - Root-anchored: "/dist", "/build/"
+//   - Comments (#) and blank lines are skipped
+//   - Negation patterns (!) are skipped (conservative: don't un-ignore)
+//
+// Only simple name patterns are matched (no wildcards, no path separators
+// mid-pattern). This covers the vast majority of real-world gitignore entries
+// for top-level directories.
+func (d *detector) loadGitignore(dir string) map[string]bool {
+	ignored := make(map[string]bool)
+
+	data, err := afero.ReadFile(d.fs, filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		return ignored
+	}
+
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Skip negation patterns (conservative: don't un-ignore anything)
+		if strings.HasPrefix(line, "!") {
+			continue
+		}
+
+		// Strip root anchor (leading /)
+		line = strings.TrimPrefix(line, "/")
+		// Strip directory indicator (trailing /)
+		line = strings.TrimSuffix(line, "/")
+
+		// Only match simple names (no path separators, no glob wildcards).
+		// Patterns like "logs/*.log" or "src/generated" are path-based and
+		// don't apply to top-level directory matching.
+		if strings.ContainsAny(line, "/*?[") {
+			continue
+		}
+
+		if line != "" {
+			ignored[line] = true
+		}
+	}
+
+	return ignored
+}
+
+// isProjectDir checks if a directory contains any project marker file.
+func (d *detector) isProjectDir(dir string) bool {
+	for _, marker := range nestedProjectMarkers {
+		if exists, _ := d.exists(filepath.Join(dir, marker)); exists {
+			return true
+		}
+	}
+	return false
 }
