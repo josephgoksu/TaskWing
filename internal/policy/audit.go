@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -202,7 +203,9 @@ func (s *AuditStore) scanDecision(row *sql.Row) (*PolicyDecision, error) {
 	d.Violations = ParseViolations(violationsJSON)
 	if inputJSON != "" && inputJSON != "{}" {
 		var input any
-		if err := json.Unmarshal([]byte(inputJSON), &input); err == nil {
+		if err := json.Unmarshal([]byte(inputJSON), &input); err != nil {
+			slog.Warn("corrupt policy decision input JSON", "id", d.DecisionID, "error", err)
+		} else {
 			d.Input = input
 		}
 	}
@@ -238,7 +241,9 @@ func (s *AuditStore) scanDecisionRows(rows *sql.Rows) (*PolicyDecision, error) {
 	d.Violations = ParseViolations(violationsJSON)
 	if inputJSON != "" && inputJSON != "{}" {
 		var input any
-		if err := json.Unmarshal([]byte(inputJSON), &input); err == nil {
+		if err := json.Unmarshal([]byte(inputJSON), &input); err != nil {
+			slog.Warn("corrupt policy decision input JSON", "id", d.DecisionID, "error", err)
+		} else {
 			d.Input = input
 		}
 	}

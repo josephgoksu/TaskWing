@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -156,9 +157,11 @@ func (s *SQLiteStore) CreatePlan(p *task.Plan) error {
 	// Serialize draft state if present
 	var draftStateJSON interface{}
 	if p.DraftState != nil {
-		if data, err := json.Marshal(p.DraftState); err == nil {
-			draftStateJSON = string(data)
+		data, err := json.Marshal(p.DraftState)
+		if err != nil {
+			return fmt.Errorf("marshal draft_state: %w", err)
 		}
+		draftStateJSON = string(data)
 	}
 
 	if _, err = tx.Exec(`
@@ -207,7 +210,9 @@ func (s *SQLiteStore) GetPlan(id string) (*task.Plan, error) {
 	}
 	if draftStateJSON.Valid && draftStateJSON.String != "" {
 		var draftState task.PlanDraftState
-		if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err == nil {
+		if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err != nil {
+			slog.Warn("corrupt draft_state JSON", "plan", p.ID, "error", err)
+		} else {
 			p.DraftState = &draftState
 		}
 	}
@@ -257,7 +262,9 @@ func (s *SQLiteStore) ListPlans() ([]task.Plan, error) {
 		}
 		if draftStateJSON.Valid && draftStateJSON.String != "" {
 			var draftState task.PlanDraftState
-			if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err == nil {
+			if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err != nil {
+				slog.Warn("corrupt draft_state JSON", "plan", p.ID, "error", err)
+			} else {
 				p.DraftState = &draftState
 			}
 		}
@@ -459,7 +466,9 @@ func (s *SQLiteStore) GetClarifySession(id string) (*task.ClarifySession, error)
 	session.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	session.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	if currentQuestionsJSON.Valid && currentQuestionsJSON.String != "" {
-		_ = json.Unmarshal([]byte(currentQuestionsJSON.String), &session.CurrentQuestions)
+		if err := json.Unmarshal([]byte(currentQuestionsJSON.String), &session.CurrentQuestions); err != nil {
+			slog.Warn("corrupt current_questions JSON", "session", session.ID, "error", err)
+		}
 	}
 
 	return &session, nil
@@ -571,10 +580,14 @@ func (s *SQLiteStore) ListClarifyTurns(sessionID string) ([]task.ClarifyTurn, er
 		turn.MaxRoundsReached = maxRoundsReachedInt == 1
 		turn.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		if questionsJSON.Valid && questionsJSON.String != "" {
-			_ = json.Unmarshal([]byte(questionsJSON.String), &turn.Questions)
+			if err := json.Unmarshal([]byte(questionsJSON.String), &turn.Questions); err != nil {
+				slog.Warn("corrupt questions JSON", "turn", turn.ID, "error", err)
+			}
 		}
 		if answersJSON.Valid && answersJSON.String != "" {
-			_ = json.Unmarshal([]byte(answersJSON.String), &turn.Answers)
+			if err := json.Unmarshal([]byte(answersJSON.String), &turn.Answers); err != nil {
+				slog.Warn("corrupt answers JSON", "turn", turn.ID, "error", err)
+			}
 		}
 		turns = append(turns, turn)
 	}
@@ -648,25 +661,39 @@ func scanTaskRow(row taskRowScanner) (task.Task, error) {
 	}
 
 	if acJSON.Valid && acJSON.String != "" {
-		_ = json.Unmarshal([]byte(acJSON.String), &t.AcceptanceCriteria)
+		if err := json.Unmarshal([]byte(acJSON.String), &t.AcceptanceCriteria); err != nil {
+			slog.Warn("corrupt acceptance_criteria JSON", "task", t.ID, "error", err)
+		}
 	}
 	if vsJSON.Valid && vsJSON.String != "" {
-		_ = json.Unmarshal([]byte(vsJSON.String), &t.ValidationSteps)
+		if err := json.Unmarshal([]byte(vsJSON.String), &t.ValidationSteps); err != nil {
+			slog.Warn("corrupt validation_steps JSON", "task", t.ID, "error", err)
+		}
 	}
 	if keywordsJSON.Valid && keywordsJSON.String != "" {
-		_ = json.Unmarshal([]byte(keywordsJSON.String), &t.Keywords)
+		if err := json.Unmarshal([]byte(keywordsJSON.String), &t.Keywords); err != nil {
+			slog.Warn("corrupt keywords JSON", "task", t.ID, "error", err)
+		}
 	}
 	if queriesJSON.Valid && queriesJSON.String != "" {
-		_ = json.Unmarshal([]byte(queriesJSON.String), &t.SuggestedAskQueries)
+		if err := json.Unmarshal([]byte(queriesJSON.String), &t.SuggestedAskQueries); err != nil {
+			slog.Warn("corrupt suggested_ask_queries JSON", "task", t.ID, "error", err)
+		}
 	}
 	if filesJSON.Valid && filesJSON.String != "" {
-		_ = json.Unmarshal([]byte(filesJSON.String), &t.FilesModified)
+		if err := json.Unmarshal([]byte(filesJSON.String), &t.FilesModified); err != nil {
+			slog.Warn("corrupt files_modified JSON", "task", t.ID, "error", err)
+		}
 	}
 	if expectedFilesJSON.Valid && expectedFilesJSON.String != "" {
-		_ = json.Unmarshal([]byte(expectedFilesJSON.String), &t.ExpectedFiles)
+		if err := json.Unmarshal([]byte(expectedFilesJSON.String), &t.ExpectedFiles); err != nil {
+			slog.Warn("corrupt expected_files JSON", "task", t.ID, "error", err)
+		}
 	}
 	if gitBaselineJSON.Valid && gitBaselineJSON.String != "" {
-		_ = json.Unmarshal([]byte(gitBaselineJSON.String), &t.GitBaseline)
+		if err := json.Unmarshal([]byte(gitBaselineJSON.String), &t.GitBaseline); err != nil {
+			slog.Warn("corrupt git_baseline JSON", "task", t.ID, "error", err)
+		}
 	}
 
 	return t, nil
@@ -1144,7 +1171,9 @@ func (s *SQLiteStore) SearchPlans(query string, status task.PlanStatus) ([]task.
 		}
 		if draftStateJSON.Valid && draftStateJSON.String != "" {
 			var draftState task.PlanDraftState
-			if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err == nil {
+			if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err != nil {
+				slog.Warn("corrupt draft_state JSON", "plan", p.ID, "error", err)
+			} else {
 				p.DraftState = &draftState
 			}
 		}
@@ -1190,7 +1219,9 @@ func (s *SQLiteStore) GetActivePlan() (*task.Plan, error) {
 	}
 	if draftStateJSON.Valid && draftStateJSON.String != "" {
 		var draftState task.PlanDraftState
-		if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err == nil {
+		if err := json.Unmarshal([]byte(draftStateJSON.String), &draftState); err != nil {
+			slog.Warn("corrupt draft_state JSON", "plan", p.ID, "error", err)
+		} else {
 			p.DraftState = &draftState
 		}
 	}

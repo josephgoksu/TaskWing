@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,15 +58,33 @@ func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
 
-	// Migrations - ignore errors for columns that already exist
-	_, _ = db.Exec(`ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'medium'`)
-
-	// Interactive planning migrations (phases support)
-	_, _ = db.Exec(`ALTER TABLE plans ADD COLUMN draft_state TEXT`)
-	_, _ = db.Exec(`ALTER TABLE plans ADD COLUMN generation_mode TEXT DEFAULT 'batch'`)
-	_, _ = db.Exec(`ALTER TABLE tasks ADD COLUMN phase_id TEXT REFERENCES phases(id) ON DELETE SET NULL`)
+	// Migrations — add columns only if they don't already exist
+	migrateAddColumn(db, "tasks", "complexity", `ALTER TABLE tasks ADD COLUMN complexity TEXT DEFAULT 'medium'`)
+	migrateAddColumn(db, "plans", "draft_state", `ALTER TABLE plans ADD COLUMN draft_state TEXT`)
+	migrateAddColumn(db, "plans", "generation_mode", `ALTER TABLE plans ADD COLUMN generation_mode TEXT DEFAULT 'batch'`)
+	migrateAddColumn(db, "tasks", "phase_id", `ALTER TABLE tasks ADD COLUMN phase_id TEXT REFERENCES phases(id) ON DELETE SET NULL`)
 
 	return store, nil
+}
+
+// migrateAddColumn adds a column if it doesn't already exist.
+// Logs real errors instead of silently swallowing them.
+func migrateAddColumn(db *sql.DB, table, column, ddl string) {
+	var exists int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`,
+		table, column,
+	).Scan(&exists)
+	if err != nil {
+		slog.Warn("migration check failed", "table", table, "column", column, "error", err)
+		return
+	}
+	if exists > 0 {
+		return // already migrated
+	}
+	if _, err := db.Exec(ddl); err != nil {
+		slog.Warn("migration failed", "table", table, "column", column, "error", err)
+	}
 }
 
 // initSchema creates the database tables if they don't exist.
