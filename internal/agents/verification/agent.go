@@ -372,13 +372,3 @@ func FilterVerifiedFindings(findings []core.Finding) []core.Finding {
 	return result
 }
 
-// FilterByMinConfidence returns findings with confidence score >= minScore.
-func FilterByMinConfidence(findings []core.Finding, minScore float64) []core.Finding {
-	var result []core.Finding
-	for _, f := range findings {
-		if f.ConfidenceScore >= minScore {
-			result = append(result, f)
-		}
-	}
-	return result
-}

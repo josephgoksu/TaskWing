@@ -114,6 +114,8 @@ func runAsk(cmd *cobra.Command, args []string) error {
 		return printJSON(result)
 	}
 
-	ui.RenderAskResult(result, viper.GetBool("verbose"))
+	if !isQuiet() {
+		ui.RenderAskResult(result, viper.GetBool("verbose"))
+	}
 	return nil
 }

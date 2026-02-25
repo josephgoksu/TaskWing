@@ -88,15 +88,17 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print banner
-	fmt.Println()
-	fmt.Println("🚀 TaskWing Starting...")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Printf("📁 Project: %s\n", cwd)
-	fmt.Printf("🌐 API: %s\n", apiURL(startHost, startPort))
-	if !noWatch {
-		fmt.Println("👁️  Watch: enabled")
+	if !isQuiet() {
+		fmt.Println()
+		fmt.Println("🚀 TaskWing Starting...")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Printf("📁 Project: %s\n", cwd)
+		fmt.Printf("🌐 API: %s\n", apiURL(startHost, startPort))
+		if !noWatch {
+			fmt.Println("👁️  Watch: enabled")
+		}
+		fmt.Println()
 	}
-	fmt.Println()
 
 	// WaitGroup to track goroutines
 	var wg sync.WaitGroup
@@ -143,16 +145,20 @@ func runStart(cmd *cobra.Command, args []string) error {
 		// Give server a moment to start
 		time.Sleep(500 * time.Millisecond)
 		if err := openBrowser(resolvedDashboardURL); err != nil {
-			fmt.Printf("⚠️  Could not open browser: %v\n", err)
-			fmt.Printf("   Open manually: %s\n", resolvedDashboardURL)
-		} else {
+			if !isQuiet() {
+				fmt.Printf("⚠️  Could not open browser: %v\n", err)
+				fmt.Printf("   Open manually: %s\n", resolvedDashboardURL)
+			}
+		} else if !isQuiet() {
 			fmt.Printf("🌐 Dashboard opened: %s\n", resolvedDashboardURL)
 		}
 	}
 
-	fmt.Println()
-	fmt.Println("✅ TaskWing is running! Press Ctrl+C to stop")
-	fmt.Println()
+	if !isQuiet() {
+		fmt.Println()
+		fmt.Println("✅ TaskWing is running! Press Ctrl+C to stop")
+		fmt.Println()
+	}
 
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
