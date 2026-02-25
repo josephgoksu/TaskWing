@@ -755,11 +755,13 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("✓ Started task: %s\n", result.Task.Title)
-	fmt.Printf("  ID: %s\n", result.Task.ID)
+	if !isQuiet() {
+		fmt.Printf("✓ Started task: %s\n", result.Task.Title)
+		fmt.Printf("  ID: %s\n", result.Task.ID)
 
-	if result.Hint != "" {
-		fmt.Printf("\n💡 %s\n", result.Hint)
+		if result.Hint != "" {
+			fmt.Printf("\n💡 %s\n", result.Hint)
+		}
 	}
 
 	return nil

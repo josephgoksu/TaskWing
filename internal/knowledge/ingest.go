@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -265,7 +266,9 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 			}
 		}
 
-		if err := s.repo.UpsertNodeBySummary(node); err == nil {
+		if err := s.repo.UpsertNodeBySummary(node); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  failed to upsert node %q: %v\n", f.Title, err)
+		} else {
 			nodesCreated++
 			nodesByTitle[strings.ToLower(f.Title)] = nodeID
 		}
@@ -366,7 +369,9 @@ func (s *Service) linkByEvidence(allNodes []memory.Node) int {
 					"shared_file":  filePath,
 					"shared_count": sharedFiles,
 				}
-				if err := s.repo.LinkNodes(nodeA, nodeB, memory.NodeRelationSharesEvidence, weight, props); err == nil {
+				if err := s.repo.LinkNodes(nodeA, nodeB, memory.NodeRelationSharesEvidence, weight, props); err != nil {
+					fmt.Fprintf(os.Stderr, "⚠️  failed to link nodes (evidence): %v\n", err)
+				} else {
 					count++
 				}
 			}
@@ -414,7 +419,9 @@ func (s *Service) linkSemantic(allNodes []memory.Node) int {
 			similarity := CosineSimilarity(nodeA.Embedding, nodeB.Embedding)
 			if similarity >= float32(threshold) {
 				props := map[string]any{"similarity": similarity}
-				if err := s.repo.LinkNodes(nodeA.ID, nodeB.ID, memory.NodeRelationSemanticallySimilar, float64(similarity), props); err == nil {
+				if err := s.repo.LinkNodes(nodeA.ID, nodeB.ID, memory.NodeRelationSemanticallySimilar, float64(similarity), props); err != nil {
+					fmt.Fprintf(os.Stderr, "⚠️  failed to link nodes (semantic): %v\n", err)
+				} else {
 					count++
 				}
 			}
@@ -466,7 +473,9 @@ func (s *Service) linkByLLMRelationships(relationships []core.Relationship, node
 			"reason":        rel.Reason,
 		}
 
-		if err := s.repo.LinkNodes(fromID, toID, relationType, weight, props); err == nil {
+		if err := s.repo.LinkNodes(fromID, toID, relationType, weight, props); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  failed to link nodes (llm): %v\n", err)
+		} else {
 			count++
 		}
 	}

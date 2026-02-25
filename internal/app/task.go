@@ -468,13 +468,17 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		}
 
 		// Commit task progress with conventional commit message
-		if err := gitClient.CommitTaskProgress(taskBeforeComplete.Title, taskBeforeComplete.Scope); err == nil {
+		if err := gitClient.CommitTaskProgress(taskBeforeComplete.Title, taskBeforeComplete.Scope); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  git commit failed: %v\n", err)
+		} else {
 			gitCommitApplied = true
 		}
 
 		// Push to remote if we have a branch and commit was successful
 		if gitCommitApplied && gitBranch != "" {
-			if err := gitClient.PushTaskProgress(gitBranch); err == nil {
+			if err := gitClient.PushTaskProgress(gitBranch); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠️  git push failed: %v\n", err)
+			} else {
 				gitPushApplied = true
 			}
 		}
