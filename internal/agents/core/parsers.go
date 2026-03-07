@@ -61,10 +61,12 @@ func NewFindingWithEvidence(
 	confidenceScore, confidenceLabel := ParseConfidence(confidence)
 	convertedEvidence := ConvertEvidence(evidence)
 
-	// Gate 3: Findings without evidence start as "skipped" rather than "pending"
-	// to prevent them from being auto-linked into the knowledge graph.
+	// Gate 3: Findings without verifiable evidence (non-empty FilePath) start as
+	// "skipped" rather than "pending" to prevent hallucinated findings from being
+	// auto-linked into the knowledge graph.
 	verificationStatus := VerificationStatusPending
-	if len(convertedEvidence) == 0 {
+	tempFinding := Finding{Evidence: convertedEvidence}
+	if !tempFinding.HasEvidence() {
 		verificationStatus = VerificationStatusSkipped
 	}
 

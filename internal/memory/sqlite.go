@@ -1471,11 +1471,17 @@ func (s *SQLiteStore) LinkNodes(from, to, relation string, confidence float64, p
 	}
 	defer func() { _ = tx.Rollback() }() // no-op after commit
 
+	// Handle self-referential edges: IN deduplicates identical values,
+	// so COUNT(*) returns 1 even when the node exists. Check accordingly.
+	expectedCount := 2
+	if from == to {
+		expectedCount = 1
+	}
 	var existCount int
 	if qErr := tx.QueryRow(`SELECT COUNT(*) FROM nodes WHERE id IN (?, ?)`, from, to).Scan(&existCount); qErr != nil {
 		return fmt.Errorf("check node existence: %w", qErr)
 	}
-	if existCount < 2 {
+	if existCount < expectedCount {
 		return fmt.Errorf("link skipped: one or both nodes not found (from=%q, to=%q)", from, to)
 	}
 
