@@ -282,7 +282,7 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (
 	docLoader := NewDocLoader(s.basePath)
 	ws, wsErr := project.DetectWorkspace(s.basePath)
 	var docs []DocFile
-	if wsErr == nil && len(ws.Services) > 0 && ws.Services[0] != "." {
+	if wsErr == nil && len(ws.Services) > 0 && !containsDot(ws.Services) {
 		docs, err = docLoader.LoadForServices(ws.Services)
 	} else {
 		docs, err = docLoader.Load()
@@ -357,6 +357,16 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (
 
 	result.FindingsCount = len(findings)
 	return result, nil
+}
+
+// containsDot returns true if any element equals ".".
+func containsDot(ss []string) bool {
+	for _, s := range ss {
+		if s == "." {
+			return true
+		}
+	}
+	return false
 }
 
 // joinMax joins up to n strings with commas.

@@ -485,9 +485,11 @@ func installGeminiCLI(binPath, projectDir string) error {
 	cmd.Dir = projectDir
 
 	var stderrBuf strings.Builder
-	cmd.Stderr = &stderrBuf
 	if viper.GetBool("verbose") {
 		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	} else {
+		cmd.Stderr = &stderrBuf
 	}
 
 	if err := cmd.Run(); err != nil {

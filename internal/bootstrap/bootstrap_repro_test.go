@@ -112,20 +112,10 @@ func TestBootstrapRepro_FKConstraintOnLinkNodes(t *testing.T) {
 	defer store.Close()
 
 	t.Run("insert_or_ignore_silently_drops_fk_violations", func(t *testing.T) {
-		// INSERT OR IGNORE swallows FK errors - no error returned, no edge created.
-		// This is the root cause of silent data loss in evidence/semantic edges.
+		// LinkNodes pre-checks node existence, so linking nonexistent nodes must error.
 		err := store.LinkNodes("n-nonexistent1", "n-nonexistent2", "relates_to", 0.8, nil)
-		if err != nil {
-			// Good: FK error surfaced. This means PRAGMA foreign_keys=ON + INSERT OR IGNORE
-			// correctly raises the error. The fix for other code paths may already work.
-			t.Logf("FK error correctly raised: %v", err)
-		} else {
-			// Bad: error silently swallowed. Verify no edge was actually created.
-			edges, _ := store.GetAllNodeEdges()
-			if len(edges) > 0 {
-				t.Fatal("INSERT OR IGNORE created edge with non-existent FK targets - data corruption")
-			}
-			t.Log("CONFIRMED: INSERT OR IGNORE silently swallows FK violations (no error, no edge)")
+		if err == nil {
+			t.Error("LinkNodes with nonexistent nodes should return error, got nil")
 		}
 	})
 
@@ -167,13 +157,7 @@ func TestBootstrapRepro_FKConstraintOnLinkNodes(t *testing.T) {
 		toID := titleMap["purge test 2"]
 		err := store.LinkNodes(fromID, toID, "relates_to", 1.0, map[string]any{"llm_extracted": true})
 		if err == nil {
-			// This is the silent failure case
-			edges, _ := store.GetAllNodeEdges()
-			if len(edges) == 0 {
-				t.Log("CONFIRMED: Purge-then-link creates no edge but returns no error (silent data loss)")
-			}
-		} else {
-			t.Logf("FK error raised after purge-then-link: %v", err)
+			t.Error("LinkNodes after purge should return error for deleted nodes, got nil")
 		}
 	})
 }
@@ -687,17 +671,10 @@ func TestBootstrapIntegration_NodeEdgeTransactionIntegrity(t *testing.T) {
 		t.Errorf("got %d edges after cascade delete, want 0", len(edgesAfterPurge))
 	}
 
-	// Try to link purged nodes - the INSERT OR IGNORE may silently succeed
+	// Try to link purged nodes - should error with existence pre-check
 	err = store.LinkNodes("n-batch000", "n-batch001", "depends_on", 1.0, nil)
 	if err == nil {
-		// Check if edge was actually created (INSERT OR IGNORE may skip)
-		postEdges, _ := store.GetAllNodeEdges()
-		if len(postEdges) > 0 {
-			t.Error("INSERT OR IGNORE should not create edges with non-existent FK targets")
-		}
-		// If no edges created but no error, the INSERT OR IGNORE swallowed the FK error
-		// This is the root cause of the 11x FK warnings in bootstrap output
-		t.Log("CONFIRMED: INSERT OR IGNORE silently swallows FK violations - no error returned, no edge created")
+		t.Error("LinkNodes with purged nodes should return error, got nil")
 	}
 }
 

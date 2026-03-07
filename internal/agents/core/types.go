@@ -5,6 +5,10 @@ package core
 
 import "time"
 
+// MinConfidenceForAutoApply is the minimum confidence score for a finding
+// to be automatically applied without human verification.
+const MinConfidenceForAutoApply = 0.5
+
 // FindingType categorizes what kind of discovery was made.
 type FindingType string
 
@@ -71,7 +75,7 @@ func (f *Finding) HasEvidence() bool {
 // for human review rather than automatically applied. A finding needs
 // verification when it lacks evidence or has low confidence.
 func (f *Finding) NeedsHumanVerification() bool {
-	return !f.HasEvidence() || f.ConfidenceScore < 0.5
+	return !f.HasEvidence() || f.ConfidenceScore < MinConfidenceForAutoApply
 }
 
 // Evidence represents verifiable proof for a Finding.

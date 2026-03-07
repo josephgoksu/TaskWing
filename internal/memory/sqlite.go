@@ -1463,22 +1463,30 @@ func (s *SQLiteStore) LinkNodes(from, to, relation string, confidence float64, p
 		}
 	}
 
-	// Verify both nodes exist before inserting to avoid FK constraint errors (error 787).
-	// INSERT OR IGNORE only suppresses UNIQUE violations, not FK violations.
+	// Use a transaction to atomically verify node existence and insert the edge,
+	// preventing TOCTOU races where nodes could be deleted between check and insert.
+	tx, txErr := s.db.Begin()
+	if txErr != nil {
+		return fmt.Errorf("begin transaction: %w", txErr)
+	}
+	defer func() { _ = tx.Rollback() }() // no-op after commit
+
 	var existCount int
-	if qErr := s.db.QueryRow(`SELECT COUNT(*) FROM nodes WHERE id IN (?, ?)`, from, to).Scan(&existCount); qErr != nil {
+	if qErr := tx.QueryRow(`SELECT COUNT(*) FROM nodes WHERE id IN (?, ?)`, from, to).Scan(&existCount); qErr != nil {
 		return fmt.Errorf("check node existence: %w", qErr)
 	}
 	if existCount < 2 {
 		return fmt.Errorf("link skipped: one or both nodes not found (from=%q, to=%q)", from, to)
 	}
 
-	_, execErr := s.db.Exec(`
+	if _, execErr := tx.Exec(`
 		INSERT OR IGNORE INTO node_edges (from_node, to_node, relation, properties, confidence, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, from, to, relation, propsJSON, confidence, time.Now().UTC().Format(time.RFC3339))
+	`, from, to, relation, propsJSON, confidence, time.Now().UTC().Format(time.RFC3339)); execErr != nil {
+		return execErr
+	}
 
-	return execErr
+	return tx.Commit()
 }
 
 // GetNodeEdges returns all edges for a node.
