@@ -99,14 +99,14 @@ taskwing goal "Add Stripe billing"
 <!-- TASKWING_TOOLS_END -->
 
 <!-- TASKWING_LEGAL_START -->
-<sub>Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.</sub>
+Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
 <!-- TASKWING_LEGAL_END -->
 
 ## MCP Tools
 
 <!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
-|:-----|:------------|
+|------|-------------|
 | `ask` | Search project knowledge (decisions, patterns, constraints) |
 | `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
 | `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
@@ -149,18 +149,16 @@ Once connected, use these slash commands from your AI assistant:
 ## Core Commands
 
 <!-- TASKWING_COMMANDS_START -->
-| Command | Description |
-|:--------|:------------|
-| `taskwing bootstrap` | Extract architecture from your codebase |
-| `taskwing goal "<goal>"` | Create and activate a plan from a goal |
-| `taskwing ask "<query>"` | Query project knowledge |
-| `taskwing task` | Manage execution tasks |
-| `taskwing plan status` | View current plan progress |
-| `taskwing slash` | Output slash command prompts for AI tools |
-| `taskwing mcp` | Start the MCP server |
-| `taskwing doctor` | Health check for project memory |
-| `taskwing config` | Configure LLM provider and settings |
-| `taskwing start` | Start API/watch/dashboard services |
+- `taskwing bootstrap`
+- `taskwing goal "<goal>"`
+- `taskwing ask "<query>"`
+- `taskwing task`
+- `taskwing plan status`
+- `taskwing slash`
+- `taskwing mcp`
+- `taskwing doctor`
+- `taskwing config`
+- `taskwing start`
 <!-- TASKWING_COMMANDS_END -->
 
 ## Autonomous Task Execution (Hooks)
