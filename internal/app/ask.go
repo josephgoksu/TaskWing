@@ -152,9 +152,6 @@ func (a *AskApp) Query(ctx context.Context, query string, opts AskOptions) (*Ask
 		retrievalCfg.VectorWeight = 0
 		retrievalCfg.FTSWeight = 1.0
 	}
-	if opts.DisableRerank {
-		retrievalCfg.RerankingEnabled = false
-	}
 	embeddingConfigWarning := ""
 	if !opts.DisableVector && retrievalCfg.VectorWeight > 0 {
 		embeddingProvider := a.ctx.LLMCfg.EmbeddingProvider
@@ -167,8 +164,7 @@ func (a *AskApp) Query(ctx context.Context, query string, opts AskOptions) (*Ask
 		}
 		supportsEmbeddings := embeddingProvider == llm.ProviderOpenAI ||
 			embeddingProvider == llm.ProviderOllama ||
-			embeddingProvider == llm.ProviderGemini ||
-			embeddingProvider == llm.ProviderTEI
+			embeddingProvider == llm.ProviderGemini
 		if !supportsEmbeddings {
 			retrievalCfg.VectorWeight = 0
 			retrievalCfg.FTSWeight = 1.0
@@ -230,9 +226,6 @@ func (a *AskApp) Query(ctx context.Context, query string, opts AskOptions) (*Ask
 	}
 	if cfg.QueryRewriteEnabled && !opts.NoRewrite {
 		pipelineParts = append(pipelineParts, "Rewrite")
-	}
-	if cfg.RerankingEnabled {
-		pipelineParts = append(pipelineParts, "Rerank")
 	}
 	if cfg.GraphExpansionEnabled {
 		pipelineParts = append(pipelineParts, "Graph")

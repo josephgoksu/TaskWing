@@ -17,7 +17,7 @@ func RenderDriftReport(report *app.DriftReport, verbose bool) {
 
 	// No rules found
 	if report.RulesChecked == 0 {
-		fmt.Println("📋 No architectural rules found in knowledge base.")
+		fmt.Printf("%s No architectural rules found in knowledge base.\n", IconTask)
 		fmt.Println("   Run 'taskwing bootstrap' to extract rules from your codebase,")
 		fmt.Println("   or refresh rules with 'taskwing bootstrap --force'")
 		return
@@ -25,7 +25,7 @@ func RenderDriftReport(report *app.DriftReport, verbose bool) {
 
 	// Violations
 	if len(report.Violations) > 0 {
-		fmt.Printf("❌ %s (%d)\n", StyleBold("VIOLATIONS"), len(report.Violations))
+		fmt.Printf("%s %s (%d)\n", IconStop, StyleBold("VIOLATIONS"), len(report.Violations))
 		fmt.Println("────────────────────────")
 		fmt.Println()
 
@@ -54,7 +54,7 @@ func RenderDriftReport(report *app.DriftReport, verbose bool) {
 
 	// Warnings
 	if len(report.Warnings) > 0 {
-		fmt.Printf("⚠️  %s (%d)\n", StyleBold("WARNINGS"), len(report.Warnings))
+		fmt.Printf("%s %s (%d)\n", IconWarn, StyleBold("WARNINGS"), len(report.Warnings))
 		fmt.Println("────────────────────────")
 		fmt.Println()
 
@@ -70,17 +70,17 @@ func RenderDriftReport(report *app.DriftReport, verbose bool) {
 
 	// Passed rules
 	if len(report.Passed) > 0 {
-		fmt.Printf("✅ %s (%d)\n", StyleBold("PASSED"), len(report.Passed))
+		fmt.Printf("%s %s (%d)\n", IconDone, StyleBold("PASSED"), len(report.Passed))
 		fmt.Println("────────────────────────")
 		for _, name := range report.Passed {
-			fmt.Printf("   ✓ %s\n", name)
+			fmt.Printf("   %s %s\n", IconOK, name)
 		}
 		fmt.Println()
 	}
 
 	// Summary
 	fmt.Println("────────────────────────")
-	fmt.Printf("📊 %s: ", StyleBold("Summary"))
+	fmt.Printf("%s %s: ", IconStats, StyleBold("Summary"))
 
 	parts := []string{}
 	if report.Summary.Violations > 0 {
@@ -102,7 +102,7 @@ func RenderDriftReport(report *app.DriftReport, verbose bool) {
 	// Hint for fixes
 	if report.Summary.Violations > 0 {
 		fmt.Println()
-		fmt.Println("💡 Review violations and update code to match documented architecture.")
+		PrintHint("Review violations and update code to match documented architecture.")
 	}
 }
 

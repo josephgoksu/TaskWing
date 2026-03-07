@@ -69,7 +69,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		if isJSON() {
 			return printJSON([]any{})
 		}
-		fmt.Println("No plans found. Create one with: taskwing goal \"Your goal\"")
+		fmt.Println("No plans found. Create one with: taskwing plan \"Your description\"")
 		return nil
 	}
 
@@ -162,19 +162,18 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	ui.RenderPageHeader("TaskWing Task List", "")
 
 	if len(allTasks) == 0 {
-		subtle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		fmt.Println(subtle.Render("\nNo tasks match the filters."))
+		fmt.Println(ui.StyleSubtle.Render("\nNo tasks match the filters."))
 		if statusFilter != "" || priorityFilter > 0 || scopeFilter != "" {
-			fmt.Println(subtle.Render("Try adjusting your filter criteria."))
+			fmt.Println(ui.StyleSubtle.Render("Try adjusting your filter criteria."))
 		}
 		return nil
 	}
 
 	// Styles for colored output
-	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true) // Cyan, bold
-	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))        // White
-	scopeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Italic(true)
-	subtle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	idStyle := ui.StyleSelectActive   // Cyan, bold
+	titleStyle := ui.StyleText        // Readable text
+	scopeStyle := ui.StyleSubtle.Italic(true)
+	subtle := ui.StyleSubtle
 
 	// Group tasks by plan for display
 	tasksByPlan := make(map[string][]taskWithPlan)
@@ -186,7 +185,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		tasksByPlan[tp.PlanID] = append(tasksByPlan[tp.PlanID], tp)
 	}
 
-	planHeader := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	planHeader := ui.StylePrimary.Bold(true)
 
 	for _, planID := range planOrder {
 		tasks := tasksByPlan[planID]
@@ -258,50 +257,40 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 func formatTaskStatus(status task.TaskStatus) string {
 	switch status {
 	case task.StatusCompleted, "done":
-		// Green - successfully completed
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("[done]    ")
+		return ui.StyleSuccess.Render("[done]    ")
 	case task.StatusInProgress:
-		// Orange/bold - actively working
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true).Render("[active]  ")
+		return ui.StyleWarning.Bold(true).Render("[active]  ")
 	case task.StatusFailed:
-		// Red - execution or verification failed
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("[failed]  ")
+		return ui.StyleError.Render("[failed]  ")
 	case task.StatusVerifying:
-		// Blue - running validation
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render("[verify]  ")
+		return ui.StylePrimary.Render("[verify]  ")
 	case task.StatusPending:
-		// Gray - ready to be picked up
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("[pending] ")
+		return ui.StyleSubtle.Render("[pending] ")
 	case task.StatusDraft:
-		// Dim gray - initial creation, not ready
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("[draft]   ")
+		return ui.StyleSelectDim.Render("[draft]   ")
 	case task.StatusBlocked:
-		// Red/dim - waiting on dependencies
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("124")).Render("[blocked] ")
+		return ui.StyleError.Render("[blocked] ")
 	case task.StatusReady:
-		// Green/dim - dependencies met, ready for execution
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("28")).Render("[ready]   ")
+		return ui.StyleSuccess.Render("[ready]   ")
 	default:
-		// Unknown status - neutral gray with label showing the actual value
-		// This ensures we never panic on unexpected values
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("[unknown] ")
+		return ui.StyleSubtle.Render("[unknown] ")
 	}
 }
 
 // formatPriority returns a color-coded priority string.
 func formatPriority(priority int) string {
-	var color lipgloss.Color
+	var style lipgloss.Style
 	switch {
 	case priority <= 20:
-		color = lipgloss.Color("196") // Red - critical
+		style = ui.StyleError   // Red - critical
 	case priority <= 50:
-		color = lipgloss.Color("214") // Orange - high
+		style = ui.StyleWarning // Orange - high
 	case priority <= 75:
-		color = lipgloss.Color("226") // Yellow - medium
+		style = ui.StylePrimary // Pink - medium
 	default:
-		color = lipgloss.Color("245") // Gray - low
+		style = ui.StyleSubtle  // Gray - low
 	}
-	return lipgloss.NewStyle().Foreground(color).Render(fmt.Sprintf("%3d ", priority))
+	return style.Render(fmt.Sprintf("%3d ", priority))
 }
 
 var taskShowCmd = &cobra.Command{
@@ -343,27 +332,27 @@ Examples:
 			return printJSON(t)
 		}
 
-		fmt.Printf("Task: %s\n", t.ID)
-		fmt.Printf("Plan: %s\n", t.PlanID)
-		fmt.Printf("Title: %s\n", t.Title)
+		ui.PrintSectionHeader(ui.IconTask, t.Title)
+		ui.PrintKeyValue("ID", t.ID)
+		ui.PrintKeyValue("Plan", t.PlanID)
 		if t.Description != "" {
-			fmt.Printf("Description: %s\n", t.Description)
+			ui.PrintKeyValue("Description", t.Description)
 		}
-		fmt.Printf("Status: %s\n", t.Status)
-		fmt.Printf("Priority: %d\n", t.Priority)
+		ui.PrintKeyValue("Status", string(t.Status))
+		ui.PrintKeyValue("Priority", fmt.Sprintf("%d", t.Priority))
 		if t.AssignedAgent != "" {
-			fmt.Printf("Assigned Agent: %s\n", t.AssignedAgent)
+			ui.PrintKeyValue("Agent", t.AssignedAgent)
 		}
 		if len(t.AcceptanceCriteria) > 0 {
-			fmt.Println("\nAcceptance Criteria:")
+			ui.PrintSectionHeader(ui.IconTarget, "Acceptance Criteria")
 			for _, a := range t.AcceptanceCriteria {
-				fmt.Printf("  - %s\n", a)
+				fmt.Printf("   - %s\n", a)
 			}
 		}
 		if len(t.ValidationSteps) > 0 {
-			fmt.Println("\nValidation Steps:")
+			ui.PrintSectionHeader(ui.IconDone, "Validation Steps")
 			for _, v := range t.ValidationSteps {
-				fmt.Printf("  - %s\n", v)
+				fmt.Printf("   - %s\n", v)
 			}
 		}
 		return nil
@@ -404,7 +393,7 @@ var taskUpdateCmd = &cobra.Command{
 		}
 
 		if !isQuiet() {
-			fmt.Printf("✓ Updated task %s\n", taskID)
+			ui.PrintSuccess(fmt.Sprintf("Updated task %s", taskID))
 		}
 		return nil
 	},
@@ -462,15 +451,15 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	}
 
 	if !isQuiet() {
-		fmt.Printf("✓ %s\n", result.Message)
+		ui.PrintSuccess(result.Message)
 		if result.Hint != "" {
-			fmt.Printf("  %s\n", result.Hint)
+			ui.PrintHint(result.Hint)
 		}
 		if result.GitWorkflowApplied {
-			fmt.Printf("  Git: committed to %s\n", result.GitBranch)
+			ui.PrintKeyValue("Git", fmt.Sprintf("committed to %s", result.GitBranch))
 		}
 		if result.PRCreated {
-			fmt.Printf("  PR: %s\n", result.PRURL)
+			ui.PrintKeyValue("PR", result.PRURL)
 		}
 	}
 	return nil
@@ -500,7 +489,7 @@ var taskDeleteCmd = &cobra.Command{
 			}
 			fmt.Printf("\n  Task:  %s\n", t.ID)
 			fmt.Printf("  Title: %s\n\n", t.Title)
-			if !confirmOrAbort("⚠️  Delete this task? [y/N]: ") {
+			if !confirmOrAbort(fmt.Sprintf("%s  Delete this task? [y/N]: ", ui.IconWarn)) {
 				return nil
 			}
 		}
@@ -517,18 +506,19 @@ var taskDeleteCmd = &cobra.Command{
 		}
 
 		if !isQuiet() {
-			fmt.Printf("✓ Deleted task %s\n", taskID)
+			ui.PrintSuccess(fmt.Sprintf("Deleted task %s", taskID))
 		}
 		return nil
 	},
 }
 
 var taskValidateCmd = &cobra.Command{
-	Use:   "validate [task-id]",
-	Short: "Validate a task (Placeholder)",
-	Args:  cobra.ExactArgs(1),
+	Use:    "validate [task-id]",
+	Short:  "Validate a task (Placeholder)",
+	Hidden: true,
+	Args:   cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("🕵️  Validation agent coming in V2.1")
+		ui.PrintInfo("Validation agent coming in V2.1")
 		fmt.Println("    For now, please run the validation steps manually:")
 
 		// Logic to fetch task and print validation steps would go here
@@ -573,7 +563,7 @@ func runTaskNext(cmd *cobra.Command, args []string) error {
 	taskApp := app.NewTaskApp(appCtx)
 
 	if !isQuiet() && !isJSON() {
-		fmt.Fprint(os.Stderr, "🔍 Getting next task...")
+		fmt.Fprintf(os.Stderr, "%s Getting next task...", ui.IconSearch)
 	}
 
 	ctx := context.Background()
@@ -597,17 +587,17 @@ func runTaskNext(cmd *cobra.Command, args []string) error {
 	}
 
 	if !result.Success {
-		fmt.Printf("⚠️  %s\n", result.Message)
+		ui.PrintWarning(result.Message)
 		if result.Hint != "" {
-			fmt.Printf("💡 %s\n", result.Hint)
+			ui.PrintHint(result.Hint)
 		}
 		return nil
 	}
 
 	if result.Task == nil {
-		fmt.Printf("✓ %s\n", result.Message)
+		ui.PrintSuccess(result.Message)
 		if result.Hint != "" {
-			fmt.Printf("💡 %s\n", result.Hint)
+			ui.PrintHint(result.Hint)
 		}
 		return nil
 	}
@@ -616,20 +606,21 @@ func runTaskNext(cmd *cobra.Command, args []string) error {
 	ui.RenderPageHeader("Next Task", "")
 
 	if result.GitWorkflowApplied {
-		fmt.Printf("🌿 Branch: %s\n\n", result.GitBranch)
+		fmt.Printf("%s Branch: %s\n\n", ui.IconBranch, result.GitBranch)
 	}
 
-	fmt.Printf("📋 %s\n", result.Task.Title)
-	fmt.Printf("   ID: %s\n", result.Task.ID)
-	fmt.Printf("   Status: %s\n", result.Task.Status)
-	fmt.Printf("   Priority: %d\n", result.Task.Priority)
+	ui.PrintSectionHeader(ui.IconTask, result.Task.Title)
+	ui.PrintKeyValue("ID", result.Task.ID)
+	ui.PrintKeyValue("Status", string(result.Task.Status))
+	ui.PrintKeyValue("Priority", fmt.Sprintf("%d", result.Task.Priority))
 
 	if result.Task.Description != "" {
-		fmt.Printf("\n📝 %s\n", result.Task.Description)
+		fmt.Printf("\n%s %s\n", ui.IconDesc, result.Task.Description)
 	}
 
 	if result.Hint != "" {
-		fmt.Printf("\n💡 %s\n", result.Hint)
+		fmt.Println()
+		ui.PrintHint(result.Hint)
 	}
 
 	return nil
@@ -678,9 +669,9 @@ func runTaskCurrent(cmd *cobra.Command, args []string) error {
 	}
 
 	if !result.Success || result.Task == nil {
-		fmt.Printf("ℹ️  %s\n", result.Message)
+		ui.PrintInfo(result.Message)
 		if result.Hint != "" {
-			fmt.Printf("💡 %s\n", result.Hint)
+			ui.PrintHint(result.Hint)
 		}
 		return nil
 	}
@@ -688,15 +679,15 @@ func runTaskCurrent(cmd *cobra.Command, args []string) error {
 	// Show task details
 	ui.RenderPageHeader("Current Task", "")
 
-	fmt.Printf("📋 %s\n", result.Task.Title)
-	fmt.Printf("   ID: %s\n", result.Task.ID)
-	fmt.Printf("   Status: %s\n", result.Task.Status)
+	ui.PrintSectionHeader(ui.IconTask, result.Task.Title)
+	ui.PrintKeyValue("ID", result.Task.ID)
+	ui.PrintKeyValue("Status", string(result.Task.Status))
 	if !result.Task.ClaimedAt.IsZero() {
-		fmt.Printf("   Started: %s\n", result.Task.ClaimedAt.Format("2006-01-02 15:04"))
+		ui.PrintKeyValue("Started", result.Task.ClaimedAt.Format("2006-01-02 15:04"))
 	}
 
 	if result.Task.Description != "" {
-		fmt.Printf("\n📝 %s\n", result.Task.Description)
+		fmt.Printf("\n%s %s\n", ui.IconDesc, result.Task.Description)
 	}
 
 	return nil
@@ -751,16 +742,17 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	}
 
 	if !result.Success {
-		fmt.Printf("⚠️  %s\n", result.Message)
+		ui.PrintWarning(result.Message)
 		return nil
 	}
 
 	if !isQuiet() {
-		fmt.Printf("✓ Started task: %s\n", result.Task.Title)
-		fmt.Printf("  ID: %s\n", result.Task.ID)
+		ui.PrintSuccess(fmt.Sprintf("Started task: %s", result.Task.Title))
+		ui.PrintKeyValue("ID", result.Task.ID)
 
 		if result.Hint != "" {
-			fmt.Printf("\n💡 %s\n", result.Hint)
+			fmt.Println()
+			ui.PrintHint(result.Hint)
 		}
 	}
 
@@ -861,9 +853,9 @@ func runTaskAdd(cmd *cobra.Command, args []string) error {
 		return printJSON(newTask)
 	}
 
-	fmt.Printf("✓ Created task: %s\n", newTask.Title)
-	fmt.Printf("  ID: %s\n", newTask.ID)
-	fmt.Printf("  Plan: %s\n", planID)
+	ui.PrintSuccess(fmt.Sprintf("Created task: %s", newTask.Title))
+	ui.PrintKeyValue("ID", newTask.ID)
+	ui.PrintKeyValue("Plan", planID)
 
 	return nil
 }

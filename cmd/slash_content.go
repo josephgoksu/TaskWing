@@ -510,8 +510,8 @@ After all phases are expanded, call MCP tool ` + "`plan`" + ` with action=finali
 
 ## Fallback (No MCP)
 ` + "```bash" + `
-taskwing goal "Your goal description"  # Preferred
-taskwing plan new "Your goal description"  # Advanced mode
+taskwing plan "Your goal description"  # Preferred
+taskwing plan new "Your goal description"  # Advanced TUI mode
 taskwing plan new --non-interactive "Your goal description"  # Headless mode
 ` + "```" + `
 `

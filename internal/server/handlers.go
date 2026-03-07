@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
-	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
@@ -271,32 +269,16 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	writeAPIJSON(w, stats)
 }
 
-// handleActivity
-func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
-	activityLog := impl.NewActivityLog(s.cwd)
-
-	limitStr := r.URL.Query().Get("limit")
-	limit := 50
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 200 {
-			limit = l
-		}
-	}
-
-	entries := activityLog.GetRecent(limit)
-	summary := activityLog.Summary()
-
+// handleActivity returns empty activity (WatchAgent removed).
+func (s *Server) handleActivity(w http.ResponseWriter, _ *http.Request) {
 	writeAPIJSON(w, map[string]any{
-		"entries": entries,
-		"summary": summary,
+		"entries": []any{},
+		"summary": map[string]any{},
 	})
 }
 
-// handleClearActivity
-func (s *Server) handleClearActivity(w http.ResponseWriter, r *http.Request) {
-	activityLog := impl.NewActivityLog(s.cwd)
-	activityLog.Clear()
-
+// handleClearActivity is a no-op (WatchAgent removed).
+func (s *Server) handleClearActivity(w http.ResponseWriter, _ *http.Request) {
 	writeAPIJSON(w, map[string]any{
 		"success": true,
 	})
@@ -353,51 +335,8 @@ func (s *Server) handlePromoteToTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	activityLog := impl.NewActivityLog(s.cwd)
-	entries := activityLog.GetRecent(500) // Large enough to find the id
-
-	var finding *impl.ActivityEntry
-	for i := range entries {
-		if entries[i].ID == req.FindingID {
-			finding = &entries[i]
-			break
-		}
-	}
-
-	if finding == nil {
-		http.Error(w, "finding not found in activity log", http.StatusNotFound)
-		return
-	}
-
-	// Create a task from the finding
-	planID := req.PlanID
-	if planID == "" {
-		newPlan := &task.Plan{
-			Goal: fmt.Sprintf("Address finding: %s", finding.Message),
-		}
-		if err := s.repo.CreatePlan(newPlan); err != nil {
-			http.Error(w, fmt.Sprintf("create plan failed: %v", err), http.StatusInternalServerError)
-			return
-		}
-		planID = newPlan.ID
-	}
-
-	newTask := &task.Task{
-		PlanID:      planID,
-		Title:       finding.Message,
-		Description: fmt.Sprintf("Automatically promoted from activity finding. Original agent: %s", finding.Agent),
-		Status:      task.StatusPending,
-		Priority:    50,
-	}
-	// Populate AI integration fields (scope, keywords, suggested_ask_queries)
-	newTask.EnrichAIFields()
-
-	if err := s.repo.CreateTask(newTask); err != nil {
-		http.Error(w, fmt.Sprintf("create task failed: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	writeAPIJSON(w, newTask)
+	// Activity log removed (WatchAgent deleted)
+	http.Error(w, "activity log not available", http.StatusGone)
 }
 
 func writeAPIJSON(w http.ResponseWriter, data interface{}) {

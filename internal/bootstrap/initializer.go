@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/josephgoksu/TaskWing/internal/ui"
 )
 
 // Initializer handles the setup of TaskWing project structure and integrations.
@@ -141,7 +143,7 @@ func (i *Initializer) AdoptAIConfig(aiName string, verbose bool) (*AdoptionResul
 	}
 
 	if verbose {
-		fmt.Printf("  ✓ Adopted unmanaged config for %s (backup: %s)\n", aiName, backupDir)
+		fmt.Printf("  %s Adopted unmanaged config for %s (backup: %s)\n", ui.IconOK, aiName, backupDir)
 	}
 
 	return &AdoptionResult{
@@ -161,19 +163,19 @@ func (i *Initializer) setupAIIntegrations(verbose bool, selectedAIs []string, sh
 		if _, ok := aiHelpers[ai]; ok {
 			validAIs = append(validAIs, ai)
 		} else if verbose {
-			fmt.Fprintf(os.Stderr, "⚠️  Unknown AI assistant '%s' (skipping)\n", ai)
+			fmt.Fprintf(os.Stderr, "%s  Unknown AI assistant '%s' (skipping)\n", ui.IconWarn, ai)
 		}
 	}
 
 	if len(validAIs) == 0 {
 		if verbose {
-			fmt.Println("⚠️  No valid AI assistants specified")
+			fmt.Printf("%s  No valid AI assistants specified\n", ui.IconWarn)
 		}
 		return nil
 	}
 
 	if showHeader {
-		fmt.Printf("🔧 Setting up AI integrations for: %s\n", strings.Join(validAIs, ", "))
+		fmt.Printf("%s Setting up AI integrations for: %s\n", ui.IconWrench, strings.Join(validAIs, ", "))
 	}
 
 	for _, ai := range validAIs {
@@ -184,24 +186,24 @@ func (i *Initializer) setupAIIntegrations(verbose bool, selectedAIs []string, sh
 
 		// Install hooks config
 		if err := i.InstallHooksConfig(ai, verbose); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  Failed to install hooks for %s: %v\n", ai, err)
+			fmt.Fprintf(os.Stderr, "%s  Failed to install hooks for %s: %v\n", ui.IconWarn, ai, err)
 		}
 
 		if showHeader {
-			fmt.Printf("   ✓ Created local config for %s\n", ai)
+			fmt.Printf("   %s Created local config for %s\n", ui.IconOK, ai)
 		}
 	}
 
 	// Update agent docs once (applies to all: CLAUDE.md, GEMINI.md, AGENTS.md)
 	if err := i.updateAgentDocs(verbose); err != nil {
-		fmt.Fprintf(os.Stderr, "⚠️  Failed to update agent docs: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s  Failed to update agent docs: %v\n", ui.IconWarn, err)
 	}
 
 	return nil
 }
 
 func (i *Initializer) createStructure(verbose bool) error {
-	fmt.Println("📁 Creating .taskwing/ structure...")
+	fmt.Printf("%s Creating .taskwing/ structure...\n", ui.IconFolder)
 	dirs := []string{
 		".taskwing",
 		".taskwing/memory",
@@ -213,7 +215,7 @@ func (i *Initializer) createStructure(verbose bool) error {
 			return fmt.Errorf("create %s: %w", dir, err)
 		}
 		if verbose {
-			fmt.Printf("  ✓ Created %s\n", dir)
+			fmt.Printf("  %s Created %s\n", ui.IconOK, dir)
 		}
 	}
 	return nil
@@ -310,13 +312,13 @@ func MCPToolNames() []string {
 
 // CoreCommand describes a CLI command included in documentation.
 type CoreCommand struct {
-	Display string `json:"display"` // e.g. "taskwing goal \"<goal>\""
+	Display string `json:"display"` // e.g. "taskwing plan \"<description>\""
 }
 
 // CoreCommands is the curated list of CLI commands shown in documentation.
 var CoreCommands = []CoreCommand{
 	{"taskwing bootstrap"},
-	{"taskwing goal \"<goal>\""},
+	{"taskwing plan \"<description>\""},
 	{"taskwing ask \"<query>\""},
 	{"taskwing task"},
 	{"taskwing plan status"},
@@ -419,7 +421,7 @@ func pruneStaleSlashCommands(commandsDir, ext string, verbose bool) error {
 			return fmt.Errorf("remove stale slash command %s: %w", name, err)
 		}
 		if verbose {
-			fmt.Printf("  ✓ Removed stale command %s\n", filepath.Join(commandsDir, name))
+			fmt.Printf("  %s Removed stale command %s\n", ui.IconOK, filepath.Join(commandsDir, name))
 		}
 	}
 
@@ -485,7 +487,7 @@ description: %s
 			return fmt.Errorf("create %s: %w", fileName, err)
 		}
 		if verbose {
-			fmt.Printf("  ✓ Created %s/%s\n", cfg.commandsDir, fileName)
+			fmt.Printf("  %s Created %s/%s\n", ui.IconOK, cfg.commandsDir, fileName)
 		}
 	}
 
@@ -541,7 +543,7 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 				return fmt.Errorf("backup legacy directory: %w", err)
 			}
 			if verbose {
-				fmt.Printf("  ✓ Backed up legacy %s/ directory\n", legacyDirName)
+				fmt.Printf("  %s Backed up legacy %s/ directory\n", ui.IconOK, legacyDirName)
 			}
 		}
 	}
@@ -552,7 +554,7 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 		if !strings.Contains(string(existingContent), "<!-- TASKWING_MANAGED -->") {
 			// User owns this file - do not overwrite
 			if verbose {
-				fmt.Printf("  ⚠️  Skipping %s - file exists and is user-managed\n", cfg.singleFileName)
+				fmt.Printf("  %s  Skipping %s - file exists and is user-managed\n", ui.IconWarn, cfg.singleFileName)
 			}
 			// Clean up backup since we're not proceeding
 			if legacyBackup != "" {
@@ -612,12 +614,12 @@ func (i *Initializer) createSingleFileInstructions(aiName string, verbose bool) 
 	if legacyBackup != "" {
 		_ = os.RemoveAll(legacyBackup)
 		if verbose {
-			fmt.Printf("  ✓ Removed legacy %s/ directory\n", legacyDirName)
+			fmt.Printf("  %s Removed legacy %s/ directory\n", ui.IconOK, legacyDirName)
 		}
 	}
 
 	if verbose {
-		fmt.Printf("  ✓ Created %s/%s\n", cfg.commandsDir, cfg.singleFileName)
+		fmt.Printf("  %s Created %s/%s\n", ui.IconOK, cfg.commandsDir, cfg.singleFileName)
 	}
 
 	return nil
@@ -681,7 +683,7 @@ description: %s
 		}
 
 		if verbose {
-			fmt.Printf("  ✓ Created %s/%s.md\n", cfg.commandsDir, cmd.BaseName)
+			fmt.Printf("  %s Created %s/%s.md\n", ui.IconOK, cfg.commandsDir, cmd.BaseName)
 		}
 	}
 
@@ -904,7 +906,7 @@ func (i *Initializer) InstallHooksConfig(aiName string, verbose bool) error {
 	}
 
 	if verbose {
-		fmt.Printf("  ✓ Created hooks config: %s\n", settingsPath)
+		fmt.Printf("  %s Created hooks config: %s\n", ui.IconOK, settingsPath)
 		fmt.Println("  ℹ️  If Claude Code is already running, review/reload hooks from /hooks for changes to take effect.")
 	}
 	return nil
@@ -977,7 +979,7 @@ func (i *Initializer) installOpenCodePlugin(verbose bool) error {
 		if !strings.Contains(string(existingContent), "TASKWING_MANAGED_PLUGIN") {
 			// User owns this file - do not overwrite
 			if verbose {
-				fmt.Printf("  ⚠️  Skipping taskwing-hooks.js - file exists and is user-managed\n")
+				fmt.Printf("  %s  Skipping taskwing-hooks.js - file exists and is user-managed\n", ui.IconWarn)
 			}
 			return nil
 		}
@@ -991,7 +993,7 @@ func (i *Initializer) installOpenCodePlugin(verbose bool) error {
 	}
 
 	if verbose {
-		fmt.Printf("  ✓ Created OpenCode plugin: .opencode/plugins/taskwing-hooks.js\n")
+		fmt.Printf("  %s Created OpenCode plugin: .opencode/plugins/taskwing-hooks.js\n", ui.IconOK)
 	}
 	return nil
 }
@@ -1134,7 +1136,7 @@ func (i *Initializer) updateAgentDocs(verbose bool) error {
 			action = "updated"
 		} else if hasStartMarker != hasEndMarker {
 			// Partial markers - warn and skip to avoid corruption
-			fmt.Fprintf(os.Stderr, "  ⚠️  %s has incomplete TaskWing markers - skipping (please fix manually)\n", fileName)
+			fmt.Fprintf(os.Stderr, "  %s  %s has incomplete TaskWing markers - skipping (please fix manually)\n", ui.IconWarn, fileName)
 			continue
 		} else if legacyStart, legacyEnd := findLegacyTaskWingSection(contentStr); legacyStart != -1 {
 			// Legacy content without markers - replace with new marked section
@@ -1156,7 +1158,7 @@ func (i *Initializer) updateAgentDocs(verbose bool) error {
 				return fmt.Errorf("update %s: %w", fileName, err)
 			}
 			if verbose {
-				fmt.Printf("  ✓ TaskWing docs %s in %s\n", action, fileName)
+				fmt.Printf("  %s TaskWing docs %s in %s\n", ui.IconOK, action, fileName)
 			}
 		} else if verbose {
 			fmt.Printf("  ℹ️  TaskWing docs unchanged in %s\n", fileName)

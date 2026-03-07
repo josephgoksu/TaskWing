@@ -9,14 +9,24 @@ import (
 	"path/filepath"
 	"strings"
 
-	agentcore "github.com/josephgoksu/TaskWing/internal/agents/core"
-	agentimpl "github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/runner"
 )
+
+// newPlanAppContext creates an app.Context with runner detection for plan operations.
+// If an AI CLI is available, uses it (no API key needed). Otherwise falls back to LLM API.
+func newPlanAppContext(repo *memory.Repository) *app.Context {
+	if r, err := runner.PreferredRunner(""); err == nil {
+		ctx := app.NewContextWithConfig(repo, llm.Config{})
+		ctx.Runner = r
+		return ctx
+	}
+	return app.NewContextForRole(repo, llm.RoleBootstrap)
+}
 
 // CodeToolResult represents the response from the unified code tool.
 type CodeToolResult struct {
@@ -310,44 +320,25 @@ func handleCodeSimplify(ctx context.Context, repo *memory.Repository, params Cod
 		}
 	}
 
-	// Create and run the SimplifyAgent
-	llmCfg, err := config.LoadLLMConfigForRole(llm.RoleQuery)
-	if err != nil {
-		return &CodeToolResult{
-			Action: "simplify",
-			Error:  fmt.Sprintf("failed to load LLM config: %v", err),
-		}, nil
+	// Return code + architectural context for AI CLI to simplify
+	var sb strings.Builder
+	sb.WriteString("## Simplify Request\n\n")
+	if filePath != "" {
+		sb.WriteString(fmt.Sprintf("**File:** `%s`\n\n", filePath))
 	}
-	agent := agentimpl.NewSimplifyAgent(llmCfg)
-	defer func() { _ = agent.Close() }()
-
-	input := agentcore.Input{
-		ExistingContext: map[string]any{
-			"code":      code,
-			"file_path": filePath,
-			"context":   kgContext,
-		},
+	if kgContext != "" {
+		sb.WriteString("### Architectural Context\n")
+		sb.WriteString(kgContext)
+		sb.WriteString("\n\n")
 	}
+	sb.WriteString("### Code\n```\n")
+	sb.WriteString(code)
+	sb.WriteString("\n```\n\n")
+	sb.WriteString("Simplify this code while preserving behavior. Consider the architectural context above.\n")
 
-	output, err := agent.Run(ctx, input)
-	if err != nil {
-		return &CodeToolResult{
-			Action: "simplify",
-			Error:  fmt.Sprintf("agent error: %v", err),
-		}, nil
-	}
-
-	if output.Error != nil {
-		return &CodeToolResult{
-			Action: "simplify",
-			Error:  output.Error.Error(),
-		}, nil
-	}
-
-	// Format the output
 	return &CodeToolResult{
 		Action:  "simplify",
-		Content: FormatSimplifyResult(output.Findings),
+		Content: sb.String(),
 	}, nil
 }
 
@@ -464,41 +455,27 @@ func HandleDebugTool(ctx context.Context, repo *memory.Repository, params DebugT
 		kgContext = formatAskContext(result)
 	}
 
-	// Create and run the DebugAgent
-	llmCfg, err := config.LoadLLMConfigForRole(llm.RoleQuery)
-	if err != nil {
-		return &DebugToolResult{
-			Error: fmt.Sprintf("failed to load LLM config: %v", err),
-		}, nil
+	// Return problem description + architectural context for AI CLI to debug
+	var sb strings.Builder
+	sb.WriteString("## Debug Request\n\n")
+	sb.WriteString(fmt.Sprintf("**Problem:** %s\n\n", problem))
+	if params.Error != "" {
+		sb.WriteString(fmt.Sprintf("**Error:** %s\n\n", params.Error))
 	}
-	agent := agentimpl.NewDebugAgent(llmCfg)
-	defer func() { _ = agent.Close() }()
-
-	input := agentcore.Input{
-		ExistingContext: map[string]any{
-			"problem":     problem,
-			"error":       params.Error,
-			"stack_trace": params.StackTrace,
-			"context":     kgContext,
-		},
+	if params.StackTrace != "" {
+		sb.WriteString("### Stack Trace\n```\n")
+		sb.WriteString(params.StackTrace)
+		sb.WriteString("\n```\n\n")
 	}
-
-	output, err := agent.Run(ctx, input)
-	if err != nil {
-		return &DebugToolResult{
-			Error: fmt.Sprintf("agent error: %v", err),
-		}, nil
+	if kgContext != "" {
+		sb.WriteString("### Architectural Context\n")
+		sb.WriteString(kgContext)
+		sb.WriteString("\n\n")
 	}
+	sb.WriteString("Diagnose the root cause. Provide hypotheses ranked by likelihood, investigation steps, and quick fixes.\n")
 
-	if output.Error != nil {
-		return &DebugToolResult{
-			Error: output.Error.Error(),
-		}, nil
-	}
-
-	// Format the output
 	return &DebugToolResult{
-		Content: FormatDebugResult(output.Findings),
+		Content: sb.String(),
 	}, nil
 }
 
@@ -791,8 +768,8 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 		})
 	}
 
-	// Use RoleBootstrap for planning operations
-	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	// Detect runner or fall back to LLM API for planning
+	appCtx := newPlanAppContext(repo)
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Clarify(ctx, app.ClarifyOptions{
@@ -850,8 +827,8 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 		save = *params.Save
 	}
 
-	// Use RoleBootstrap for planning operations
-	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	// Detect runner or fall back to LLM API for planning
+	appCtx := newPlanAppContext(repo)
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Generate(ctx, app.GenerateOptions{
@@ -890,8 +867,8 @@ func handlePlanDecompose(ctx context.Context, repo *memory.Repository, params Pl
 		}, nil
 	}
 
-	// Use RoleBootstrap for planning operations
-	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	// Detect runner or fall back to LLM API for planning
+	appCtx := newPlanAppContext(repo)
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Decompose(ctx, app.DecomposeOptions{
@@ -944,8 +921,8 @@ func handlePlanExpand(ctx context.Context, repo *memory.Repository, params PlanT
 		}, nil
 	}
 
-	// Use RoleBootstrap for planning operations
-	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	// Detect runner or fall back to LLM API for planning
+	appCtx := newPlanAppContext(repo)
 	planApp := app.NewPlanApp(appCtx)
 
 	opts := app.ExpandOptions{
@@ -990,8 +967,8 @@ func handlePlanFinalize(ctx context.Context, repo *memory.Repository, params Pla
 		}, nil
 	}
 
-	// Use RoleBootstrap for planning operations
-	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	// Detect runner or fall back to LLM API for planning
+	appCtx := newPlanAppContext(repo)
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Finalize(ctx, app.FinalizeOptions{
@@ -1018,8 +995,8 @@ func handlePlanAudit(ctx context.Context, repo *memory.Repository, params PlanTo
 		autoFix = *params.AutoFix
 	}
 
-	// Use RoleBootstrap for audit operations
-	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	// Detect runner or fall back to LLM API for audit
+	appCtx := newPlanAppContext(repo)
 	planApp := app.NewPlanApp(appCtx)
 
 	result, err := planApp.Audit(ctx, app.AuditOptions{

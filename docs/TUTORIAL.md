@@ -39,10 +39,10 @@ This creates `.taskwing/` and installs AI assistant integration files.
 ## 2. Create and Activate a Plan
 
 ```bash
-taskwing goal "Add user authentication"
+taskwing plan "Add user authentication"
 ```
 
-`taskwing goal` runs clarify -> generate -> activate in one step.
+`taskwing plan` runs clarify -> generate -> activate in one step.
 
 ## 3. Execute with Slash Commands
 
@@ -154,7 +154,7 @@ Recommended Bedrock model IDs:
 
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
-- `taskwing goal "<goal>"`
+- `taskwing plan "<description>"`
 - `taskwing ask "<query>"`
 - `taskwing task`
 - `taskwing plan status`

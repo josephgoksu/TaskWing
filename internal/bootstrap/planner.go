@@ -7,8 +7,10 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/project"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 )
 
 // BootstrapMode represents the high-level mode of operation.
@@ -109,7 +111,7 @@ type Flags struct {
 	Preview     bool     `json:"preview"`      // Dry-run, no writes
 	SkipInit    bool     `json:"skip_init"`    // Skip initialization phase
 	SkipIndex   bool     `json:"skip_index"`   // Skip code indexing
-	SkipAnalyze bool     `json:"skip_analyze"` // Skip LLM analysis (for CI/testing)
+	SkipAnalyze bool     `json:"skip_analyze"` // Skip LLM analysis (auto-enabled when AI CLI detected; opt out with --no-analyze)
 	Force       bool     `json:"force"`        // Force index even on large codebases (--force flag)
 	Resume      bool     `json:"resume"`       // Resume from last checkpoint (skip completed agents)
 	OnlyAgents  []string `json:"only_agents"`  // Run only specified agents
@@ -118,7 +120,10 @@ type Flags struct {
 	TraceFile   string   `json:"trace_file,omitempty"`
 	Verbose     bool     `json:"verbose"`
 	Quiet       bool     `json:"quiet"`
-	Debug bool `json:"debug"` // Enable debug logging (dumps project context, git paths, etc.)
+	Debug     bool          `json:"debug"`              // Enable debug logging (dumps project context, git paths, etc.)
+	PreferCLI string        `json:"prefer_cli"`         // Preferred AI CLI for runner-based analysis (claude, gemini, codex)
+	Timeout   time.Duration `json:"timeout,omitempty"`  // Max time per runner invocation
+	Model     string        `json:"model,omitempty"`    // Model override for AI CLI (e.g., "sonnet", "opus")
 }
 
 // Plan captures the decisions about what to do.
@@ -349,7 +354,7 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		}
 	}
 
-	// LLM analysis runs by default unless --skip-analyze is set
+	// LLM analysis runs when auto-detected or explicitly requested; skipped with --no-analyze
 	if !flags.SkipAnalyze {
 		plan.RequiresLLMConfig = true
 		if !slices.Contains(plan.Actions, ActionLLMAnalyze) {
@@ -423,7 +428,7 @@ func decideActions(snap *Snapshot, flags Flags, mode BootstrapMode) []Action {
 		actions = append(actions, ActionExtractMetadata)
 	}
 
-	// LLM analysis runs by default unless skipped
+	// LLM analysis runs when auto-detected or explicitly enabled
 	if !flags.SkipAnalyze {
 		actions = append(actions, ActionLLMAnalyze)
 	}
@@ -526,7 +531,7 @@ func generateSkippedActions(snap *Snapshot, flags Flags) []string {
 	}
 
 	if flags.SkipAnalyze {
-		skipped = append(skipped, "llm_analyze (reason: --skip-analyze flag)")
+		skipped = append(skipped, "llm_analyze (reason: --no-analyze flag or no AI CLI detected)")
 	}
 
 	if flags.Preview {
@@ -774,12 +779,11 @@ func countSourceFiles(basePath string) int {
 	return count
 }
 
-// FormatPlanSummary returns a human-readable summary of the plan.
-// Always shown, even in quiet mode.
-func FormatPlanSummary(plan *Plan, quiet bool) string {
+// FormatPlanDebugLine returns a single machine-readable line for --debug mode.
+// Example: Bootstrap: mode=run actions=[index_code,extract_metadata,llm_analyze] warnings=0
+func FormatPlanDebugLine(plan *Plan) string {
 	var sb strings.Builder
 
-	// Always show single-line status
 	fmt.Fprintf(&sb, "Bootstrap: mode=%s", plan.Mode)
 
 	if len(plan.Actions) > 0 {
@@ -803,6 +807,17 @@ func FormatPlanSummary(plan *Plan, quiet bool) string {
 		fmt.Fprintf(&sb, " global_mcp_drift_detected=%s", strings.Join(plan.GlobalMCPDriftAIs, ","))
 	}
 
+	return sb.String()
+}
+
+// FormatPlanSummary returns a human-readable summary of the plan.
+// In quiet mode, returns only the debug line. In normal mode, returns
+// detected state, drift info, skipped actions, and warnings.
+func FormatPlanSummary(plan *Plan, quiet bool) string {
+	var sb strings.Builder
+
+	// Always include the debug line for backward compatibility
+	sb.WriteString(FormatPlanDebugLine(plan))
 	sb.WriteString("\n")
 
 	// Detailed output (not in quiet mode)
@@ -813,12 +828,6 @@ func FormatPlanSummary(plan *Plan, quiet bool) string {
 			fmt.Fprintf(&sb, "Workspace: Multi-repo (%d repositories detected)\n", len(plan.DetectedRepos))
 		}
 
-		if len(plan.Actions) > 0 {
-			sb.WriteString("\nActions:\n")
-			for _, summary := range plan.ActionSummary {
-				fmt.Fprintf(&sb, "  • %s\n", summary)
-			}
-		}
 		if len(plan.ManagedDriftAIs) > 0 || len(plan.UnmanagedDriftAIs) > 0 || len(plan.GlobalMCPDriftAIs) > 0 {
 			sb.WriteString("\nDrift:\n")
 			if len(plan.ManagedDriftAIs) > 0 {
@@ -842,14 +851,7 @@ func FormatPlanSummary(plan *Plan, quiet bool) string {
 		if len(plan.Warnings) > 0 {
 			sb.WriteString("\nWarnings:\n")
 			for _, warning := range plan.Warnings {
-				fmt.Fprintf(&sb, "  ⚠️  %s\n", warning)
-			}
-		}
-
-		if len(plan.Reasons) > 0 {
-			sb.WriteString("\nWhy:\n")
-			for _, reason := range plan.Reasons {
-				fmt.Fprintf(&sb, "  → %s\n", reason)
+				fmt.Fprintf(&sb, "  %s  %s\n", ui.IconWarn, warning)
 			}
 		}
 	}

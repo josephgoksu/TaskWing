@@ -77,8 +77,7 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 | Command              | Description                               |
 | :------------------- | :---------------------------------------- |
 | `taskwing bootstrap` | Initialize project memory                 |
-| `taskwing goal`      | Create and activate a plan                |
-| `taskwing plan`      | Manage development plans                  |
+| `taskwing plan`      | Create and manage development plans       |
 | `taskwing task`      | Manage execution tasks                    |
 | `taskwing start`     | Start API/watch/dashboard services        |
 | `taskwing slash`     | Output slash command prompts for AI tools |
@@ -217,7 +216,6 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_LEGAL_END -->
 
 ### Slash Commands
-
 - /tw-ask - Use when you need to search project knowledge (decisions, patterns, constraints).
 - /tw-remember - Use when you want to persist a decision, pattern, or insight to project memory.
 - /tw-next - Use when you are ready to start the next approved TaskWing task with full context.
@@ -231,16 +229,16 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ### Core Commands
 
 <!-- TASKWING_COMMANDS_START -->
-- `taskwing bootstrap`
-- `taskwing goal "<goal>"`
-- `taskwing ask "<query>"`
-- `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
-- `taskwing mcp`
-- `taskwing doctor`
-- `taskwing config`
-- `taskwing start`
+- taskwing bootstrap
+- taskwing plan "<description>"
+- taskwing ask "<query>"
+- taskwing task
+- taskwing plan status
+- taskwing slash
+- taskwing mcp
+- taskwing doctor
+- taskwing config
+- taskwing start
 <!-- TASKWING_COMMANDS_END -->
 
 ### MCP Tools (Canonical Contract)
@@ -248,27 +246,26 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
 |------|-------------|
-| `ask` | Search project knowledge (decisions, patterns, constraints) |
-| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
-| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
-| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
-| `debug` | Diagnose issues systematically with AI-powered analysis |
-| `remember` | Store knowledge in project memory |
+| ask | Search project knowledge (decisions, patterns, constraints) |
+| task | Unified task lifecycle (next, current, start, complete) |
+| plan | Plan management (clarify, decompose, expand, generate, finalize, audit) |
+| code | Code intelligence (find, search, explain, callers, impact, simplify) |
+| debug | Diagnose issues systematically with AI-powered analysis |
+| remember | Store knowledge in project memory |
 <!-- TASKWING_MCP_TOOLS_END -->
 
 ### Autonomous Task Execution (Hooks)
 
 TaskWing integrates with Claude Code's hook system for autonomous plan execution:
 
-```bash
+~~~bash
 taskwing hook session-init      # Initialize session tracking (SessionStart hook)
 taskwing hook continue-check    # Check if should continue to next task (Stop hook)
 taskwing hook session-end       # Cleanup session (SessionEnd hook)
 taskwing hook status            # View current session state
-```
+~~~
 
 Circuit breakers prevent runaway execution:
-
 - --max-tasks=5 stops after N tasks for human review.
 - --max-minutes=30 stops after N minutes.
 

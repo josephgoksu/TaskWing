@@ -30,7 +30,7 @@ func buildProviderOptions() []ProviderOption {
 			// Show price range and model count
 			desc = fmt.Sprintf("$%.2f-$%.2f/1M • %d models", p.MinPrice, p.MaxPrice, p.ModelCount)
 			if !hasKey {
-				desc += " • ❌ key not set"
+				desc += " • " + IconStop.Emoji + " key not set"
 			}
 		}
 

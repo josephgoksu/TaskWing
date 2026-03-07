@@ -20,19 +20,11 @@ const (
 	// ProviderBedrock represents AWS Bedrock OpenAI-compatible runtime
 	ProviderBedrock = "bedrock"
 
-	// ProviderTEI represents Text Embeddings Inference (embeddings only)
-	// TEI is a high-performance embedding server from Hugging Face
-	// See: https://github.com/huggingface/text-embeddings-inference
-	ProviderTEI = "tei"
-
 	// ProviderTaskWing represents the TaskWing managed inference service.
 	// Uses fine-tuned models optimized for architecture extraction.
 	// OpenAI-compatible API; requires TASKWING_API_KEY.
 	ProviderTaskWing = "taskwing"
 )
-
-// DefaultTEIURL is the default URL for TEI server
-const DefaultTEIURL = "http://localhost:8080"
 
 // Embedding model constants
 const (

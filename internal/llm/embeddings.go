@@ -91,18 +91,6 @@ var EmbeddingRegistry = []EmbeddingModel{
 		PricePer1M: 0.00,
 	},
 
-	// ============================================
-	// TEI (Text Embeddings Inference) - Custom endpoint
-	// ============================================
-	{
-		ID:         "custom",
-		Provider:   "TEI",
-		ProviderID: ProviderTEI,
-		Dimensions: 0, // Depends on model loaded in TEI
-		MaxTokens:  0,
-		PricePer1M: 0.00, // Self-hosted
-		IsDefault:  true,
-	},
 }
 
 // embeddingIndex is built at init time for fast lookups
@@ -201,7 +189,7 @@ func GetEmbeddingProviders() []EmbeddingProviderInfo {
 			providerMap[m.ProviderID] = &EmbeddingProviderInfo{
 				ID:          m.ProviderID,
 				DisplayName: m.Provider,
-				IsLocal:     m.ProviderID == ProviderOllama || m.ProviderID == ProviderTEI,
+				IsLocal:     m.ProviderID == ProviderOllama,
 				IsFree:      m.PricePer1M == 0,
 			}
 		}
@@ -210,7 +198,7 @@ func GetEmbeddingProviders() []EmbeddingProviderInfo {
 
 	// Return in consistent order
 	var providers []EmbeddingProviderInfo
-	providerOrder := []string{ProviderOllama, ProviderOpenAI, ProviderGemini, ProviderTEI}
+	providerOrder := []string{ProviderOllama, ProviderOpenAI, ProviderGemini}
 	for _, id := range providerOrder {
 		if p, exists := providerMap[id]; exists {
 			providers = append(providers, *p)

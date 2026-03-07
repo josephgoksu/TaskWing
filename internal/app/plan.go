@@ -22,6 +22,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/planner"
+	"github.com/josephgoksu/TaskWing/internal/runner"
 	"github.com/josephgoksu/TaskWing/internal/task"
 
 	_ "modernc.org/sqlite" // SQLite driver
@@ -125,29 +126,58 @@ const (
 // PlanApp provides plan lifecycle operations.
 // This is THE implementation - CLI and MCP both call these methods.
 type PlanApp struct {
-	ctx              *Context
-	Repo             task.Repository
-	ClarifierFactory func(llm.Config) GoalsClarifier
-	PlannerFactory   func(llm.Config) TaskPlanner
-	ContextRetriever func(ctx context.Context, ks *knowledge.Service, goal, memoryPath string) (impl.SearchStrategyResult, error)
+	ctx               *Context
+	Repo              task.Repository
+	ClarifierFactory  func(llm.Config) GoalsClarifier
+	PlannerFactory    func(llm.Config) TaskPlanner
+	DecomposerFactory func(llm.Config) PhaseGoalDecomposer
+	ExpanderFactory   func(llm.Config) PhaseExpander
+	ContextRetriever  func(ctx context.Context, ks *knowledge.Service, goal, memoryPath string) (impl.SearchStrategyResult, error)
 	// TaskEnricher executes ask queries to populate task ContextSummary.
 	// If nil, tasks will not have embedded context (legacy behavior).
 	TaskEnricher TaskContextEnricher
 }
 
 // NewPlanApp creates a new plan application service.
+// If ctx.Runner is set, uses runner-backed agents (no API key needed).
+// Otherwise falls back to LLM API-based agents.
 func NewPlanApp(ctx *Context) *PlanApp {
 	pa := &PlanApp{
-		ctx:  ctx,
-		Repo: ctx.Repo,
-		ClarifierFactory: func(cfg llm.Config) GoalsClarifier {
-			return impl.NewClarifyingAgent(cfg)
-		},
-		PlannerFactory: func(cfg llm.Config) TaskPlanner {
-			return impl.NewPlanningAgent(cfg)
-		},
+		ctx:              ctx,
+		Repo:             ctx.Repo,
 		ContextRetriever: impl.RetrieveContext,
 	}
+
+	if ctx.Runner != nil {
+		// Runner-based: no API key needed
+		pa.ClarifierFactory = func(_ llm.Config) GoalsClarifier {
+			return runner.NewRunnerClarifier(ctx.Runner)
+		}
+		pa.PlannerFactory = func(_ llm.Config) TaskPlanner {
+			return runner.NewRunnerPlanner(ctx.Runner)
+		}
+		pa.DecomposerFactory = func(_ llm.Config) PhaseGoalDecomposer {
+			return runner.NewRunnerDecomposer(ctx.Runner)
+		}
+		pa.ExpanderFactory = func(_ llm.Config) PhaseExpander {
+			return runner.NewRunnerExpander(ctx.Runner)
+		}
+	} else {
+		// Fallback: existing LLM API agents (requires API key)
+		pa.ClarifierFactory = func(cfg llm.Config) GoalsClarifier {
+			return impl.NewClarifyingAgent(cfg)
+		}
+		pa.PlannerFactory = func(cfg llm.Config) TaskPlanner {
+			return impl.NewPlanningAgent(cfg)
+		}
+		pa.DecomposerFactory = func(cfg llm.Config) PhaseGoalDecomposer {
+			return impl.NewDecompositionAgent(cfg)
+		}
+		pa.ExpanderFactory = func(cfg llm.Config) PhaseExpander {
+			return impl.NewExpandAgent(cfg)
+		}
+	}
+
 	// Initialize default TaskEnricher using AskApp
 	pa.TaskEnricher = pa.defaultTaskEnricher
 	return pa
@@ -947,7 +977,9 @@ func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, e
 		}
 		reportJSON, marshalErr := json.Marshal(report)
 		if marshalErr == nil {
-			_ = repo.UpdatePlanAuditReport(plan.ID, newStatus, string(reportJSON))
+			if err := repo.UpdatePlanAuditReport(plan.ID, newStatus, string(reportJSON)); err != nil {
+				fmt.Fprintf(os.Stderr, "[debug] failed to update audit report: %v\n", err)
+			}
 		}
 
 		return result, nil
@@ -994,7 +1026,9 @@ func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, e
 	auditReport := autoFixResult.ToAuditReportWithFixes()
 	reportJSON, marshalErr := json.Marshal(auditReport)
 	if marshalErr == nil {
-		_ = repo.UpdatePlanAuditReport(plan.ID, newStatus, string(reportJSON))
+		if err := repo.UpdatePlanAuditReport(plan.ID, newStatus, string(reportJSON)); err != nil {
+			fmt.Fprintf(os.Stderr, "[debug] failed to update audit report: %v\n", err)
+		}
 	}
 
 	return result, nil
@@ -1347,8 +1381,8 @@ func (a *PlanApp) Decompose(ctx context.Context, opts DecomposeOptions) (*Decomp
 		}
 	}
 
-	// Create and run DecompositionAgent
-	decomposeAgent := impl.NewDecompositionAgent(llmCfg)
+	// Create and run DecompositionAgent (runner-backed or LLM API-backed)
+	decomposeAgent := a.DecomposerFactory(llmCfg)
 	defer func() { _ = decomposeAgent.Close() }()
 
 	input := core.Input{
@@ -1428,7 +1462,9 @@ func (a *PlanApp) Decompose(ctx context.Context, opts DecomposeOptions) (*Decomp
 		LastUpdated:     time.Now().UTC().Format(time.RFC3339),
 	}
 	if draftJSON, err := json.Marshal(draftState); err == nil {
-		_ = repo.UpdatePlanDraftState(plan.ID, string(draftJSON))
+		if err := repo.UpdatePlanDraftState(plan.ID, string(draftJSON)); err != nil {
+			fmt.Fprintf(os.Stderr, "[debug] failed to update draft state: %v\n", err)
+		}
 	}
 
 	return &DecomposeResult{
@@ -1521,8 +1557,8 @@ func (a *PlanApp) Expand(ctx context.Context, opts ExpandOptions) (*ExpandResult
 		}
 	}
 
-	// Create and run ExpandAgent
-	expandAgent := impl.NewExpandAgent(llmCfg)
+	// Create and run ExpandAgent (runner-backed or LLM API-backed)
+	expandAgent := a.ExpanderFactory(llmCfg)
 	defer func() { _ = expandAgent.Close() }()
 
 	input := core.Input{
@@ -1694,7 +1730,9 @@ func (a *PlanApp) Finalize(ctx context.Context, opts FinalizeOptions) (*Finalize
 	}
 
 	// Clear draft state
-	_ = repo.UpdatePlanDraftState(plan.ID, "")
+	if err := repo.UpdatePlanDraftState(plan.ID, ""); err != nil {
+		fmt.Fprintf(os.Stderr, "[debug] failed to clear draft state: %v\n", err)
+	}
 
 	return &FinalizeResult{
 		Success:     true,

@@ -83,9 +83,9 @@ TaskWing gives AI coding assistants permanent memory. It extracts architectural 
 cmd/                          # Cobra CLI commands
 ├── root.go                   # Base command, global flags (--json, --verbose, --preview, --quiet)
 ├── bootstrap.go              # Auto-generate knowledge from repo
-├── goal.go                   # Goal-first flow: clarify -> generate -> activate
+├── goal.go                   # Deprecated: routes to plan command
 ├── knowledge.go              # View stored project knowledge nodes
-├── plan.go                   # Plan lifecycle management
+├── plan.go                   # Plan creation (primary entry), lifecycle management
 ├── task.go                   # Task lifecycle management
 ├── slash.go                  # Slash command content for assistants
 ├── mcp_server.go             # MCP server for AI tool integration
@@ -141,7 +141,7 @@ Uses CloudWeGo Eino for multi-provider support:
 - Bedrock: Set `BEDROCK_API_KEY`, `TASKWING_LLM_PROVIDER=bedrock`, and `TASKWING_LLM_BEDROCK_REGION=<region>`
 - Ollama: Set `TASKWING_LLM_PROVIDER=ollama` and `TASKWING_LLM_MODEL=<model>`
 
-**Bootstrap requires an LLM API key by default** to analyze architecture. Use `--skip-analyze` for CI/testing without LLM (hidden flag, deterministic mode only).
+**Bootstrap auto-enables architecture analysis** when an AI CLI is detected on PATH. Use `--no-analyze` to skip.
 
 ### MCP Server
 
@@ -235,7 +235,7 @@ Increment when:
 
 **NOT MINOR**: Internal refactors, new internal modules, code reorganization
 
-Examples: new `taskwing goal` command, new `--format` flag, adding Gemini provider
+Examples: new `taskwing plan` shortcut, new `--format` flag, adding Gemini provider
 
 ### MAJOR (X.0.0) - Breaking changes only
 
@@ -338,7 +338,6 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_LEGAL_END -->
 
 ### Slash Commands
-
 - /tw-ask - Use when you need to search project knowledge (decisions, patterns, constraints).
 - /tw-remember - Use when you want to persist a decision, pattern, or insight to project memory.
 - /tw-next - Use when you are ready to start the next approved TaskWing task with full context.
@@ -352,16 +351,16 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ### Core Commands
 
 <!-- TASKWING_COMMANDS_START -->
-- `taskwing bootstrap`
-- `taskwing goal "<goal>"`
-- `taskwing ask "<query>"`
-- `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
-- `taskwing mcp`
-- `taskwing doctor`
-- `taskwing config`
-- `taskwing start`
+- taskwing bootstrap
+- taskwing plan "<description>"
+- taskwing ask "<query>"
+- taskwing task
+- taskwing plan status
+- taskwing slash
+- taskwing mcp
+- taskwing doctor
+- taskwing config
+- taskwing start
 <!-- TASKWING_COMMANDS_END -->
 
 ### MCP Tools (Canonical Contract)
@@ -369,27 +368,26 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
 |------|-------------|
-| `ask` | Search project knowledge (decisions, patterns, constraints) |
-| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
-| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
-| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
-| `debug` | Diagnose issues systematically with AI-powered analysis |
-| `remember` | Store knowledge in project memory |
+| ask | Search project knowledge (decisions, patterns, constraints) |
+| task | Unified task lifecycle (next, current, start, complete) |
+| plan | Plan management (clarify, decompose, expand, generate, finalize, audit) |
+| code | Code intelligence (find, search, explain, callers, impact, simplify) |
+| debug | Diagnose issues systematically with AI-powered analysis |
+| remember | Store knowledge in project memory |
 <!-- TASKWING_MCP_TOOLS_END -->
 
 ### Autonomous Task Execution (Hooks)
 
 TaskWing integrates with Claude Code's hook system for autonomous plan execution:
 
-```bash
+~~~bash
 taskwing hook session-init      # Initialize session tracking (SessionStart hook)
 taskwing hook continue-check    # Check if should continue to next task (Stop hook)
 taskwing hook session-end       # Cleanup session (SessionEnd hook)
 taskwing hook status            # View current session state
-```
+~~~
 
 Circuit breakers prevent runaway execution:
-
 - --max-tasks=5 stops after N tasks for human review.
 - --max-minutes=30 stops after N minutes.
 

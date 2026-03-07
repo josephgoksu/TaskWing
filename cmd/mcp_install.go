@@ -76,7 +76,7 @@ Examples:
 		case "all":
 			for _, ai := range bootstrap.ValidAINames() {
 				if err := installMCPForTarget(ai, binPath, cwd); err != nil {
-					fmt.Printf("⚠️  %s install failed: %v\n", ai, err)
+					ui.PrintWarning(fmt.Sprintf("%s install failed: %v", ai, err))
 				}
 			}
 		default:
@@ -85,7 +85,7 @@ Examples:
 				os.Exit(1)
 			}
 			if err := installMCPForTarget(target, binPath, cwd); err != nil {
-				fmt.Printf("❌ Failed to install for %s: %v\n", target, err)
+				ui.PrintError(fmt.Sprintf("Failed to install for %s: %v", target, err))
 				os.Exit(1)
 			}
 		}
@@ -330,10 +330,10 @@ func installLocalMCP(projectDir, configDirName, configFileName, binPath string) 
 		Args:    []string{"mcp"},
 	})
 	if err != nil {
-		fmt.Printf("❌ Failed to install for %s: %v\n", configDirName, err)
+		ui.PrintError(fmt.Sprintf("Failed to install for %s: %v", configDirName, err))
 		return
 	}
-	fmt.Printf("✅ Installed for %s as '%s' in %s\n", strings.TrimPrefix(configDirName, "."), serverName, configPath)
+	ui.PrintSuccess(fmt.Sprintf("Installed for %s as '%s' in %s", strings.TrimPrefix(configDirName, "."), serverName, configPath))
 }
 
 func installClaude(binPath, projectDir string) {
@@ -347,7 +347,7 @@ func installClaudeCodeCLI(binPath, projectDir string) {
 	_, err := exec.LookPath("claude")
 	if err != nil {
 		if viper.GetBool("verbose") {
-			fmt.Println("ℹ️  Claude Code CLI not found (skipping CLI config)")
+			ui.PrintInfo("Claude Code CLI not found (skipping CLI config)")
 		}
 		return
 	}
@@ -355,11 +355,11 @@ func installClaudeCodeCLI(binPath, projectDir string) {
 	serverName := mcpServerName(projectDir)
 	legacyName := legacyServerName(projectDir)
 
-	fmt.Println("👉 Configuring Claude Code CLI...")
+	fmt.Printf("%s Configuring Claude Code CLI...\n", ui.IconRocket)
 
 	if viper.GetBool("preview") {
 		fmt.Printf("[PREVIEW] Would run: claude mcp remove %s && claude mcp remove %s && claude mcp add --transport stdio %s -- %s mcp\n", legacyName, serverName, serverName, binPath)
-		fmt.Printf("✅ Would install for Claude Code as '%s'\n", serverName)
+		ui.PrintSuccess(fmt.Sprintf("Would install for Claude Code as '%s'", serverName))
 		return
 	}
 
@@ -383,9 +383,9 @@ func installClaudeCodeCLI(binPath, projectDir string) {
 	}
 
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("⚠️  Failed to run 'claude mcp add': %v\n", err)
+		ui.PrintWarning(fmt.Sprintf("Failed to run 'claude mcp add': %v", err))
 	} else {
-		fmt.Printf("✅ Installed for Claude Code as '%s'\n", serverName)
+		ui.PrintSuccess(fmt.Sprintf("Installed for Claude Code as '%s'", serverName))
 	}
 }
 
@@ -402,7 +402,7 @@ func installClaudeDesktop(binPath, projectDir string) {
 		return
 	}
 
-	fmt.Println("👉 Configuring Claude Desktop App...")
+	fmt.Printf("%s Configuring Claude Desktop App...\n", ui.IconRocket)
 
 	serverName := mcpServerName(projectDir)
 	legacyName := legacyServerName(projectDir)
@@ -416,10 +416,10 @@ func installClaudeDesktop(binPath, projectDir string) {
 		Env:     map[string]string{},
 	})
 	if err != nil {
-		fmt.Printf("⚠️  Failed to configure Claude Desktop: %v\n", err)
+		ui.PrintWarning(fmt.Sprintf("Failed to configure Claude Desktop: %v", err))
 		return
 	}
-	fmt.Printf("✅ Installed for Claude Desktop as '%s' in %s\n", serverName, configPath)
+	ui.PrintSuccess(fmt.Sprintf("Installed for Claude Desktop as '%s' in %s", serverName, configPath))
 	fmt.Println("   (You may need to restart Claude Desktop to see the changes)")
 }
 
@@ -430,7 +430,7 @@ func installCopilot(binPath, projectDir string) {
 	configPath := filepath.Join(projectDir, ".vscode", "mcp.json")
 	serverName := mcpServerName(projectDir)
 
-	fmt.Println("👉 Configuring GitHub Copilot (VS Code)...")
+	fmt.Printf("%s Configuring GitHub Copilot (VS Code)...\n", ui.IconRocket)
 
 	err := upsertVSCodeMCPServer(configPath, serverName, VSCodeMCPServerConfig{
 		Type:    "stdio",
@@ -438,10 +438,10 @@ func installCopilot(binPath, projectDir string) {
 		Args:    []string{"mcp"},
 	})
 	if err != nil {
-		fmt.Printf("❌ Failed to install for Copilot: %v\n", err)
+		ui.PrintError(fmt.Sprintf("Failed to install for Copilot: %v", err))
 		return
 	}
-	fmt.Printf("✅ Installed for GitHub Copilot as '%s' in %s\n", serverName, configPath)
+	ui.PrintSuccess(fmt.Sprintf("Installed for GitHub Copilot as '%s' in %s", serverName, configPath))
 	fmt.Println("   (Reload VS Code window to activate)")
 }
 
@@ -449,7 +449,7 @@ func installGeminiCLI(binPath, projectDir string) {
 	// Check if gemini CLI is available
 	_, err := exec.LookPath("gemini")
 	if err != nil {
-		fmt.Println("❌ 'gemini' CLI not found in PATH.")
+		ui.PrintError("'gemini' CLI not found in PATH.")
 		fmt.Println("   Please install the Gemini CLI first to use this integration.")
 		fmt.Println("   See: https://geminicli.com/docs/getting-started")
 		return
@@ -457,7 +457,7 @@ func installGeminiCLI(binPath, projectDir string) {
 
 	serverName := mcpServerName(projectDir)
 	legacyName := legacyServerName(projectDir)
-	fmt.Println("👉 Configuring Gemini CLI...")
+	fmt.Printf("%s Configuring Gemini CLI...\n", ui.IconRocket)
 
 	if viper.GetBool("preview") {
 		fmt.Printf("[PREVIEW] Would run: gemini mcp remove -s project %s && gemini mcp add -s project %s %s mcp\n", legacyName, serverName, binPath)
@@ -486,9 +486,9 @@ func installGeminiCLI(binPath, projectDir string) {
 	}
 
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("⚠️  Failed to run 'gemini mcp add': %v\n", err)
+		ui.PrintWarning(fmt.Sprintf("Failed to run 'gemini mcp add': %v", err))
 	} else {
-		fmt.Printf("✅ Installed for Gemini as '%s'\n", serverName)
+		ui.PrintSuccess(fmt.Sprintf("Installed for Gemini as '%s'", serverName))
 	}
 }
 
@@ -496,7 +496,7 @@ func installCodexGlobal(binPath, projectDir string) {
 	// Check if codex CLI is available
 	_, err := exec.LookPath("codex")
 	if err != nil {
-		fmt.Println("❌ 'codex' CLI not found in PATH.")
+		ui.PrintError("'codex' CLI not found in PATH.")
 		fmt.Println("   Please install the OpenAI Codex CLI first to use this integration.")
 		fmt.Println("   See: https://developers.openai.com/codex/mcp/")
 		return
@@ -504,7 +504,7 @@ func installCodexGlobal(binPath, projectDir string) {
 
 	serverName := mcpServerName(projectDir)
 	legacyName := legacyServerName(projectDir)
-	fmt.Println("👉 Configuring OpenAI Codex...")
+	fmt.Printf("%s Configuring OpenAI Codex...\n", ui.IconRocket)
 
 	if viper.GetBool("preview") {
 		fmt.Printf("[PREVIEW] Would run: codex mcp remove %s && codex mcp add %s -- %s mcp\n", legacyName, serverName, binPath)
@@ -532,9 +532,9 @@ func installCodexGlobal(binPath, projectDir string) {
 	}
 
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("⚠️  Failed to run 'codex mcp add': %v\n", err)
+		ui.PrintWarning(fmt.Sprintf("Failed to run 'codex mcp add': %v", err))
 	} else {
-		fmt.Printf("✅ Installed for Codex as '%s'\n", serverName)
+		ui.PrintSuccess(fmt.Sprintf("Installed for Codex as '%s'", serverName))
 	}
 }
 
@@ -549,7 +549,7 @@ func installOpenCode(binPath, projectDir string) error {
 	configPath := filepath.Join(projectDir, "opencode.json")
 	serverName := mcpServerName(projectDir)
 
-	fmt.Println("👉 Configuring OpenCode...")
+	fmt.Printf("%s Configuring OpenCode...\n", ui.IconRocket)
 
 	// Create MCP config (opencode.json)
 	if err := upsertOpenCodeMCPServer(configPath, serverName, OpenCodeMCPServerConfig{
@@ -566,16 +566,16 @@ func installOpenCode(binPath, projectDir string) error {
 
 	// Create slash commands (.opencode/commands/)
 	if err := init.CreateSlashCommands("opencode", verbose); err != nil {
-		fmt.Printf("⚠️  Failed to create commands: %v\n", err)
+		ui.PrintWarning(fmt.Sprintf("Failed to create commands: %v", err))
 	} else {
-		fmt.Println("✅ Created OpenCode commands in .opencode/commands/")
+		ui.PrintSuccess("Created OpenCode commands in .opencode/commands/")
 	}
 
 	// Create hooks plugin (.opencode/plugins/)
 	if err := init.InstallHooksConfig("opencode", verbose); err != nil {
-		fmt.Printf("⚠️  Failed to create plugin: %v\n", err)
+		ui.PrintWarning(fmt.Sprintf("Failed to create plugin: %v", err))
 	} else {
-		fmt.Println("✅ Created OpenCode plugin in .opencode/plugins/")
+		ui.PrintSuccess("Created OpenCode plugin in .opencode/plugins/")
 	}
 
 	return nil
@@ -644,7 +644,7 @@ func upsertOpenCodeMCPServer(configPath, serverName string, serverCfg OpenCodeMC
 		return fmt.Errorf("write opencode.json: %w", err)
 	}
 
-	fmt.Printf("✅ Installed for OpenCode as '%s' in %s\n", serverName, configPath)
+	ui.PrintSuccess(fmt.Sprintf("Installed for OpenCode as '%s' in %s", serverName, configPath))
 	fmt.Println("   (opencode.json is at project root per OpenCode spec)")
 	return nil
 }

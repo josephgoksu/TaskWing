@@ -72,7 +72,7 @@ func (m modelSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m modelSelectModel) View() string {
-	s := "\n" + StyleSelectTitle.Render(fmt.Sprintf("🧠 Select Model for %s", m.provider)) + "\n\n"
+	s := "\n" + StyleSelectTitle.Render(fmt.Sprintf("%s Select Model for %s", IconRobot, m.provider)) + "\n\n"
 
 	for i, model := range m.models {
 		cursor := "  "

@@ -51,7 +51,7 @@ and decisions from the current project's memory store.`,
 		ui.RenderPageHeader("TaskWing Memory Reset", "Wiping all project context")
 		force, _ := cmd.Flags().GetBool("force")
 		if !force {
-			fmt.Print("⚠️  This will delete ALL project memory. Are you sure? [y/N]: ")
+			fmt.Printf("%s This will delete ALL project memory. Are you sure? [y/N]: ", ui.IconWarn)
 			var response string
 			_, _ = fmt.Scanln(&response)
 			if response != "y" && response != "Y" {
@@ -75,7 +75,7 @@ and decisions from the current project's memory store.`,
 		_ = os.Remove(indexPath)
 		_ = os.RemoveAll(featuresDir)
 
-		fmt.Println("✓ Project memory wiped successfully.")
+		ui.PrintSuccess("Project memory wiped successfully.")
 		return nil
 	},
 }
@@ -149,7 +149,7 @@ Checks for:
 
 		// Show embedding stats first
 		if embErr == nil && embStats != nil {
-			fmt.Println("📊 Knowledge Embeddings:")
+			fmt.Printf("%s Knowledge Embeddings:\n", ui.IconStats)
 			fmt.Printf("  Total nodes:     %d\n", embStats.TotalNodes)
 			fmt.Printf("  With embeddings: %d\n", embStats.NodesWithEmbeddings)
 			fmt.Printf("  Missing:         %d\n", embStats.NodesWithoutEmbeddings)
@@ -160,14 +160,14 @@ Checks for:
 
 			// Warn about missing embeddings
 			if embStats.NodesWithoutEmbeddings > 0 {
-				fmt.Printf("⚠  %d nodes are missing embeddings.\n", embStats.NodesWithoutEmbeddings)
+				ui.PrintWarning(fmt.Sprintf("%d nodes are missing embeddings.", embStats.NodesWithoutEmbeddings))
 				fmt.Println("   Run 'taskwing memory generate-embeddings' to backfill.")
 				fmt.Println()
 			}
 
 			// Warn about mixed dimensions
 			if embStats.MixedDimensions {
-				fmt.Println("⚠  WARNING: Mixed embedding dimensions detected!")
+				ui.PrintWarning("WARNING: Mixed embedding dimensions detected!")
 				fmt.Println("   This can happen when switching between different embedding models.")
 				fmt.Println("   Run 'taskwing memory rebuild-embeddings' to regenerate all embeddings.")
 				fmt.Println()
@@ -176,7 +176,7 @@ Checks for:
 
 		// Show symbol index stats
 		if symbolStats != nil && symbolStats.TotalSymbols > 0 {
-			fmt.Println("💻 Code Symbol Index:")
+			fmt.Printf("%s Code Symbol Index:\n", ui.IconCode)
 			fmt.Printf("  Total symbols:   %d\n", symbolStats.TotalSymbols)
 			fmt.Printf("  Indexed files:   %d\n", symbolStats.TotalFiles)
 			fmt.Printf("  Relations:       %d\n", symbolStats.TotalRelations)
@@ -199,7 +199,7 @@ Checks for:
 
 			// Warn about stale files
 			if len(staleFiles) > 0 {
-				fmt.Printf("⚠  %d indexed files no longer exist:\n", len(staleFiles))
+				fmt.Printf("%s %d indexed files no longer exist:\n", ui.IconWarn, len(staleFiles))
 				maxShow := 5
 				for i, f := range staleFiles {
 					if i >= maxShow {
@@ -212,13 +212,13 @@ Checks for:
 				fmt.Println()
 			}
 		} else if symbolStats != nil {
-			fmt.Println("💻 Code Symbol Index: (empty)")
+			fmt.Printf("%s Code Symbol Index: (empty)\n", ui.IconCode)
 			fmt.Println("   Run 'taskwing bootstrap' to index your codebase.")
 			fmt.Println()
 		}
 
 		if len(issues) == 0 {
-			fmt.Println("✓ No integrity issues found")
+			ui.PrintSuccess("No integrity issues found")
 			return nil
 		}
 
@@ -256,7 +256,7 @@ Actions:
 		// First check what needs repair
 		issues, _ := repo.Check()
 		if len(issues) == 0 {
-			fmt.Println("✓ No issues to repair")
+			ui.PrintSuccess("No issues to repair")
 			return nil
 		}
 
@@ -269,9 +269,9 @@ Actions:
 		// Verify repair
 		remaining, _ := repo.Check()
 		if len(remaining) == 0 {
-			fmt.Println("✓ All issues repaired")
+			ui.PrintSuccess("All issues repaired")
 		} else {
-			fmt.Printf("⚠ %d issues remain after repair\n", len(remaining))
+			ui.PrintWarning(fmt.Sprintf("%d issues remain after repair", len(remaining)))
 		}
 
 		return nil
@@ -301,7 +301,7 @@ This is useful if the search index is out of sync with the database.`,
 		}
 
 		nodes, _ := repo.ListNodes("")
-		fmt.Printf("✓ FTS index rebuilt with %d nodes\n", len(nodes))
+		ui.PrintSuccess(fmt.Sprintf("FTS index rebuilt with %d nodes", len(nodes)))
 		return nil
 	},
 }
@@ -357,7 +357,7 @@ Requires an API key for the configured provider (OpenAI/Gemini) or a local Ollam
 		}
 
 		if len(toProcess) == 0 {
-			fmt.Println("✓ All nodes already have embeddings")
+			ui.PrintSuccess("All nodes already have embeddings")
 			return nil
 		}
 
@@ -388,22 +388,23 @@ Requires an API key for the configured provider (OpenAI/Gemini) or a local Ollam
 		for _, n := range toProcess {
 			embedding, err := knowledge.GenerateEmbedding(ctx, n.Text(), llmCfg)
 			if err != nil {
-				fmt.Printf("  ✗ %s: %v\n", n.ID, err)
+				fmt.Printf("  %s %s: %v\n", ui.IconFail, n.ID, err)
 				continue
 			}
 
 			if err := repo.UpdateNodeEmbedding(n.ID, embedding); err != nil {
-				fmt.Printf("  ✗ %s: save failed\n", n.ID)
+				fmt.Printf("  %s %s: save failed\n", ui.IconFail, n.ID)
 				continue
 			}
 
 			generated++
 			if !viper.GetBool("quiet") {
-				fmt.Printf("  ✓ %s\n", n.Summary)
+				fmt.Printf("  %s %s\n", ui.IconOK, n.Summary)
 			}
 		}
 
-		fmt.Printf("\n✓ Generated %d/%d embeddings\n", generated, len(toProcess))
+		fmt.Println()
+		ui.PrintSuccess(fmt.Sprintf("Generated %d/%d embeddings", generated, len(toProcess)))
 		return nil
 	},
 }
@@ -448,7 +449,7 @@ Examples:
 		}
 
 		archPath := filepath.Join(memoryPath, "ARCHITECTURE.md")
-		fmt.Printf("✓ Generated %s\n", archPath)
+		ui.PrintSuccess(fmt.Sprintf("Generated %s", archPath))
 		return nil
 	},
 }
@@ -473,7 +474,7 @@ WARNING: This can be expensive if you have many nodes and are using a paid API.`
 
 		force, _ := cmd.Flags().GetBool("force")
 		if !force {
-			fmt.Print("⚠  This will regenerate ALL embeddings. Are you sure? [y/N]: ")
+			fmt.Printf("%s This will regenerate ALL embeddings. Are you sure? [y/N]: ", ui.IconWarn)
 			var response string
 			_, _ = fmt.Scanln(&response)
 			if response != "y" && response != "Y" {
@@ -528,24 +529,25 @@ WARNING: This can be expensive if you have many nodes and are using a paid API.`
 
 			embedding, err := knowledge.GenerateEmbedding(ctx, fullNode.Text(), llmCfg)
 			if err != nil {
-				fmt.Printf("  ✗ %s: %v\n", n.ID, err)
+				fmt.Printf("  %s %s: %v\n", ui.IconFail, n.ID, err)
 				failed++
 				continue
 			}
 
 			if err := repo.UpdateNodeEmbedding(n.ID, embedding); err != nil {
-				fmt.Printf("  ✗ %s: save failed\n", n.ID)
+				fmt.Printf("  %s %s: save failed\n", ui.IconFail, n.ID)
 				failed++
 				continue
 			}
 
 			generated++
 			if !viper.GetBool("quiet") {
-				fmt.Printf("  ✓ %s (dim: %d)\n", fullNode.Summary, len(embedding))
+				fmt.Printf("  %s %s (dim: %d)\n", ui.IconOK, fullNode.Summary, len(embedding))
 			}
 		}
 
-		fmt.Printf("\n✓ Regenerated %d/%d embeddings", generated, len(nodes))
+		fmt.Println()
+		fmt.Printf("%s Regenerated %d/%d embeddings", ui.IconOK, generated, len(nodes))
 		if failed > 0 {
 			fmt.Printf(" (%d failed)", failed)
 		}
@@ -613,8 +615,8 @@ Examples:
 		ui.RenderPageHeader("TaskWing Memory Inspect", fmt.Sprintf("Query: %q", query))
 
 		// Pipeline info
-		fmt.Printf("📊 Pipeline: %s\n", formatPipeline(result.Pipeline))
-		fmt.Printf("🔍 Total candidates: %d\n", result.TotalCandidates)
+		fmt.Printf("%s Pipeline: %s\n", ui.IconStats, formatPipeline(result.Pipeline))
+		fmt.Printf("%s Total candidates: %d\n", ui.IconSearch, result.TotalCandidates)
 
 		// Timings
 		if verbose {
@@ -786,10 +788,10 @@ Examples:
 
 		// Show workspace detection results
 		if wsInfo != nil && len(wsInfo.Services) > 0 {
-			fmt.Printf("📂 Detected workspace: %s (%d services)\n", wsInfo.Type.String(), len(wsInfo.Services))
+			fmt.Printf("%s Detected workspace: %s (%d services)\n", ui.IconFolder, wsInfo.Type.String(), len(wsInfo.Services))
 			fmt.Printf("   Services: %v\n\n", wsInfo.Services)
 		} else {
-			fmt.Println("📂 No monorepo detected (single workspace mode)")
+			fmt.Printf("%s No monorepo detected (single workspace mode)\n", ui.IconFolder)
 			fmt.Println()
 		}
 
@@ -825,12 +827,12 @@ Examples:
 			} else {
 				// Update the node's workspace
 				if err := repo.UpdateNodeWorkspace(fullNode.ID, inferredWS); err != nil {
-					fmt.Printf("  ✗ %s: %v\n", fullNode.ID, err)
+					fmt.Printf("  %s %s: %v\n", ui.IconFail, fullNode.ID, err)
 					skipped++
 					continue
 				}
 				if !viper.GetBool("quiet") {
-					fmt.Printf("  ✓ %s → workspace=%q\n", fullNode.ID, inferredWS)
+					fmt.Printf("  %s %s → workspace=%q\n", ui.IconOK, fullNode.ID, inferredWS)
 				}
 				updated++
 			}
@@ -838,15 +840,15 @@ Examples:
 
 		fmt.Println()
 		if dryRun {
-			fmt.Printf("📊 Dry-run summary: %d would be updated, %d unchanged, %d skipped\n", updated, unchanged, skipped)
+			fmt.Printf("%s Dry-run summary: %d would be updated, %d unchanged, %d skipped\n", ui.IconStats, updated, unchanged, skipped)
 			fmt.Println("\nRun without --dry-run to apply changes.")
 		} else {
-			fmt.Printf("✓ Backfill complete: %d updated, %d unchanged, %d skipped\n", updated, unchanged, skipped)
+			ui.PrintSuccess(fmt.Sprintf("Backfill complete: %d updated, %d unchanged, %d skipped", updated, unchanged, skipped))
 
 			// Rebuild FTS index if changes were made
 			if updated > 0 {
 				if err := repo.RebuildFTS(); err != nil {
-					fmt.Printf("⚠  Warning: failed to rebuild FTS index: %v\n", err)
+					ui.PrintWarning(fmt.Sprintf("failed to rebuild FTS index: %v", err))
 				}
 			}
 		}

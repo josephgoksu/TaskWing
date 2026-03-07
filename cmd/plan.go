@@ -16,6 +16,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/logger"
+	"github.com/josephgoksu/TaskWing/internal/runner"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/josephgoksu/TaskWing/internal/util"
@@ -38,12 +39,16 @@ func init() {
 	planCmd.AddCommand(planStartCmd)
 	planCmd.AddCommand(planStatusCmd)
 
+	// planCmd flags (for positional-arg shortcut that routes to runGoal)
+	planCmd.Flags().Bool("auto-answer", false, "Automatically answer clarification questions using project context")
+	planCmd.Flags().Int("max-rounds", 5, "Maximum clarify rounds before stopping")
+
 	// Flags
 	planNewCmd.Flags().Bool("no-export", false, "Skip automatic export")
 	planNewCmd.Flags().String("export-path", "", "Custom path to export plan")
 	planNewCmd.Flags().Bool("non-interactive", false, "Run without user interaction (headless)")
 	planNewCmd.Flags().Bool("offline", false, "Disable LLM usage (create a draft plan without tasks)")
-	planNewCmd.Flags().Bool("no-llm", false, "Alias for --offline")
+	planNewCmd.Flags().String("prefer-cli", "", "Preferred AI CLI for plan generation (claude, gemini, codex)")
 
 	planExportCmd.Flags().Bool("stdout", false, "Print to stdout")
 	planExportCmd.Flags().StringP("output", "o", "", "Custom output path")
@@ -81,15 +86,25 @@ func runWithService(runFunc func(svc *task.Service, cmd *cobra.Command, args []s
 }
 
 var planCmd = &cobra.Command{
-	Use:   "plan",
-	Short: "Manage development plans",
-	Long: `Create, view, and export development plans using AI agents.
+	Use:   "plan [\"description\"]",
+	Short: "Create and manage development plans",
+	Long: `Create, view, and manage development plans.
 
-Examples:
-  taskwing goal "Add OAuth2 authentication"
+When called with a description, creates and activates a plan in one step:
+  taskwing plan "Add OAuth2 authentication"
+
+Subcommands provide full plan lifecycle management:
   taskwing plan list
+  taskwing plan new "description"   (advanced TUI mode)
   taskwing plan export latest
   taskwing plan start latest`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 1 {
+			return runGoal(cmd, args)
+		}
+		return cmd.Help()
+	},
 }
 
 var planNewCmd = &cobra.Command{
@@ -119,13 +134,9 @@ var planNewCmd = &cobra.Command{
 		svc := task.NewService(repo, memoryPath)
 
 		offline, _ := cmd.Flags().GetBool("offline")
-		noLLM, _ := cmd.Flags().GetBool("no-llm")
-		if noLLM {
-			offline = true
-		}
 		if offline {
 			if !isQuiet() && !isJSON() {
-				fmt.Fprintln(os.Stderr, "⚠️  Offline mode: LLM disabled. Creating a draft plan without tasks.")
+				fmt.Fprintf(os.Stderr, "%s  Offline mode: LLM disabled. Creating a draft plan without tasks.\n", ui.IconWarn)
 			}
 			draft := &task.Plan{
 				Goal:         goal,
@@ -157,21 +168,34 @@ var planNewCmd = &cobra.Command{
 			return nil
 		}
 
-		cfg, err := getLLMConfigForRole(cmd, llm.RoleBootstrap)
-		if err != nil {
-			return fmt.Errorf("llm config: %w", err)
+		// Detect AI CLI runner (no API key needed) or fall back to LLM API
+		preferCLI, _ := cmd.Flags().GetString("prefer-cli")
+		preferCLIType := runner.CLIType(preferCLI)
+
+		var appCtx *app.Context
+		cliRunner, runnerErr := runner.PreferredRunner(preferCLIType)
+		if runnerErr == nil {
+			if !isQuiet() && !isJSON() {
+				fmt.Printf("%s Using %s for planning...\n", ui.IconRobot, cliRunner.Type().String())
+			}
+			appCtx = app.NewContextWithConfig(repo, llm.Config{})
+			appCtx.Runner = cliRunner
+		} else {
+			// Fallback: use internal LLM agents (requires API key)
+			cfg, err := getLLMConfigForRole(cmd, llm.RoleBootstrap)
+			if err != nil {
+				return fmt.Errorf("no AI CLI detected and no LLM API key configured.\nInstall Claude Code, Gemini CLI, or Codex CLI, or configure an API key: %w", err)
+			}
+			appCtx = app.NewContextWithConfig(repo, cfg)
 		}
 
-		// Initialize App Layer
-		// Agents are now managed internally by PlanApp methods
-		appCtx := app.NewContextWithConfig(repo, cfg)
 		planApp := app.NewPlanApp(appCtx)
 
 		nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
 		if !nonInteractive && !hasTTY() {
 			nonInteractive = true
 			if !isQuiet() && !isJSON() {
-				fmt.Fprintln(os.Stderr, "⚠️  No TTY detected; falling back to --non-interactive")
+				fmt.Fprintf(os.Stderr, "%s  No TTY detected; falling back to --non-interactive\n", ui.IconWarn)
 			}
 		}
 		if nonInteractive {
@@ -254,7 +278,7 @@ var planNewCmd = &cobra.Command{
 			return nil
 		}
 
-		ks := knowledge.NewService(repo, cfg)
+		ks := knowledge.NewService(repo, appCtx.LLMCfg)
 
 		stream := core.NewStreamingOutput(100)
 		defer stream.Close()
@@ -354,10 +378,10 @@ var planListCmd = &cobra.Command{
 }
 
 func printPlanTable(plans []task.Plan) {
-	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Bold(true)
-	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("75"))
-	dateStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	goalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
+	headerStyle := ui.StyleSubtle.Bold(true)
+	idStyle := lipgloss.NewStyle().Foreground(ui.ColorBlue)
+	dateStyle := ui.StyleSubtle
+	goalStyle := ui.StyleText
 
 	fmt.Printf("%-18s %-12s %-6s %s\n",
 		headerStyle.Render("ID"), headerStyle.Render("CREATED"), headerStyle.Render("TASKS"), headerStyle.Render("GOAL"))
@@ -367,16 +391,13 @@ func printPlanTable(plans []task.Plan) {
 		if len(goal) > 60 {
 			goal = goal[:57] + "..."
 		}
-		// Tasks count - service ListPlans probably returns plans without tasks or with?
-		// ListPlans sets TaskCount but leaves Tasks nil for efficiency.
-		// Use GetTaskCount() to get the count regardless of how the plan was loaded.
 		fmt.Printf("%-18s %-12s %-6d %s\n",
 			idStyle.Render(p.ID),
 			dateStyle.Render(p.CreatedAt.Format("2006-01-02")),
 			p.GetTaskCount(),
 			goalStyle.Render(goal))
 	}
-	fmt.Printf("\n%s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(fmt.Sprintf("Total: %d plan(s)", len(plans))))
+	fmt.Printf("\n%s\n", ui.StyleSubtle.Render(fmt.Sprintf("Total: %d plan(s)", len(plans))))
 }
 
 var planExportCmd = &cobra.Command{
@@ -401,7 +422,8 @@ var planExportCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Printf("\n✓ Plan exported to %s\n", outputPath)
+		fmt.Println()
+		ui.PrintSuccess(fmt.Sprintf("Plan exported to %s", outputPath))
 		return nil
 	}),
 }
@@ -443,7 +465,7 @@ var planDeleteCmd = &cobra.Command{
 		}
 
 		if !isQuiet() && !isJSON() {
-			fmt.Printf("✓ Deleted plan %s\n", planID)
+			ui.PrintSuccess(fmt.Sprintf("Deleted plan %s", planID))
 		}
 		return nil
 	}),
@@ -468,7 +490,7 @@ var planUpdateCmd = &cobra.Command{
 		}
 
 		if !isQuiet() && !isJSON() {
-			fmt.Printf("✓ Updated plan %s\n", args[0])
+			ui.PrintSuccess(fmt.Sprintf("Updated plan %s", args[0]))
 		}
 		return nil
 	}),
@@ -483,7 +505,7 @@ var planRenameCmd = &cobra.Command{
 			return err
 		}
 		if !isQuiet() {
-			fmt.Printf("✓ Renamed plan %s\n", args[0])
+			ui.PrintSuccess(fmt.Sprintf("Renamed plan %s", args[0]))
 		}
 		return nil
 	}),
@@ -498,7 +520,7 @@ var planArchiveCmd = &cobra.Command{
 			return err
 		}
 		if !isQuiet() {
-			fmt.Printf("✓ Archived plan %s\n", args[0])
+			ui.PrintSuccess(fmt.Sprintf("Archived plan %s", args[0]))
 		}
 		return nil
 	}),
@@ -513,7 +535,7 @@ var planUnarchiveCmd = &cobra.Command{
 			return err
 		}
 		if !isQuiet() {
-			fmt.Printf("✓ Unarchived plan %s\n", args[0])
+			ui.PrintSuccess(fmt.Sprintf("Unarchived plan %s", args[0]))
 		}
 		return nil
 	}),
@@ -530,9 +552,11 @@ var planStartCmd = &cobra.Command{
 
 		plan, _ := svc.GetPlanWithTasks(args[0]) // Get resolved plan details
 		if !isQuiet() {
-			fmt.Printf("\n✓ Active plan: %s\n", plan.ID)
-			fmt.Printf("  Goal: %s\n", plan.Goal)
-			fmt.Printf("  Tasks: %d\n\n", len(plan.Tasks))
+			fmt.Println()
+			ui.PrintSuccess(fmt.Sprintf("Active plan: %s", plan.ID))
+			ui.PrintKeyValue("Goal", plan.Goal)
+			ui.PrintKeyValue("Tasks", fmt.Sprintf("%d", len(plan.Tasks)))
+			fmt.Println()
 		}
 		return nil
 	}),
@@ -557,7 +581,7 @@ Examples:
 					"message": "No active plan",
 				})
 			}
-			fmt.Println("No active plan. Set one with: taskwing goal \"<goal>\"")
+			fmt.Println("No active plan. Set one with: taskwing plan \"<description>\"")
 			return nil
 		}
 
@@ -644,7 +668,7 @@ func printStatus(plan *task.Plan) {
 		progressPct = done * 100 / total
 	}
 
-	fmt.Printf("\n📋 Active Plan: %s\n", plan.ID)
+	fmt.Printf("\n%s Active Plan: %s\n", ui.IconTask, plan.ID)
 	fmt.Printf("   %s\n\n", plan.Goal)
 
 	barWidth := 30
@@ -653,9 +677,9 @@ func printStatus(plan *task.Plan) {
 
 	fmt.Printf("   Progress: [%s] %d%% (%d/%d)\n\n", bar, progressPct, done, total)
 
-	passStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	pendingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	passStyle := ui.StyleSuccess
+	pendingStyle := ui.StyleWarning
+	dimStyle := ui.StyleSubtle
 
 	fmt.Println("   Tasks:")
 	for _, t := range plan.Tasks {
@@ -663,11 +687,10 @@ func printStatus(plan *task.Plan) {
 		title := t.Title
 
 		if t.Status == task.StatusCompleted {
-			statusMarker = passStyle.Render("[✓]")
+			statusMarker = passStyle.Render("[" + ui.IconOK.Emoji + "]")
 			title = dimStyle.Render(title)
 		}
 
-		// Use ShortID for consistent task ID display
 		tid := util.ShortID(t.ID, util.TaskIDLength)
 		fmt.Printf("   %s %s %s\n", statusMarker, dimStyle.Render(tid), title)
 	}

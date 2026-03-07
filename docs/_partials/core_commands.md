@@ -1,5 +1,5 @@
 - `taskwing bootstrap`
-- `taskwing goal "<goal>"`
+- `taskwing plan "<description>"`
 - `taskwing ask "<query>"`
 - `taskwing task`
 - `taskwing plan status`

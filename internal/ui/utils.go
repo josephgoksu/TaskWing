@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 )
 
 // IsInteractive checks if stdout is a terminal.
@@ -23,11 +24,12 @@ func RenderPageHeader(title, subtitle string) {
 		Padding(0, 1).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(ColorSecondary).
-		MarginBottom(1)
+		MarginBottom(1).
+		Width(ContentWidth())
 
-	fmt.Println(titleStyle.Render(fmt.Sprintf("🤖 %s", title)))
+	fmt.Println(titleStyle.Render(fmt.Sprintf("%s %s", IconRobot, title)))
 	if subtitle != "" {
-		fmt.Printf("  ⚡  %s\n", subtitle)
+		fmt.Printf("  %s  %s\n", IconBolt, subtitle)
 	}
 }
 
@@ -36,7 +38,7 @@ func RenderPageHeader(title, subtitle string) {
 type Panel struct {
 	Title       string
 	Content     string
-	BorderColor lipgloss.Color
+	BorderColor lipgloss.TerminalColor
 	Width       int
 }
 
@@ -51,7 +53,7 @@ func NewPanel(title, content string) *Panel {
 }
 
 // WithBorderColor sets the border color and returns the panel.
-func (p *Panel) WithBorderColor(color lipgloss.Color) *Panel {
+func (p *Panel) WithBorderColor(color lipgloss.TerminalColor) *Panel {
 	p.BorderColor = color
 	return p
 }
@@ -71,6 +73,8 @@ func (p *Panel) Render() string {
 
 	if p.Width > 0 {
 		style = style.Width(p.Width)
+	} else {
+		style = style.Width(ContentWidth())
 	}
 
 	var content string
@@ -107,6 +111,28 @@ func RenderErrorPanel(title, content string) string {
 // RenderWarningPanel renders a panel with warning styling (yellow border).
 func RenderWarningPanel(title, content string) string {
 	return NewPanel(title, content).WithBorderColor(ColorWarning).Render()
+}
+
+// TerminalWidth returns the current terminal width, defaulting to 80 if detection fails.
+func TerminalWidth() int {
+	w, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || w <= 0 {
+		return 80
+	}
+	return w
+}
+
+// ContentWidth returns a clamped width suitable for content rendering.
+// It caps at 120, floors at 40, and subtracts 2 for border padding.
+func ContentWidth() int {
+	w := TerminalWidth()
+	if w > 120 {
+		return 120
+	}
+	if w < 40 {
+		return 40
+	}
+	return w - 2
 }
 
 // Truncate truncates a string to maxLen characters, adding ellipsis if needed.
