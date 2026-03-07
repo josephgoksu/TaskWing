@@ -120,6 +120,12 @@ func GetMemoryBasePath() (string, error) {
 		return "", fmt.Errorf("project context has empty RootPath")
 	}
 
+	// Reject CWD-fallback contexts (MarkerNone) to prevent accidental writes to HOME.
+	// A project must have at least a .git, language manifest, or .taskwing marker.
+	if ctx.MarkerType == project.MarkerNone {
+		return "", fmt.Errorf("no project marker found at %q: run 'taskwing bootstrap' in a project directory", ctx.RootPath)
+	}
+
 	taskwingDir := filepath.Join(ctx.RootPath, ".taskwing")
 	if info, err := os.Stat(taskwingDir); err != nil || !info.IsDir() {
 		return "", fmt.Errorf("%w: %s", ErrNoTaskWingDir, taskwingDir)

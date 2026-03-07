@@ -721,7 +721,9 @@ func installMCPServers(basePath string, selectedAIs []string) {
 		case "claude":
 			installClaude(binPath, basePath)
 		case "gemini":
-			installGeminiCLI(binPath, basePath)
+			if err := installGeminiCLI(binPath, basePath); err != nil {
+				fmt.Printf("⚠️  Gemini MCP install failed: %v\n", err)
+			}
 		case "codex":
 			installCodexGlobal(binPath, basePath)
 		case "cursor":

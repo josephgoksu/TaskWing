@@ -59,6 +59,17 @@ func NewFindingWithEvidence(
 	metadata map[string]any,
 ) Finding {
 	confidenceScore, confidenceLabel := ParseConfidence(confidence)
+	convertedEvidence := ConvertEvidence(evidence)
+
+	// Gate 3: Findings without verifiable evidence (non-empty FilePath) start as
+	// "skipped" rather than "pending" to prevent hallucinated findings from being
+	// auto-linked into the knowledge graph.
+	verificationStatus := VerificationStatusPending
+	tempFinding := Finding{Evidence: convertedEvidence}
+	if !tempFinding.HasEvidence() {
+		verificationStatus = VerificationStatusSkipped
+	}
+
 	return Finding{
 		Type:               findingType,
 		Title:              title,
@@ -67,8 +78,8 @@ func NewFindingWithEvidence(
 		Tradeoffs:          tradeoffs,
 		ConfidenceScore:    confidenceScore,
 		Confidence:         confidenceLabel,
-		Evidence:           ConvertEvidence(evidence),
-		VerificationStatus: VerificationStatusPending,
+		Evidence:           convertedEvidence,
+		VerificationStatus: verificationStatus,
 		SourceAgent:        sourceAgent,
 		Metadata:           metadata,
 	}

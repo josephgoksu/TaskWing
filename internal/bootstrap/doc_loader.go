@@ -100,6 +100,45 @@ func (l *DocLoader) Load() ([]DocFile, error) {
 	return docs, nil
 }
 
+// LoadForServices scans the root path and each service sub-directory for docs.
+// Service paths are relative to basePath. This ensures sub-repo docs are discovered
+// in multi-repo workspaces where the root DocLoader would miss them.
+func (l *DocLoader) LoadForServices(services []string) ([]DocFile, error) {
+	// Load root-level docs first
+	docs, err := l.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	// Track already-loaded paths to avoid duplicates
+	loaded := make(map[string]bool, len(docs))
+	for _, d := range docs {
+		loaded[d.Path] = true
+	}
+
+	// Scan each service sub-directory
+	for _, service := range services {
+		servicePath := filepath.Join(l.basePath, service)
+		subLoader := &DocLoader{basePath: servicePath, maxSize: l.maxSize}
+		subDocs, subErr := subLoader.Load()
+		if subErr != nil {
+			continue // Skip services that fail to load
+		}
+
+		for _, doc := range subDocs {
+			// Prefix path with service name for workspace context
+			doc.Path = filepath.Join(service, doc.Path)
+			if loaded[doc.Path] {
+				continue
+			}
+			loaded[doc.Path] = true
+			docs = append(docs, doc)
+		}
+	}
+
+	return docs, nil
+}
+
 func (l *DocLoader) loadFile(path string) (string, error) {
 	info, err := os.Stat(path)
 	if err != nil {

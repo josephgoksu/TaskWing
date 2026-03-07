@@ -1463,12 +1463,36 @@ func (s *SQLiteStore) LinkNodes(from, to, relation string, confidence float64, p
 		}
 	}
 
-	_, err := s.db.Exec(`
+	// Use a transaction to atomically verify node existence and insert the edge,
+	// preventing TOCTOU races where nodes could be deleted between check and insert.
+	tx, txErr := s.db.Begin()
+	if txErr != nil {
+		return fmt.Errorf("begin transaction: %w", txErr)
+	}
+	defer func() { _ = tx.Rollback() }() // no-op after commit
+
+	// Handle self-referential edges: IN deduplicates identical values,
+	// so COUNT(*) returns 1 even when the node exists. Check accordingly.
+	expectedCount := 2
+	if from == to {
+		expectedCount = 1
+	}
+	var existCount int
+	if qErr := tx.QueryRow(`SELECT COUNT(*) FROM nodes WHERE id IN (?, ?)`, from, to).Scan(&existCount); qErr != nil {
+		return fmt.Errorf("check node existence: %w", qErr)
+	}
+	if existCount < expectedCount {
+		return fmt.Errorf("link skipped: one or both nodes not found (from=%q, to=%q)", from, to)
+	}
+
+	if _, execErr := tx.Exec(`
 		INSERT OR IGNORE INTO node_edges (from_node, to_node, relation, properties, confidence, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, from, to, relation, propsJSON, confidence, time.Now().UTC().Format(time.RFC3339))
+	`, from, to, relation, propsJSON, confidence, time.Now().UTC().Format(time.RFC3339)); execErr != nil {
+		return execErr
+	}
 
-	return err
+	return tx.Commit()
 }
 
 // GetNodeEdges returns all edges for a node.

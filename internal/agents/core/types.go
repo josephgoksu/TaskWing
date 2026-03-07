@@ -5,6 +5,10 @@ package core
 
 import "time"
 
+// MinConfidenceForAutoApply is the minimum confidence score for a finding
+// to be automatically applied without human verification.
+const MinConfidenceForAutoApply = 0.5
+
 // FindingType categorizes what kind of discovery was made.
 type FindingType string
 
@@ -53,6 +57,25 @@ func (f *Finding) DebtLevel() string {
 // IsDebt returns true if this finding represents technical debt that shouldn't be propagated.
 func (f *Finding) IsDebt() bool {
 	return f.DebtScore >= 0.7
+}
+
+// HasEvidence returns true if the finding has at least one evidence item
+// with a non-empty file path. Findings without evidence should not be
+// auto-linked into the knowledge graph (Gate 3 enforcement).
+func (f *Finding) HasEvidence() bool {
+	for _, e := range f.Evidence {
+		if e.FilePath != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// NeedsHumanVerification returns true if this finding should be flagged
+// for human review rather than automatically applied. A finding needs
+// verification when it lacks evidence or has low confidence.
+func (f *Finding) NeedsHumanVerification() bool {
+	return !f.HasEvidence() || f.ConfidenceScore < MinConfidenceForAutoApply
 }
 
 // Evidence represents verifiable proof for a Finding.

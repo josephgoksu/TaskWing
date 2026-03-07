@@ -99,6 +99,12 @@ func (c *Client) IsRepository() bool {
 	return err == nil
 }
 
+// IsGitRepository checks if a directory is inside a git work tree.
+// Routes through a temporary Client to maintain testability via Commander.
+func IsGitRepository(dir string) bool {
+	return NewClient(dir).IsRepository()
+}
+
 // IsDirty checks if the working directory has uncommitted changes.
 func (c *Client) IsDirty() (bool, error) {
 	output, err := c.commander.RunInDir(c.workDir, "git", "status", "--porcelain")

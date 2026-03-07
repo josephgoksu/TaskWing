@@ -74,15 +74,18 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 
 		// If .taskwing found, check if it's a valid project marker
 		if marker == MarkerTaskWing {
-			// CRITICAL FIX: If we've already found a .git directory below this .taskwing,
-			// don't use this .taskwing as the project root. It's likely global config
-			// or belongs to a different project (e.g., ~/.taskwing).
-			// A valid project .taskwing should be AT or BELOW the git root, not above it.
+			// CRITICAL FIX: Reject .taskwing directories that are above the real project.
+			// Cases where .taskwing should be SKIPPED:
+			// 1. A .git was found below — .taskwing is above gitRoot (likely global config)
+			// 2. .taskwing is above startPath and startPath has nested projects (multi-repo workspace)
+			skipTaskWing := false
 			if gitRoot != "" && gitRoot != current {
-				// .taskwing is above gitRoot - skip it, continue looking for language manifests
-				// or fall back to gitRoot
-			} else {
-				// .taskwing is at or below gitRoot (or no git found yet) - use it
+				skipTaskWing = true // .taskwing is above gitRoot
+			} else if current != absPath && d.hasNestedProjects(absPath) {
+				skipTaskWing = true // .taskwing is above a multi-repo workspace
+			}
+
+			if !skipTaskWing {
 				if gitRoot == "" {
 					gitRoot = d.findGitRoot(current)
 				}
@@ -134,7 +137,17 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 		}, nil
 	}
 
-	// No project marker found, use startPath as fallback
+	// No project marker found. Check if startPath is a multi-repo workspace
+	// (directory containing multiple independent projects/repos).
+	if d.hasNestedProjects(absPath) {
+		return &Context{
+			RootPath:   absPath,
+			MarkerType: MarkerNone,
+			GitRoot:    "",
+			IsMonorepo: true, // Multi-repo workspace acts like a monorepo for scoping
+		}, nil
+	}
+
 	return &Context{
 		RootPath:   absPath,
 		MarkerType: MarkerNone,
