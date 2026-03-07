@@ -110,7 +110,7 @@ func buildConfigItems() []ConfigItem {
 		rerankURL := viper.GetString("retrieval.reranking.base_url")
 		if rerankURL != "" {
 			rerankValue = rerankURL
-			rerankStatus = "🔌"
+			rerankStatus = IconPlug.Emoji
 		}
 	}
 
@@ -153,9 +153,9 @@ func getKeyStatus(provider string) string {
 		return "🏠" // local
 	default:
 		if config.ResolveAPIKey(llm.Provider(provider)) != "" {
-			return "✅" // key set
+			return IconDone.Emoji // key set
 		}
-		return "❌" // key missing
+		return IconStop.Emoji // key missing
 	}
 }
 
@@ -194,16 +194,16 @@ func (m configMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 var (
 	configTitleStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("39"))
+				Foreground(ColorCyan)
 
 	configActiveStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("86"))
+				Foreground(ColorSuccess)
 
 	configDimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240"))
+			Foreground(ColorDim)
 
 	configValueStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("229"))
+				Foreground(ColorWarning)
 )
 
 func (m configMenuModel) View() string {

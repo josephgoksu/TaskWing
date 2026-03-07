@@ -7,6 +7,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/runner"
 )
 
 // Context holds shared dependencies for all app services.
@@ -15,7 +16,8 @@ import (
 type Context struct {
 	Repo     *memory.Repository
 	LLMCfg   llm.Config
-	BasePath string // Project root path for source code access
+	BasePath string        // Project root path for source code access
+	Runner   runner.Runner // Optional: nil means use LLM API directly
 }
 
 // NewContext creates an app context with standard initialization.

@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/app"
 )
 
 // RenderExplainResult renders a deep explanation to the terminal.
 func RenderExplainResult(result *app.ExplainResult, verbose bool) {
 	// Symbol header
-	fmt.Printf("\n%s Symbol: %s (%s)\n", StyleBold("🔍"), result.Symbol.Name, result.Symbol.Kind)
+	fmt.Printf("\n%s Symbol: %s (%s)\n", StyleBold(IconSearch.String()), result.Symbol.Name, result.Symbol.Kind)
 	fmt.Printf("   Location: %s\n", result.Symbol.Location)
 	if result.Symbol.Signature != "" {
 		fmt.Printf("   Signature: %s\n", result.Symbol.Signature)
@@ -21,7 +22,7 @@ func RenderExplainResult(result *app.ExplainResult, verbose bool) {
 	}
 
 	// Call graph
-	fmt.Printf("\n%s System Context\n", StyleBold("📊"))
+	fmt.Printf("\n%s System Context\n", StyleBold(IconStats.String()))
 	fmt.Println("───────────────")
 
 	// Callers
@@ -53,7 +54,7 @@ func RenderExplainResult(result *app.ExplainResult, verbose bool) {
 	}
 
 	// Impact stats
-	fmt.Printf("\n%s Impact Analysis:\n", StyleBold("🔗"))
+	fmt.Printf("\n%s Impact Analysis:\n", StyleBold(IconLink.String()))
 	fmt.Printf("   Direct callers: %d\n", result.ImpactStats.DirectCallers)
 	fmt.Printf("   Direct callees: %d\n", result.ImpactStats.DirectCallees)
 	if result.ImpactStats.TransitiveDependents > 0 {
@@ -66,7 +67,7 @@ func RenderExplainResult(result *app.ExplainResult, verbose bool) {
 
 	// Related decisions
 	if len(result.Decisions) > 0 {
-		fmt.Printf("\n%s Related Decisions:\n", StyleBold("📋"))
+		fmt.Printf("\n%s Related Decisions:\n", StyleBold(IconTask.String()))
 		for _, d := range result.Decisions {
 			fmt.Printf("   • %s\n", d.Summary)
 		}
@@ -74,7 +75,7 @@ func RenderExplainResult(result *app.ExplainResult, verbose bool) {
 
 	// Related patterns
 	if len(result.Patterns) > 0 {
-		fmt.Printf("\n%s Related Patterns:\n", StyleBold("📐"))
+		fmt.Printf("\n%s Related Patterns:\n", StyleBold(IconRuler.String()))
 		for _, p := range result.Patterns {
 			fmt.Printf("   • %s\n", p.Summary)
 		}
@@ -82,7 +83,7 @@ func RenderExplainResult(result *app.ExplainResult, verbose bool) {
 
 	// Source code (only if verbose)
 	if verbose && len(result.SourceCode) > 0 {
-		fmt.Printf("\n%s Source Code:\n", StyleBold("📁"))
+		fmt.Printf("\n%s Source Code:\n", StyleBold(IconFolder.String()))
 		for _, snippet := range result.SourceCode {
 			fmt.Printf("\n   %s %s (%s):\n", snippet.Kind, snippet.SymbolName, snippet.FilePath)
 			// Indent code
@@ -104,7 +105,7 @@ func RenderExplainResult(result *app.ExplainResult, verbose bool) {
 
 // RenderExplainHeader renders the header before streaming starts.
 func RenderExplainHeader(symbolName string) {
-	fmt.Printf("\n%s Analyzing: %s\n", StyleBold("🔍"), symbolName)
+	fmt.Printf("\n%s Analyzing: %s\n", StyleBold(IconSearch.String()), symbolName)
 	fmt.Println("───────────────────────────")
 }
 
@@ -113,7 +114,7 @@ func RenderExplainExplanation(explanation string) {
 	if explanation == "" {
 		return
 	}
-	fmt.Printf("\n%s Explanation:\n", StyleBold("💬"))
+	fmt.Printf("\n%s Explanation:\n", StyleBold(IconChat.String()))
 	// Wrap text at 80 chars with indent
 	wrapped := wrapText(explanation, 76)
 	for _, line := range strings.Split(wrapped, "\n") {
@@ -161,8 +162,10 @@ func truncate(s string, max int) string {
 	return s[:max-3] + "..."
 }
 
-// StyleBold returns the text with bold ANSI codes.
-// This is a simple implementation - could use lipgloss for more styling.
+// styleBold is the lipgloss style used by StyleBold.
+var styleBold = lipgloss.NewStyle().Bold(true)
+
+// StyleBold returns the text rendered in bold via lipgloss (no raw ANSI).
 func StyleBold(s string) string {
-	return "\033[1m" + s + "\033[0m"
+	return styleBold.Render(s)
 }

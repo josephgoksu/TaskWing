@@ -14,6 +14,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/project"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 )
 
 // Service handles the bootstrapping process of extracting architectural knowledge.
@@ -123,14 +124,14 @@ func (s *Service) ProcessAndSaveResults(ctx context.Context, results []core.Outp
 	reportPath := filepath.Join(s.basePath, ".taskwing", "last-bootstrap-report.json")
 	if err := saveReport(reportPath, report); err != nil {
 		// Non-fatal warning
-		fmt.Fprintf(os.Stderr, "⚠️  Failed to save bootstrap report: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s  Failed to save bootstrap report: %v\n", ui.IconWarn, err)
 	}
 
 	// 2. Print summary (could serve as return value if we want pure separation, but fine here for CLI svc)
 	printCoverageSummary(report)
 
 	if isPreview {
-		fmt.Println("\n💡 This was a preview. Run 'taskwing bootstrap' to save to memory.")
+		ui.PrintHint("This was a preview. Run 'taskwing bootstrap' to save to memory.")
 		return nil
 	}
 
@@ -175,9 +176,9 @@ func (s *Service) ingestToMemory(ctx context.Context, findings []core.Finding, r
 	projectName := filepath.Base(s.basePath)
 	if err := repo.GenerateArchitectureMD(projectName); err != nil {
 		// Log warning but don't fail bootstrap
-		fmt.Fprintf(os.Stderr, "⚠️  Failed to generate ARCHITECTURE.md: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s  Failed to generate ARCHITECTURE.md: %v\n", ui.IconWarn, err)
 	} else if !isQuiet {
-		fmt.Println("   ✓ Generated .taskwing/ARCHITECTURE.md")
+		fmt.Printf("   %s Generated .taskwing/ARCHITECTURE.md\n", ui.IconOK)
 	}
 
 	return nil
@@ -191,13 +192,13 @@ func (s *Service) generateOverviewIfNeeded(ctx context.Context, repo *memory.Rep
 	}
 	if existing != nil {
 		if verbose {
-			fmt.Println("\n📋 Project overview already exists (re-run bootstrap with --force to refresh)")
+			fmt.Printf("\n%s Project overview already exists (re-run bootstrap with --force to refresh)\n", ui.IconTask)
 		}
 		return nil
 	}
 
 	if verbose {
-		fmt.Println("\n📋 Generating project overview...")
+		fmt.Printf("\n%s Generating project overview...\n", ui.IconTask)
 	}
 
 	analyzer := NewOverviewAnalyzer(s.llmCfg, s.basePath)
@@ -211,7 +212,7 @@ func (s *Service) generateOverviewIfNeeded(ctx context.Context, repo *memory.Rep
 	}
 
 	if verbose {
-		fmt.Println("   ✓ Project overview generated")
+		fmt.Printf("   %s Project overview generated\n", ui.IconOK)
 		fmt.Printf("   \"%s\"\n", overview.ShortDescription)
 	}
 	return nil
@@ -235,32 +236,22 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (
 	}
 	defer func() { _ = repo.Close() }()
 
-	if !isQuiet {
-		fmt.Println()
-		fmt.Println("📊 Extracting Project Metadata")
-		fmt.Println("──────────────────────────────")
-	}
+	// Phase header is now printed by the caller (executeExtractMetadata)
 
 	var findings []core.Finding
 	startTime := time.Now()
 
 	// 1. Extract Git Statistics (deterministic)
-	if !isQuiet {
-		fmt.Print("   📈 Analyzing git history...")
-	}
 	gitParser := NewGitStatParser(s.basePath)
 	gitStats, err := gitParser.Parse()
 	if err != nil {
-		// Track warning instead of silently swallowing
 		result.Warnings = append(result.Warnings, fmt.Sprintf("git stats: %v", err))
-		if !isQuiet {
-			fmt.Printf(" skipped (%v)\n", err)
-		}
 	} else {
 		if !isQuiet {
-			fmt.Printf(" %d commits, %d contributors\n", gitStats.TotalCommits, len(gitStats.Contributors))
+			ui.PrintPhaseResult(
+				fmt.Sprintf("Git: %d commits, %d contributors", gitStats.TotalCommits, len(gitStats.Contributors)),
+				time.Since(startTime))
 		}
-		// Convert to finding for storage (deterministic bootstrap data)
 		findings = append(findings, core.Finding{
 			Type:        memory.NodeTypeMetadata,
 			Title:       "Git Repository Statistics",
@@ -275,35 +266,15 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (
 	}
 
 	// 2. Load Documentation Files (deterministic)
-	if !isQuiet {
-		fmt.Print("   📄 Loading documentation...")
-	}
+	docStart := time.Now()
 	docLoader := NewDocLoader(s.basePath)
 	docs, err := docLoader.Load()
 	if err != nil {
-		// Track warning instead of silently swallowing
 		result.Warnings = append(result.Warnings, fmt.Sprintf("doc loader: %v", err))
-		if !isQuiet {
-			fmt.Printf(" failed (%v)\n", err)
-		}
 	} else {
 		if !isQuiet {
-			// Show category breakdown for better visibility
-			categories := make(map[string]int)
-			for _, doc := range docs {
-				categories[doc.Category]++
-			}
-			fmt.Printf(" %d files", len(docs))
-			if len(categories) > 0 {
-				var parts []string
-				for cat, count := range categories {
-					parts = append(parts, fmt.Sprintf("%d %s", count, cat))
-				}
-				fmt.Printf(" (%s)", joinMax(parts, 3))
-			}
-			fmt.Println()
+			ui.PrintPhaseResult(fmt.Sprintf("Docs: %d files loaded", len(docs)), time.Since(docStart))
 		}
-		// Convert each doc to a finding for storage and RAG retrieval
 		for _, doc := range docs {
 			findings = append(findings, core.Finding{
 				Type:        memory.NodeTypeDocumentation,
@@ -321,7 +292,7 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (
 
 	if len(findings) == 0 {
 		if !isQuiet {
-			fmt.Println("   ⚠️  No metadata extracted (not a git repo or no docs)")
+			fmt.Printf("        %s  No metadata extracted (not a git repo or no docs)\n", ui.IconWarn)
 		}
 		result.Warnings = append(result.Warnings, "no metadata extracted (not a git repo or no docs)")
 		return result, nil
@@ -331,21 +302,13 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (
 	ks := knowledge.NewService(repo, s.llmCfg)
 	ks.SetBasePath(s.basePath)
 
-	if !isQuiet {
-		fmt.Print("   💾 Storing to memory...")
-	}
-
+	storeStart := time.Now()
 	if err := ks.IngestFindings(ctx, findings, nil, false); err != nil {
-		if !isQuiet {
-			fmt.Println(" failed")
-		}
 		return nil, fmt.Errorf("ingest metadata: %w", err)
 	}
 
-	elapsed := time.Since(startTime).Round(time.Millisecond)
 	if !isQuiet {
-		fmt.Printf(" done (%v)\n", elapsed)
-		fmt.Printf("\n   ✅ Extracted %d items in %v\n", len(findings), elapsed)
+		ui.PrintPhaseResult(fmt.Sprintf("Stored %d items to memory", len(findings)), time.Since(storeStart))
 	}
 
 	result.FindingsCount = len(findings)
@@ -412,7 +375,7 @@ func saveReport(path string, report *core.BootstrapReport) error {
 
 func printCoverageSummary(report *core.BootstrapReport) {
 	fmt.Println()
-	fmt.Println("📊 Bootstrap Coverage Report")
+	fmt.Printf("%s Bootstrap Coverage Report\n", ui.IconStats)
 	fmt.Println("────────────────────────────")
 	fmt.Printf("   Files analyzed: %d\n", report.Coverage.FilesAnalyzed)
 	fmt.Printf("   Files skipped:  %d\n", report.Coverage.FilesSkipped)
@@ -430,9 +393,9 @@ func printCoverageSummary(report *core.BootstrapReport) {
 	fmt.Println()
 	fmt.Println("   Per-agent coverage:")
 	for name, ar := range report.AgentReports {
-		status := "✓"
+		status := ui.IconOK.String()
 		if ar.Error != "" {
-			status = "✗"
+			status = ui.IconFail.String()
 		}
 		fileWord := "files"
 		if ar.Coverage.FilesAnalyzed == 1 {
@@ -446,5 +409,5 @@ func printCoverageSummary(report *core.BootstrapReport) {
 	}
 
 	fmt.Println()
-	fmt.Printf("📄 Full report: .taskwing/last-bootstrap-report.json\n")
+	fmt.Printf("%s Full report: .taskwing/last-bootstrap-report.json\n", ui.IconDesc)
 }

@@ -16,8 +16,9 @@ import (
 )
 
 var goalCmd = &cobra.Command{
-	Use:   "goal \"Goal Description\"",
-	Short: "Turn a goal into an active execution plan",
+	Use:        "goal \"Goal Description\"",
+	Short:      "Turn a goal into an active execution plan",
+	Deprecated: "use 'taskwing plan \"<description>\"' instead",
 	Long: `Create and activate a plan from a goal in one command.
 
 This command runs clarification and plan generation automatically, then prints

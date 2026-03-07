@@ -40,25 +40,25 @@ func RenderContextResultsWithSymbolsVerbose(query string, scored []knowledge.Sco
 }
 
 func renderContextInternal(query string, scored []knowledge.ScoredNode, answer string, verbose bool) {
-	// Styles
+	// Reuse centralized styles
 	var (
-		titleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		sectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
+		titleStyle   = StyleAskHeader
+		sectionStyle = lipgloss.NewStyle().Foreground(ColorAccent).Bold(true)
 	)
 
 	// Render Answer Panel
 	if answer != "" {
 		fmt.Println()
-		fmt.Println(titleStyle.Render(fmt.Sprintf("📖 %s", query)))
+		fmt.Println(titleStyle.Render(fmt.Sprintf("%s %s", IconBook, query)))
 		fmt.Println(RenderInfoPanel("Answer", answer))
 	} else {
-		fmt.Println(titleStyle.Render(fmt.Sprintf("🔍 Context for: \"%s\"", query)))
+		fmt.Println(titleStyle.Render(fmt.Sprintf("%s Context for: \"%s\"", IconSearch, query)))
 	}
 
 	// Render Sources
 	fmt.Println()
 	if answer != "" {
-		fmt.Println(sectionStyle.Render("📚 Sources"))
+		fmt.Println(sectionStyle.Render(fmt.Sprintf("%s Sources", IconBooks)))
 	}
 
 	// Calculate max score for relative scaling
@@ -77,13 +77,13 @@ func renderContextInternal(query string, scored []knowledge.ScoredNode, answer s
 
 // renderScoredNodePanel renders a single knowledge result as a styled panel.
 func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, verbose bool) {
-	// Styles
+	// Styles — use centralized colors
 	var (
-		headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true) // Cyan for headers
-		metaStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))           // Dim for metadata
-		contentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))           // Light for content
-		barFull      = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))            // Green
-		barEmpty     = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))           // Dark gray
+		headerStyle  = lipgloss.NewStyle().Foreground(ColorCyan).Bold(true)
+		metaStyle    = lipgloss.NewStyle().Foreground(ColorDim)
+		contentStyle = lipgloss.NewStyle().Foreground(ColorText)
+		barFull      = lipgloss.NewStyle().Foreground(ColorSuccess)
+		barEmpty     = lipgloss.NewStyle().Foreground(ColorBarEmpty)
 		panelBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(scoreToColor(s.Score, maxScore)).Padding(0, 1).MarginTop(1)
 	)
 
@@ -121,7 +121,7 @@ func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, 
 	// Graph expansion indicator
 	expandedIndicator := ""
 	if s.ExpandedFrom != "" {
-		expandedIndicator = " 🔗"
+		expandedIndicator = fmt.Sprintf(" %s", IconLink)
 	}
 
 	// Build panel content
@@ -167,42 +167,42 @@ func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, 
 }
 
 // scoreToColor returns a border color based on the score (green for high, yellow for medium, gray for low).
-func scoreToColor(score, maxScore float32) lipgloss.Color {
+func scoreToColor(score, maxScore float32) lipgloss.TerminalColor {
 	relative := score / maxScore
 	switch {
 	case relative >= 0.8:
-		return lipgloss.Color("42") // Green - high relevance
+		return ColorSuccess
 	case relative >= 0.5:
-		return lipgloss.Color("214") // Orange - medium relevance
+		return ColorWarning
 	default:
-		return lipgloss.Color("241") // Gray - lower relevance
+		return ColorSecondary
 	}
 }
 
 // renderContextWithSymbolsInternal displays knowledge results and code symbols.
 func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNode, symbols []app.SymbolResponse, answer string, verbose bool) {
-	// Styles
+	// Reuse centralized styles
 	var (
-		titleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		sectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
+		titleStyle   = StyleAskHeader
+		sectionStyle = lipgloss.NewStyle().Foreground(ColorAccent).Bold(true)
 	)
 
 	// Render Answer Panel
 	if answer != "" {
 		fmt.Println()
-		fmt.Println(titleStyle.Render(fmt.Sprintf("📖 %s", query)))
+		fmt.Println(titleStyle.Render(fmt.Sprintf("%s %s", IconBook, query)))
 		fmt.Println(RenderInfoPanel("Answer", answer))
 	} else {
-		fmt.Println(titleStyle.Render(fmt.Sprintf("🔍 Context for: \"%s\"", query)))
+		fmt.Println(titleStyle.Render(fmt.Sprintf("%s Context for: \"%s\"", IconSearch, query)))
 	}
 
 	// Render Knowledge Results section
 	if len(scored) > 0 {
 		fmt.Println()
 		if answer != "" {
-			fmt.Println(sectionStyle.Render("📚 Knowledge"))
+			fmt.Println(sectionStyle.Render(fmt.Sprintf("%s Knowledge", IconBooks)))
 		} else {
-			fmt.Println(sectionStyle.Render("📚 Architectural Knowledge"))
+			fmt.Println(sectionStyle.Render(fmt.Sprintf("%s Architectural Knowledge", IconBooks)))
 		}
 
 		// Calculate max score for relative scaling
@@ -221,7 +221,7 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 	// Render Code Symbols section
 	if len(symbols) > 0 {
 		fmt.Println()
-		fmt.Println(sectionStyle.Render("💻 Code Symbols"))
+		fmt.Println(sectionStyle.Render(fmt.Sprintf("%s Code Symbols", IconCode)))
 
 		for i, sym := range symbols {
 			renderSymbolPanel(i+1, sym, verbose)
@@ -231,12 +231,12 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 
 // renderSymbolPanel renders a code symbol as a styled panel.
 func renderSymbolPanel(index int, sym app.SymbolResponse, verbose bool) {
-	// Styles
+	// Styles — use centralized colors
 	var (
-		headerStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
-		metaStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		locationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
-		panelBorder   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(0, 1).MarginTop(1)
+		headerStyle   = lipgloss.NewStyle().Foreground(ColorCyan).Bold(true)
+		metaStyle     = lipgloss.NewStyle().Foreground(ColorDim)
+		locationStyle = lipgloss.NewStyle().Foreground(ColorBlue)
+		panelBorder   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.AdaptiveColor{Light: "97", Dark: "63"}).Padding(0, 1).MarginTop(1)
 	)
 
 	icon := symbolKindIcon(sym.Kind)
@@ -308,7 +308,7 @@ func getContentWithoutSummary(content, summary string) string {
 // RenderAskResult displays a complete AskResult from the ask pipeline.
 // This is the primary rendering function for the `taskwing ask` command.
 func RenderAskResult(result *app.AskResult, verbose bool) {
-	sectionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
+	sectionStyle := lipgloss.NewStyle().Foreground(ColorAccent).Bold(true)
 
 	// Header with query in a styled box
 	headerBox := lipgloss.NewStyle().
@@ -349,7 +349,7 @@ func RenderAskResult(result *app.AskResult, verbose bool) {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(ColorBlue).
 			Padding(1, 2).
-			Width(80)
+			Width(ContentWidth())
 		fmt.Println(answerBox.Render(result.Answer))
 	}
 
@@ -478,7 +478,7 @@ func symbolKindIcon(kind string) string {
 	case "variable":
 		return "ν"
 	case "package", "module":
-		return "📦"
+		return IconPackage.Emoji
 	case "field":
 		return "·"
 	case "decorator":

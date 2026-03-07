@@ -446,6 +446,27 @@ func (s *SQLiteStore) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_policy_decisions_session ON policy_decisions(session_id);
 	CREATE INDEX IF NOT EXISTS idx_policy_decisions_result ON policy_decisions(result);
 	CREATE INDEX IF NOT EXISTS idx_policy_decisions_evaluated_at ON policy_decisions(evaluated_at);
+
+	-- === Token Compression Analytics ===
+	-- Tracks compression stats from taskwing proxy for the gain command.
+
+	CREATE TABLE IF NOT EXISTS token_stats (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		command TEXT NOT NULL,
+		input_bytes INTEGER NOT NULL,
+		output_bytes INTEGER NOT NULL,
+		saved_bytes INTEGER NOT NULL,
+		compression_ratio REAL,
+		input_tokens INTEGER,
+		output_tokens INTEGER,
+		saved_tokens INTEGER,
+		session_id TEXT,
+		created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_token_stats_command ON token_stats(command);
+	CREATE INDEX IF NOT EXISTS idx_token_stats_created_at ON token_stats(created_at);
+	CREATE INDEX IF NOT EXISTS idx_token_stats_session ON token_stats(session_id);
 	`
 
 	// Execute main schema
@@ -1305,7 +1326,7 @@ func (s *SQLiteStore) ClearAllKnowledge() error {
 // If no exact match is found, it checks for semantically similar summaries and updates those instead
 // to prevent duplicate nodes from accumulating.
 // Uses a transaction to prevent race conditions in concurrent watch mode.
-func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
+func (s *SQLiteStore) UpsertNodeBySummary(n Node) (string, error) {
 	if n.ID == "" {
 		n.ID = "n-" + uuid.New().String()[:8]
 	}
@@ -1322,7 +1343,7 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 	// Use IMMEDIATE transaction to prevent race conditions in concurrent watch mode
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+		return "", fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { rollbackWithLog(tx, "sqlite") }()
 
@@ -1343,9 +1364,12 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 			n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
 			n.DebtScore, n.DebtReason, n.RefactorHint, existingID)
 		if err != nil {
-			return fmt.Errorf("update existing node: %w", err)
+			return "", fmt.Errorf("update existing node: %w", err)
 		}
-		return tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return "", fmt.Errorf("commit: %w", err)
+		}
+		return existingID, nil
 	}
 
 	// No exact match - check for semantically similar summaries from same agent
@@ -1354,7 +1378,7 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 		SELECT id, summary, content FROM nodes WHERE source_agent = ?
 	`, n.SourceAgent)
 	if err != nil {
-		return fmt.Errorf("query similar nodes: %w", err)
+		return "", fmt.Errorf("query similar nodes: %w", err)
 	}
 
 	var similarID string
@@ -1388,14 +1412,17 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 					n.DebtScore, n.DebtReason, n.RefactorHint, similarID)
 			}
 			if err != nil {
-				return fmt.Errorf("update similar node: %w", err)
+				return "", fmt.Errorf("update similar node: %w", err)
 			}
-			return tx.Commit()
+			if err := tx.Commit(); err != nil {
+				return "", fmt.Errorf("commit: %w", err)
+			}
+			return similarID, nil
 		}
 	}
 	if err := checkRowsErr(rows); err != nil {
 		_ = rows.Close()
-		return fmt.Errorf("iterate similar nodes: %w", err)
+		return "", fmt.Errorf("iterate similar nodes: %w", err)
 	}
 	_ = rows.Close()
 
@@ -1410,10 +1437,13 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 		n.DebtScore, n.DebtReason, n.RefactorHint)
 
 	if err != nil {
-		return fmt.Errorf("insert node: %w", err)
+		return "", fmt.Errorf("insert node: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("commit: %w", err)
+	}
+	return n.ID, nil
 }
 
 // UpdateNodeEmbedding updates the embedding for an existing node.

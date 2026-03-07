@@ -121,8 +121,8 @@ func getCommandHint(cmd string) string {
 	hints := map[string]string{
 		"plans":   "Hint: To list plans, use: taskwing plan list",
 		"tasks":   "Hint: To list tasks, use: taskwing task list",
-		"create":  "Hint: To create and activate a plan, use: taskwing goal \"<goal>\"",
-		"new":     "Hint: To create and activate a plan, use: taskwing goal \"<goal>\"",
+		"create":  "Hint: To create and activate a plan, use: taskwing plan \"<description>\"",
+		"new":     "Hint: To create and activate a plan, use: taskwing plan \"<description>\"",
 		"install": "Hint: To install MCP, use: taskwing mcp install",
 	}
 

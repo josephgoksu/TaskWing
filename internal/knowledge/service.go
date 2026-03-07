@@ -24,7 +24,7 @@ type Repository interface {
 
 	// Write operations
 	CreateNode(n *memory.Node) error
-	UpsertNodeBySummary(n memory.Node) error
+	UpsertNodeBySummary(n memory.Node) (string, error)
 	DeleteNodesByAgent(agent string) error
 	DeleteNodesByFiles(agent string, filePaths []string) error
 	GetNodesByFiles(agent string, filePaths []string) ([]memory.Node, error)
@@ -289,16 +289,8 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 	vectorThreshold := float32(cfg.VectorScoreThreshold)
 	minResultThreshold := float32(cfg.MinResultScoreThreshold)
 
-	// Two-stage retrieval: fetch more candidates for reranking
-	// Stage 1 (Candidate retrieval): Fetch Top-25 candidates using hybrid search
-	candidateLimit := cfg.RerankTopK
-	if candidateLimit <= 0 {
-		candidateLimit = 25 // Default candidates
-	}
-	if !cfg.RerankingEnabled {
-		// If reranking disabled, just fetch what we need
-		candidateLimit = limit * 2 // Fetch 2x for graph expansion buffer
-	}
+	// Fetch candidates for graph expansion buffer
+	candidateLimit := limit * 2
 
 	// Collect results from both search methods
 	scoreByID := make(map[string]float32)
@@ -407,16 +399,7 @@ func (s *Service) searchInternal(ctx context.Context, query string, typeFilter s
 		scored = scored[:candidateLimit]
 	}
 
-	// 4. Stage 2 (Precision): Rerank using TEI if enabled
-	if cfg.RerankingEnabled && len(scored) > 0 {
-		reranker := s.getReranker(ctx)
-		if reranker != nil {
-			// Apply reranking with 5s timeout and fallback
-			scored = rerankResults(ctx, reranker, query, scored, 5*time.Second)
-		}
-	}
-
-	// 5. Graph Expansion: Add connected nodes via knowledge graph edges
+	// 4. Graph Expansion: Add connected nodes via knowledge graph edges
 	if cfg.GraphExpansionEnabled && len(scored) > 0 {
 		scored = s.expandViaGraph(scored, cfg)
 	}
@@ -652,7 +635,7 @@ func (s *Service) AddNode(ctx context.Context, input NodeInput) (*memory.Node, e
 	}
 
 	// 3. Save to Repo (upsert for dedup — matches by summary with Jaccard similarity)
-	if err := s.repo.UpsertNodeBySummary(*node); err != nil {
+	if _, err := s.repo.UpsertNodeBySummary(*node); err != nil {
 		return nil, fmt.Errorf("save node: %w", err)
 	}
 
@@ -795,10 +778,7 @@ func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*De
 	vectorWeight := float32(cfg.VectorWeight)
 	vectorThreshold := float32(cfg.VectorScoreThreshold)
 
-	candidateLimit := cfg.RerankTopK
-	if candidateLimit <= 0 {
-		candidateLimit = 25
-	}
+	candidateLimit := 25
 
 	// Track individual scores per node
 	type nodeScores struct {
@@ -906,25 +886,7 @@ func (s *Service) SearchDebug(ctx context.Context, query string, limit int) (*De
 	}
 	response.TotalCandidates = len(scored)
 
-	// 5. Reranking (if enabled)
-	startRerank := time.Now()
-	if cfg.RerankingEnabled && len(scored) > 0 {
-		reranker := s.getReranker(ctx)
-		if reranker != nil {
-			pipeline = append(pipeline, "Rerank")
-			scored = rerankResults(ctx, reranker, query, scored, 5*time.Second)
-			// Update rerank scores
-			for i, sn := range scored {
-				if ns, ok := scoreMap[sn.Node.ID]; ok {
-					ns.rerankScore = sn.Score
-					// Recalculate rank-based score
-					ns.combined = sn.Score
-					scored[i] = ScoredNode{Node: sn.Node, Score: sn.Score}
-				}
-			}
-		}
-	}
-	response.Timings["rerank"] = time.Since(startRerank).Milliseconds()
+	response.Timings["rerank"] = int64(0)
 
 	// 6. Graph Expansion
 	startGraph := time.Now()

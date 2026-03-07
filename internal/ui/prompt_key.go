@@ -66,8 +66,8 @@ func (m apiKeyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m apiKeyModel) View() string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight)
+	dimStyle := lipgloss.NewStyle().Foreground(ColorDim)
 
 	s := "\n" + titleStyle.Render("🔑 API Key required") + "\n"
 	s += dimStyle.Render("It will be stored locally in ~/.taskwing/config.yaml") + "\n\n"

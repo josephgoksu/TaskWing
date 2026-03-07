@@ -103,7 +103,7 @@ func (a *TaskApp) Next(ctx context.Context, opts TaskNextOptions) (*TaskResult, 
 		if activePlan == nil {
 			return &TaskResult{
 				Success: false,
-				Message: "No active plan found. Create one with 'taskwing goal \"<goal>\"'.",
+				Message: "No active plan found. Create one with 'taskwing plan \"<description>\"'.",
 			}, nil
 		}
 		planID = activePlan.ID
@@ -174,7 +174,9 @@ func (a *TaskApp) Next(ctx context.Context, opts TaskNextOptions) (*TaskResult, 
 			verifier := task.NewGitVerifier(workDir)
 			baseline, baselineErr := verifier.GetActualModifications(ctx)
 			if baselineErr == nil && len(baseline) > 0 {
-				_ = repo.SetGitBaseline(nextTask.ID, baseline)
+				if err := repo.SetGitBaseline(nextTask.ID, baseline); err != nil {
+					fmt.Fprintf(os.Stderr, "[debug] failed to set git baseline: %v\n", err)
+				}
 			}
 		}
 
@@ -295,8 +297,9 @@ func (a *TaskApp) Start(ctx context.Context, opts TaskStartOptions) (*TaskResult
 		verifier := task.NewGitVerifier(workDir)
 		baseline, err := verifier.GetActualModifications(ctx)
 		if err == nil && len(baseline) > 0 {
-			// Save baseline - ignore errors, this is best-effort
-			_ = repo.SetGitBaseline(opts.TaskID, baseline)
+			if setErr := repo.SetGitBaseline(opts.TaskID, baseline); setErr != nil {
+				fmt.Fprintf(os.Stderr, "[debug] failed to set git baseline: %v\n", setErr)
+			}
 		}
 	}
 
@@ -469,7 +472,7 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 
 		// Commit task progress with conventional commit message
 		if err := gitClient.CommitTaskProgress(taskBeforeComplete.Title, taskBeforeComplete.Scope); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  git commit failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[warn] git commit failed: %v\n", err)
 		} else {
 			gitCommitApplied = true
 		}
@@ -477,7 +480,7 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		// Push to remote if we have a branch and commit was successful
 		if gitCommitApplied && gitBranch != "" {
 			if err := gitClient.PushTaskProgress(gitBranch); err != nil {
-				fmt.Fprintf(os.Stderr, "⚠️  git push failed: %v\n", err)
+				fmt.Fprintf(os.Stderr, "[warn] git push failed: %v\n", err)
 			} else {
 				gitPushApplied = true
 			}
@@ -543,7 +546,9 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 			auditReport := auditResult.ToAuditReportWithFixes()
 			reportJSON, marshalErr := json.Marshal(auditReport)
 			if marshalErr == nil {
-				_ = repo.UpdatePlanAuditReport(plan.ID, auditPlanStatus, string(reportJSON))
+				if err := repo.UpdatePlanAuditReport(plan.ID, auditPlanStatus, string(reportJSON)); err != nil {
+					fmt.Fprintf(os.Stderr, "[debug] failed to update audit report: %v\n", err)
+				}
 			}
 		}
 

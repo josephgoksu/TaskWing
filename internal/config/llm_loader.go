@@ -191,8 +191,6 @@ func LoadLLMConfig() (llm.Config, error) {
 		switch embeddingProvider {
 		case llm.ProviderOllama:
 			embeddingBaseURL = llm.DefaultOllamaURL
-		case llm.ProviderTEI:
-			embeddingBaseURL = llm.DefaultTEIURL
 		}
 	}
 

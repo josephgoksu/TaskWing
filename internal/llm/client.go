@@ -249,8 +249,6 @@ func ValidateProvider(p string) (Provider, error) {
 		return ProviderGemini, nil
 	case ProviderBedrock:
 		return ProviderBedrock, nil
-	case ProviderTEI:
-		return ProviderTEI, nil
 	case ProviderTaskWing:
 		return ProviderTaskWing, nil
 	default:
@@ -390,23 +388,6 @@ func NewCloseableEmbedder(ctx context.Context, cfg Config) (*CloseableEmbedder, 
 			Embedder: embedder,
 			closer:   &genaiClientCloser{client: genaiClient},
 		}, nil
-
-	case ProviderTEI:
-		teiBaseURL := baseURL
-		if teiBaseURL == "" {
-			teiBaseURL = DefaultTEIURL
-		}
-		modelName := cfg.EmbeddingModel
-		// TEI doesn't require a model name - it uses whatever model the server was started with
-
-		e, err := NewTeiEmbedder(ctx, &TeiConfig{
-			BaseURL: teiBaseURL,
-			Model:   modelName,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create TEI embedder: %w", err)
-		}
-		return &CloseableEmbedder{Embedder: e, closer: e}, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported embedding provider: %s", embeddingProvider)

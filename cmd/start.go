@@ -18,40 +18,31 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/agents/core"
-	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/config"
-	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/server"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var (
 	startPort    int
 	startHost    string
 	noDashboard  bool
-	noWatch      bool
 	dashboardURL string
 )
 
 var startCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start TaskWing with API server, watch mode, and dashboard",
+	Short: "Start TaskWing with API server and dashboard",
 	Long: `Start TaskWing with all services running:
   - HTTP API server for dashboard communication
-  - Watch mode for continuous file analysis
   - Auto-open dashboard in browser
-
-This single command replaces running 'serve' and 'watch' separately.
 
 	Examples:
 	  taskwing start                    # Start everything
 	  taskwing start --host 0.0.0.0     # Expose API on all interfaces
 	  taskwing start --no-dashboard     # Don't open browser
-	  taskwing start --no-watch         # Server only, no file watching
 	  taskwing start --port 8080        # Use custom port`,
 	RunE: runStart,
 }
@@ -63,10 +54,9 @@ func init() {
 	startCmd.Flags().IntVarP(&startPort, "port", "p", 5001, "API server port")
 	startCmd.Flags().StringVar(&startHost, "host", "127.0.0.1", "API server host bind address")
 	startCmd.Flags().BoolVar(&noDashboard, "no-dashboard", false, "Don't auto-open dashboard in browser")
-	startCmd.Flags().BoolVar(&noWatch, "no-watch", false, "Don't run watch mode (server only)")
 	startCmd.Flags().StringVar(&dashboardURL, "dashboard-url", "", "Dashboard URL (default: https://hub.taskwing.app, use http://localhost:5173 for local dev)")
 
-	// LLM configuration (reuse from watch)
+	// LLM configuration
 	startCmd.Flags().String("provider", "", "LLM provider (openai, ollama, anthropic, bedrock, gemini)")
 	startCmd.Flags().String("model", "", "Model to use")
 	startCmd.Flags().String("api-key", "", "LLM API key (or set provider-specific env var)")
@@ -74,7 +64,6 @@ func init() {
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
-	verbose := viper.GetBool("verbose")
 	startHost = strings.TrimSpace(startHost)
 	if startHost == "" {
 		startHost = "127.0.0.1"
@@ -90,13 +79,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Print banner
 	if !isQuiet() {
 		fmt.Println()
-		fmt.Println("🚀 TaskWing Starting...")
+		fmt.Printf("%s TaskWing Starting...\n", ui.IconRocket)
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Printf("📁 Project: %s\n", cwd)
-		fmt.Printf("🌐 API: %s\n", apiURL(startHost, startPort))
-		if !noWatch {
-			fmt.Println("👁️  Watch: enabled")
-		}
+		fmt.Printf("%s Project: %s\n", ui.IconFolder, cwd)
+		fmt.Printf("%s API: %s\n", ui.IconGlobe, apiURL(startHost, startPort))
 		fmt.Println()
 	}
 
@@ -130,15 +116,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start API server: %w", err)
 	}
 
-	// Start watch mode if enabled
-	var watchAgent *impl.WatchAgent
-	if !noWatch {
-		watchAgent, err = startWatchMode(cwd, verbose, llmConfig, &wg, errChan)
-		if err != nil {
-			_ = srv.Shutdown(context.Background())
-			return fmt.Errorf("failed to start watch mode: %w", err)
-		}
-	}
+	// Watch mode removed (WatchAgent deleted)
 
 	// Open dashboard in browser
 	if !noDashboard {
@@ -146,17 +124,17 @@ func runStart(cmd *cobra.Command, args []string) error {
 		time.Sleep(500 * time.Millisecond)
 		if err := openBrowser(resolvedDashboardURL); err != nil {
 			if !isQuiet() {
-				fmt.Printf("⚠️  Could not open browser: %v\n", err)
+				ui.PrintWarning(fmt.Sprintf("Could not open browser: %v", err))
 				fmt.Printf("   Open manually: %s\n", resolvedDashboardURL)
 			}
 		} else if !isQuiet() {
-			fmt.Printf("🌐 Dashboard opened: %s\n", resolvedDashboardURL)
+			fmt.Printf("%s Dashboard opened: %s\n", ui.IconGlobe, resolvedDashboardURL)
 		}
 	}
 
 	if !isQuiet() {
 		fmt.Println()
-		fmt.Println("✅ TaskWing is running! Press Ctrl+C to stop")
+		ui.PrintSuccess("TaskWing is running! Press Ctrl+C to stop")
 		fmt.Println()
 	}
 
@@ -166,15 +144,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	select {
 	case sig := <-sigChan:
-		fmt.Printf("\n\n⏹️  Received %v, shutting down...\n", sig)
+		fmt.Printf("\n\n%s  Received %v, shutting down...\n", ui.IconStop, sig)
 	case err := <-errChan:
-		fmt.Printf("\n\n❌ Error: %v\n", err)
-	}
-
-	// Stop watch agent
-	if watchAgent != nil {
-		fmt.Println("   Stopping watch mode...")
-		watchAgent.Stop()
+		fmt.Print("\n\n")
+		ui.PrintError(fmt.Sprintf("Error: %v", err))
 	}
 
 	// Shutdown HTTP server with timeout
@@ -182,51 +155,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		fmt.Printf("   ⚠️  Server shutdown error: %v\n", err)
+		ui.PrintWarning(fmt.Sprintf("Server shutdown error: %v", err))
 	}
 
 	wg.Wait()
-	fmt.Println("✅ TaskWing stopped")
+	ui.PrintSuccess("TaskWing stopped")
 
 	return nil
-}
-
-// startWatchMode starts the watch agent in a goroutine
-func startWatchMode(watchPath string, verbose bool, llmConfig llm.Config, wg *sync.WaitGroup, errChan chan<- error) (*impl.WatchAgent, error) {
-	// Initialize knowledge service first (needed for context injection)
-	memoryPath, err := config.GetMemoryBasePath()
-	if err != nil {
-		return nil, fmt.Errorf("get memory path: %w", err)
-	}
-	repo, err := memory.NewDefaultRepository(memoryPath)
-	if err != nil {
-		return nil, fmt.Errorf("create memory repository: %w", err)
-	}
-
-	ks := knowledge.NewService(repo, llmConfig)
-
-	// Create watch agent with knowledge service
-	watchAgent, err := impl.NewWatchAgent(impl.WatchConfig{
-		BasePath:  watchPath,
-		LLMConfig: llmConfig,
-		Verbose:   verbose,
-		Service:   ks,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create watch agent: %w", err)
-	}
-
-	// Set up findings handler
-	watchAgent.SetFindingsHandler(func(ctx context.Context, findings []core.Finding, filePaths []string) error {
-		return ks.IngestFindings(ctx, findings, filePaths, verbose)
-	})
-
-	// Start watching
-	if err := watchAgent.Start(); err != nil {
-		return nil, fmt.Errorf("start watch: %w", err)
-	}
-
-	return watchAgent, nil
 }
 
 // openBrowser opens the URL in the default browser

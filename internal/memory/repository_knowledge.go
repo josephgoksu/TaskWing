@@ -70,7 +70,7 @@ func (r *Repository) GetNodesByFiles(agent string, filePaths []string) ([]Node, 
 	return r.db.GetNodesByFiles(agent, filePaths)
 }
 
-func (r *Repository) UpsertNodeBySummary(n Node) error {
+func (r *Repository) UpsertNodeBySummary(n Node) (string, error) {
 	return r.db.UpsertNodeBySummary(n)
 }
 

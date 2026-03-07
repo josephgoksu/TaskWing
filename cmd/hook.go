@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,12 +154,28 @@ var hookStatusCmd = &cobra.Command{
 	},
 }
 
+var hookCompressCmd = &cobra.Command{
+	Use:   "compress",
+	Short: "Compress Bash tool output (for PreToolUse hook)",
+	Long: `Called by Claude Code's PreToolUse hook to rewrite Bash commands
+through the TaskWing compression proxy.
+
+Reads a JSON-RPC hook payload from stdin, rewrites the Bash command
+to run through 'taskwing proxy', and returns the modified payload.
+
+Install via: taskwing init --claude-code`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runHookCompress()
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(hookCmd)
 	hookCmd.AddCommand(hookContinueCheckCmd)
 	hookCmd.AddCommand(hookSessionInitCmd)
 	hookCmd.AddCommand(hookSessionEndCmd)
 	hookCmd.AddCommand(hookStatusCmd)
+	hookCmd.AddCommand(hookCompressCmd)
 
 	// Circuit breaker flags
 	hookContinueCheckCmd.Flags().Int("max-tasks", DefaultMaxTasksPerSession, "Maximum tasks to complete per session")
@@ -528,6 +545,62 @@ func outputHookResponse(resp HookResponse) error {
 		return err
 	}
 	fmt.Println(string(data))
+	return nil
+}
+
+// runHookCompress reads a PreToolUse hook payload from stdin and rewrites
+// Bash commands to run through taskwing proxy for output compression.
+func runHookCompress() error {
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return fmt.Errorf("read stdin: %w", err)
+	}
+
+	var payload struct {
+		ToolName string `json:"tool_name"`
+		Input    struct {
+			Command string `json:"command"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		// Not valid JSON — pass through
+		return nil
+	}
+
+	// Only rewrite Bash tool calls
+	if payload.ToolName != "Bash" || payload.Input.Command == "" {
+		return nil
+	}
+
+	cmd := payload.Input.Command
+
+	// Skip commands that shouldn't be compressed
+	skipPrefixes := []string{
+		"taskwing ", "tw ", "cd ", "export ", "source ",
+		"echo ", "printf ", "read ", "sleep ",
+	}
+	for _, prefix := range skipPrefixes {
+		if strings.HasPrefix(cmd, prefix) {
+			return nil
+		}
+	}
+
+	// Find taskwing binary
+	binPath, err := os.Executable()
+	if err != nil {
+		binPath = "taskwing"
+	}
+
+	// Rewrite command to go through proxy
+	rewritten := fmt.Sprintf("%s proxy %s", binPath, cmd)
+
+	resp := map[string]any{
+		"input": map[string]string{
+			"command": rewritten,
+		},
+	}
+	out, _ := json.Marshal(resp)
+	fmt.Println(string(out))
 	return nil
 }
 

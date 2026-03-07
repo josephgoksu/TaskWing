@@ -16,6 +16,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	mcppresenter "github.com/josephgoksu/TaskWing/internal/mcp"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -152,7 +153,7 @@ func runMCPServer(ctx context.Context) error {
 
 	serverOpts := &mcpsdk.ServerOptions{
 		InitializedHandler: func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.InitializedParams) {
-			fmt.Fprintf(os.Stderr, "✓ MCP connection established\n")
+			fmt.Fprintf(os.Stderr, "%s MCP connection established\n", ui.IconOK)
 			if viper.GetBool("verbose") {
 				fmt.Fprintf(os.Stderr, "[DEBUG] Client initialized\n")
 			}

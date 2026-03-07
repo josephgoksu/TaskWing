@@ -6,10 +6,10 @@
   <br>
 </h1>
 
-<h3 align="center">Give your AI tools <em>a brain.</em></h3>
+<h3 align="center">Your AI assistant forgets everything. <em>Every single session.</em></h3>
 
 <p align="center">
-  Memory, planning, task execution, and project intelligence — <strong>the control plane for AI-native development.</strong>
+  Context compression tools save tokens. TaskWing saves <strong>knowledge</strong> — decisions, patterns, and architecture that compound across every session.
 </p>
 
 <p align="center">
@@ -24,6 +24,17 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
 </p>
 
+## Works With
+
+<!-- TASKWING_TOOLS_START -->
+[![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/claude-code)
+[![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex)
+[![Cursor](https://img.shields.io/badge/Cursor-111111?logo=cursor&logoColor=white)](https://cursor.com/)
+[![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-181717?logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
+[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
+[![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
+<!-- TASKWING_TOOLS_END -->
+
 <p align="center">
   <img src="demos/ask.gif" alt="TaskWing ask demo" width="800">
 </p>
@@ -32,49 +43,71 @@
 
 ## The Problem
 
-Your AI tools start every session from zero. They don't know your stack, your patterns, or why you chose PostgreSQL over MongoDB. You re-explain the same context hundreds of times.
+You explain "we use PostgreSQL, not MongoDB" on Monday. Again on Tuesday. Again on Wednesday. Your AI assistant has no memory. **Every session starts from zero.**
 
-**TaskWing fixes this.** One command extracts your architecture into a local database. Every AI session after that just *knows*.
+A typical project accumulates 50+ architectural decisions, dozens of patterns, and critical constraints — none of which survive a session restart. You spend more time re-explaining context than building features.
 
-## What It Does
+Context compression tools reduce token waste within a session. But when the session ends, everything is gone. **The real problem isn't token cost — it's knowledge loss.**
 
-| Capability | Description |
-|:-----------|:------------|
-| 🧠 **Memory** | Extracts and persists architectural decisions, patterns, and constraints |
-| 📋 **Planning** | Turns a goal into an executable plan with decomposed tasks |
-| ⚡ **Task Execution** | AI-driven task lifecycle — next, start, complete, verify |
-| 🔍 **Code Intelligence** | Symbol search, call graphs, impact analysis, simplification |
-| 🐛 **Debugging** | AI-powered root cause analysis with systematic diagnosis |
-| 🔌 **MCP Integration** | Exposes everything to Claude, Cursor, Copilot, Gemini via MCP |
+## How TaskWing Fixes This
 
-## Install
+```
+Without TaskWing:
+  Session 1: "We use PostgreSQL, here's why..." (re-explain)
+  Session 2: "We use PostgreSQL, here's why..." (re-explain)
+  Session 3: "We use PostgreSQL, here's why..." (re-explain)
+
+With TaskWing:
+  taskwing bootstrap → 63 decisions, 28 patterns, 12 constraints extracted
+  Session 1: AI already knows your architecture
+  Session 2: AI still knows. Plus what you decided yesterday.
+  Session 3: AI knows everything. Context compounds.
+```
+
+One command extracts your architecture into a local SQLite database. Every AI session after that just *knows* — permanently.
+
+| What | How |
+|:-----|:----|
+| **Persistent memory** | Decisions, patterns, and constraints survive every session restart |
+| **Goal-to-execution** | Turn "Add Stripe billing" into 5 decomposed, context-rich tasks |
+| **Code intelligence** | Symbol search, call graphs, impact analysis across your codebase |
+| **Works everywhere** | Claude Code, Cursor, Copilot, Gemini, OpenCode — via MCP |
+
+## Try It (60 seconds)
 
 ```bash
-# Homebrew (recommended)
+# Install
 brew install josephgoksu/tap/taskwing
 
-# or curl
-curl -fsSL https://taskwing.app/install.sh | sh
+# Extract your architecture
+cd your-project && taskwing bootstrap
+# → "63 decisions, 28 patterns, 12 constraints extracted"
+
+# Ask it anything about your project
+taskwing ask "what database do we use and why?"
+# → Returns the decision, reasoning, and tradeoffs — instantly
 ```
 
 No signup. No account. Works offline. Everything stays local in SQLite.
 
-## Quick Start
+## Full Workflow
 
 ```bash
-# 1. Extract your architecture
-cd your-project
+# 1. Bootstrap (once per project)
 taskwing bootstrap
-# → 22 decisions, 12 patterns, 9 constraints extracted
 
 # 2. Set a goal and generate a plan
-taskwing goal "Add Stripe billing"
-# → Plan decomposed into 5 executable tasks
+taskwing plan "Add Stripe billing"
+# → Plan decomposed into 5 executable tasks with architectural context
 
 # 3. Execute with your AI assistant
-/tw-next       # Get next task with full context
+/tw-next       # Get next task — AI already knows your stack
 # ...work...
 /tw-done       # Mark complete, advance to next
+
+# 4. Your AI remembers decisions made today — tomorrow, next week, forever
+/tw-ask "why did we choose Stripe over Paddle?"
+# → Returns the decision from step 2, with full reasoning
 ```
 
 ## Supported Models
@@ -87,26 +120,28 @@ taskwing goal "Add Stripe billing"
 [![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
 <!-- TASKWING_PROVIDERS_END -->
 
-## Works With
-
-<!-- TASKWING_TOOLS_START -->
-[![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/claude-code)
-[![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex)
-[![Cursor](https://img.shields.io/badge/Cursor-111111?logo=cursor&logoColor=white)](https://cursor.com/)
-[![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-181717?logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
-[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
-[![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
-<!-- TASKWING_TOOLS_END -->
-
 <!-- TASKWING_LEGAL_START -->
-<sub>Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.</sub>
+Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
 <!-- TASKWING_LEGAL_END -->
+
+## Why Not Just a CLAUDE.md File?
+
+| | CLAUDE.md | Context compression tools | TaskWing |
+|:--|:---------|:-------------------------|:---------|
+| **Survives session restart** | Yes | No | Yes |
+| **Auto-extracted from code** | No (hand-written) | No | Yes |
+| **Searchable** | No | Session only | Always (FTS + vector + graph) |
+| **Grows over time** | Only if you maintain it | No | Automatically |
+| **Understands code symbols** | No | No | Call graphs, impact analysis |
+| **Plans and tracks tasks** | No | No | Goal → plan → execute → verify |
+
+CLAUDE.md is a good start. Context compression is useful within a session. TaskWing is what happens when your project intelligence becomes **permanent, searchable, and compounding**.
 
 ## MCP Tools
 
 <!-- TASKWING_MCP_TOOLS_START -->
 | Tool | Description |
-|:-----|:------------|
+|------|-------------|
 | `ask` | Search project knowledge (decisions, patterns, constraints) |
 | `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
 | `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
@@ -149,18 +184,16 @@ Once connected, use these slash commands from your AI assistant:
 ## Core Commands
 
 <!-- TASKWING_COMMANDS_START -->
-| Command | Description |
-|:--------|:------------|
-| `taskwing bootstrap` | Extract architecture from your codebase |
-| `taskwing goal "<goal>"` | Create and activate a plan from a goal |
-| `taskwing ask "<query>"` | Query project knowledge |
-| `taskwing task` | Manage execution tasks |
-| `taskwing plan status` | View current plan progress |
-| `taskwing slash` | Output slash command prompts for AI tools |
-| `taskwing mcp` | Start the MCP server |
-| `taskwing doctor` | Health check for project memory |
-| `taskwing config` | Configure LLM provider and settings |
-| `taskwing start` | Start API/watch/dashboard services |
+- `taskwing bootstrap`
+- `taskwing plan "<description>"`
+- `taskwing ask "<query>"`
+- `taskwing task`
+- `taskwing plan status`
+- `taskwing slash`
+- `taskwing mcp`
+- `taskwing doctor`
+- `taskwing config`
+- `taskwing start`
 <!-- TASKWING_COMMANDS_END -->
 
 ## Autonomous Task Execution (Hooks)

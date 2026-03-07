@@ -379,16 +379,16 @@ func setHooksEnabled(cwd string, enabled bool) error {
 		if err := initializer.InstallHooksConfig("codex", true); err != nil {
 			return err
 		}
-		fmt.Println("✅ Hooks enabled")
+		ui.PrintSuccess("Hooks enabled")
 	} else {
 		// Remove hooks from settings files
 		if err := removeHooksFromSettings(filepath.Join(cwd, ".claude", "settings.json")); err != nil {
-			fmt.Printf("⚠️  Could not update Claude settings: %v\n", err)
+			ui.PrintWarning(fmt.Sprintf("Could not update Claude settings: %v", err))
 		}
 		if err := removeHooksFromSettings(filepath.Join(cwd, ".codex", "settings.json")); err != nil {
-			fmt.Printf("⚠️  Could not update Codex settings: %v\n", err)
+			ui.PrintWarning(fmt.Sprintf("Could not update Codex settings: %v", err))
 		}
-		fmt.Println("✅ Hooks disabled")
+		ui.PrintSuccess("Hooks disabled")
 	}
 	return nil
 }
@@ -444,7 +444,7 @@ func updateHookCommand(cwd string, modifier func(string) string) error {
 		return fmt.Errorf("no hooks config found. Run: taskwing config set hooks.enabled true")
 	}
 
-	fmt.Println("✅ Configuration updated")
+	ui.PrintSuccess("Configuration updated")
 	return nil
 }
 
@@ -537,26 +537,26 @@ func runConfigInteractive() error {
 		switch result.Selected {
 		case "bootstrap":
 			if err := configureBootstrapModel(); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
+				ui.PrintWarning(fmt.Sprintf("%v", err))
 			}
 		case "query":
 			if err := configureQueryModel(); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
+				ui.PrintWarning(fmt.Sprintf("%v", err))
 			}
 		case "embedding":
 			if err := configureEmbedding(); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
+				ui.PrintWarning(fmt.Sprintf("%v", err))
 			}
 		case "reranking":
 			if err := configureReranking(); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
+				ui.PrintWarning(fmt.Sprintf("%v", err))
 			}
 		}
 	}
 }
 
 func configureBootstrapModel() error {
-	fmt.Println("\n🧠 Configure Complex Tasks Model")
+	fmt.Printf("\n%s Configure Complex Tasks Model\n", ui.IconRobot)
 	fmt.Println("   Used for: bootstrap, planning, deep analysis")
 	fmt.Println()
 
@@ -587,12 +587,13 @@ func configureBootstrapModel() error {
 		return err
 	}
 
-	fmt.Printf("\n✅ Complex tasks: %s/%s\n", selection.Provider, selection.Model)
+	fmt.Println()
+	ui.PrintSuccess(fmt.Sprintf("Complex tasks: %s/%s", selection.Provider, selection.Model))
 	return nil
 }
 
 func configureQueryModel() error {
-	fmt.Println("\n⚡ Configure Fast Queries Model")
+	fmt.Printf("\n%s Configure Fast Queries Model\n", ui.IconBolt)
 	fmt.Println("   Used for: context lookups, ask queries (cheaper, faster)")
 	fmt.Println()
 
@@ -617,12 +618,13 @@ func configureQueryModel() error {
 		return err
 	}
 
-	fmt.Printf("\n✅ Fast queries: %s/%s\n", selection.Provider, selection.Model)
+	fmt.Println()
+	ui.PrintSuccess(fmt.Sprintf("Fast queries: %s/%s", selection.Provider, selection.Model))
 	return nil
 }
 
 func configureEmbedding() error {
-	fmt.Println("\n📐 Configure Embeddings")
+	fmt.Printf("\n%s Configure Embeddings\n", ui.IconRuler)
 	fmt.Println("   Used for: semantic search in knowledge base")
 	fmt.Println("   Tip: Ollama is free and runs locally")
 	fmt.Println()
@@ -645,22 +647,19 @@ func configureEmbedding() error {
 		if !viper.IsSet("llm.embedding_base_url") {
 			viper.Set("llm.embedding_base_url", llm.DefaultOllamaURL)
 		}
-	case llm.ProviderTEI:
-		if !viper.IsSet("llm.embedding_base_url") {
-			viper.Set("llm.embedding_base_url", llm.DefaultTEIURL)
-		}
 	}
 
 	if err := writeConfig(); err != nil {
 		return err
 	}
 
-	fmt.Printf("\n✅ Embeddings: %s/%s\n", selection.Provider, selection.Model)
+	fmt.Println()
+	ui.PrintSuccess(fmt.Sprintf("Embeddings: %s/%s", selection.Provider, selection.Model))
 	return nil
 }
 
 func configureReranking() error {
-	fmt.Println("\n🔄 Configure Reranking")
+	fmt.Printf("\n%s Configure Reranking\n", ui.IconWrench)
 	fmt.Println("   Optional: improves search result quality")
 	fmt.Println("   Requires: TEI server with reranker model")
 	fmt.Println()
@@ -678,7 +677,8 @@ func configureReranking() error {
 			if err := writeConfig(); err != nil {
 				return err
 			}
-			fmt.Println("\n✅ Reranking disabled")
+			fmt.Println()
+			ui.PrintSuccess("Reranking disabled")
 		}
 	} else {
 		fmt.Println("   Currently: DISABLED")
@@ -698,7 +698,8 @@ func configureReranking() error {
 			if err := writeConfig(); err != nil {
 				return err
 			}
-			fmt.Println("\n✅ Reranking enabled")
+			fmt.Println()
+			ui.PrintSuccess("Reranking enabled")
 		}
 	}
 	return nil
@@ -772,10 +773,10 @@ func runTelemetryStatus() error {
 	fmt.Println()
 
 	status := "Disabled"
-	statusIcon := "❌"
+	statusIcon := ui.IconStop
 	if cfg.IsEnabled() {
 		status = "Enabled"
-		statusIcon = "✅"
+		statusIcon = ui.IconDone
 	}
 
 	fmt.Printf("  Status:       %s %s\n", statusIcon, status)
@@ -810,7 +811,7 @@ func runTelemetryEnable() error {
 		})
 	}
 
-	fmt.Println("✅ Telemetry enabled")
+	ui.PrintSuccess("Telemetry enabled")
 	fmt.Println()
 	fmt.Println("Thank you for helping improve TaskWing!")
 	fmt.Println("We collect: command names, duration, success/failure, OS, CLI version")
@@ -838,7 +839,7 @@ func runTelemetryDisable() error {
 		})
 	}
 
-	fmt.Println("✅ Telemetry disabled")
+	ui.PrintSuccess("Telemetry disabled")
 	fmt.Println()
 	fmt.Println("You can re-enable anytime with: taskwing config telemetry enable")
 	return nil

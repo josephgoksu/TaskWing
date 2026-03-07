@@ -12,7 +12,7 @@ import (
 type EmbeddingSelection struct {
 	Provider string
 	Model    string
-	BaseURL  string // For TEI/Ollama
+	BaseURL  string // For Ollama
 }
 
 // PromptEmbeddingSelection runs an interactive embedding provider then model selection.
@@ -47,8 +47,6 @@ func PromptEmbeddingProvider() (string, error) {
 		switch {
 		case p.ID == llm.ProviderOllama:
 			desc = fmt.Sprintf("Local • %d models • free", p.ModelCount)
-		case p.ID == llm.ProviderTEI:
-			desc = "Self-hosted TEI server"
 		case p.IsFree:
 			desc = fmt.Sprintf("%d models • free", p.ModelCount)
 		default:
@@ -89,10 +87,6 @@ func PromptEmbeddingProvider() (string, error) {
 func PromptEmbeddingModel(provider string) (string, error) {
 	models := llm.GetEmbeddingModelsForProvider(provider)
 	if len(models) == 0 {
-		// No models defined, use "custom" for TEI or empty
-		if provider == llm.ProviderTEI {
-			return "custom", nil
-		}
 		return "", nil
 	}
 
@@ -157,7 +151,7 @@ func (m embeddingProviderSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m embeddingProviderSelectModel) View() string {
-	s := "\n" + StyleSelectTitle.Render("📐 Select Embedding Provider") + "\n\n"
+	s := "\n" + StyleSelectTitle.Render(fmt.Sprintf("%s Select Embedding Provider", IconRuler)) + "\n\n"
 
 	for i, opt := range m.options {
 		cursor := "  "
@@ -213,7 +207,7 @@ func (m embeddingModelSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m embeddingModelSelectModel) View() string {
-	s := "\n" + StyleSelectTitle.Render(fmt.Sprintf("📐 Select Embedding Model (%s)", m.provider)) + "\n\n"
+	s := "\n" + StyleSelectTitle.Render(fmt.Sprintf("%s Select Embedding Model (%s)", IconRuler, m.provider)) + "\n\n"
 
 	for i, model := range m.models {
 		cursor := "  "

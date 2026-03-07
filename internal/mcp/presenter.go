@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	agentcore "github.com/josephgoksu/TaskWing/internal/agents/core"
-	agentimpl "github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
@@ -1117,19 +1116,45 @@ func FormatDebugResult(findings []agentcore.Finding) string {
 	return strings.TrimSpace(sb.String())
 }
 
+// Local types for debug/simplify presenter (original types removed with dead agents).
+type debugHypothesis struct {
+	Cause         string   `json:"cause"`
+	Likelihood    string   `json:"likelihood"`
+	Reasoning     string   `json:"reasoning"`
+	CodeLocations []string `json:"code_locations"`
+}
+
+type debugInvestigationStep struct {
+	Step            int    `json:"step"`
+	Action          string `json:"action"`
+	Command         string `json:"command"`
+	ExpectedFinding string `json:"expected_finding"`
+}
+
+type debugQuickFix struct {
+	Fix  string `json:"fix"`
+	When string `json:"when"`
+}
+
+type simplifyChange struct {
+	What string `json:"what"`
+	Why  string `json:"why"`
+	Risk string `json:"risk"`
+}
+
 // extractDebugHypotheses safely extracts hypotheses from interface{}.
 // Handles both direct []DebugHypothesis and []interface{} from JSON.
-func extractDebugHypotheses(raw interface{}) []agentimpl.DebugHypothesis {
+func extractDebugHypotheses(raw interface{}) []debugHypothesis {
 	// Direct type match (from agent output before serialization)
-	if typed, ok := raw.([]agentimpl.DebugHypothesis); ok {
+	if typed, ok := raw.([]debugHypothesis); ok {
 		return typed
 	}
 	// Handle []interface{} from JSON unmarshaling
 	if arr, ok := raw.([]interface{}); ok {
-		result := make([]agentimpl.DebugHypothesis, 0, len(arr))
+		result := make([]debugHypothesis, 0, len(arr))
 		for _, item := range arr {
 			if m, ok := item.(map[string]interface{}); ok {
-				h := agentimpl.DebugHypothesis{
+				h := debugHypothesis{
 					Cause:      getStringField(m, "cause"),
 					Likelihood: getStringField(m, "likelihood"),
 					Reasoning:  getStringField(m, "reasoning"),
@@ -1150,15 +1175,15 @@ func extractDebugHypotheses(raw interface{}) []agentimpl.DebugHypothesis {
 }
 
 // extractDebugSteps safely extracts investigation steps from interface{}.
-func extractDebugSteps(raw interface{}) []agentimpl.DebugInvestigationStep {
-	if typed, ok := raw.([]agentimpl.DebugInvestigationStep); ok {
+func extractDebugSteps(raw interface{}) []debugInvestigationStep {
+	if typed, ok := raw.([]debugInvestigationStep); ok {
 		return typed
 	}
 	if arr, ok := raw.([]interface{}); ok {
-		result := make([]agentimpl.DebugInvestigationStep, 0, len(arr))
+		result := make([]debugInvestigationStep, 0, len(arr))
 		for _, item := range arr {
 			if m, ok := item.(map[string]interface{}); ok {
-				s := agentimpl.DebugInvestigationStep{
+				s := debugInvestigationStep{
 					Step:            getIntField(m, "step"),
 					Action:          getStringField(m, "action"),
 					Command:         getStringField(m, "command"),
@@ -1173,15 +1198,15 @@ func extractDebugSteps(raw interface{}) []agentimpl.DebugInvestigationStep {
 }
 
 // extractDebugFixes safely extracts quick fixes from interface{}.
-func extractDebugFixes(raw interface{}) []agentimpl.DebugQuickFix {
-	if typed, ok := raw.([]agentimpl.DebugQuickFix); ok {
+func extractDebugFixes(raw interface{}) []debugQuickFix {
+	if typed, ok := raw.([]debugQuickFix); ok {
 		return typed
 	}
 	if arr, ok := raw.([]interface{}); ok {
-		result := make([]agentimpl.DebugQuickFix, 0, len(arr))
+		result := make([]debugQuickFix, 0, len(arr))
 		for _, item := range arr {
 			if m, ok := item.(map[string]interface{}); ok {
-				f := agentimpl.DebugQuickFix{
+				f := debugQuickFix{
 					Fix:  getStringField(m, "fix"),
 					When: getStringField(m, "when"),
 				}
@@ -1264,17 +1289,17 @@ func FormatSimplifyResult(findings []agentcore.Finding) string {
 
 // extractSimplifyChanges safely extracts changes from interface{}.
 // Handles both direct []SimplifyChange and []interface{} from JSON.
-func extractSimplifyChanges(raw interface{}) []agentimpl.SimplifyChange {
+func extractSimplifyChanges(raw interface{}) []simplifyChange {
 	// Direct type match (from agent output before serialization)
-	if typed, ok := raw.([]agentimpl.SimplifyChange); ok {
+	if typed, ok := raw.([]simplifyChange); ok {
 		return typed
 	}
 	// Handle []interface{} from JSON unmarshaling
 	if arr, ok := raw.([]interface{}); ok {
-		result := make([]agentimpl.SimplifyChange, 0, len(arr))
+		result := make([]simplifyChange, 0, len(arr))
 		for _, item := range arr {
 			if m, ok := item.(map[string]interface{}); ok {
-				c := agentimpl.SimplifyChange{
+				c := simplifyChange{
 					What: getStringField(m, "what"),
 					Why:  getStringField(m, "why"),
 					Risk: getStringField(m, "risk"),

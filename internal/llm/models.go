@@ -498,20 +498,6 @@ func GetRecommendedModelForRole(providerID string, role ModelRole) *Model {
 	return GetDefaultModel(providerID)
 }
 
-// GetCategoryBadge returns an emoji badge for the model category.
-func GetCategoryBadge(category ModelCategory) string {
-	switch category {
-	case CategoryReasoning:
-		return "🧠"
-	case CategoryBalanced:
-		return "⚡"
-	case CategoryFast:
-		return "🚀"
-	default:
-		return ""
-	}
-}
-
 // InferProvider attempts to determine the provider from a model name.
 // Returns the provider ID and true if inference succeeded.
 func InferProvider(modelID string) (string, bool) {
@@ -622,17 +608,6 @@ func formatPriceInfo(providerID string, input, output float64) string {
 		}
 	}
 	return fmt.Sprintf("$%.2f/$%.2f per 1M tokens", input, output)
-}
-
-// CalculateCost calculates cost in USD for token usage.
-func CalculateCost(modelID string, inputTokens, outputTokens int) float64 {
-	m := GetModel(modelID)
-	if m == nil {
-		return 0
-	}
-	inputCost := float64(inputTokens) / 1_000_000 * m.InputPer1M
-	outputCost := float64(outputTokens) / 1_000_000 * m.OutputPer1M
-	return inputCost + outputCost
 }
 
 // ModelSupportsThinking returns true if the model supports extended thinking mode.

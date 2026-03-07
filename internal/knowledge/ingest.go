@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -55,7 +56,7 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 	}
 
 	// 3. Link Knowledge Graph (evidence-based + semantic)
-	evidenceEdges, semanticEdges, err := s.linkKnowledgeGraph(verbose)
+	evidenceEdges, semanticEdges, err := s.linkKnowledgeGraph()
 	if err != nil {
 		return err
 	}
@@ -66,12 +67,12 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 	totalEdges := evidenceEdges + semanticEdges + llmEdges
 
 	if verbose {
-		fmt.Println(" done")
+		fmt.Printf("  Linking knowledge graph done (%d evidence, %d semantic, %d llm)\n", evidenceEdges, semanticEdges, llmEdges)
 		if rejectedCount > 0 {
-			fmt.Printf("\n⚠️  Rejected %d findings with unverifiable evidence.\n", rejectedCount)
+			fmt.Printf("  [warn] Rejected %d findings with unverifiable evidence.\n", rejectedCount)
 		}
-		fmt.Printf("\n✅ Saved %d knowledge nodes (%d duplicates skipped), %d edges (%d evidence, %d semantic, %d llm) to memory.\n",
-			nodesCreated, skippedDuplicates, totalEdges, evidenceEdges, semanticEdges, llmEdges)
+		fmt.Printf("  Saved %d knowledge nodes (%d duplicates skipped), %d edges to memory.\n",
+			nodesCreated, skippedDuplicates, totalEdges)
 	}
 
 	return nil
@@ -95,7 +96,7 @@ func (s *Service) verifyFindings(ctx context.Context, findings []core.Finding, v
 		case core.VerificationStatusVerified:
 			verifiedCount++
 			if verbose {
-				fmt.Print("✓")
+				fmt.Print(".")
 			}
 		case core.VerificationStatusPartial:
 			verifiedCount++ // Partial counts as verified (kept)
@@ -105,7 +106,7 @@ func (s *Service) verifyFindings(ctx context.Context, findings []core.Finding, v
 		case core.VerificationStatusRejected:
 			rejectedCount++
 			if verbose {
-				fmt.Print("✗")
+				fmt.Print("x")
 			}
 		default:
 			if verbose {
@@ -266,13 +267,19 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 			}
 		}
 
-		if err := s.repo.UpsertNodeBySummary(node); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  failed to upsert node %q: %v\n", f.Title, err)
+		actualID, err := s.repo.UpsertNodeBySummary(node)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[warn] failed to upsert node %q: %v\n", f.Title, err)
 		} else {
 			nodesCreated++
-			nodesByTitle[strings.ToLower(f.Title)] = nodeID
+			nodesByTitle[strings.ToLower(f.Title)] = actualID
 		}
 	}
+
+	if verbose {
+		fmt.Println() // Close the "Generating embeddings..." dots line
+	}
+
 	return nodesCreated, skippedDuplicates, nodesByTitle, nil
 }
 
@@ -280,11 +287,7 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 // 1. Shared evidence (nodes referencing the same files)
 // 2. Semantic similarity (embedding-based)
 // Returns (evidenceEdges, semanticEdges, error)
-func (s *Service) linkKnowledgeGraph(verbose bool) (int, int, error) {
-	if verbose {
-		fmt.Print("  Linking knowledge graph")
-	}
-
+func (s *Service) linkKnowledgeGraph() (int, int, error) {
 	allNodes, err := s.repo.ListNodes("")
 	if err != nil {
 		return 0, 0, err
@@ -304,6 +307,7 @@ func (s *Service) linkKnowledgeGraph(verbose bool) (int, int, error) {
 // Note: allNodes must include Evidence fields (use ListNodes which now includes them).
 func (s *Service) linkByEvidence(allNodes []memory.Node) int {
 	count := 0
+	failures := 0
 
 	// Build map: file path -> list of node IDs that reference it
 	fileToNodes := make(map[string][]string)
@@ -370,12 +374,16 @@ func (s *Service) linkByEvidence(allNodes []memory.Node) int {
 					"shared_count": sharedFiles,
 				}
 				if err := s.repo.LinkNodes(nodeA, nodeB, memory.NodeRelationSharesEvidence, weight, props); err != nil {
-					fmt.Fprintf(os.Stderr, "⚠️  failed to link nodes (evidence): %v\n", err)
+					failures++
 				} else {
 					count++
 				}
 			}
 		}
+	}
+
+	if failures > 0 {
+		slog.Debug("evidence linking had failures", "failed", failures, "succeeded", count)
 	}
 
 	return count
@@ -398,6 +406,7 @@ func countSharedFiles(filesA, filesB []string) int {
 
 func (s *Service) linkSemantic(allNodes []memory.Node) int {
 	count := 0
+	failures := 0
 	threshold := SemanticSimilarityThreshold
 
 	// Fetch all nodes with embeddings in a single query (no N+1)
@@ -420,12 +429,16 @@ func (s *Service) linkSemantic(allNodes []memory.Node) int {
 			if similarity >= float32(threshold) {
 				props := map[string]any{"similarity": similarity}
 				if err := s.repo.LinkNodes(nodeA.ID, nodeB.ID, memory.NodeRelationSemanticallySimilar, float64(similarity), props); err != nil {
-					fmt.Fprintf(os.Stderr, "⚠️  failed to link nodes (semantic): %v\n", err)
+					failures++
 				} else {
 					count++
 				}
 			}
 		}
+	}
+
+	if failures > 0 {
+		slog.Debug("semantic linking had failures", "failed", failures, "succeeded", count)
 	}
 	return count
 }
@@ -438,14 +451,17 @@ func (s *Service) linkByLLMRelationships(relationships []core.Relationship, node
 	}
 
 	count := 0
+	failures := 0
 	for _, rel := range relationships {
 		// Look up node IDs by title (case-insensitive)
 		fromID := nodesByTitle[strings.ToLower(rel.From)]
 		toID := nodesByTitle[strings.ToLower(rel.To)]
 
-		if fromID == "" || toID == "" {
-			// Try partial matching if exact match fails
+		// Try partial matching only for missing IDs
+		if fromID == "" {
 			fromID = findNodeByPartialTitle(nodesByTitle, rel.From)
+		}
+		if toID == "" {
 			toID = findNodeByPartialTitle(nodesByTitle, rel.To)
 		}
 
@@ -474,10 +490,14 @@ func (s *Service) linkByLLMRelationships(relationships []core.Relationship, node
 		}
 
 		if err := s.repo.LinkNodes(fromID, toID, relationType, weight, props); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  failed to link nodes (llm): %v\n", err)
+			failures++
 		} else {
 			count++
 		}
+	}
+
+	if failures > 0 {
+		slog.Debug("LLM relationship linking had failures", "failed", failures, "succeeded", count)
 	}
 
 	return count
