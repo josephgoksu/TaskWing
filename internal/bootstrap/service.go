@@ -275,11 +275,18 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (
 	}
 
 	// 2. Load Documentation Files (deterministic)
+	// For multi-repo workspaces, also scan sub-repo directories
 	if !isQuiet {
 		fmt.Print("   📄 Loading documentation...")
 	}
 	docLoader := NewDocLoader(s.basePath)
-	docs, err := docLoader.Load()
+	ws, wsErr := project.DetectWorkspace(s.basePath)
+	var docs []DocFile
+	if wsErr == nil && len(ws.Services) > 0 && ws.Services[0] != "." {
+		docs, err = docLoader.LoadForServices(ws.Services)
+	} else {
+		docs, err = docLoader.Load()
+	}
 	if err != nil {
 		// Track warning instead of silently swallowing
 		result.Warnings = append(result.Warnings, fmt.Sprintf("doc loader: %v", err))

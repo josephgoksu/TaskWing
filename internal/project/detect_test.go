@@ -400,6 +400,111 @@ func TestLoadGitignore_NoFile(t *testing.T) {
 	}
 }
 
+func TestIsMonorepoDetection(t *testing.T) {
+	t.Run("multi_repo_no_root_git_detected_as_monorepo", func(t *testing.T) {
+		// Directory with multiple sub-repos but no root .git
+		fs := setupFS([]string{
+			"/workspace/svc-a/.git/",
+			"/workspace/svc-a/go.mod",
+			"/workspace/svc-b/.git/",
+			"/workspace/svc-b/package.json",
+			"/workspace/svc-c/pyproject.toml",
+		})
+
+		d := NewDetector(fs)
+		ctx, err := d.Detect("/workspace")
+		if err != nil {
+			t.Fatalf("Detect() error: %v", err)
+		}
+
+		if !ctx.IsMonorepo {
+			t.Error("IsMonorepo = false, want true for multi-repo workspace with 3 nested projects")
+		}
+	})
+
+	t.Run("single_project_not_monorepo", func(t *testing.T) {
+		fs := setupFS([]string{
+			"/project/.git/",
+			"/project/go.mod",
+			"/project/main.go",
+		})
+
+		d := NewDetector(fs)
+		ctx, err := d.Detect("/project")
+		if err != nil {
+			t.Fatalf("Detect() error: %v", err)
+		}
+
+		if ctx.IsMonorepo {
+			t.Error("IsMonorepo = true, want false for single project")
+		}
+	})
+
+	t.Run("empty_dir_not_monorepo", func(t *testing.T) {
+		fs := setupFS([]string{
+			"/empty/",
+		})
+
+		d := NewDetector(fs)
+		ctx, err := d.Detect("/empty")
+		if err != nil {
+			t.Fatalf("Detect() error: %v", err)
+		}
+
+		if ctx.IsMonorepo {
+			t.Error("IsMonorepo = true, want false for empty directory")
+		}
+		if ctx.MarkerType != MarkerNone {
+			t.Errorf("MarkerType = %v, want MarkerNone", ctx.MarkerType)
+		}
+	})
+}
+
+func TestWorkspaceRootSelection(t *testing.T) {
+	t.Run("monorepo_root_from_subdirectory", func(t *testing.T) {
+		fs := setupFS([]string{
+			"/monorepo/.git/",
+			"/monorepo/frontend/package.json",
+			"/monorepo/backend/go.mod",
+		})
+
+		d := NewDetector(fs)
+		ctx, err := d.Detect("/monorepo/backend")
+		if err != nil {
+			t.Fatalf("Detect() error: %v", err)
+		}
+
+		if ctx.RootPath != "/monorepo/backend" {
+			t.Errorf("RootPath = %q, want /monorepo/backend", ctx.RootPath)
+		}
+		if ctx.GitRoot != "/monorepo" {
+			t.Errorf("GitRoot = %q, want /monorepo", ctx.GitRoot)
+		}
+		if !ctx.IsMonorepo {
+			t.Error("IsMonorepo = false, want true")
+		}
+	})
+
+	t.Run("home_dir_without_projects_not_selected_as_root", func(t *testing.T) {
+		// Simulate HOME with just .taskwing (global config) and no nested projects
+		fs := setupFS([]string{
+			"/home/user/.taskwing/",
+			"/home/user/.config/",
+		})
+
+		d := NewDetector(fs)
+		ctx, err := d.Detect("/home/user")
+		if err != nil {
+			t.Fatalf("Detect() error: %v", err)
+		}
+
+		// Should get MarkerTaskWing but NOT IsMonorepo
+		if ctx.IsMonorepo {
+			t.Error("IsMonorepo = true, want false for HOME with only global .taskwing")
+		}
+	})
+}
+
 func TestDetect_GitignoreWithAnchoredPattern(t *testing.T) {
 	// /dist in gitignore should match top-level "dist" dir
 	fs := afero.NewMemMapFs()

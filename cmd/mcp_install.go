@@ -107,8 +107,7 @@ func installMCPForTarget(target, binPath, cwd string) error {
 		installCodexGlobal(binPath, cwd)
 		return nil
 	case "gemini":
-		installGeminiCLI(binPath, cwd)
-		return nil
+		return installGeminiCLI(binPath, cwd)
 	case "copilot":
 		installCopilot(binPath, cwd)
 		return nil
@@ -445,14 +444,20 @@ func installCopilot(binPath, projectDir string) {
 	fmt.Println("   (Reload VS Code window to activate)")
 }
 
-func installGeminiCLI(binPath, projectDir string) {
+func installGeminiCLI(binPath, projectDir string) error {
 	// Check if gemini CLI is available
-	_, err := exec.LookPath("gemini")
+	geminiPath, err := exec.LookPath("gemini")
 	if err != nil {
-		fmt.Println("❌ 'gemini' CLI not found in PATH.")
-		fmt.Println("   Please install the Gemini CLI first to use this integration.")
-		fmt.Println("   See: https://geminicli.com/docs/getting-started")
-		return
+		return fmt.Errorf("'gemini' CLI not found in PATH: install from https://geminicli.com/docs/getting-started")
+	}
+
+	// Check gemini version to detect compatibility issues
+	versionCmd := exec.Command(geminiPath, "--version")
+	versionOut, versionErr := versionCmd.Output()
+	if versionErr != nil {
+		fmt.Printf("⚠️  Could not determine gemini version: %v\n", versionErr)
+	} else if viper.GetBool("verbose") {
+		fmt.Printf("   gemini version: %s\n", strings.TrimSpace(string(versionOut)))
 	}
 
 	serverName := mcpServerName(projectDir)
@@ -461,35 +466,40 @@ func installGeminiCLI(binPath, projectDir string) {
 
 	if viper.GetBool("preview") {
 		fmt.Printf("[PREVIEW] Would run: gemini mcp remove -s project %s && gemini mcp add -s project %s %s mcp\n", legacyName, serverName, binPath)
-		return
+		return nil
 	}
 
 	// Remove legacy server name (migration cleanup)
-	legacyRemoveCmd := exec.Command("gemini", "mcp", "remove", "-s", "project", legacyName)
+	legacyRemoveCmd := exec.Command(geminiPath, "mcp", "remove", "-s", "project", legacyName)
 	legacyRemoveCmd.Dir = projectDir
 	_ = legacyRemoveCmd.Run() // Ignore error - server may not exist
 
 	// Remove current server name (idempotent reinstall)
-	removeCmd := exec.Command("gemini", "mcp", "remove", "-s", "project", serverName)
+	removeCmd := exec.Command(geminiPath, "mcp", "remove", "-s", "project", serverName)
 	removeCmd.Dir = projectDir
 	_ = removeCmd.Run() // Ignore error - server may not exist
 
 	// Run: gemini mcp add -s project <name> <command> [args...]
 	// Uses -s project for project-level config (stored in .gemini/settings.json)
-	cmd := exec.Command("gemini", "mcp", "add", "-s", "project", serverName, binPath, "mcp")
+	cmd := exec.Command(geminiPath, "mcp", "add", "-s", "project", serverName, binPath, "mcp")
 	cmd.Dir = projectDir
 
-	// Capture output to suppress noise, unless verbose
+	var stderrBuf strings.Builder
+	cmd.Stderr = &stderrBuf
 	if viper.GetBool("verbose") {
 		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
 	}
 
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("⚠️  Failed to run 'gemini mcp add': %v\n", err)
-	} else {
-		fmt.Printf("✅ Installed for Gemini as '%s'\n", serverName)
+		stderrMsg := strings.TrimSpace(stderrBuf.String())
+		if stderrMsg != "" {
+			return fmt.Errorf("'gemini mcp add' failed (exit %v): %s", err, stderrMsg)
+		}
+		return fmt.Errorf("'gemini mcp add' failed: %w", err)
 	}
+
+	fmt.Printf("✅ Installed for Gemini as '%s'\n", serverName)
+	return nil
 }
 
 func installCodexGlobal(binPath, projectDir string) {

@@ -55,6 +55,25 @@ func (f *Finding) IsDebt() bool {
 	return f.DebtScore >= 0.7
 }
 
+// HasEvidence returns true if the finding has at least one evidence item
+// with a non-empty file path. Findings without evidence should not be
+// auto-linked into the knowledge graph (Gate 3 enforcement).
+func (f *Finding) HasEvidence() bool {
+	for _, e := range f.Evidence {
+		if e.FilePath != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// NeedsHumanVerification returns true if this finding should be flagged
+// for human review rather than automatically applied. A finding needs
+// verification when it lacks evidence or has low confidence.
+func (f *Finding) NeedsHumanVerification() bool {
+	return !f.HasEvidence() || f.ConfidenceScore < 0.5
+}
+
 // Evidence represents verifiable proof for a Finding.
 type Evidence struct {
 	FilePath     string `json:"file_path"`

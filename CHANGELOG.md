@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **RootPath resolution**: Reject `MarkerNone` contexts in `GetMemoryBasePath` to prevent accidental writes to `~/.taskwing/memory.db`. Also reject `.taskwing` markers above multi-repo workspaces during detection walk-up. (`TestRootPathResolution`, `TestBootstrapRepro_RootPathResolvesToHome`)
+- **FK constraint failures**: `LinkNodes` now pre-checks node existence before INSERT to avoid SQLite error 787. Duplicate edges handled gracefully. (`TestKnowledgeLinking_NoFK`)
+- **IsMonorepo misclassification**: `Detect()` now checks `hasNestedProjects()` in the `MarkerNone` fallback, so multi-repo workspaces are correctly classified. Resolves disagreement between `Detect()` and `DetectWorkspace()`. (`TestIsMonorepoDetection`, `TestBootstrapRepro_IsMonorepoMisclassification`)
+- **Zero docs loaded**: Added `LoadForServices` to `DocLoader` for multi-repo workspaces. Wired into `RunDeterministicBootstrap` via workspace auto-detection. (`TestDocIngestion`, `TestSubrepoMetadataExtraction`)
+- **Sub-repo metadata**: Verified per-repo workspace context in node storage with proper isolation and cross-workspace linking. (`TestSubrepoMetadataPresent`)
+- **Claude MCP drift**: Added filesystem-based drift detection tests with evidence traceability and Gate 3 consent enforcement for global mutations. (`TestClaudeDriftDetection`)
+- **Hallucinated findings**: Gate 3 enforcement in `NewFindingWithEvidence` — findings without evidence start as "skipped". Added `HasEvidence()` and `NeedsHumanVerification()` to `Finding`. (`TestGate3_Enforcement`, `TestParseJSONResponse_Hallucination`)
 - Priority scheduling semantics corrected (lower numeric priority executes first).
 - Unknown slash subcommands now fail explicitly instead of silently falling back.
 - MCP plan action descriptions aligned with implemented behavior.

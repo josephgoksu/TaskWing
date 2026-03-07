@@ -99,6 +99,15 @@ func (c *Client) IsRepository() bool {
 	return err == nil
 }
 
+// IsGitRepository is a standalone convenience function that checks if a directory
+// is inside a git work tree. Uses a real shell command (no mock support).
+// This is intended for pre-flight checks before running git operations on
+// arbitrary paths (e.g., multi-repo bootstrap sub-directories).
+func IsGitRepository(dir string) bool {
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--is-inside-work-tree")
+	return cmd.Run() == nil
+}
+
 // IsDirty checks if the working directory has uncommitted changes.
 func (c *Client) IsDirty() (bool, error) {
 	output, err := c.commander.RunInDir(c.workDir, "git", "status", "--porcelain")

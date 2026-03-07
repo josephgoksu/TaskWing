@@ -59,6 +59,15 @@ func NewFindingWithEvidence(
 	metadata map[string]any,
 ) Finding {
 	confidenceScore, confidenceLabel := ParseConfidence(confidence)
+	convertedEvidence := ConvertEvidence(evidence)
+
+	// Gate 3: Findings without evidence start as "skipped" rather than "pending"
+	// to prevent them from being auto-linked into the knowledge graph.
+	verificationStatus := VerificationStatusPending
+	if len(convertedEvidence) == 0 {
+		verificationStatus = VerificationStatusSkipped
+	}
+
 	return Finding{
 		Type:               findingType,
 		Title:              title,
@@ -67,8 +76,8 @@ func NewFindingWithEvidence(
 		Tradeoffs:          tradeoffs,
 		ConfidenceScore:    confidenceScore,
 		Confidence:         confidenceLabel,
-		Evidence:           ConvertEvidence(evidence),
-		VerificationStatus: VerificationStatusPending,
+		Evidence:           convertedEvidence,
+		VerificationStatus: verificationStatus,
 		SourceAgent:        sourceAgent,
 		Metadata:           metadata,
 	}

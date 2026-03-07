@@ -14,6 +14,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/config"
+	gitpkg "github.com/josephgoksu/TaskWing/internal/git"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/project"
 )
@@ -248,6 +249,15 @@ func gatherGitChunks(basePath string, verbose bool) ([]string, string) {
 			basePath, scopePath)
 	}
 
+	// Determine work directory and validate it is a git repository
+	workDir := getGitWorkDir(projectCtx, basePath)
+	if !gitpkg.IsGitRepository(workDir) {
+		if verbose {
+			log.Printf("[git] skipping git log: %q is not a git repository", workDir)
+		}
+		return nil, ""
+	}
+
 	// Build git log command with optional path scoping
 	args := []string{"log", "--format=%h %ad %s", "--date=short", fmt.Sprintf("-%d", gitMaxCommits)}
 	if scopePath != "" {
@@ -256,7 +266,6 @@ func gatherGitChunks(basePath string, verbose bool) ([]string, string) {
 	}
 
 	cmd := exec.Command("git", args...)
-	workDir := getGitWorkDir(projectCtx, basePath)
 	cmd.Dir = workDir
 
 	// Task 5: Add error logging when git command fails

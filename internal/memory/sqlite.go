@@ -1463,12 +1463,22 @@ func (s *SQLiteStore) LinkNodes(from, to, relation string, confidence float64, p
 		}
 	}
 
-	_, err := s.db.Exec(`
+	// Verify both nodes exist before inserting to avoid FK constraint errors (error 787).
+	// INSERT OR IGNORE only suppresses UNIQUE violations, not FK violations.
+	var existCount int
+	if qErr := s.db.QueryRow(`SELECT COUNT(*) FROM nodes WHERE id IN (?, ?)`, from, to).Scan(&existCount); qErr != nil {
+		return fmt.Errorf("check node existence: %w", qErr)
+	}
+	if existCount < 2 {
+		return fmt.Errorf("link skipped: one or both nodes not found (from=%q, to=%q)", from, to)
+	}
+
+	_, execErr := s.db.Exec(`
 		INSERT OR IGNORE INTO node_edges (from_node, to_node, relation, properties, confidence, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, from, to, relation, propsJSON, confidence, time.Now().UTC().Format(time.RFC3339))
 
-	return err
+	return execErr
 }
 
 // GetNodeEdges returns all edges for a node.
