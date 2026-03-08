@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 )
 
 // Table renders data in a compact markdown-style table format.
@@ -37,6 +39,31 @@ func (t *Table) ColumnWidths() []int {
 		for i := range widths {
 			if widths[i] > t.MaxWidth {
 				widths[i] = t.MaxWidth
+			}
+		}
+	}
+
+	// Auto-constrain to terminal width when MaxWidth is not set
+	if t.MaxWidth == 0 {
+		termWidth := GetTerminalWidth()
+		// Account for leading space + column separators (2 chars between each column)
+		overhead := 1 + (len(widths)-1)*2
+		available := termWidth - overhead
+		if available > 0 {
+			total := 0
+			for _, w := range widths {
+				total += w
+			}
+			if total > available {
+				// Proportionally shrink columns, but keep a minimum of 4 chars
+				ratio := float64(available) / float64(total)
+				for i := range widths {
+					newW := int(float64(widths[i]) * ratio)
+					if newW < 4 {
+						newW = 4
+					}
+					widths[i] = newW
+				}
 			}
 		}
 	}
@@ -99,6 +126,15 @@ func padRight(s string, width int) string {
 		return s
 	}
 	return s + strings.Repeat(" ", width-len(s))
+}
+
+// GetTerminalWidth returns the current terminal width, defaulting to 80.
+func GetTerminalWidth() int {
+	w, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || w <= 0 {
+		return 80
+	}
+	return w
 }
 
 // TruncateID shortens an ID for display (first 6 chars).

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/app"
 )
 
@@ -161,8 +162,8 @@ func truncate(s string, max int) string {
 	return s[:max-3] + "..."
 }
 
-// StyleBold returns the text with bold ANSI codes.
-// This is a simple implementation - could use lipgloss for more styling.
+// StyleBold returns the text with bold styling via lipgloss.
+// Respects NO_COLOR automatically.
 func StyleBold(s string) string {
-	return "\033[1m" + s + "\033[0m"
+	return lipgloss.NewStyle().Bold(true).Render(s)
 }

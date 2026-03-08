@@ -36,6 +36,25 @@ Your AI tools start every session from zero. They don't know your stack, your pa
 
 **TaskWing fixes this.** One command extracts your architecture into a local database. Every AI session after that just *knows*.
 
+## Why TaskWing?
+
+Your AI assistant reads the same files every session. TaskWing remembers so it doesn't have to.
+
+```
+Without TaskWing              With TaskWing
+─────────────────             ─────────────
+8–12 file reads               1 MCP query
+~25,000 tokens                ~1,500 tokens
+2–3 minutes                   42 seconds
+Zero persistent context       170+ knowledge nodes
+```
+
+**Real session, real numbers** — asked *"What are the bottlenecks in our engineering process?"*:
+- **Without TaskWing:** 8 Glob/Grep searches, 12 file reads, 25,000 tokens, 3 minutes
+- **With TaskWing MCP:** 1 query, 1,500 tokens, 42 seconds — synthesized answer with code references
+
+That's **90% fewer tokens** and **75% faster** time-to-answer.
+
 ## What It Does
 
 | Capability | Description |

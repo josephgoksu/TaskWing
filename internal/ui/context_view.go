@@ -42,8 +42,8 @@ func RenderContextResultsWithSymbolsVerbose(query string, scored []knowledge.Sco
 func renderContextInternal(query string, scored []knowledge.ScoredNode, answer string, verbose bool) {
 	// Styles
 	var (
-		titleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		sectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
+		titleStyle   = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+		sectionStyle = lipgloss.NewStyle().Foreground(ColorPurple).Bold(true)
 	)
 
 	// Render Answer Panel
@@ -79,11 +79,11 @@ func renderContextInternal(query string, scored []knowledge.ScoredNode, answer s
 func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, verbose bool) {
 	// Styles
 	var (
-		headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true) // Cyan for headers
-		metaStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))           // Dim for metadata
-		contentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))           // Light for content
-		barFull      = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))            // Green
-		barEmpty     = lipgloss.NewStyle().Foreground(lipgloss.Color("237"))           // Dark gray
+		headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "6", Dark: "14"}).Bold(true)
+		metaStyle    = lipgloss.NewStyle().Foreground(ColorSecondary)
+		contentStyle = lipgloss.NewStyle().Foreground(ColorText)
+		barFull      = lipgloss.NewStyle().Foreground(ColorSuccess)
+		barEmpty     = lipgloss.NewStyle().Foreground(ColorBarEmpty)
 		panelBorder  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(scoreToColor(s.Score, maxScore)).Padding(0, 1).MarginTop(1)
 	)
 
@@ -167,15 +167,15 @@ func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, 
 }
 
 // scoreToColor returns a border color based on the score (green for high, yellow for medium, gray for low).
-func scoreToColor(score, maxScore float32) lipgloss.Color {
+func scoreToColor(score, maxScore float32) lipgloss.TerminalColor {
 	relative := score / maxScore
 	switch {
 	case relative >= 0.8:
-		return lipgloss.Color("42") // Green - high relevance
+		return ColorSuccess
 	case relative >= 0.5:
-		return lipgloss.Color("214") // Orange - medium relevance
+		return ColorWarning
 	default:
-		return lipgloss.Color("241") // Gray - lower relevance
+		return ColorSecondary
 	}
 }
 
@@ -183,8 +183,8 @@ func scoreToColor(score, maxScore float32) lipgloss.Color {
 func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNode, symbols []app.SymbolResponse, answer string, verbose bool) {
 	// Styles
 	var (
-		titleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		sectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
+		titleStyle   = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true)
+		sectionStyle = lipgloss.NewStyle().Foreground(ColorPurple).Bold(true)
 	)
 
 	// Render Answer Panel
@@ -233,10 +233,10 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 func renderSymbolPanel(index int, sym app.SymbolResponse, verbose bool) {
 	// Styles
 	var (
-		headerStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
-		metaStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-		locationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
-		panelBorder   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(0, 1).MarginTop(1)
+		headerStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "6", Dark: "14"}).Bold(true)
+		metaStyle     = lipgloss.NewStyle().Foreground(ColorSecondary)
+		locationStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "25", Dark: "39"})
+		panelBorder   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.AdaptiveColor{Light: "55", Dark: "63"}).Padding(0, 1).MarginTop(1)
 	)
 
 	icon := symbolKindIcon(sym.Kind)
@@ -308,7 +308,7 @@ func getContentWithoutSummary(content, summary string) string {
 // RenderAskResult displays a complete AskResult from the ask pipeline.
 // This is the primary rendering function for the `taskwing ask` command.
 func RenderAskResult(result *app.AskResult, verbose bool) {
-	sectionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true)
+	sectionStyle := lipgloss.NewStyle().Foreground(ColorPurple).Bold(true)
 
 	// Header with query in a styled box
 	headerBox := lipgloss.NewStyle().

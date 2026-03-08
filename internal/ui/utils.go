@@ -36,7 +36,7 @@ func RenderPageHeader(title, subtitle string) {
 type Panel struct {
 	Title       string
 	Content     string
-	BorderColor lipgloss.Color
+	BorderColor lipgloss.TerminalColor
 	Width       int
 }
 
@@ -51,7 +51,7 @@ func NewPanel(title, content string) *Panel {
 }
 
 // WithBorderColor sets the border color and returns the panel.
-func (p *Panel) WithBorderColor(color lipgloss.Color) *Panel {
+func (p *Panel) WithBorderColor(color lipgloss.TerminalColor) *Panel {
 	p.BorderColor = color
 	return p
 }

@@ -72,7 +72,7 @@ var (
 			Foreground(ColorSuccess)
 
 	scoreBarEmpty = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("237"))
+			Foreground(ColorBarEmpty)
 
 	sectionStyle = lipgloss.NewStyle().
 			Foreground(ColorPrimary).
