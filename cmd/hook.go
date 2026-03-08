@@ -227,16 +227,16 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 		})
 	}
 
-	// Open repository
+	// Open repository — graceful degradation on failure
 	repo, err := openRepo()
 	if err != nil {
 		if isMissingProjectMemoryError(err) {
 			return outputHookResponse(HookResponse{
-				Reason: "No project memory found. Run 'taskwing bootstrap' to initialize project memory.",
+				Reason: "No project memory found. Run 'taskwing bootstrap' to initialize project memory, or use /tw-next to continue manually.",
 			})
 		}
 		return outputHookResponse(HookResponse{
-			Reason: fmt.Sprintf("Failed to open repository: %v", err),
+			Reason: fmt.Sprintf("Could not open repository: %v. Use /tw-next to continue manually.", err),
 		})
 	}
 	defer func() { _ = repo.Close() }()
@@ -332,7 +332,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	blockDecision := "block"
 	return outputHookResponse(HookResponse{
 		Decision: &blockDecision,
-		Reason:   fmt.Sprintf("Continue to task %d/%d: %s\n\n%s", session.TasksCompleted+1, len(activePlan.Tasks), nextTask.Title, contextStr),
+		Reason:   fmt.Sprintf("Continue to task %d/%d: %s\n\n%s\n\nIf auto-continue fails, use /tw-next to proceed manually.", session.TasksCompleted+1, len(activePlan.Tasks), nextTask.Title, contextStr),
 	})
 }
 

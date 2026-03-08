@@ -42,17 +42,18 @@ const (
 	TaskActionCurrent  TaskAction = "current"
 	TaskActionStart    TaskAction = "start"
 	TaskActionComplete TaskAction = "complete"
+	TaskActionSkip     TaskAction = "skip"
 )
 
 // ValidTaskActions returns all valid task actions.
 func ValidTaskActions() []TaskAction {
-	return []TaskAction{TaskActionNext, TaskActionCurrent, TaskActionStart, TaskActionComplete}
+	return []TaskAction{TaskActionNext, TaskActionCurrent, TaskActionStart, TaskActionComplete, TaskActionSkip}
 }
 
 // IsValid checks if the action is a valid task action.
 func (a TaskAction) IsValid() bool {
 	switch a {
-	case TaskActionNext, TaskActionCurrent, TaskActionStart, TaskActionComplete:
+	case TaskActionNext, TaskActionCurrent, TaskActionStart, TaskActionComplete, TaskActionSkip:
 		return true
 	}
 	return false

@@ -224,18 +224,27 @@ func runMCPServer(ctx context.Context) error {
 - current: Get current in-progress task for session
 - start: Claim a specific task by ID
 - complete: Mark task as completed with summary
+- skip: Skip a task that's irrelevant or overlapping (use summary for reason)
 
 REQUIRED FIELDS BY ACTION:
-- next: session_id (optional when called via MCP session, required otherwise)
-- current: session_id (optional when called via MCP session, required otherwise)
-- start: task_id (required), session_id (optional when called via MCP session)
-- complete: task_id (required)`,
+- next: session_id (auto-inferred from hook session if omitted)
+- current: session_id (auto-inferred from hook session if omitted)
+- start: task_id (required), session_id (auto-inferred from hook session if omitted)
+- complete: task_id (required)
+- skip: task_id (required), summary (optional skip reason)`,
 	}
 	mcpsdk.AddTool(server, taskTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.TaskToolParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		defaultSessionID := ""
 		if session != nil {
 			if sid := strings.TrimSpace(session.ID()); sid != "" {
 				defaultSessionID = sid
+			}
+		}
+		// Fallback: infer session_id from hook_session.json when MCP transport
+		// doesn't provide one (Claude Code stdio never does).
+		if defaultSessionID == "" {
+			if hs, hsErr := loadHookSession(); hsErr == nil && hs.SessionID != "" {
+				defaultSessionID = hs.SessionID
 			}
 		}
 		result, err := mcppresenter.HandleTaskTool(ctx, repo, params.Arguments, defaultSessionID)

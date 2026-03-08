@@ -76,6 +76,17 @@ type GenerateOptions struct {
 	ClarifySessionID string // Required: clarify session that reached ready state
 	EnrichedGoal     string // Fully clarified specification
 	Save             bool   // Whether to persist plan/tasks to DB
+	ExplicitTasks    []ExplicitTask // If provided, use these instead of LLM generation
+}
+
+// ExplicitTask is a caller-provided task definition that bypasses LLM generation.
+type ExplicitTask struct {
+	Title              string
+	Description        string
+	AcceptanceCriteria []string
+	ValidationSteps    []string
+	Priority           int
+	Complexity         string
 }
 
 // AuditResult contains the result of plan auditing.
@@ -575,42 +586,69 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 		}
 	}
 
-	// Create and run PlanningAgent
-	planningAgent := a.PlannerFactory(llmCfg)
-	defer func() { _ = planningAgent.Close() }()
+	// If caller provided explicit tasks, use them directly (skip LLM generation)
+	var tasks []task.Task
+	if len(opts.ExplicitTasks) > 0 {
+		for i, et := range opts.ExplicitTasks {
+			priority := et.Priority
+			if priority == 0 {
+				priority = (i + 1) * 10 // auto-assign sequential priority
+			}
+			complexity := et.Complexity
+			if complexity == "" {
+				complexity = "medium"
+			}
+			t := task.Task{
+				ID:                 fmt.Sprintf("task-%s", uuid.New().String()[:8]),
+				Title:              et.Title,
+				Description:        et.Description,
+				AcceptanceCriteria: et.AcceptanceCriteria,
+				ValidationSteps:    et.ValidationSteps,
+				Priority:           priority,
+				Complexity:         complexity,
+				Status:             task.StatusPending,
+			}
+			t.EnrichAIFields()
+			tasks = append(tasks, t)
+		}
+	} else {
+		// Create and run PlanningAgent
+		planningAgent := a.PlannerFactory(llmCfg)
+		defer func() { _ = planningAgent.Close() }()
 
-	input := core.Input{
-		ExistingContext: map[string]any{
-			"goal":          opts.Goal,
-			"enriched_goal": opts.EnrichedGoal,
-			"context":       contextStr,
-		},
-	}
+		input := core.Input{
+			ExistingContext: map[string]any{
+				"goal":          opts.Goal,
+				"enriched_goal": opts.EnrichedGoal,
+				"context":       contextStr,
+			},
+		}
 
-	output, err := planningAgent.Run(ctx, input)
-	if err != nil {
-		return &GenerateResult{
-			Success: false,
-			Message: fmt.Sprintf("Planning agent failed: %v", err),
-		}, nil
-	}
-	if output.Error != nil {
-		return &GenerateResult{
-			Success: false,
-			Message: fmt.Sprintf("Planning agent error: %v", output.Error),
-		}, nil
-	}
+		output, err := planningAgent.Run(ctx, input)
+		if err != nil {
+			return &GenerateResult{
+				Success: false,
+				Message: fmt.Sprintf("Planning agent failed: %v", err),
+			}, nil
+		}
+		if output.Error != nil {
+			return &GenerateResult{
+				Success: false,
+				Message: fmt.Sprintf("Planning agent error: %v", output.Error),
+			}, nil
+		}
 
-	// Parse tasks from output
-	if len(output.Findings) == 0 {
-		return &GenerateResult{
-			Success: false,
-			Message: "No findings from planning agent",
-		}, nil
-	}
+		// Parse tasks from output
+		if len(output.Findings) == 0 {
+			return &GenerateResult{
+				Success: false,
+				Message: "No findings from planning agent",
+			}, nil
+		}
 
-	finding := output.Findings[0]
-	tasks := a.parseTasksFromMetadata(ctx, finding.Metadata)
+		finding := output.Findings[0]
+		tasks = a.parseTasksFromMetadata(ctx, finding.Metadata)
+	}
 
 	if len(tasks) == 0 {
 		return &GenerateResult{

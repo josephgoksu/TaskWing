@@ -18,6 +18,7 @@ const (
 	StatusVerifying  TaskStatus = "verifying"   // Work done, running validation
 	StatusCompleted  TaskStatus = "completed"   // Successfully verified
 	StatusFailed     TaskStatus = "failed"      // Execution or verification failed
+	StatusSkipped    TaskStatus = "skipped"     // Skipped by user or agent
 	StatusBlocked    TaskStatus = "blocked"     // Waiting on dependencies
 	StatusReady      TaskStatus = "ready"       // Dependencies met, ready for execution
 )
