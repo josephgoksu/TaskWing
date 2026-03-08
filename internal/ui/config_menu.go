@@ -194,16 +194,16 @@ func (m configMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 var (
 	configTitleStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("39"))
+				Foreground(lipgloss.AdaptiveColor{Light: "25", Dark: "39"})
 
 	configActiveStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("86"))
+				Foreground(lipgloss.AdaptiveColor{Light: "30", Dark: "86"})
 
 	configDimStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240"))
+			Foreground(ColorDim)
 
 	configValueStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("229"))
+				Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "229"})
 )
 
 func (m configMenuModel) View() string {

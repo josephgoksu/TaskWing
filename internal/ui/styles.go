@@ -7,19 +7,23 @@ import (
 )
 
 var (
-	// Colors
-	ColorPrimary   = lipgloss.Color("205") // Pink
-	ColorSecondary = lipgloss.Color("241") // Gray
-	ColorSuccess   = lipgloss.Color("42")  // Green
-	ColorError     = lipgloss.Color("160") // Red
-	ColorWarning   = lipgloss.Color("214") // Orange/Yellow
-	ColorText      = lipgloss.Color("252") // White/Gray
-	ColorCyan      = lipgloss.Color("87")  // Cyan for strategy
-	ColorBlue      = lipgloss.Color("75")  // Blue for answers
-	ColorHighlight = lipgloss.Color("12")  // Blue for titles/highlights
-	ColorSelected  = lipgloss.Color("10")  // Green for selected items
-	ColorDim       = lipgloss.Color("240") // Dim gray for secondary text
-	ColorYellow    = lipgloss.Color("11")  // Yellow for badges/accents
+	// Colors — AdaptiveColor auto-selects Light/Dark based on terminal background
+	ColorPrimary   = lipgloss.AdaptiveColor{Light: "161", Dark: "205"} // Pink
+	ColorSecondary = lipgloss.AdaptiveColor{Light: "244", Dark: "241"} // Gray
+	ColorSuccess   = lipgloss.AdaptiveColor{Light: "28", Dark: "42"}   // Green
+	ColorError     = lipgloss.AdaptiveColor{Light: "160", Dark: "160"} // Red
+	ColorWarning   = lipgloss.AdaptiveColor{Light: "172", Dark: "214"} // Orange/Yellow
+	ColorText      = lipgloss.AdaptiveColor{Light: "235", Dark: "252"} // Text
+	ColorCyan      = lipgloss.AdaptiveColor{Light: "30", Dark: "87"}   // Cyan for strategy
+	ColorBlue      = lipgloss.AdaptiveColor{Light: "27", Dark: "75"}   // Blue for answers
+	ColorHighlight = lipgloss.AdaptiveColor{Light: "4", Dark: "12"}    // Blue for titles/highlights
+	ColorSelected  = lipgloss.AdaptiveColor{Light: "2", Dark: "10"}    // Green for selected items
+	ColorDim       = lipgloss.AdaptiveColor{Light: "247", Dark: "240"} // Dim gray for secondary text
+	ColorYellow    = lipgloss.AdaptiveColor{Light: "136", Dark: "11"}  // Yellow for badges/accents
+
+	// Shared constants used across multiple views
+	ColorPurple   = lipgloss.AdaptiveColor{Light: "97", Dark: "141"}  // Purple for sections
+	ColorBarEmpty = lipgloss.AdaptiveColor{Light: "250", Dark: "237"} // Empty bar segments
 
 	// Base Styles
 	StyleTitle   = lipgloss.NewStyle().Foreground(ColorText).Bold(true)
@@ -84,8 +88,6 @@ var (
 	StyleSelectBadge  = lipgloss.NewStyle().Foreground(ColorYellow).Bold(true)
 
 	// Table Styles (alternating rows)
-	ColorTableRowEven = lipgloss.Color("236") // Subtle dark background
-	ColorTableRowOdd  = lipgloss.Color("234") // Slightly darker
 	StyleTableRowEven = lipgloss.NewStyle().Foreground(ColorText)
 	StyleTableRowOdd  = lipgloss.NewStyle().Foreground(ColorDim)
 	StyleTableHeader  = lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Underline(true)
@@ -106,24 +108,24 @@ var (
 
 // CategoryBadge returns a styled badge string for a knowledge node type.
 func CategoryBadge(nodeType string) string {
-	colors := map[string]lipgloss.Color{
-		"decision":      lipgloss.Color("205"), // Pink
-		"feature":       lipgloss.Color("75"),  // Blue
-		"constraint":    lipgloss.Color("214"), // Orange
-		"pattern":       lipgloss.Color("141"), // Purple
-		"plan":          lipgloss.Color("42"),  // Green
-		"note":          lipgloss.Color("252"), // White
-		"metadata":      lipgloss.Color("87"),  // Cyan
-		"documentation": lipgloss.Color("11"),  // Yellow
+	colors := map[string]lipgloss.AdaptiveColor{
+		"decision":      ColorPrimary,
+		"feature":       ColorBlue,
+		"constraint":    ColorWarning,
+		"pattern":       ColorPurple,
+		"plan":          ColorSuccess,
+		"note":          lipgloss.AdaptiveColor{Light: "248", Dark: "252"},
+		"metadata":      ColorCyan,
+		"documentation": ColorYellow,
 	}
 
 	color, ok := colors[nodeType]
 	if !ok {
-		color = lipgloss.Color("241")
+		color = lipgloss.AdaptiveColor{Light: "244", Dark: "241"}
 	}
 
 	badge := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("0")).
+		Foreground(lipgloss.AdaptiveColor{Light: "255", Dark: "0"}).
 		Background(color).
 		Padding(0, 1).
 		Bold(true)
