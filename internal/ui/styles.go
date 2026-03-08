@@ -88,8 +88,6 @@ var (
 	StyleSelectBadge  = lipgloss.NewStyle().Foreground(ColorYellow).Bold(true)
 
 	// Table Styles (alternating rows)
-	ColorTableRowEven = lipgloss.AdaptiveColor{Light: "254", Dark: "236"} // Subtle background
-	ColorTableRowOdd  = lipgloss.AdaptiveColor{Light: "231", Dark: "234"} // Slightly different
 	StyleTableRowEven = lipgloss.NewStyle().Foreground(ColorText)
 	StyleTableRowOdd  = lipgloss.NewStyle().Foreground(ColorDim)
 	StyleTableHeader  = lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Underline(true)
@@ -127,7 +125,7 @@ func CategoryBadge(nodeType string) string {
 	}
 
 	badge := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "231", Dark: "0"}).
+		Foreground(lipgloss.AdaptiveColor{Light: "0", Dark: "0"}).
 		Background(color).
 		Padding(0, 1).
 		Bold(true)

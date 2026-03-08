@@ -47,7 +47,10 @@ func (t *Table) ColumnWidths() []int {
 	if t.MaxWidth == 0 {
 		termWidth := GetTerminalWidth()
 		// Account for leading space + column separators (2 chars between each column)
-		overhead := 1 + (len(widths)-1)*2
+		overhead := 1
+		if len(widths) > 1 {
+			overhead += (len(widths) - 1) * 2
+		}
 		available := termWidth - overhead
 		if available > 0 {
 			total := 0
@@ -63,6 +66,33 @@ func (t *Table) ColumnWidths() []int {
 						newW = 4
 					}
 					widths[i] = newW
+				}
+				// Post-clamp: if min-floor caused overflow, trim widest columns
+				for {
+					postTotal := 0
+					for _, w := range widths {
+						postTotal += w
+					}
+					excess := postTotal - available
+					if excess <= 0 {
+						break
+					}
+					// Find widest column and shrink it
+					maxIdx, maxW := 0, 0
+					for i, w := range widths {
+						if w > maxW {
+							maxIdx, maxW = i, w
+						}
+					}
+					// Don't shrink below minimum
+					if maxW <= 4 {
+						break
+					}
+					shrink := excess
+					if shrink > maxW-4 {
+						shrink = maxW - 4
+					}
+					widths[maxIdx] -= shrink
 				}
 			}
 		}
@@ -128,13 +158,18 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", width-len(s))
 }
 
-// GetTerminalWidth returns the current terminal width, defaulting to 80.
-func GetTerminalWidth() int {
-	w, _, err := term.GetSize(int(os.Stdout.Fd()))
+// GetTerminalWidthFor returns the terminal width for the given file descriptor, defaulting to 80.
+func GetTerminalWidthFor(f *os.File) int {
+	w, _, err := term.GetSize(int(f.Fd()))
 	if err != nil || w <= 0 {
 		return 80
 	}
 	return w
+}
+
+// GetTerminalWidth returns the current stdout terminal width, defaulting to 80.
+func GetTerminalWidth() int {
+	return GetTerminalWidthFor(os.Stdout)
 }
 
 // TruncateID shortens an ID for display (first 6 chars).

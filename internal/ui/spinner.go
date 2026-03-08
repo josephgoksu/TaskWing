@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -42,7 +41,7 @@ func (s *Spinner) Start() {
 		for {
 			select {
 			case <-s.stop:
-				fmt.Fprint(os.Stderr, "\r"+strings.Repeat(" ", 80)+"\r")
+				fmt.Fprint(os.Stderr, "\r\033[K")
 				return
 			case <-ticker.C:
 				frame := style.Render(frames[i%len(frames)])

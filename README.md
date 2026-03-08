@@ -78,24 +78,6 @@ curl -fsSL https://taskwing.app/install.sh | sh
 
 No signup. No account. Works offline. Everything stays local in SQLite.
 
-## Quick Start
-
-```bash
-# 1. Extract your architecture
-cd your-project
-taskwing bootstrap
-# → 22 decisions, 12 patterns, 9 constraints extracted
-
-# 2. Set a goal and generate a plan
-taskwing goal "Add Stripe billing"
-# → Plan decomposed into 5 executable tasks
-
-# 3. Execute with your AI assistant
-/tw-next       # Get next task with full context
-# ...work...
-/tw-done       # Mark complete, advance to next
-```
-
 ## Supported Models
 
 <!-- TASKWING_PROVIDERS_START -->
@@ -120,6 +102,24 @@ taskwing goal "Add Stripe billing"
 <!-- TASKWING_LEGAL_START -->
 Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
 <!-- TASKWING_LEGAL_END -->
+
+## Quick Start
+
+```bash
+# 1. Extract your architecture
+cd your-project
+taskwing bootstrap
+# → 22 decisions, 12 patterns, 9 constraints extracted
+
+# 2. Set a goal and generate a plan
+taskwing goal "Add Stripe billing"
+# → Plan decomposed into 5 executable tasks
+
+# 3. Execute with your AI assistant
+/tw-next       # Get next task with full context
+# ...work...
+/tw-done       # Mark complete, advance to next
+```
 
 ## MCP Tools
 
