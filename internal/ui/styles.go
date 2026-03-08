@@ -114,7 +114,7 @@ func CategoryBadge(nodeType string) string {
 		"constraint":    ColorWarning,
 		"pattern":       ColorPurple,
 		"plan":          ColorSuccess,
-		"note":          ColorText,
+		"note":          lipgloss.AdaptiveColor{Light: "248", Dark: "252"},
 		"metadata":      ColorCyan,
 		"documentation": ColorYellow,
 	}
@@ -125,7 +125,7 @@ func CategoryBadge(nodeType string) string {
 	}
 
 	badge := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "0", Dark: "0"}).
+		Foreground(lipgloss.AdaptiveColor{Light: "255", Dark: "0"}).
 		Background(color).
 		Padding(0, 1).
 		Bold(true)
