@@ -170,7 +170,7 @@ func EvaluateIntegration(basePath, aiName string, globalMCPExists bool) Integrat
 				Component:     AIComponentMCPGlobal,
 				Ownership:     OwnershipNone,
 				Status:        ComponentStatusMissing,
-				Reason:        "global taskwing-mcp registration missing",
+				Reason:        "global taskwing MCP registration missing",
 				AutoFixable:   true,
 				MutatesGlobal: true,
 				AdoptRequired: false,

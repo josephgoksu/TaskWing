@@ -49,29 +49,29 @@ taskwing goal "Add user authentication"
 In your AI tool:
 
 ```text
-/tw-next
+/taskwing:next
 ```
 
 When done:
 
 ```text
-/tw-done
+/taskwing:done
 ```
 
 Check current status:
 
 ```text
-/tw-status
+/taskwing:status
 ```
 
 ## 3.5. First-Run Success Loop (<15 minutes)
 
 Use this minimum loop to validate TaskWing end-to-end:
 
-1. `/tw-plan <goal>` and approve the clarified checkpoint
-2. `/tw-next` and approve the implementation checkpoint
+1. `/taskwing:plan <goal>` and approve the clarified checkpoint
+2. `/taskwing:next` and approve the implementation checkpoint
 3. Make a scoped change
-4. `/tw-done` with fresh verification evidence
+4. `/taskwing:done` with fresh verification evidence
 
 If you complete this loop once, your setup is healthy and your assistant workflow is aligned with TaskWing contracts.
 

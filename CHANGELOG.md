@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - "TaskWing helps turn a goal into executed tasks with persistent context across AI sessions."
 - Updated slash and MCP prompt contracts to unified `task` and `plan` action-based interfaces.
 - Purged stale/outdated architecture documentation that no longer matches shipped behavior.
-- Reworked `/tw-plan`, `/tw-next`, `/tw-done`, and `/tw-debug` prompts as explicit process contracts with hard gates and refusal fallbacks.
+- Reworked `/taskwing:plan`, `/taskwing:next`, `/taskwing:done`, and `/taskwing:debug` prompts as explicit process contracts with hard gates and refusal fallbacks.
 - Updated slash command descriptions to trigger-focused "Use when ..." phrasing across assistant command generation.
 - Session initialization output now injects TaskWing Workflow Contract v1 for hook-enabled assistants.
 

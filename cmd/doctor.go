@@ -517,12 +517,12 @@ func printNextSteps(checks []DoctorCheck) {
 	fmt.Println("Next steps:")
 	if !hasActivePlan {
 		fmt.Println("  1. Create and activate plan: taskwing goal \"your development goal\"")
-		fmt.Println("  2. Open Claude Code and run: /tw-next")
+		fmt.Println("  2. Open Claude Code and run: /taskwing:next")
 	} else if !hasSession {
 		fmt.Println("  1. Open Claude Code (session will auto-initialize)")
-		fmt.Println("  2. Run: /tw-next")
+		fmt.Println("  2. Run: /taskwing:next")
 	} else {
-		fmt.Println("  • In Claude Code, run: /tw-next")
+		fmt.Println("  • In Claude Code, run: /taskwing:next")
 		fmt.Println("  • Tasks will auto-continue until circuit breaker triggers")
 	}
 }

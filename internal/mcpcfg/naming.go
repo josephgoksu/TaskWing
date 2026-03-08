@@ -5,7 +5,7 @@ import (
 	"unicode"
 )
 
-const CanonicalServerName = "taskwing-mcp"
+const CanonicalServerName = "taskwing"
 
 func IsCanonicalServerName(name string) bool {
 	return strings.TrimSpace(strings.ToLower(name)) == CanonicalServerName
@@ -16,7 +16,7 @@ func IsLegacyServerName(name string) bool {
 	if normalized == "" || normalized == CanonicalServerName {
 		return false
 	}
-	if normalized == "taskwing" {
+	if normalized == "taskwing-mcp" {
 		return true
 	}
 	return strings.HasPrefix(normalized, "taskwing-mcp-") || strings.HasPrefix(normalized, "taskwing-")

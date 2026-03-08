@@ -209,7 +209,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 		_ = saveHookSession(session)
 
 		return outputHookResponse(HookResponse{
-			Reason: fmt.Sprintf("Sentinel circuit breaker: Critical deviation detected in previous task. %s\n\nReview the changes before proceeding. Use /tw-next to continue after review.", session.LastDeviationSummary),
+			Reason: fmt.Sprintf("Sentinel circuit breaker: Critical deviation detected in previous task. %s\n\nReview the changes before proceeding. Use /taskwing:next to continue after review.", session.LastDeviationSummary),
 		})
 	}
 
@@ -232,11 +232,11 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	if err != nil {
 		if isMissingProjectMemoryError(err) {
 			return outputHookResponse(HookResponse{
-				Reason: "No project memory found. Run 'taskwing bootstrap' to initialize project memory, or use /tw-next to continue manually.",
+				Reason: "No project memory found. Run 'taskwing bootstrap' to initialize project memory, or use /taskwing:next to continue manually.",
 			})
 		}
 		return outputHookResponse(HookResponse{
-			Reason: fmt.Sprintf("Could not open repository: %v. Use /tw-next to continue manually.", err),
+			Reason: fmt.Sprintf("Could not open repository: %v. Use /taskwing:next to continue manually.", err),
 		})
 	}
 	defer func() { _ = repo.Close() }()
@@ -332,7 +332,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	blockDecision := "block"
 	return outputHookResponse(HookResponse{
 		Decision: &blockDecision,
-		Reason:   fmt.Sprintf("Continue to task %d/%d: %s\n\n%s\n\nIf auto-continue fails, use /tw-next to proceed manually.", session.TasksCompleted+1, len(activePlan.Tasks), nextTask.Title, contextStr),
+		Reason:   fmt.Sprintf("Continue to task %d/%d: %s\n\n%s\n\nIf auto-continue fails, use /taskwing:next to proceed manually.", session.TasksCompleted+1, len(activePlan.Tasks), nextTask.Title, contextStr),
 	})
 }
 
@@ -415,7 +415,7 @@ Circuit breakers are configured in .claude/settings.json (defaults: %d tasks, %d
 
 %s
 
-Use /tw-next to start the first task, or it will auto-continue after each task.
+Use /taskwing:next to start the first task, or it will auto-continue after each task.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `, session.SessionID, session.StartedAt.Format("15:04:05"), planInfo, DefaultMaxTasksPerSession, DefaultMaxSessionMinutes, workflowContractBanner)
 

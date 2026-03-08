@@ -317,7 +317,7 @@ func TestClaudeDriftDetection(t *testing.T) {
 						Component:     AIComponentMCPGlobal,
 						Ownership:     OwnershipNone,
 						Status:        ComponentStatusMissing,
-						Reason:        "global taskwing-mcp registration missing",
+						Reason:        "global taskwing MCP registration missing",
 						AutoFixable:   true,
 						MutatesGlobal: true,
 					},
@@ -374,7 +374,7 @@ func TestClaudeDriftDetection(t *testing.T) {
 				AI:             "claude",
 				GlobalMCPDrift: true,
 				Issues: []IntegrationIssue{
-					{AI: "claude", Component: AIComponentMCPGlobal, Status: ComponentStatusMissing, Reason: "global taskwing-mcp registration missing", MutatesGlobal: true},
+					{AI: "claude", Component: AIComponentMCPGlobal, Status: ComponentStatusMissing, Reason: "global taskwing MCP registration missing", MutatesGlobal: true},
 					{AI: "claude", Component: AIComponentCommands, Status: ComponentStatusStale, Reason: "managed marker version mismatch"},
 					{AI: "claude", Component: AIComponentHooks, Status: ComponentStatusInvalid, Reason: "required Stop hook missing"},
 				},

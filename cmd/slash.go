@@ -34,9 +34,9 @@ This command is called dynamically by AI assistant slash commands
 to ensure the content always matches the installed CLI version.
 
 Example:
-  taskwing slash next     # Output /tw-next content
-  taskwing slash done     # Output /tw-done content
-  taskwing slash plan     # Output /tw-plan content`,
+  taskwing slash next     # Output /taskwing:next content
+  taskwing slash done     # Output /taskwing:done content
+  taskwing slash plan     # Output /taskwing:plan content`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return cmd.Help()

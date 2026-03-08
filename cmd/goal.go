@@ -151,7 +151,7 @@ func runGoal(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Plan created and activated: %s (%d task(s))\n", genRes.PlanID, len(genRes.Tasks))
 	fmt.Println("Next:")
-	fmt.Println("  1. In your AI tool, run /tw-next")
+	fmt.Println("  1. In your AI tool, run /taskwing:next")
 	fmt.Println("  2. Or use MCP tool task with action=next")
 	return nil
 }

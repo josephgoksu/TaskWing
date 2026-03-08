@@ -116,9 +116,9 @@ taskwing goal "Add Stripe billing"
 # → Plan decomposed into 5 executable tasks
 
 # 3. Execute with your AI assistant
-/tw-next       # Get next task with full context
+/taskwing:next       # Get next task with full context
 # ...work...
-/tw-done       # Mark complete, advance to next
+/taskwing:done       # Mark complete, advance to next
 ```
 
 ## MCP Tools
@@ -141,7 +141,7 @@ Add to your AI tool's MCP config:
 ```json
 {
   "mcpServers": {
-    "taskwing-mcp": {
+    "taskwing": {
       "command": "taskwing",
       "args": ["mcp"]
     }
@@ -155,15 +155,15 @@ Once connected, use these slash commands from your AI assistant:
 
 | Command | When to use |
 |:--------|:------------|
-| `/tw-ask` | Search project knowledge (decisions, patterns, constraints) |
-| `/tw-remember` | Persist a decision, pattern, or insight to project memory |
-| `/tw-next` | Start the next approved task with full context |
-| `/tw-done` | Complete the current task after verification |
-| `/tw-status` | Check current task progress and acceptance criteria |
-| `/tw-plan` | Clarify a goal and build an approved execution plan |
-| `/tw-debug` | Root-cause-first debugging before proposing fixes |
-| `/tw-explain` | Deep explanation of a code symbol and its call graph |
-| `/tw-simplify` | Simplify code while preserving behavior |
+| `/taskwing:ask` | Search project knowledge (decisions, patterns, constraints) |
+| `/taskwing:remember` | Persist a decision, pattern, or insight to project memory |
+| `/taskwing:next` | Start the next approved task with full context |
+| `/taskwing:done` | Complete the current task after verification |
+| `/taskwing:status` | Check current task progress and acceptance criteria |
+| `/taskwing:plan` | Clarify a goal and build an approved execution plan |
+| `/taskwing:debug` | Root-cause-first debugging before proposing fixes |
+| `/taskwing:explain` | Deep explanation of a code symbol and its call graph |
+| `/taskwing:simplify` | Simplify code while preserving behavior |
 
 ## Core Commands
 

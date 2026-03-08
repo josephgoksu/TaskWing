@@ -6,7 +6,7 @@ Track prompt-contract failures and close the loop with monthly fixes.
 
 | Date (UTC) | Command | Failure Type | User Impact | Root Cause | Fix Shipped | Release |
 |------------|---------|--------------|-------------|------------|-------------|---------|
-| YYYY-MM-DD | /tw-*   | gate bypass / sequencing / ambiguity / missing refusal | low/med/high | short summary | yes/no + PR | vX.Y.Z |
+| YYYY-MM-DD | /taskwing:*   | gate bypass / sequencing / ambiguity / missing refusal | low/med/high | short summary | yes/no + PR | vX.Y.Z |
 
 ## Failure Taxonomy
 
