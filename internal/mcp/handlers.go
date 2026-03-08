@@ -893,25 +893,12 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
 	planApp := app.NewPlanApp(appCtx)
 
-	// Convert explicit tasks from params if provided
-	var explicitTasks []app.ExplicitTask
-	for _, t := range params.Tasks {
-		explicitTasks = append(explicitTasks, app.ExplicitTask{
-			Title:              t.Title,
-			Description:        t.Description,
-			AcceptanceCriteria: t.AcceptanceCriteria,
-			ValidationSteps:    t.ValidationSteps,
-			Priority:           t.Priority,
-			Complexity:         t.Complexity,
-		})
-	}
-
 	result, err := planApp.Generate(ctx, app.GenerateOptions{
 		Goal:             goal,
 		ClarifySessionID: clarifySessionID,
 		EnrichedGoal:     enrichedGoal,
 		Save:             save,
-		ExplicitTasks:    explicitTasks,
+		ExplicitTasks:    params.Tasks,
 	})
 	if err != nil {
 		return &PlanToolResult{

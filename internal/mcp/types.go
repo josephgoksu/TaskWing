@@ -4,6 +4,8 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/josephgoksu/TaskWing/internal/task"
 )
 
 // === Action Constants ===
@@ -249,14 +251,8 @@ type PhaseInput struct {
 }
 
 // TaskInput represents user-provided task data for interactive mode.
-type TaskInput struct {
-	Title              string   `json:"title"`
-	Description        string   `json:"description,omitempty"`
-	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
-	ValidationSteps    []string `json:"validation_steps,omitempty"`
-	Priority           int      `json:"priority,omitempty"`
-	Complexity         string   `json:"complexity,omitempty"`
-}
+// TaskInput is an alias for task.TaskInput — shared struct for explicit task definitions.
+type TaskInput = task.TaskInput
 
 // ClarifyAnswerInput is a structured answer to a clarification question.
 type ClarifyAnswerInput struct {

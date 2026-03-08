@@ -76,17 +76,7 @@ type GenerateOptions struct {
 	ClarifySessionID string // Required: clarify session that reached ready state
 	EnrichedGoal     string // Fully clarified specification
 	Save             bool   // Whether to persist plan/tasks to DB
-	ExplicitTasks    []ExplicitTask // If provided, use these instead of LLM generation
-}
-
-// ExplicitTask is a caller-provided task definition that bypasses LLM generation.
-type ExplicitTask struct {
-	Title              string
-	Description        string
-	AcceptanceCriteria []string
-	ValidationSteps    []string
-	Priority           int
-	Complexity         string
+	ExplicitTasks    []task.TaskInput // If provided, use these instead of LLM generation
 }
 
 // AuditResult contains the result of plan auditing.
