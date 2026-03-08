@@ -83,6 +83,11 @@ func (r *Repository) CompleteTask(taskID, summary string, filesModified []string
 	return r.db.CompleteTask(taskID, summary, filesModified)
 }
 
+// SkipTask marks a task as skipped with an optional reason.
+func (r *Repository) SkipTask(taskID, reason string) error {
+	return r.db.SkipTask(taskID, reason)
+}
+
 // GetActivePlan returns the currently active plan.
 func (r *Repository) GetActivePlan() (*task.Plan, error) {
 	return r.db.GetActivePlan()

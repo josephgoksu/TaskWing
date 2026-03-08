@@ -525,6 +525,7 @@ Your job is to decompose this goal into a sequential list of actionable executio
     - If a caching constraint exists, high-volume endpoints MUST implement caching
     - Never suggest code that violates documented constraints
 5.  **Verification**: For each task, define clear acceptance criteria and a validation command (e.g., "go test ./...").
+6.  **No Overlap**: Each task must be a distinct, non-overlapping unit of work. Do NOT create separate tasks for testing and implementation of the same feature — combine them. If multiple tasks would modify the same files or address the same problem from different angles, merge them into one task. When a caller provides an explicit tasks array, use those tasks directly instead of generating new ones.
 
 **Input Context:**
 - Enriched Goal: {{.Goal}}
@@ -560,6 +561,7 @@ Your job is to break this down into 3-5 logical phases that can be reviewed and 
 3.  **Right-Sized**: Each phase should expand into 2-4 detailed tasks (not too granular, not too vague).
 4.  **Clear Done State**: Each phase should have a clear "done" condition that can be verified.
 5.  **Context Aware**: Use the provided Knowledge Graph Context to align with existing patterns and constraints.
+6.  **No Overlap**: Phases must not overlap in scope. Each phase should own a distinct set of files/concerns. Do not split related work (e.g., implementation + testing of the same feature) across phases.
 
 **Input Context:**
 - Enriched Goal: {{.EnrichedGoal}}
@@ -606,6 +608,7 @@ Your job is to generate 2-4 atomic tasks that fully accomplish this phase.
 3.  **Complete Coverage**: The tasks together must fully accomplish the phase's stated goal.
 4.  **Context Aware**: Use the Knowledge Graph Context to respect existing patterns and constraints.
 5.  **Verifiable**: Each task must have clear acceptance criteria and validation steps.
+6.  **No Overlap**: Tasks must not duplicate effort. Do NOT create separate tasks for "write tests" and "implement feature" for the same change — combine them into one task. If two tasks would modify the same files, merge them. Check against tasks already generated for other phases to avoid cross-phase overlap.
 
 **Input Context:**
 - Phase Title: {{.PhaseTitle}}

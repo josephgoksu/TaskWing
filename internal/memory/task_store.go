@@ -924,11 +924,11 @@ func (s *SQLiteStore) GetNextTask(planID string) (*task.Task, error) {
 		AND NOT EXISTS (
 			SELECT 1 FROM task_dependencies td
 			JOIN tasks dep ON dep.id = td.depends_on
-			WHERE td.task_id = t.id AND dep.status != ?
+			WHERE td.task_id = t.id AND dep.status NOT IN (?, ?)
 		)
 		ORDER BY t.priority ASC, t.created_at ASC
 		LIMIT 1
-	`, planID, task.StatusPending, task.StatusCompleted)
+	`, planID, task.StatusPending, task.StatusCompleted, task.StatusSkipped)
 
 	t, err := scanTaskRow(row)
 	if err == sql.ErrNoRows {
@@ -1121,6 +1121,41 @@ func (s *SQLiteStore) CompleteTask(taskID, summary string, filesModified []strin
 			return fmt.Errorf("task not found: %s", taskID)
 		}
 		return fmt.Errorf("cannot complete task: current status is %s (must be in_progress)", status)
+	}
+
+	return nil
+}
+
+// SkipTask marks a task as skipped with an optional reason.
+// Allows skipping from pending or in_progress status.
+func (s *SQLiteStore) SkipTask(taskID, reason string) error {
+	if taskID == "" {
+		return fmt.Errorf("task id is required")
+	}
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+
+	res, err := s.db.Exec(`
+		UPDATE tasks
+		SET status = ?, completion_summary = ?, completed_at = ?, updated_at = ?
+		WHERE id = ? AND status IN (?, ?)
+	`, task.StatusSkipped, reason, nowStr, nowStr, taskID, task.StatusPending, task.StatusInProgress)
+
+	if err != nil {
+		return fmt.Errorf("skip task: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("skip task rows affected: %w", err)
+	}
+	if affected == 0 {
+		var status task.TaskStatus
+		err := s.db.QueryRow(`SELECT status FROM tasks WHERE id = ?`, taskID).Scan(&status)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("task not found: %s", taskID)
+		}
+		return fmt.Errorf("cannot skip task: current status is %s (must be pending or in_progress)", status)
 	}
 
 	return nil

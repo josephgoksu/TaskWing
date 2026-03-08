@@ -18,9 +18,21 @@ const (
 	StatusVerifying  TaskStatus = "verifying"   // Work done, running validation
 	StatusCompleted  TaskStatus = "completed"   // Successfully verified
 	StatusFailed     TaskStatus = "failed"      // Execution or verification failed
+	StatusSkipped    TaskStatus = "skipped"     // Skipped by user or agent
 	StatusBlocked    TaskStatus = "blocked"     // Waiting on dependencies
 	StatusReady      TaskStatus = "ready"       // Dependencies met, ready for execution
 )
+
+// TaskInput is a caller-provided task definition used to bypass LLM generation.
+// Shared between MCP handlers and the plan app layer.
+type TaskInput struct {
+	Title              string   `json:"title"`
+	Description        string   `json:"description,omitempty"`
+	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
+	ValidationSteps    []string `json:"validation_steps,omitempty"`
+	Priority           int      `json:"priority,omitempty"`
+	Complexity         string   `json:"complexity,omitempty"`
+}
 
 // PhaseStatus represents the lifecycle state of a phase
 type PhaseStatus string

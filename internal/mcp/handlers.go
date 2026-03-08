@@ -519,7 +519,7 @@ func HandleTaskTool(ctx context.Context, repo *memory.Repository, params TaskToo
 	if !params.Action.IsValid() {
 		return &TaskToolResult{
 			Action: string(params.Action),
-			Error:  fmt.Sprintf("invalid action %q, must be one of: next, current, start, complete", params.Action),
+			Error:  fmt.Sprintf("invalid action %q, must be one of: next, current, start, complete, skip", params.Action),
 		}, nil
 	}
 
@@ -532,6 +532,8 @@ func HandleTaskTool(ctx context.Context, repo *memory.Repository, params TaskToo
 		return handleTaskStart(ctx, repo, params, defaultSessionID)
 	case TaskActionComplete:
 		return handleTaskComplete(ctx, repo, params)
+	case TaskActionSkip:
+		return handleTaskSkip(ctx, repo, params)
 	default:
 		return &TaskToolResult{
 			Action: string(params.Action),
@@ -706,6 +708,43 @@ func handleTaskComplete(ctx context.Context, repo *memory.Repository, params Tas
 	}, nil
 }
 
+// handleTaskSkip implements the 'skip' action - skip a task that's irrelevant or overlapping.
+func handleTaskSkip(_ context.Context, repo *memory.Repository, params TaskToolParams) (*TaskToolResult, error) {
+	taskID := strings.TrimSpace(params.TaskID)
+	if taskID == "" {
+		return &TaskToolResult{
+			Action: "skip",
+			Error:  "task_id is required for skip action",
+		}, nil
+	}
+
+	reason := strings.TrimSpace(params.Summary)
+	if reason == "" {
+		reason = "Skipped by user"
+	}
+
+	if err := repo.SkipTask(taskID, reason); err != nil {
+		return &TaskToolResult{
+			Action: "skip",
+			Error:  err.Error(),
+		}, nil
+	}
+
+	// Fetch the updated task to show confirmation
+	t, err := repo.GetTask(taskID)
+	if err != nil {
+		return &TaskToolResult{
+			Action:  "skip",
+			Content: fmt.Sprintf("Task %s skipped. Reason: %s", taskID, reason),
+		}, nil
+	}
+
+	return &TaskToolResult{
+		Action:  "skip",
+		Content: fmt.Sprintf("## Task Skipped\n\n**%s** (`%s`)\n\n**Reason**: %s\n\nUse `task action=next` to get the next pending task.", t.Title, t.ID, reason),
+	}, nil
+}
+
 // === Plan Tool Handler ===
 
 // PlanToolResult represents the response from the unified plan tool.
@@ -859,6 +898,7 @@ func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params Pla
 		ClarifySessionID: clarifySessionID,
 		EnrichedGoal:     enrichedGoal,
 		Save:             save,
+		ExplicitTasks:    params.Tasks,
 	})
 	if err != nil {
 		return &PlanToolResult{
