@@ -367,8 +367,9 @@ func evalCommandsComponent(basePath, aiName string, cfg aiHelperConfig) (Compone
 	}
 
 	expected := expectedSlashCommandFiles(cfg.fileExt)
+
+	// Check for legacy flat tw-* files in commands root
 	entries, _ := os.ReadDir(commandsDir)
-	actual := map[string]struct{}{}
 	commandFileCount := 0
 	taskwingLike := false
 	for _, entry := range entries {
@@ -378,10 +379,25 @@ func evalCommandsComponent(basePath, aiName string, cfg aiHelperConfig) (Compone
 		name := entry.Name()
 		if strings.HasSuffix(name, cfg.fileExt) {
 			commandFileCount++
-			actual[name] = struct{}{}
 			if strings.HasPrefix(strings.TrimSuffix(name, cfg.fileExt), "tw-") {
 				taskwingLike = true
 			}
+		}
+	}
+
+	// Check the taskwing/ namespace subdirectory for expected command files
+	actual := map[string]struct{}{}
+	nsDir := filepath.Join(commandsDir, slashCommandNamespace)
+	nsEntries, _ := os.ReadDir(nsDir)
+	for _, entry := range nsEntries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(name, cfg.fileExt) {
+			commandFileCount++
+			actual[name] = struct{}{}
+			taskwingLike = true
 		}
 	}
 

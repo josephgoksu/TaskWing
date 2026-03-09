@@ -207,7 +207,8 @@ func TestClaudeDriftDetection(t *testing.T) {
 	t.Run("managed_commands_stale_version_triggers_drift", func(t *testing.T) {
 		basePath := t.TempDir()
 		commandsDir := filepath.Join(basePath, ".claude", "commands")
-		if err := os.MkdirAll(commandsDir, 0o755); err != nil {
+		nsDir := filepath.Join(commandsDir, slashCommandNamespace)
+		if err := os.MkdirAll(nsDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 
@@ -217,9 +218,9 @@ func TestClaudeDriftDetection(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Write all expected command files so the version check is reached
+		// Write all expected command files in the taskwing/ subdirectory
 		for name := range expectedSlashCommandFiles(".md") {
-			if err := os.WriteFile(filepath.Join(commandsDir, name), []byte("test"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(nsDir, name), []byte("test"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -253,7 +254,8 @@ func TestClaudeDriftDetection(t *testing.T) {
 	t.Run("local_configured_but_global_mcp_missing_triggers_drift", func(t *testing.T) {
 		basePath := t.TempDir()
 		commandsDir := filepath.Join(basePath, ".claude", "commands")
-		if err := os.MkdirAll(commandsDir, 0o755); err != nil {
+		nsDir := filepath.Join(commandsDir, slashCommandNamespace)
+		if err := os.MkdirAll(nsDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 
@@ -264,9 +266,9 @@ func TestClaudeDriftDetection(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Write expected slash command files
+		// Write expected slash command files in the taskwing/ subdirectory
 		for name := range expectedSlashCommandFiles(".md") {
-			if err := os.WriteFile(filepath.Join(commandsDir, name), []byte("test"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(nsDir, name), []byte("test"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
