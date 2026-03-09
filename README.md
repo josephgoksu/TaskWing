@@ -9,10 +9,6 @@
 <h3 align="center">Give your AI tools <em>a brain.</em></h3>
 
 <p align="center">
-  Memory, planning, task execution, and project intelligence — <strong>the control plane for AI-native development.</strong>
-</p>
-
-<p align="center">
   <a href="https://taskwing.app">Website</a> ·
   <a href="docs/TUTORIAL.md">Tutorial</a> ·
   <a href="docs/PRODUCT_VISION.md">Vision</a> ·
@@ -30,15 +26,9 @@
 
 ---
 
-## The Problem
-
-Your AI tools start every session from zero. They don't know your stack, your patterns, or why you chose PostgreSQL over MongoDB. You re-explain the same context hundreds of times.
+Your AI tools start every session from zero. They don't know your stack, your patterns, or why you chose PostgreSQL over MongoDB.
 
 **TaskWing fixes this.** One command extracts your architecture into a local database. Every AI session after that just *knows*.
-
-## Why TaskWing?
-
-Your AI assistant reads the same files every session. TaskWing remembers so it doesn't have to.
 
 ```
 Without TaskWing              With TaskWing
@@ -49,44 +39,44 @@ Without TaskWing              With TaskWing
 Zero persistent context       170+ knowledge nodes
 ```
 
-**Real session, real numbers** — asked *"What are the bottlenecks in our engineering process?"*:
-- **Without TaskWing:** 8 Glob/Grep searches, 12 file reads, 25,000 tokens, 3 minutes
-- **With TaskWing MCP:** 1 query, 1,500 tokens, 42 seconds — synthesized answer with code references
-
-That's **90% fewer tokens** and **75% faster** time-to-answer.
-
-## What It Does
-
-| Capability | Description |
-|:-----------|:------------|
-| 🧠 **Memory** | Extracts and persists architectural decisions, patterns, and constraints |
-| 📋 **Planning** | Turns a goal into an executable plan with decomposed tasks |
-| ⚡ **Task Execution** | AI-driven task lifecycle — next, start, complete, verify |
-| 🔍 **Code Intelligence** | Symbol search, call graphs, impact analysis, simplification |
-| 🐛 **Debugging** | AI-powered root cause analysis with systematic diagnosis |
-| 🔌 **MCP Integration** | Exposes everything to Claude, Cursor, Copilot, Gemini via MCP |
-
 ## Install
 
 ```bash
-# Homebrew (recommended)
 brew install josephgoksu/tap/taskwing
-
-# or curl
-curl -fsSL https://taskwing.app/install.sh | sh
 ```
 
 No signup. No account. Works offline. Everything stays local in SQLite.
 
-## Supported Models
+<details>
+<summary>Alternative: install via curl</summary>
 
-<!-- TASKWING_PROVIDERS_START -->
-[![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
-[![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
-[![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
-[![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-OpenAI--Compatible_Beta-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html)
-[![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
-<!-- TASKWING_PROVIDERS_END -->
+```bash
+curl -fsSL https://taskwing.app/install.sh | sh
+```
+</details>
+
+## Quick Start
+
+```bash
+# 1. Extract your architecture (one-time)
+cd your-project
+taskwing bootstrap
+# → 22 decisions, 12 patterns, 9 constraints extracted
+
+# 2. Connect to your AI tool
+taskwing mcp install claude    # or: cursor, gemini, codex, copilot, opencode
+
+# 3. Set a goal and go
+taskwing goal "Add Stripe billing"
+# → Plan decomposed into 5 executable tasks
+
+# 4. Execute with your AI assistant
+/taskwing:next       # Get next task with full context
+# ...work...
+/taskwing:done       # Mark complete, advance to next
+```
+
+That's it. Your AI assistant now has persistent architectural context across every session.
 
 ## Works With
 
@@ -99,59 +89,34 @@ No signup. No account. Works offline. Everything stays local in SQLite.
 [![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
 <!-- TASKWING_TOOLS_END -->
 
+## Supported Models
+
+<!-- TASKWING_PROVIDERS_START -->
+[![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
+[![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
+[![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-OpenAI--Compatible_Beta-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html)
+[![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
+<!-- TASKWING_PROVIDERS_END -->
+
 <!-- TASKWING_LEGAL_START -->
 Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
 <!-- TASKWING_LEGAL_END -->
 
-## Quick Start
+## What It Does
 
-```bash
-# 1. Extract your architecture
-cd your-project
-taskwing bootstrap
-# → 22 decisions, 12 patterns, 9 constraints extracted
-
-# 2. Set a goal and generate a plan
-taskwing goal "Add Stripe billing"
-# → Plan decomposed into 5 executable tasks
-
-# 3. Execute with your AI assistant
-/taskwing:next       # Get next task with full context
-# ...work...
-/taskwing:done       # Mark complete, advance to next
-```
-
-## MCP Tools
-
-<!-- TASKWING_MCP_TOOLS_START -->
-| Tool | Description |
-|------|-------------|
-| `ask` | Search project knowledge (decisions, patterns, constraints) |
-| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
-| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
-| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
-| `debug` | Diagnose issues systematically with AI-powered analysis |
-| `remember` | Store knowledge in project memory |
-<!-- TASKWING_MCP_TOOLS_END -->
-
-## MCP Setup
-
-Add to your AI tool's MCP config:
-
-```json
-{
-  "mcpServers": {
-    "taskwing": {
-      "command": "taskwing",
-      "args": ["mcp"]
-    }
-  }
-}
-```
+| Capability | Description |
+|:-----------|:------------|
+| **Memory** | Extracts and persists architectural decisions, patterns, and constraints |
+| **Planning** | Turns a goal into an executable plan with decomposed tasks |
+| **Task Execution** | AI-driven task lifecycle — next, start, complete, verify |
+| **Code Intelligence** | Symbol search, call graphs, impact analysis, simplification |
+| **Debugging** | AI-powered root cause analysis with systematic diagnosis |
+| **MCP Integration** | Exposes everything to your AI tools via Model Context Protocol |
 
 ## Slash Commands
 
-Once connected, use these slash commands from your AI assistant:
+Use these from your AI assistant once connected:
 
 | Command | When to use |
 |:--------|:------------|
@@ -165,22 +130,37 @@ Once connected, use these slash commands from your AI assistant:
 | `/taskwing:explain` | Deep explanation of a code symbol and its call graph |
 | `/taskwing:simplify` | Simplify code while preserving behavior |
 
-## Core Commands
+<details>
+<summary>MCP setup (manual)</summary>
 
-<!-- TASKWING_COMMANDS_START -->
-- `taskwing bootstrap`
-- `taskwing goal "<goal>"`
-- `taskwing ask "<query>"`
-- `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
-- `taskwing mcp`
-- `taskwing doctor`
-- `taskwing config`
-- `taskwing start`
-<!-- TASKWING_COMMANDS_END -->
+`taskwing mcp install` handles this automatically. If you need to configure manually, add to your AI tool's MCP config:
 
-## Autonomous Task Execution (Hooks)
+```json
+{
+  "mcpServers": {
+    "taskwing": {
+      "command": "taskwing",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+<!-- TASKWING_MCP_TOOLS_START -->
+| Tool | Description |
+|------|-------------|
+| `ask` | Search project knowledge (decisions, patterns, constraints) |
+| `task` | Unified task lifecycle (`next`, `current`, `start`, `complete`) |
+| `plan` | Plan management (`clarify`, `decompose`, `expand`, `generate`, `finalize`, `audit`) |
+| `code` | Code intelligence (`find`, `search`, `explain`, `callers`, `impact`, `simplify`) |
+| `debug` | Diagnose issues systematically with AI-powered analysis |
+| `remember` | Store knowledge in project memory |
+<!-- TASKWING_MCP_TOOLS_END -->
+
+</details>
+
+<details>
+<summary>Autonomous task execution (hooks)</summary>
 
 TaskWing integrates with Claude Code's hook system for autonomous plan execution:
 
@@ -195,9 +175,10 @@ taskwing hook status            # View current session state
 - `--max-tasks=5` — Stop after N tasks for human review
 - `--max-minutes=30` — Stop after N minutes
 
-## AWS Bedrock Setup
+</details>
 
-TaskWing supports Bedrock as a first-class provider:
+<details>
+<summary>AWS Bedrock setup</summary>
 
 ```yaml
 llm:
@@ -209,9 +190,6 @@ llm:
     bedrock: ${BEDROCK_API_KEY}
 ```
 
-<details>
-<summary>Recommended Bedrock models</summary>
-
 | Model | Use case |
 |:------|:---------|
 | `anthropic.claude-opus-4-6-v1` | Highest quality reasoning |
@@ -220,16 +198,28 @@ llm:
 | `amazon.nova-pro-v1:0` | Strong balance |
 | `meta.llama4-maverick-17b-instruct-v1:0` | Open-weight general model |
 
+Or configure interactively: `taskwing config`
+
 </details>
 
-Or configure interactively: `taskwing config`
+<!-- TASKWING_COMMANDS_START -->
+- `taskwing bootstrap`
+- `taskwing goal "<goal>"`
+- `taskwing ask "<query>"`
+- `taskwing task`
+- `taskwing plan status`
+- `taskwing slash`
+- `taskwing mcp`
+- `taskwing doctor`
+- `taskwing config`
+- `taskwing start`
+<!-- TASKWING_COMMANDS_END -->
 
 ## Documentation
 
 - [Getting Started](docs/TUTORIAL.md)
 - [Product Vision](docs/PRODUCT_VISION.md)
 - [Architecture](docs/architecture/)
-- [Workflow Contract v1](docs/WORKFLOW_CONTRACT_V1.md)
 - [Workflow Pack](docs/WORKFLOW_PACK.md)
 
 ## License
