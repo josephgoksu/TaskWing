@@ -19,9 +19,9 @@ Get users to one visible success loop in under 15 minutes:
 
 1. `taskwing bootstrap`
 2. `taskwing goal "<goal>"`
-3. `/tw-next`
+3. `/taskwing:next`
 4. Implement scoped change
-5. `/tw-done`
+5. `/taskwing:done`
 
 Expected first-run success signal:
 - One completed task with explicit verification evidence.

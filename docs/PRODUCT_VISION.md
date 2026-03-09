@@ -40,7 +40,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ```text
 ┌─────────────────────────────────────────────────────────┐
 │                    USER INTERFACE                        │
-│  taskwing goal "..."  │  /tw-next  │  /tw-done   │
+│  taskwing goal "..."  │  /taskwing:next  │  /taskwing:done   │
 └─────────────────────────────────────────────────────────┘
                               │
                               ▼

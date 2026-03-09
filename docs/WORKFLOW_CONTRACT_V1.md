@@ -5,10 +5,10 @@ This contract defines non-negotiable behavior gates for TaskWing-guided executio
 ## Scope
 
 Applies to slash flows and hook-driven sessions:
-- `/tw-plan`
-- `/tw-next`
-- `/tw-done`
-- `/tw-debug`
+- `/taskwing:plan`
+- `/taskwing:next`
+- `/taskwing:done`
+- `/taskwing:debug`
 
 ## Gate 1: Plan/Task Checkpoint Before Implementation
 
@@ -47,5 +47,5 @@ KPI:
 ## Operating Policy
 
 - These gates are hard blockers for core workflow commands.
-- Commands that are primarily read-only (`/tw-ask`, `/tw-status`, `/tw-explain`, `/tw-simplify`) remain lightweight but must not bypass these gates.
+- Commands that are primarily read-only (`/taskwing:ask`, `/taskwing:status`, `/taskwing:explain`, `/taskwing:simplify`) remain lightweight but must not bypass these gates.
 - Prompt regressions against this contract are release blockers.

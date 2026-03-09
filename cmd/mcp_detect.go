@@ -36,7 +36,7 @@ func detectExistingMCPConfigs() []string {
 	return found
 }
 
-// detectClaudeMCP checks if Claude Code CLI has taskwing-mcp configured.
+// detectClaudeMCP checks if Claude Code CLI has taskwing configured.
 func detectClaudeMCP() bool {
 	// First check if claude CLI is available
 	_, err := exec.LookPath("claude")
@@ -56,7 +56,7 @@ func detectClaudeMCP() bool {
 	return mcpcfg.ContainsCanonicalServerName(string(output))
 }
 
-// detectGeminiMCP checks if Gemini CLI has taskwing-mcp configured.
+// detectGeminiMCP checks if Gemini CLI has taskwing configured.
 func detectGeminiMCP() bool {
 	// First check if gemini CLI is available
 	_, err := exec.LookPath("gemini")
@@ -78,7 +78,7 @@ func detectGeminiMCP() bool {
 	return mcpcfg.ContainsCanonicalServerName(string(output))
 }
 
-// detectCodexMCP checks if Codex CLI has taskwing-mcp configured.
+// detectCodexMCP checks if Codex CLI has taskwing configured.
 func detectCodexMCP() bool {
 	// First check if codex CLI is available
 	_, err := exec.LookPath("codex")

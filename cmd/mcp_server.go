@@ -146,7 +146,7 @@ func runMCPServer(ctx context.Context) error {
 
 	// Create MCP server
 	impl := &mcpsdk.Implementation{
-		Name:    "taskwing-mcp",
+		Name:    "taskwing",
 		Version: version,
 	}
 

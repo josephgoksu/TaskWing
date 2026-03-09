@@ -3,7 +3,7 @@ Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
 package cmd
 
-// slashNextContent is the prompt content for /tw-next
+// slashNextContent is the prompt content for /taskwing:next
 const slashNextContent = `# Start Next TaskWing Task with Full Context
 
 ## TaskWing Workflow Contract v1 (Always On)
@@ -117,7 +117,7 @@ taskwing plan status                  # Check active plan progress
 ` + "```" + `
 `
 
-// slashDoneContent is the prompt content for /tw-done
+// slashDoneContent is the prompt content for /taskwing:done
 const slashDoneContent = `# Complete Task with Architecture-Aware Summary
 
 ## TaskWing Workflow Contract v1 (Always On)
@@ -197,7 +197,7 @@ Display:
 [Summary report]
 
 Recorded in TaskWing memory.
-Use /tw-next to continue with next priority task.
+Use /taskwing:next to continue with next priority task.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` + "```" + `
 
@@ -207,7 +207,7 @@ taskwing task complete TASK_ID
 ` + "```" + `
 `
 
-// slashStatusContent is the prompt content for /tw-status
+// slashStatusContent is the prompt content for /taskwing:status
 const slashStatusContent = `# Show Current Task Status
 
 This is a read-only status command. Do not use it to bypass plan, verification, or debug gates.
@@ -220,7 +220,7 @@ Call MCP tool ` + "`task`" + ` with action ` + "`current`" + `:
 
 If no active task:
 ` + "```" + `
-No active task. Use /tw-next to start the next priority task.
+No active task. Use /taskwing:next to start the next priority task.
 ` + "```" + `
 
 ## Step 2: Display Status
@@ -242,8 +242,8 @@ Scope: [scope]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Commands:
-  /tw-done    - Complete this task
-  /tw-ask     - Fetch more context
+  /taskwing:done    - Complete this task
+  /taskwing:ask     - Fetch more context
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` + "```" + `
 
@@ -254,12 +254,12 @@ taskwing plan list
 ` + "```" + `
 `
 
-// slashPlanContent is the prompt content for /tw-plan
+// slashPlanContent is the prompt content for /taskwing:plan
 const slashPlanContent = `# Create Development Plan with Goal
 
-**Usage:** ` + "`/tw-plan <your goal>`" + ` or ` + "`/tw-plan --batch <your goal>`" + `
+**Usage:** ` + "`/taskwing:plan <your goal>`" + ` or ` + "`/taskwing:plan --batch <your goal>`" + `
 
-**Example:** ` + "`/tw-plan Add Stripe billing integration`" + `
+**Example:** ` + "`/taskwing:plan Add Stripe billing integration`" + `
 
 ## TaskWing Workflow Contract v1 (Always On)
 1. No implementation before a clarified and approved plan/task checkpoint.
@@ -365,7 +365,7 @@ Display the generated plan:
 📋 Plan saved and set as active.
 
 **Next steps:**
-- Run /tw-next to start working on the first task
+- Run /taskwing:next to start working on the first task
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` + "```" + `
 
@@ -502,7 +502,7 @@ After all phases are expanded, call MCP tool ` + "`plan`" + ` with action=finali
 📋 Plan saved and set as active.
 
 **Next steps:**
-- Run /tw-next to start working on the first task
+- Run /taskwing:next to start working on the first task
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` + "```" + `
 
@@ -516,10 +516,10 @@ taskwing plan new --non-interactive "Your goal description"  # Headless mode
 ` + "```" + `
 `
 
-// slashSimplifyContent is the prompt content for /tw-simplify
+// slashSimplifyContent is the prompt content for /taskwing:simplify
 const slashSimplifyContent = `# Simplify Code
 
-**Usage:** ` + "`/tw-simplify [file_path or paste code]`" + `
+**Usage:** ` + "`/taskwing:simplify [file_path or paste code]`" + `
 
 Reduce code complexity while preserving behavior.
 This command is optimization-only and must not bypass planning, verification, or debugging gates.
@@ -575,12 +575,12 @@ Ask if the user wants to apply the changes to the file.
 ` + "```" + `
 `
 
-// slashDebugContent is the prompt content for /tw-debug
+// slashDebugContent is the prompt content for /taskwing:debug
 const slashDebugContent = `# Debug Issue
 
-**Usage:** ` + "`/tw-debug <problem description>`" + `
+**Usage:** ` + "`/taskwing:debug <problem description>`" + `
 
-**Example:** ` + "`/tw-debug API returns 500 on /users endpoint`" + `
+**Example:** ` + "`/taskwing:debug API returns 500 on /users endpoint`" + `
 
 ## TaskWing Workflow Contract v1 (Always On)
 1. No implementation before a clarified and approved plan/task checkpoint.
@@ -663,12 +663,12 @@ taskwing plan status
 ` + "```" + `
 `
 
-// slashExplainContent is the prompt content for /tw-explain
+// slashExplainContent is the prompt content for /taskwing:explain
 const slashExplainContent = `# Explain Code Symbol
 
-**Usage:** ` + "`/tw-explain <symbol_name>`" + `
+**Usage:** ` + "`/taskwing:explain <symbol_name>`" + `
 
-**Example:** ` + "`/tw-explain NewAskApp`" + `
+**Example:** ` + "`/taskwing:explain NewAskApp`" + `
 
 Get a deep-dive explanation of a code symbol including its purpose, usage patterns, and call graph.
 This is an analysis command and must not be used to bypass planning, verification, or debug gates.
@@ -736,7 +736,7 @@ taskwing mcp
 ` + "```" + `
 `
 
-// slashAskContent is the prompt content for /tw-ask
+// slashAskContent is the prompt content for /taskwing:ask
 const slashAskContent = `# Project Knowledge Brief
 
 This is a context-priming command and must not be used to bypass planning, verification, or debug gates.
@@ -756,7 +756,7 @@ If you need broader coverage, run:
 Present the returned summary and top results to prime the conversation with project knowledge.
 `
 
-// slashRememberContent is the prompt content for /tw-remember
+// slashRememberContent is the prompt content for /taskwing:remember
 const slashRememberContent = `# Store Knowledge in Project Memory
 
 This is a persistence command and must not be used to bypass planning, verification, or debug gates.

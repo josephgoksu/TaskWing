@@ -689,5 +689,5 @@ func printPlanView(plan *task.Plan) {
 
 	fmt.Println("Next steps:")
 	fmt.Println("  • taskwing task list --plan " + plan.ID)
-	fmt.Println("  • /tw-next")
+	fmt.Println("  • /taskwing:next")
 }
