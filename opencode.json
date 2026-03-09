@@ -4,7 +4,7 @@
     "taskwing": {
       "type": "local",
       "command": [
-        "/Users/josephgoksu/Development/products/taskWing-cli/bin/taskwing",
+        "taskwing",
         "mcp"
       ],
       "timeout": 5000
