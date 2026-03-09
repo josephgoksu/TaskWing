@@ -12,6 +12,7 @@ import (
 
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/logger"
+	"github.com/josephgoksu/TaskWing/internal/migration"
 	"github.com/josephgoksu/TaskWing/internal/telemetry"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
@@ -55,7 +56,13 @@ var rootCmd = &cobra.Command{
 
 Create a plan, execute tasks with your AI tool, and keep architecture context
 persistent across sessions.`,
-	PersistentPreRunE:  initTelemetry,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if err := initTelemetry(cmd, args); err != nil {
+			return err
+		}
+		maybeRunPostUpgradeMigration(cmd)
+		return nil
+	},
 	PersistentPostRunE: closeTelemetry,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
@@ -171,6 +178,31 @@ func init() {
 // GetVersion returns the application version
 func GetVersion() string {
 	return version
+}
+
+// maybeRunPostUpgradeMigration runs a one-time migration when the CLI version
+// changes (e.g., after brew upgrade). Skips commands that don't need project context.
+func maybeRunPostUpgradeMigration(cmd *cobra.Command) {
+	// Skip commands that don't need project context
+	name := cmd.Name()
+	if name == "version" || name == "help" || name == "mcp" {
+		return
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	warnings, err := migration.CheckAndMigrate(cwd, version)
+	if err != nil {
+		// Migration errors are non-fatal
+		return
+	}
+
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "⚠️  %s\n", w)
+	}
 }
 
 // initTelemetry initializes the telemetry client.

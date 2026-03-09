@@ -16,6 +16,9 @@ import (
 // Initializer handles the setup of TaskWing project structure and integrations.
 type Initializer struct {
 	basePath string
+	// Version is the CLI version to stamp in .taskwing/version.
+	// If empty, no version file is written.
+	Version string
 }
 
 func NewInitializer(basePath string) *Initializer {
@@ -216,6 +219,13 @@ func (i *Initializer) createStructure(verbose bool) error {
 			fmt.Printf("  ✓ Created %s\n", dir)
 		}
 	}
+
+	// Track CLI version for post-upgrade migration detection
+	if i.Version != "" {
+		versionPath := filepath.Join(i.basePath, ".taskwing", "version")
+		_ = os.WriteFile(versionPath, []byte(i.Version), 0644)
+	}
+
 	return nil
 }
 
@@ -247,6 +257,26 @@ var aiHelpers = func() map[string]aiHelperConfig {
 	}
 	return cfg
 }()
+
+// AIHelperInfo exposes read-only AI config fields needed by external packages.
+type AIHelperInfo struct {
+	CommandsDir    string
+	SingleFile     bool
+	SingleFileName string
+}
+
+// AIHelperByName returns exported config info for the named AI, if it exists.
+func AIHelperByName(name string) (AIHelperInfo, bool) {
+	cfg, ok := aiHelpers[name]
+	if !ok {
+		return AIHelperInfo{}, false
+	}
+	return AIHelperInfo{
+		CommandsDir:    cfg.commandsDir,
+		SingleFile:     cfg.singleFile,
+		SingleFileName: cfg.singleFileName,
+	}, true
+}
 
 // TaskWingManagedFile is the marker file name written to directories managed by TaskWing.
 // This file indicates that TaskWing created and owns the directory, preventing false positives

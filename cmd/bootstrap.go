@@ -195,6 +195,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 
 	// Initialize Service
 	svc := bootstrap.NewService(cwd, llmCfg)
+	svc.SetVersion(version)
 
 	// Prompt for repo selection in multi-repo workspaces.
 	// This must happen before the action loop because ActionInitProject may not
