@@ -40,6 +40,12 @@ func NewService(basePath string, llmCfg llm.Config) *Service {
 	}
 }
 
+// SetVersion sets the CLI version on the underlying initializer so that
+// createStructure() stamps .taskwing/version for post-upgrade migration detection.
+func (s *Service) SetVersion(v string) {
+	s.initializer.Version = v
+}
+
 // InitializeProject sets up the .taskwing directory structure and integrations.
 func (s *Service) InitializeProject(verbose bool, selectedAIs []string) error {
 	return s.initializer.Run(verbose, selectedAIs)
