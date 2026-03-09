@@ -183,10 +183,12 @@ func GetVersion() string {
 // maybeRunPostUpgradeMigration runs a one-time migration when the CLI version
 // changes (e.g., after brew upgrade). Skips commands that don't need project context.
 func maybeRunPostUpgradeMigration(cmd *cobra.Command) {
-	// Skip commands that don't need project context
-	name := cmd.Name()
-	if name == "version" || name == "help" || name == "mcp" {
-		return
+	// Skip the entire mcp subtree (and other commands that don't need migration)
+	for c := cmd; c != nil; c = c.Parent() {
+		n := c.Name()
+		if n == "version" || n == "help" || n == "mcp" {
+			return
+		}
 	}
 
 	cwd, err := os.Getwd()

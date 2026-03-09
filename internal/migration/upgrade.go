@@ -30,7 +30,9 @@ func CheckAndMigrate(projectDir, currentVersion string) (warnings []string, err 
 	stored, err := os.ReadFile(versionFile)
 	if err != nil {
 		// Version file missing (pre-migration bootstrap). Write current and return.
-		_ = os.WriteFile(versionFile, []byte(currentVersion), 0644)
+		if werr := os.WriteFile(versionFile, []byte(currentVersion), 0644); werr != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  taskwing: could not write version stamp (%v); migration will re-run next time\n", werr)
+		}
 		return nil, nil
 	}
 
@@ -55,7 +57,9 @@ func CheckAndMigrate(projectDir, currentVersion string) (warnings []string, err 
 	warnings = checkGlobalMCPLegacy()
 
 	// 3. Write current version
-	_ = os.WriteFile(versionFile, []byte(currentVersion), 0644)
+	if werr := os.WriteFile(versionFile, []byte(currentVersion), 0644); werr != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  taskwing: could not write version stamp (%v); migration will re-run next time\n", werr)
+	}
 
 	return warnings, nil
 }
@@ -86,8 +90,10 @@ func migrateLocalConfigs(projectDir string) {
 		}
 
 		// Regenerate (this prunes stale files and creates new ones)
-		init := bootstrap.NewInitializer(projectDir)
-		_ = init.CreateSlashCommands(aiName, false)
+		initializer := bootstrap.NewInitializer(projectDir)
+		if err := initializer.CreateSlashCommands(aiName, false); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠️  taskwing: could not regenerate %s commands: %v\n", aiName, err)
+		}
 	}
 }
 
