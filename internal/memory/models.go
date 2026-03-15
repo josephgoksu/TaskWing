@@ -40,6 +40,15 @@ type Node struct {
 	// ConfidenceScore is numeric confidence (0.0-1.0) adjusted by verification
 	ConfidenceScore float64 `json:"confidenceScore,omitempty"`
 
+	// Freshness Validation fields (v2.3+)
+	// These support query-time staleness detection for evidence files
+
+	// LastVerifiedAt is when the last freshness check ran (nil = never checked)
+	LastVerifiedAt *time.Time `json:"lastVerifiedAt,omitempty"`
+
+	// OriginalConfidence is the confidence at ingest time, before any freshness decay
+	OriginalConfidence *float64 `json:"originalConfidence,omitempty"`
+
 	// Debt Classification fields (v2.2+)
 	// Distinguishes essential complexity from accidental complexity (technical debt).
 	// When AI retrieves context, high-debt patterns include warnings to prevent propagation.

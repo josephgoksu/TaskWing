@@ -1086,7 +1086,7 @@ const taskwingDocSectionHeader = `
 
 ## TaskWing Integration
 
-TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.
+TaskWing extracts architectural knowledge from your codebase and stores it locally, giving every AI tool instant context via MCP.
 
 ### Supported Models
 

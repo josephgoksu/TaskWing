@@ -38,8 +38,11 @@ func FormatAsk(result *app.AskResult) string {
 	if len(result.Results) > 0 {
 		sb.WriteString("## Knowledge\n")
 		for i, node := range result.Results {
-			// Format: 1. **Title** (type) - content preview
+			// Format: 1. **Title** (type) [freshness] - content preview
 			sb.WriteString(fmt.Sprintf("%d. **%s** (%s)", i+1, node.Summary, node.Type))
+			if node.FreshnessNote != "" {
+				sb.WriteString(fmt.Sprintf(" %s", node.FreshnessNote))
+			}
 			if node.Content != "" && node.Content != node.Summary {
 				// Add content preview (first 150 chars)
 				content := cleanContent(node.Content, node.Summary)

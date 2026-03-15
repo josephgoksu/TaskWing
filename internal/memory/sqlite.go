@@ -64,6 +64,10 @@ func NewSQLiteStore(basePath string) (*SQLiteStore, error) {
 	migrateAddColumn(db, "plans", "generation_mode", `ALTER TABLE plans ADD COLUMN generation_mode TEXT DEFAULT 'batch'`)
 	migrateAddColumn(db, "tasks", "phase_id", `ALTER TABLE tasks ADD COLUMN phase_id TEXT REFERENCES phases(id) ON DELETE SET NULL`)
 
+	// Freshness validation columns (v2.3+)
+	migrateAddColumn(db, "nodes", "last_verified_at", `ALTER TABLE nodes ADD COLUMN last_verified_at TEXT`)
+	migrateAddColumn(db, "nodes", "original_confidence", `ALTER TABLE nodes ADD COLUMN original_confidence REAL`)
+
 	return store, nil
 }
 
@@ -2442,4 +2446,42 @@ func (s *SQLiteStore) NeedsToolUpdate(toolName, expectedVersion string) (bool, e
 		return true, nil // Not installed
 	}
 	return tv.CommandHash != expectedVersion, nil
+}
+
+// UpdateNodeFreshness updates the freshness validation fields for a node.
+func (s *SQLiteStore) UpdateNodeFreshness(nodeID string, lastVerifiedAt time.Time, originalConfidence *float64) error {
+	var origConf sql.NullFloat64
+	if originalConfidence != nil {
+		origConf = sql.NullFloat64{Float64: *originalConfidence, Valid: true}
+	}
+	_, err := s.db.Exec(`
+		UPDATE nodes SET last_verified_at = ?, original_confidence = ?
+		WHERE id = ?
+	`, lastVerifiedAt.Format(time.RFC3339), origConf, nodeID)
+	if err != nil {
+		return fmt.Errorf("update node freshness: %w", err)
+	}
+	return nil
+}
+
+// GetNodeFreshness retrieves freshness fields for a node without loading the full node.
+func (s *SQLiteStore) GetNodeFreshness(nodeID string) (lastVerifiedAt *time.Time, originalConfidence *float64, err error) {
+	var lvStr sql.NullString
+	var origConf sql.NullFloat64
+	err = s.db.QueryRow(`
+		SELECT last_verified_at, original_confidence FROM nodes WHERE id = ?
+	`, nodeID).Scan(&lvStr, &origConf)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get node freshness: %w", err)
+	}
+	if lvStr.Valid {
+		t, parseErr := time.Parse(time.RFC3339, lvStr.String)
+		if parseErr == nil {
+			lastVerifiedAt = &t
+		}
+	}
+	if origConf.Valid {
+		originalConfidence = &origConf.Float64
+	}
+	return lastVerifiedAt, originalConfidence, nil
 }

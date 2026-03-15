@@ -75,7 +75,7 @@ air                           # Start hot-reload dev server (creates ./bin/taskw
 
 ## Architecture Overview
 
-TaskWing gives AI coding assistants permanent memory. It extracts architectural decisions, patterns, and constraints from your codebase, then exposes them via MCP (Model Context Protocol) so Claude, Cursor, and Copilot understand your architecture.
+TaskWing is a local-first AI knowledge layer. It extracts architectural decisions, patterns, and constraints from your codebase into local SQLite, then exposes them via MCP (Model Context Protocol) so Claude, Cursor, and Copilot understand your architecture.
 
 ### Core Layers
 
@@ -310,7 +310,7 @@ Interactive script that prompts for version, opens editor for notes, creates tag
 
 ## TaskWing Integration
 
-TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.
+TaskWing extracts architectural knowledge from your codebase and stores it locally, giving every AI tool instant context via MCP.
 
 ### Supported Models
 

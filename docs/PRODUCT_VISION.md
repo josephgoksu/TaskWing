@@ -1,12 +1,27 @@
-# TaskWing: AI-Native Task Management
+# TaskWing: Local-First AI Knowledge Layer
 
-TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.
+TaskWing extracts architectural knowledge from codebases and stores it locally, giving every AI coding tool instant context without your knowledge base leaving your machine.
 
 ## Vision Statement
 
-**TaskWing is AI-native task management that actually understands your codebase.**
+**TaskWing is the local-first knowledge layer for AI-assisted development.**
 
-We don't just store tasks. We generate context-aware development plans by analyzing your architecture, patterns, and decisions.
+We extract your architecture -- decisions, patterns, constraints -- into a local SQLite database. Every AI tool gets instant context via MCP, without your knowledge base leaving your machine.
+
+## Private by Architecture
+
+| Property | How |
+|----------|-----|
+| Knowledge stored locally | SQLite on your filesystem. No cloud database, no sync. |
+| No account required | Install via brew and use immediately. Zero data collection surface. |
+| AI tools connect locally | MCP queries served over local stdio. No network calls for queries. |
+| Air-gappable | Ollama support for fully offline operation. Zero external dependencies. |
+| Open source (MIT) | Audit every line. Fork it. Run it on your own terms. |
+| No vendor kill switch | MIT license, SQLite storage, standard MCP protocol. |
+
+**What TaskWing controls:** During bootstrap, code context is processed by your chosen LLM provider (cloud or Ollama for full local). After extraction, your knowledge base is stored and queried locally. MCP responses are served over local stdio and never touch the network.
+
+**What your AI tool controls:** Cloud-based AI tools (Claude, Cursor, Copilot) send conversations -- including TaskWing's MCP responses -- to their own servers per their privacy policies. TaskWing cannot control this. To keep everything local, use Ollama for bootstrap and a local AI tool for queries.
 
 ## Ecosystem Support
 
@@ -43,22 +58,24 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 │  taskwing goal "..."  │  /taskwing:next  │  /taskwing:done   │
 └─────────────────────────────────────────────────────────┘
                               │
-                              ▼
+                              v
 ┌─────────────────────────────────────────────────────────┐
 │                   TASK GENERATION                        │
-│  Analyze goal → Query knowledge graph → Generate tasks   │
+│  Analyze goal -> Query knowledge graph -> Generate tasks │
 └─────────────────────────────────────────────────────────┘
                               │
-                              ▼
+                              v
 ┌─────────────────────────────────────────────────────────┐
-│               KNOWLEDGE GRAPH (The Moat)                 │
+│            LOCAL KNOWLEDGE GRAPH (The Moat)              │
 │  Features │ Patterns │ Decisions │ Constraints │ Files  │
+│            Stored in local SQLite -- never synced        │
 └─────────────────────────────────────────────────────────┘
                               │
-                              ▼
+                              v
 ┌─────────────────────────────────────────────────────────┐
-│                    MCP SERVER                            │
-│  Claude │ Cursor │ Copilot │ Codex — all get context    │
+│                 LOCAL MCP SERVER (stdio)                  │
+│  Claude │ Cursor │ Copilot │ Codex -- all get context   │
+│            No network calls for queries                  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -105,4 +122,4 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 | Team        | $29/seat/mo | Shared knowledge graph, team sync |
 | Enterprise  | Custom      | SSO, audit, on-prem               |
 
-_The knowledge graph is the moat. Task management is the product._
+_The local knowledge graph is the moat. AI-assisted development is the product._
