@@ -138,7 +138,7 @@ func (s *Service) RewriteQuery(ctx context.Context, query string) (string, error
 
 	// Use a domain-aware prompt for query rewriting
 	// Include context about TaskWing to help fix domain-specific typos
-	prompt := fmt.Sprintf(`You are improving a search query for TaskWing, a developer tool that gives AI coding assistants permanent memory about codebases.
+	prompt := fmt.Sprintf(`You are improving a search query for TaskWing, a local-first AI knowledge layer that extracts architectural decisions, patterns, and constraints from codebases.
 
 Rules:
 1. Fix typos (e.g., "TaskWink" → "TaskWing", "teh" → "the")

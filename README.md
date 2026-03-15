@@ -36,7 +36,7 @@ Without TaskWing              With TaskWing
 8-12 file reads               1 MCP query
 ~25,000 tokens                ~1,500 tokens
 2-3 minutes                   42 seconds
-Zero persistent context       170+ knowledge nodes
+No architectural context       170+ knowledge nodes
 ```
 
 ## Install

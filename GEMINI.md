@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**TaskWing** is an AI-native task management CLI that gives AI tools "project memory." It extracts architectural decisions, patterns, and constraints from your codebase and makes them queryable by AI assistants (like Gemini, Claude, Cursor) via the Model Context Protocol (MCP).
+**TaskWing** is a local-first AI knowledge layer for development. It extracts architectural decisions, patterns, and constraints from your codebase into local SQLite and makes them queryable by AI assistants (like Gemini, Claude, Cursor) via the Model Context Protocol (MCP).
 
 **Core Value Proposition:**
 
@@ -189,7 +189,7 @@ Interactive script that prompts for version, opens editor for notes, creates tag
 
 ## TaskWing Integration
 
-TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.
+TaskWing extracts architectural knowledge from your codebase and stores it locally, giving every AI tool instant context via MCP.
 
 ### Supported Models
 

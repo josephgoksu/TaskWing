@@ -51,11 +51,9 @@ var (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "taskwing",
-	Short: "TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.",
-	Long: `TaskWing helps turn a goal into executed tasks with persistent context across AI sessions.
-
-Create a plan, execute tasks with your AI tool, and keep architecture context
-persistent across sessions.`,
+	Short: "Local-first AI knowledge layer for development.",
+	Long: `TaskWing extracts architectural knowledge from your codebase and stores it locally.
+Every AI tool gets instant context via MCP, without your knowledge base leaving your machine.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if err := initTelemetry(cmd, args); err != nil {
 			return err

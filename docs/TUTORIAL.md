@@ -1,6 +1,6 @@
 # TaskWing Tutorial
 
-TaskWing helps you move from one goal to executed tasks while keeping architecture context persistent across AI sessions.
+TaskWing extracts architectural knowledge from your codebase and stores it locally, giving every AI tool instant context via MCP.
 
 ## Supported Models
 
