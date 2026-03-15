@@ -76,7 +76,7 @@ taskwing goal "Add Stripe billing"
 /taskwing:done       # Mark complete, advance to next
 ```
 
-That's it. Your AI assistant now has persistent architectural context across every session.
+That's it. Your AI assistant now has local architectural context across every session.
 
 ## Private by Architecture
 

@@ -6,7 +6,7 @@ TaskWing extracts architectural knowledge from codebases and stores it locally, 
 
 **TaskWing is the local-first knowledge layer for AI-assisted development.**
 
-We extract your architecture -- decisions, patterns, constraints -- into a local SQLite database. Every AI tool gets instant context via MCP, without your codebase flowing through someone else's cloud.
+We extract your architecture -- decisions, patterns, constraints -- into a local SQLite database. Every AI tool gets instant context via MCP, without your knowledge base leaving your machine.
 
 ## Private by Architecture
 
