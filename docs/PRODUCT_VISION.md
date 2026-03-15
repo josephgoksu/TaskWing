@@ -19,7 +19,9 @@ We extract your architecture -- decisions, patterns, constraints -- into a local
 | Open source (MIT) | Audit every line. Fork it. Run it on your own terms. |
 | No vendor kill switch | MIT license, SQLite storage, standard MCP protocol. |
 
-During initial analysis, code context is processed by your chosen LLM provider (OpenAI, Anthropic, Google, Bedrock, or fully local via Ollama). After extraction, your knowledge base is entirely local.
+**What TaskWing controls:** During bootstrap, code context is processed by your chosen LLM provider (cloud or Ollama for full local). After extraction, your knowledge base is stored and queried locally. MCP responses are served over local stdio and never touch the network.
+
+**What your AI tool controls:** Cloud-based AI tools (Claude, Cursor, Copilot) send conversations -- including TaskWing's MCP responses -- to their own servers per their privacy policies. TaskWing cannot control this. To keep everything local, use Ollama for bootstrap and a local AI tool for queries.
 
 ## Ecosystem Support
 

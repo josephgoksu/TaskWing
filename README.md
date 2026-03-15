@@ -83,26 +83,23 @@ That's it. Your AI assistant now has persistent architectural context across eve
 TaskWing keeps your knowledge base on your machine. No cloud database, no account, no sync.
 
 ```
-                          ┌─────────────────────────────┐
-  1. Bootstrap            │  Your chosen LLM provider    │
-     (one-time)           │  (or Ollama for full local)  │
-                          └──────────────┬──────────────┘
-                                         │ analyze
-                                         v
-                          ┌─────────────────────────────┐
-  2. Store                │  Local SQLite on your machine │
-     (permanent)          │  .taskwing/memory/memory.db  │
-                          └──────────────┬──────────────┘
-                                         │ query (local stdio)
-                                         v
-                          ┌─────────────────────────────┐
-  3. Query                │  Claude, Cursor, Copilot,    │
-     (every session)      │  Gemini, Codex, OpenCode     │
-                          └─────────────────────────────┘
-                          Nothing leaves your machine. ──┘
+  1. Bootstrap            Your chosen LLM provider analyzes your code.
+     (one-time)           Cloud: OpenAI, Anthropic, Google, Bedrock
+                          Local: Ollama (nothing leaves your machine)
+
+  2. Store                Local SQLite on your filesystem.
+     (permanent)          .taskwing/memory/memory.db
+                          Never uploaded. Never synced.
+
+  3. Query                MCP responses served over local stdio.
+     (every session)      Your AI tool receives context locally.
 ```
 
-During initial analysis, code context is processed by your chosen LLM provider. After that, your knowledge base is entirely local. Want full air-gap? Use [Ollama](https://ollama.com/) -- zero network calls, zero external dependencies.
+**What TaskWing controls:** Your knowledge base is stored and queried locally. MCP queries never touch the network.
+
+**What your AI tool controls:** Cloud-based tools (Claude, Cursor, Copilot) send conversations to their own servers per their privacy policies. To keep queries fully local, use Ollama for both bootstrap and your AI tool.
+
+**Full air-gap:** Use [Ollama](https://ollama.com/) for bootstrap + a local AI tool. Zero network calls, zero external dependencies, zero data leaving your machine.
 
 ## Works With
 

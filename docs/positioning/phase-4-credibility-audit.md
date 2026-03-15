@@ -64,6 +64,7 @@ Flag anything that overpromises. Suggest qualifiers.
 | Claim | Why | Risk |
 |-------|-----|------|
 | "Your code never leaves your machine" | False during bootstrap with cloud LLMs | Immediate credibility loss if called out |
+| "Nothing leaves your machine" (unqualified) | Cloud AI tools send TaskWing's MCP responses to their own servers | Misleading -- TaskWing controls storage/query, not the AI tool's behavior |
 | "Zero data collection" | Telemetry exists (opt-in). PostHog is a third party. | Technically defensible but easily misread |
 | "GDPR compliant" | No formal DPA, no data protection officer, no DPIA conducted | Legal liability if claimed without basis |
 | "SOC 2" or "enterprise-grade security" | No cert, no formal security audit | Enterprise buyers will verify and find nothing |
