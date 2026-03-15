@@ -83,23 +83,48 @@ That's it. Your AI assistant now has persistent architectural context across eve
 TaskWing keeps your knowledge base on your machine. No cloud database, no account, no sync.
 
 ```
-  1. Bootstrap            Your chosen LLM provider analyzes your code.
-     (one-time)           Cloud: OpenAI, Anthropic, Google, Bedrock
-                          Local: Ollama (nothing leaves your machine)
+  YOUR MACHINE                          EXTERNAL
+  ─────────────────────────────────     ─────────────────────────
+                                        ┌───────────────────────┐
+  ┌──────────────┐   code context       │ LLM Provider          │
+  │ Your codebase ├────────────────────>│ (OpenAI, Anthropic,   │
+  └──────────────┘   (bootstrap only)   │  Google, Bedrock)     │
+         │                              └───────────┬───────────┘
+         │                                          │ findings
+         v                                          │
+  ┌──────────────────────┐  <───────────────────────┘
+  │ .taskwing/memory.db  │
+  │ Local SQLite         │  Your knowledge base.
+  │ Never uploaded.      │  Never leaves your machine.
+  └──────────┬───────────┘
+             │ local stdio (MCP)
+             v
+  ┌──────────────────────┐              ┌───────────────────────┐
+  │ AI Tool              │  may send    │ Tool's own cloud      │
+  │ (Claude, Cursor,     ├─────────────>│ (per their privacy    │
+  │  Copilot, Gemini)    │  to their    │  policy)              │
+  └──────────────────────┘  servers     └───────────────────────┘
 
-  2. Store                Local SQLite on your filesystem.
-     (permanent)          .taskwing/memory/memory.db
-                          Never uploaded. Never synced.
 
-  3. Query                MCP responses served over local stdio.
-     (every session)      Your AI tool receives context locally.
+  FULL AIR-GAP (everything stays left of the line):
+
+  ┌──────────────┐        ┌─────────┐        ┌──────────────┐
+  │ Your codebase ├──────>│ Ollama  ├──────>│ .taskwing/   │
+  └──────────────┘        │ (local) │        │ memory.db    │
+                          └─────────┘        └──────┬───────┘
+                                                    │ local stdio
+                                                    v
+                                             ┌──────────────┐
+                                             │ Local AI tool │
+                                             └──────────────┘
+                                             Zero network calls.
 ```
 
-**What TaskWing controls:** Your knowledge base is stored and queried locally. MCP queries never touch the network.
+**What TaskWing controls:** Your knowledge base is stored and queried locally. MCP serves responses over local stdio -- no network calls.
 
-**What your AI tool controls:** Cloud-based tools (Claude, Cursor, Copilot) send conversations to their own servers per their privacy policies. To keep queries fully local, use Ollama for both bootstrap and your AI tool.
+**What your AI tool controls:** Cloud-based tools (Claude, Cursor, Copilot) may send conversations to their own servers. Check their privacy settings (e.g., Cursor's Privacy Mode, Copilot's data retention policies).
 
-**Full air-gap:** Use [Ollama](https://ollama.com/) for bootstrap + a local AI tool. Zero network calls, zero external dependencies, zero data leaving your machine.
+**Full air-gap:** Use [Ollama](https://ollama.com/) for bootstrap + a local AI tool. Nothing leaves your machine.
 
 ## Works With
 
