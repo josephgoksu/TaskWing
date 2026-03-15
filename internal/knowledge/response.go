@@ -4,6 +4,7 @@ package knowledge
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/memory"
 )
@@ -29,6 +30,7 @@ type NodeResponse struct {
 	VerificationStatus string        `json:"verificationStatus,omitempty"`
 	MatchScore         float32       `json:"matchScore,omitempty"` // Semantic similarity (0-1)
 	Evidence           []EvidenceRef `json:"evidence,omitempty"`   // File:line references
+	CreatedAt          time.Time     `json:"createdAt,omitempty"`  // When the node was created
 
 	// Freshness metadata (set at query time by freshness.Check, not stored)
 	FreshnessStatus string   `json:"freshnessStatus,omitempty"` // fresh, stale, missing, no_evidence
@@ -54,6 +56,7 @@ func NodeToResponse(n memory.Node, matchScore float32) NodeResponse {
 		VerificationStatus: n.VerificationStatus,
 		MatchScore:         matchScore,
 		Evidence:           parseEvidence(n.Evidence),
+		CreatedAt:          n.CreatedAt,
 		DebtScore:          n.DebtScore,
 		DebtReason:         n.DebtReason,
 		RefactorHint:       n.RefactorHint,

@@ -552,12 +552,13 @@ func annotateResultFreshness(basePath string, results []knowledge.NodeResponse) 
 			continue
 		}
 
-		// Use confidence score as reference time proxy:
-		// If we have no LastVerifiedAt, use a reference time of 0 (epoch)
-		// which means any existing file will appear stale on first check.
-		// This is intentional -- it triggers the first freshness annotation.
-		refTime := time.Time{} // epoch -- forces first check to be informative
-		// In the future, this will be node.LastVerifiedAt from the DB
+		// Use node creation time as the reference. Files modified after the
+		// node was created indicate the knowledge may be stale.
+		refTime := node.CreatedAt
+		if refTime.IsZero() {
+			// Fallback: if no creation time, treat as stale to be safe
+			refTime = time.Now().Add(-24 * time.Hour)
+		}
 
 		result := freshness.Check(basePath, string(evJSON), refTime)
 

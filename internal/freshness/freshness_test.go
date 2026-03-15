@@ -213,6 +213,27 @@ func TestStatCache(t *testing.T) {
 	}
 }
 
+func TestCheckSkipsBuildArtifactsInSubdirectory(t *testing.T) {
+	ResetCache()
+	dir := t.TempDir()
+
+	// Create file in api/node_modules (monorepo pattern -- should be skipped)
+	nmDir := filepath.Join(dir, "api", "node_modules")
+	if err := os.MkdirAll(nmDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nmDir, "dep.js"), []byte("module.exports = {}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	evidence := mustJSON(t, []evidenceItem{{FilePath: "api/node_modules/dep.js"}})
+	result := Check(dir, evidence, time.Now().Add(-time.Hour))
+
+	if result.Status != StatusNoEvidence {
+		t.Fatalf("expected no_evidence (monorepo build artifact skipped), got %s", result.Status)
+	}
+}
+
 func mustJSON(t *testing.T, v any) string {
 	t.Helper()
 	b, err := json.Marshal(v)

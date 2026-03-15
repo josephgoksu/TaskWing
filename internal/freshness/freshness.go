@@ -76,7 +76,6 @@ func Check(basePath string, evidenceJSON string, referenceTime time.Time) Result
 	}
 
 	var stale, missing []string
-	checked := 0
 
 	for _, p := range paths {
 		fullPath := p
@@ -92,7 +91,6 @@ func Check(basePath string, evidenceJSON string, referenceTime time.Time) Result
 			// Permission errors and other failures: skip, don't count as stale
 			continue
 		}
-		checked++
 
 		if info.ModTime().After(referenceTime) {
 			stale = append(stale, p)
@@ -145,7 +143,8 @@ func Check(basePath string, evidenceJSON string, referenceTime time.Time) Result
 func shouldSkip(path string) bool {
 	normalized := filepath.ToSlash(path)
 	for _, pattern := range skipPatterns {
-		if strings.HasPrefix(normalized, pattern) {
+		// Match at start (dist/...) or as a path segment (api/dist/...)
+		if strings.HasPrefix(normalized, pattern) || strings.Contains(normalized, "/"+pattern) {
 			return true
 		}
 	}
