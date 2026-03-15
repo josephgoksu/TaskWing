@@ -6,7 +6,7 @@
   <br>
 </h1>
 
-<h3 align="center">Give your AI tools <em>a brain.</em></h3>
+<h3 align="center">The local-first knowledge layer for AI development.</h3>
 
 <p align="center">
   <a href="https://taskwing.app">Website</a> ·
@@ -26,16 +26,16 @@
 
 ---
 
-Your AI tools start every session from zero. They don't know your stack, your patterns, or why you chose PostgreSQL over MongoDB.
+Your AI tools start every session from zero -- and every session, your code context flows through someone else's cloud.
 
-**TaskWing fixes this.** One command extracts your architecture into a local database. Every AI session after that just *knows*.
+**TaskWing takes the opposite approach.** One command extracts your architecture into a local knowledge base on your machine. No cloud. No account. Every AI session after that just *knows* -- without your knowledge base leaving your infrastructure.
 
 ```
 Without TaskWing              With TaskWing
 ─────────────────             ─────────────
-8–12 file reads               1 MCP query
+8-12 file reads               1 MCP query
 ~25,000 tokens                ~1,500 tokens
-2–3 minutes                   42 seconds
+2-3 minutes                   42 seconds
 Zero persistent context       170+ knowledge nodes
 ```
 
@@ -61,14 +61,14 @@ curl -fsSL https://taskwing.app/install.sh | sh
 # 1. Extract your architecture (one-time)
 cd your-project
 taskwing bootstrap
-# → 22 decisions, 12 patterns, 9 constraints extracted
+# -> 22 decisions, 12 patterns, 9 constraints extracted
 
 # 2. Connect to your AI tool
 taskwing mcp install claude    # or: cursor, gemini, codex, copilot, opencode
 
 # 3. Set a goal and go
 taskwing goal "Add Stripe billing"
-# → Plan decomposed into 5 executable tasks
+# -> Plan decomposed into 5 executable tasks
 
 # 4. Execute with your AI assistant
 /taskwing:next       # Get next task with full context
@@ -77,6 +77,32 @@ taskwing goal "Add Stripe billing"
 ```
 
 That's it. Your AI assistant now has persistent architectural context across every session.
+
+## Private by Architecture
+
+TaskWing keeps your knowledge base on your machine. No cloud database, no account, no sync.
+
+```
+                          ┌─────────────────────────────┐
+  1. Bootstrap            │  Your chosen LLM provider    │
+     (one-time)           │  (or Ollama for full local)  │
+                          └──────────────┬──────────────┘
+                                         │ analyze
+                                         v
+                          ┌─────────────────────────────┐
+  2. Store                │  Local SQLite on your machine │
+     (permanent)          │  .taskwing/memory/memory.db  │
+                          └──────────────┬──────────────┘
+                                         │ query (local stdio)
+                                         v
+                          ┌─────────────────────────────┐
+  3. Query                │  Claude, Cursor, Copilot,    │
+     (every session)      │  Gemini, Codex, OpenCode     │
+                          └─────────────────────────────┘
+                          Nothing leaves your machine. ──┘
+```
+
+During initial analysis, code context is processed by your chosen LLM provider. After that, your knowledge base is entirely local. Want full air-gap? Use [Ollama](https://ollama.com/) -- zero network calls, zero external dependencies.
 
 ## Works With
 
@@ -107,12 +133,12 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 
 | Capability | Description |
 |:-----------|:------------|
-| **Memory** | Extracts and persists architectural decisions, patterns, and constraints |
-| **Planning** | Turns a goal into an executable plan with decomposed tasks |
-| **Task Execution** | AI-driven task lifecycle — next, start, complete, verify |
-| **Code Intelligence** | Symbol search, call graphs, impact analysis, simplification |
-| **Debugging** | AI-powered root cause analysis with systematic diagnosis |
-| **MCP Integration** | Exposes everything to your AI tools via Model Context Protocol |
+| **Local knowledge** | Extracts decisions, patterns, and constraints into local SQLite |
+| **Goal to tasks** | Turns a goal into an executable plan with decomposed tasks |
+| **AI-driven lifecycle** | Task execution -- next, start, complete, verify |
+| **Code analysis** | Symbol search, call graphs, impact analysis, simplification |
+| **Root cause first** | AI-powered diagnosis before proposing fixes |
+| **Works everywhere** | Exposes everything to 6+ AI tools via local MCP |
 
 ## Slash Commands
 
@@ -172,8 +198,8 @@ taskwing hook status            # View current session state
 ```
 
 **Circuit breakers** prevent runaway execution:
-- `--max-tasks=5` — Stop after N tasks for human review
-- `--max-minutes=30` — Stop after N minutes
+- `--max-tasks=5` -- Stop after N tasks for human review
+- `--max-minutes=30` -- Stop after N minutes
 
 </details>
 
