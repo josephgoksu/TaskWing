@@ -2,14 +2,17 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
+	"github.com/josephgoksu/TaskWing/internal/freshness"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -308,6 +311,11 @@ func (a *AskApp) Query(ctx context.Context, query string, opts AskOptions) (*Ask
 		}
 	}
 
+	// Validate freshness of returned knowledge nodes
+	if a.ctx.BasePath != "" {
+		annotateResultFreshness(a.ctx.BasePath, results)
+	}
+
 	return &AskResult{
 		Query:          query,
 		RewrittenQuery: rewrittenQuery,
@@ -514,5 +522,55 @@ func suppressStdLogger() func() {
 	log.SetOutput(io.Discard)
 	return func() {
 		log.SetOutput(prev)
+	}
+}
+
+// annotateResultFreshness runs Level 1 freshness checks on each result
+// and populates the FreshnessStatus, FreshnessNote, and StaleFiles fields.
+// This runs inline on every MCP query (<1ms per result).
+func annotateResultFreshness(basePath string, results []knowledge.NodeResponse) {
+	for i := range results {
+		node := &results[i]
+
+		// Reconstruct evidence JSON from the parsed EvidenceRef slice
+		// for the freshness checker
+		if len(node.Evidence) == 0 {
+			node.FreshnessStatus = string(freshness.StatusNoEvidence)
+			continue
+		}
+
+		// Build evidence JSON from EvidenceRef
+		type ev struct {
+			FilePath string `json:"file_path"`
+		}
+		items := make([]ev, len(node.Evidence))
+		for j, e := range node.Evidence {
+			items[j] = ev{FilePath: e.File}
+		}
+		evJSON, err := json.Marshal(items)
+		if err != nil {
+			continue
+		}
+
+		// Use confidence score as reference time proxy:
+		// If we have no LastVerifiedAt, use a reference time of 0 (epoch)
+		// which means any existing file will appear stale on first check.
+		// This is intentional -- it triggers the first freshness annotation.
+		refTime := time.Time{} // epoch -- forces first check to be informative
+		// In the future, this will be node.LastVerifiedAt from the DB
+
+		result := freshness.Check(basePath, string(evJSON), refTime)
+
+		node.FreshnessStatus = string(result.Status)
+		node.FreshnessNote = freshness.FormatStatus(result, nil)
+		node.StaleFiles = result.StaleFiles
+
+		// Adjust confidence if stale or missing
+		if result.DecayFactor < 1.0 && node.ConfidenceScore > 0 {
+			node.ConfidenceScore = node.ConfidenceScore * result.DecayFactor
+			if node.ConfidenceScore < 0.1 {
+				node.ConfidenceScore = 0.1
+			}
+		}
 	}
 }

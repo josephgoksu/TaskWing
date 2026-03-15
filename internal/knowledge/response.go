@@ -30,6 +30,11 @@ type NodeResponse struct {
 	MatchScore         float32       `json:"matchScore,omitempty"` // Semantic similarity (0-1)
 	Evidence           []EvidenceRef `json:"evidence,omitempty"`   // File:line references
 
+	// Freshness metadata (set at query time by freshness.Check, not stored)
+	FreshnessStatus string   `json:"freshnessStatus,omitempty"` // fresh, stale, missing, no_evidence
+	FreshnessNote   string   `json:"freshnessNote,omitempty"`   // Human-readable: "[verified 2h ago]"
+	StaleFiles      []string `json:"staleFiles,omitempty"`      // Evidence files that changed
+
 	// Debt Classification - distinguishes essential from accidental complexity
 	// When DebtScore >= 0.7, this pattern represents technical debt that shouldn't be propagated
 	DebtScore    float64 `json:"debtScore,omitempty"`    // 0.0 = clean, 1.0 = pure debt
