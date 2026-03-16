@@ -155,7 +155,7 @@ func (t *GrepTool) InvokableRun(ctx context.Context, argsJSON string, opts ...to
 	}
 	grepArgs = append(grepArgs, "--exclude-dir=node_modules", "--exclude-dir=vendor",
 		"--exclude-dir=.git", "--exclude-dir=dist", "--exclude-dir=build")
-	grepArgs = append(grepArgs, args.Pattern, searchPath)
+	grepArgs = append(grepArgs, "--", args.Pattern, searchPath)
 
 	cmd := exec.CommandContext(ctx, "grep", grepArgs...)
 	var stdout bytes.Buffer
@@ -344,6 +344,16 @@ func (t *ExecTool) InvokableRun(ctx context.Context, argsJSON string, opts ...to
 			allowed = append(allowed, cmd)
 		}
 		return "", fmt.Errorf("command '%s' not allowed. Allowed: %v", args.Command, allowed)
+	}
+
+	// Block dangerous find flags that allow arbitrary command execution
+	if args.Command == "find" {
+		for _, a := range args.Args {
+			lower := strings.ToLower(a)
+			if lower == "-exec" || lower == "-execdir" || lower == "-delete" || lower == "-ok" || lower == "-okdir" {
+				return "", fmt.Errorf("find flag '%s' is not allowed for security reasons", a)
+			}
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, args.Command, args.Args...)

@@ -83,7 +83,7 @@ func Check(basePath string, evidenceJSON string, referenceTime time.Time) Result
 			fullPath = filepath.Join(basePath, p)
 		}
 
-		info, err := statCached(fullPath)
+		info, err := defaultCache.stat(fullPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				missing = append(missing, p)
@@ -99,20 +99,12 @@ func Check(basePath string, evidenceJSON string, referenceTime time.Time) Result
 
 	now := time.Now()
 
-	// All evidence files deleted
-	if len(missing) == len(paths) {
-		return Result{
-			Status:       StatusMissing,
-			MissingFiles: missing,
-			DecayFactor:  0.2,
-			CheckedAt:    now,
-		}
-	}
-
-	// Some files missing
+	// Decay formula: smooth curve from 1.0 (no missing) to 0.2 (all missing).
+	// decay = 1.0 - (missingRatio * 0.8)
+	// At 0% missing: 1.0, at 50%: 0.6, at 100%: 0.2
 	if len(missing) > 0 {
 		missingRatio := float64(len(missing)) / float64(len(paths))
-		decay := 1.0 - (missingRatio * 0.6) // 0.4 at 100% missing
+		decay := 1.0 - (missingRatio * 0.8)
 		return Result{
 			Status:       StatusMissing,
 			StaleFiles:   stale,
@@ -188,13 +180,18 @@ func formatDuration(d time.Duration) string {
 	}
 }
 
-// --- Stat cache (avoids re-statting the same file within a session) ---
+// --- Stat cache with bounded size and TTL eviction ---
 
-var (
-	cache   = make(map[string]cacheEntry)
-	cacheMu sync.RWMutex
-	cacheTTL = 60 * time.Second
+const (
+	cacheTTL     = 60 * time.Second
+	cacheMaxSize = 1000 // Evict oldest entries when exceeded
 )
+
+// statCache holds cached os.Stat results with TTL and bounded size.
+type statCache struct {
+	mu      sync.RWMutex
+	entries map[string]cacheEntry
+}
 
 type cacheEntry struct {
 	info      os.FileInfo
@@ -202,10 +199,12 @@ type cacheEntry struct {
 	checkedAt time.Time
 }
 
-func statCached(path string) (os.FileInfo, error) {
-	cacheMu.RLock()
-	entry, ok := cache[path]
-	cacheMu.RUnlock()
+var defaultCache = &statCache{entries: make(map[string]cacheEntry)}
+
+func (c *statCache) stat(path string) (os.FileInfo, error) {
+	c.mu.RLock()
+	entry, ok := c.entries[path]
+	c.mu.RUnlock()
 
 	if ok && time.Since(entry.checkedAt) < cacheTTL {
 		return entry.info, entry.err
@@ -213,16 +212,34 @@ func statCached(path string) (os.FileInfo, error) {
 
 	info, err := os.Stat(path)
 
-	cacheMu.Lock()
-	cache[path] = cacheEntry{info: info, err: err, checkedAt: time.Now()}
-	cacheMu.Unlock()
+	c.mu.Lock()
+	c.entries[path] = cacheEntry{info: info, err: err, checkedAt: time.Now()}
+	// Evict expired entries when cache grows too large
+	if len(c.entries) > cacheMaxSize {
+		c.evictExpired()
+	}
+	c.mu.Unlock()
 
 	return info, err
 }
 
+// evictExpired removes entries older than 2x TTL. Caller must hold write lock.
+func (c *statCache) evictExpired() {
+	cutoff := time.Now().Add(-2 * cacheTTL)
+	for k, v := range c.entries {
+		if v.checkedAt.Before(cutoff) {
+			delete(c.entries, k)
+		}
+	}
+}
+
+func (c *statCache) reset() {
+	c.mu.Lock()
+	c.entries = make(map[string]cacheEntry)
+	c.mu.Unlock()
+}
+
 // ResetCache clears the stat cache. Used in tests and after bootstrap.
 func ResetCache() {
-	cacheMu.Lock()
-	cache = make(map[string]cacheEntry)
-	cacheMu.Unlock()
+	defaultCache.reset()
 }

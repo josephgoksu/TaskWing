@@ -2449,6 +2449,7 @@ func (s *SQLiteStore) NeedsToolUpdate(toolName, expectedVersion string) (bool, e
 }
 
 // UpdateNodeFreshness updates the freshness validation fields for a node.
+// TODO(freshness-level2): Called by annotateResultFreshness after persisting check results.
 func (s *SQLiteStore) UpdateNodeFreshness(nodeID string, lastVerifiedAt time.Time, originalConfidence *float64) error {
 	var origConf sql.NullFloat64
 	if originalConfidence != nil {

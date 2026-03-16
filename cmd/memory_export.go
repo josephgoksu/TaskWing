@@ -53,7 +53,7 @@ Examples:
 	RunE:   runExportTraining,
 }
 
-func runExportTraining(cmd *cobra.Command, args []string) error {
+func runExportTraining(cmd *cobra.Command, args []string) (err error) {
 	memoryPath, err := config.GetMemoryBasePath()
 	if err != nil {
 		return fmt.Errorf("get memory path: %w", err)
@@ -78,7 +78,11 @@ func runExportTraining(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("create output file: %w", err)
 		}
-		defer out.Close()
+		defer func() {
+			if cerr := out.Close(); cerr != nil && err == nil {
+				err = fmt.Errorf("close output file: %w", cerr)
+			}
+		}()
 	} else {
 		out = os.Stdout
 	}

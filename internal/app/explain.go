@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -315,7 +316,7 @@ func (a *ExplainApp) generateExplanation(ctx context.Context, result *ExplainRes
 		var fullAnswer strings.Builder
 		for {
 			chunk, err := stream.Recv()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {

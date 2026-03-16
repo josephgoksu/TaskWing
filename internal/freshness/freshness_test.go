@@ -12,7 +12,6 @@ func TestCheckFresh(t *testing.T) {
 	ResetCache()
 	dir := t.TempDir()
 
-	// Create a file that's older than the reference time
 	filePath := filepath.Join(dir, "main.go")
 	if err := os.WriteFile(filePath, []byte("package main"), 0644); err != nil {
 		t.Fatal(err)
@@ -39,7 +38,6 @@ func TestCheckStale(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reference time is in the past (file is newer)
 	result := Check(dir, mustJSON(t, []evidenceItem{{FilePath: "main.go"}}), time.Now().Add(-time.Hour))
 
 	if result.Status != StatusStale {
@@ -53,7 +51,7 @@ func TestCheckStale(t *testing.T) {
 	}
 }
 
-func TestCheckMissing(t *testing.T) {
+func TestCheckAllMissing(t *testing.T) {
 	ResetCache()
 	dir := t.TempDir()
 
@@ -65,8 +63,9 @@ func TestCheckMissing(t *testing.T) {
 	if len(result.MissingFiles) != 1 {
 		t.Fatalf("expected 1 missing file, got %d", len(result.MissingFiles))
 	}
-	if result.DecayFactor != 0.2 {
-		t.Fatalf("expected decay 0.2 for all-missing, got %f", result.DecayFactor)
+	// All missing: decay = 1.0 - (1.0 * 0.8) = 0.2
+	if result.DecayFactor < 0.19 || result.DecayFactor > 0.21 {
+		t.Fatalf("expected decay ~0.2 for all-missing, got %f", result.DecayFactor)
 	}
 }
 
@@ -95,7 +94,6 @@ func TestCheckSkipsBuildArtifacts(t *testing.T) {
 	ResetCache()
 	dir := t.TempDir()
 
-	// Create file in node_modules (should be skipped)
 	nmDir := filepath.Join(dir, "node_modules")
 	if err := os.MkdirAll(nmDir, 0755); err != nil {
 		t.Fatal(err)
@@ -107,7 +105,6 @@ func TestCheckSkipsBuildArtifacts(t *testing.T) {
 	evidence := mustJSON(t, []evidenceItem{{FilePath: "node_modules/dep.js"}})
 	result := Check(dir, evidence, time.Now().Add(-time.Hour))
 
-	// Should be no_evidence since the only evidence file was skipped
 	if result.Status != StatusNoEvidence {
 		t.Fatalf("expected no_evidence (build artifact skipped), got %s", result.Status)
 	}
@@ -117,7 +114,6 @@ func TestCheckMixedStaleAndFresh(t *testing.T) {
 	ResetCache()
 	dir := t.TempDir()
 
-	// Create two files
 	if err := os.WriteFile(filepath.Join(dir, "fresh.go"), []byte("package a"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -125,11 +121,7 @@ func TestCheckMixedStaleAndFresh(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reference time: after fresh.go was written but before "now"
-	// Both files have same mtime (just created), so use a past reference to make both stale
-	// or a future reference to make both fresh
 	refTime := time.Now().Add(-time.Hour)
-
 	evidence := mustJSON(t, []evidenceItem{
 		{FilePath: "fresh.go"},
 		{FilePath: "stale.go"},
@@ -145,7 +137,6 @@ func TestCheckPartialMissing(t *testing.T) {
 	ResetCache()
 	dir := t.TempDir()
 
-	// One file exists, one doesn't
 	if err := os.WriteFile(filepath.Join(dir, "exists.go"), []byte("package a"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -159,8 +150,51 @@ func TestCheckPartialMissing(t *testing.T) {
 	if result.Status != StatusMissing {
 		t.Fatalf("expected missing, got %s", result.Status)
 	}
-	if result.DecayFactor >= 0.8 {
-		t.Fatalf("expected significant decay for partial missing, got %f", result.DecayFactor)
+	// 1 of 2 missing: decay = 1.0 - (0.5 * 0.8) = 0.6
+	if result.DecayFactor < 0.55 || result.DecayFactor > 0.65 {
+		t.Fatalf("expected decay ~0.6 for 50%% missing, got %f", result.DecayFactor)
+	}
+}
+
+func TestDecaySmoothCurve(t *testing.T) {
+	// Verify the decay formula produces a smooth curve with no discontinuities
+	// decay = 1.0 - (missingRatio * 0.8)
+	ResetCache()
+	dir := t.TempDir()
+
+	// Create 4 files, progressively make them missing
+	for _, name := range []string{"a.go", "b.go", "c.go", "d.go"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("package x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tests := []struct {
+		present  []string
+		missing  []string
+		wantMin  float64
+		wantMax  float64
+	}{
+		{[]string{"a.go", "b.go", "c.go"}, []string{"gone1.go"}, 0.75, 0.85}, // 1/4 missing: 0.8
+		{[]string{"a.go", "b.go"}, []string{"gone1.go", "gone2.go"}, 0.55, 0.65}, // 2/4 missing: 0.6
+		{[]string{"a.go"}, []string{"gone1.go", "gone2.go", "gone3.go"}, 0.35, 0.45}, // 3/4 missing: 0.4
+		{nil, []string{"gone1.go", "gone2.go", "gone3.go", "gone4.go"}, 0.15, 0.25}, // 4/4 missing: 0.2
+	}
+
+	for _, tt := range tests {
+		ResetCache()
+		var items []evidenceItem
+		for _, p := range tt.present {
+			items = append(items, evidenceItem{FilePath: p})
+		}
+		for _, m := range tt.missing {
+			items = append(items, evidenceItem{FilePath: m})
+		}
+		result := Check(dir, mustJSON(t, items), time.Now().Add(time.Hour))
+		if result.DecayFactor < tt.wantMin || result.DecayFactor > tt.wantMax {
+			t.Errorf("missing=%d/total=%d: expected decay %.2f-%.2f, got %.4f",
+				len(tt.missing), len(tt.present)+len(tt.missing), tt.wantMin, tt.wantMax, result.DecayFactor)
+		}
 	}
 }
 
@@ -195,7 +229,7 @@ func TestStatCache(t *testing.T) {
 	}
 
 	// First call: cache miss
-	info1, err1 := statCached(filePath)
+	info1, err1 := defaultCache.stat(filePath)
 	if err1 != nil {
 		t.Fatal(err1)
 	}
@@ -204,7 +238,7 @@ func TestStatCache(t *testing.T) {
 	os.Remove(filePath)
 
 	// Second call: should return cached result (file still "exists")
-	info2, err2 := statCached(filePath)
+	info2, err2 := defaultCache.stat(filePath)
 	if err2 != nil {
 		t.Fatal("expected cached result, got error")
 	}
@@ -217,7 +251,6 @@ func TestCheckSkipsBuildArtifactsInSubdirectory(t *testing.T) {
 	ResetCache()
 	dir := t.TempDir()
 
-	// Create file in api/node_modules (monorepo pattern -- should be skipped)
 	nmDir := filepath.Join(dir, "api", "node_modules")
 	if err := os.MkdirAll(nmDir, 0755); err != nil {
 		t.Fatal(err)

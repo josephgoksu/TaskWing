@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 
 	agentcore "github.com/josephgoksu/TaskWing/internal/agents/core"
@@ -16,6 +15,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
+	"github.com/josephgoksu/TaskWing/internal/safepath"
 )
 
 // CodeToolResult represents the response from the unified code tool.
@@ -361,43 +361,17 @@ func readFileContent(path string) (string, error) {
 }
 
 // validateAndResolvePath validates a file path to prevent path traversal attacks.
+// Uses safepath.SafeJoin which resolves symlinks and prevents escape from base directory.
 // Returns the resolved absolute path if valid, or an error if the path is unsafe.
 func validateAndResolvePath(requestedPath string, projectRoot string) (string, error) {
-	// Clean the path to normalize it
-	cleanPath := filepath.Clean(requestedPath)
-
-	// Reject paths with explicit traversal attempts
-	if strings.Contains(cleanPath, "..") {
-		return "", fmt.Errorf("path traversal not allowed: %s", requestedPath)
+	if projectRoot == "" {
+		return "", fmt.Errorf("cannot resolve path without project root")
 	}
 
-	// Resolve to absolute path
-	var absPath string
-	if filepath.IsAbs(cleanPath) {
-		absPath = cleanPath
-	} else {
-		if projectRoot == "" {
-			return "", fmt.Errorf("cannot resolve relative path without project root")
-		}
-		absPath = filepath.Join(projectRoot, cleanPath)
-	}
-
-	// Ensure the resolved path is within the project root
-	if projectRoot != "" {
-		absProjectRoot, err := filepath.Abs(projectRoot)
-		if err != nil {
-			return "", fmt.Errorf("failed to resolve project root: %w", err)
-		}
-		absPath, err = filepath.Abs(absPath)
-		if err != nil {
-			return "", fmt.Errorf("failed to resolve path: %w", err)
-		}
-
-		// Check that the path starts with the project root
-		if !strings.HasPrefix(absPath, absProjectRoot+string(filepath.Separator)) &&
-			absPath != absProjectRoot {
-			return "", fmt.Errorf("path outside project root not allowed: %s", requestedPath)
-		}
+	// SafeJoin resolves symlinks and ensures the result stays within projectRoot
+	absPath, err := safepath.SafeJoin(projectRoot, requestedPath)
+	if err != nil {
+		return "", fmt.Errorf("path not allowed: %w", err)
 	}
 
 	// Verify the file exists and is a regular file

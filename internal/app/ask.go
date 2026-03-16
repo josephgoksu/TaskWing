@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -491,7 +492,7 @@ Be concise and direct.
 		var fullAnswer strings.Builder
 		for {
 			chunk, err := stream.Recv()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
@@ -528,6 +529,11 @@ func suppressStdLogger() func() {
 // annotateResultFreshness runs Level 1 freshness checks on each result
 // and populates the FreshnessStatus, FreshnessNote, and StaleFiles fields.
 // This runs inline on every MCP query (<1ms per result).
+//
+// TODO(freshness-level2): Pass repo to persist last_verified_at and
+// original_confidence after each check, enabling "[verified Xh ago]" display.
+// TODO(freshness-level2): Use stored last_verified_at as reference time
+// instead of CreatedAt for more accurate staleness after re-verification.
 func annotateResultFreshness(basePath string, results []knowledge.NodeResponse) {
 	for i := range results {
 		node := &results[i]
@@ -556,7 +562,8 @@ func annotateResultFreshness(basePath string, results []knowledge.NodeResponse) 
 		// node was created indicate the knowledge may be stale.
 		refTime := node.CreatedAt
 		if refTime.IsZero() {
-			// Fallback: if no creation time, treat as stale to be safe
+			// Fallback: if no creation time, treat as stale to be safe.
+			// This can happen with imported or pre-v2.3 nodes missing created_at.
 			refTime = time.Now().Add(-24 * time.Hour)
 		}
 
