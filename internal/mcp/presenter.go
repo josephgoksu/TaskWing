@@ -18,7 +18,7 @@ import (
 )
 
 // FormatAsk converts an AskResult into token-efficient Markdown.
-// Structure: Answer (if present) -> Knowledge -> Symbols
+// Structure: Answer (if present) -> Knowledge (grouped by type) -> Symbols
 // Includes debt warnings for patterns/decisions marked as technical debt.
 func FormatAsk(result *app.AskResult) string {
 	if result == nil {
@@ -34,29 +34,53 @@ func FormatAsk(result *app.AskResult) string {
 		sb.WriteString("\n\n")
 	}
 
-	// Knowledge section
+	// Knowledge section - grouped by type for clarity
 	if len(result.Results) > 0 {
 		sb.WriteString("## Knowledge\n")
-		for i, node := range result.Results {
-			// Format: 1. **Title** (type) [freshness] - content preview
-			sb.WriteString(fmt.Sprintf("%d. **%s** (%s)", i+1, node.Summary, node.Type))
-			if node.FreshnessNote != "" {
-				sb.WriteString(fmt.Sprintf(" %s", node.FreshnessNote))
-			}
-			if node.Content != "" && node.Content != node.Summary {
-				// Add content preview (first 150 chars)
-				content := cleanContent(node.Content, node.Summary)
-				if content != "" {
-					preview := truncate(content, 150)
-					sb.WriteString(fmt.Sprintf("\n   %s", preview))
-				}
-			}
-			// Add debt warning if this is technical debt
-			if node.DebtWarning != "" {
-				sb.WriteString(fmt.Sprintf("\n   %s", node.DebtWarning))
-			}
-			sb.WriteString("\n")
+
+		// Group nodes by type for better structure
+		typeOrder := []string{"decision", "feature", "constraint", "pattern", "plan", "note", "metadata", "documentation"}
+		grouped := make(map[string][]knowledge.NodeResponse)
+		for _, node := range result.Results {
+			grouped[node.Type] = append(grouped[node.Type], node)
 		}
+
+		idx := 1
+		for _, t := range typeOrder {
+			nodes := grouped[t]
+			if len(nodes) == 0 {
+				continue
+			}
+			for _, node := range nodes {
+				sb.WriteString(fmt.Sprintf("%d. **%s** (%s)", idx, node.Summary, node.Type))
+				if node.FreshnessNote != "" {
+					sb.WriteString(fmt.Sprintf(" %s", node.FreshnessNote))
+				}
+				if node.Content != "" && node.Content != node.Summary {
+					content := cleanContent(node.Content, node.Summary)
+					if content != "" {
+						// Show more content (300 chars) so the consuming LLM has enough
+						// context to produce comprehensive answers
+						preview := truncate(content, 300)
+						sb.WriteString(fmt.Sprintf("\n   %s", preview))
+					}
+				}
+				if node.DebtWarning != "" {
+					sb.WriteString(fmt.Sprintf("\n   %s", node.DebtWarning))
+				}
+				sb.WriteString("\n")
+				idx++
+			}
+		}
+
+		// Include any types not in the standard order
+		for _, node := range result.Results {
+			if _, ok := grouped[node.Type]; !ok {
+				sb.WriteString(fmt.Sprintf("%d. **%s** (%s)\n", idx, node.Summary, node.Type))
+				idx++
+			}
+		}
+
 		sb.WriteString("\n")
 	}
 

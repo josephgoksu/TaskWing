@@ -456,9 +456,14 @@ func (a *AskApp) generateRAGAnswer(ctx context.Context, query string, nodes []kn
 	retrievedContext := strings.Join(contextParts, "\n\n")
 
 	prompt := fmt.Sprintf(`You are an expert on this codebase. Answer the user's question using ONLY the context below.
-The context includes both project documentation/decisions AND actual source code.
-When referencing code, cite the file and line numbers.
-Be concise and direct.
+The context includes project documentation, architectural decisions, constraints, patterns, and source code.
+
+Guidelines:
+- Structure your answer clearly with sections when the question is broad (e.g., architecture overviews)
+- When referencing code, cite the file and line numbers
+- Include the "why" behind decisions, not just the "what"
+- Mention relevant constraints that affect the answer
+- Be thorough but avoid repeating information
 
 %s
 

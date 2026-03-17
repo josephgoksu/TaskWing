@@ -5,8 +5,10 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -41,7 +43,30 @@ func (a *DocAgent) Close() error {
 
 // Run executes the agent using Eino DeterministicChain.
 func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
-	// Initialize chain if not ready (lazy init to support config updates if needed)
+	// ReAct mode: attempt tool-calling exploration for richer findings.
+	// Tried BEFORE chain init to avoid wasting an LLM connection if ReAct succeeds.
+	if input.Mode != core.ModeWatch {
+		userMsg := fmt.Sprintf("Analyze the documentation for project %q. Start by listing the root directory to find documentation files.", input.ProjectName)
+		raw, duration, err := runReactMode(ctx, a.LLMConfig(), input.BasePath, config.SystemPromptDocReactAgent, userMsg, 15)
+		if err == nil && raw != "" {
+			parsed, parseErr := core.ParseJSONResponse[docAnalysisResponse](raw)
+			if parseErr == nil {
+				findings, relationships := a.parseFindings(parsed)
+				if len(findings) >= reactMinFindingsDoc {
+					output := core.BuildOutputWithRelationships(a.Name(), findings, relationships, "ReAct exploration", duration)
+					return output, nil
+				}
+				if len(findings) > 0 {
+					log.Printf("[doc] ReAct produced only %d findings (threshold %d), falling back to deterministic", len(findings), reactMinFindingsDoc)
+				}
+			}
+		}
+		if err != nil && !errors.Is(err, ErrNoToolCalling) {
+			log.Printf("[doc] ReAct mode failed, falling back to deterministic: %v", err)
+		}
+	}
+
+	// Initialize chain if not ready (lazy init for deterministic fallback)
 	if a.chain == nil {
 		chatModel, err := a.CreateCloseableChatModel(ctx)
 		if err != nil {
@@ -67,8 +92,7 @@ func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 	gatherer := tools.NewContextGatherer(input.BasePath)
 	gatherer.SetBudget(budget)
 
-	// Split work into parallel tracks if not in watch mode
-	// Watch mode usually only has small changes, so we keep it simple
+	// Watch mode: simple single-pass for changed markdown files
 	if input.Mode == core.ModeWatch && len(input.ChangedFiles) > 0 {
 		docContent := gatherer.GatherSpecificFiles(filterMarkdown(input.ChangedFiles))
 		if docContent == "" {
@@ -191,6 +215,14 @@ type docAnalysisResponse struct {
 		Evidence    []core.EvidenceJSON `json:"evidence"`
 		SourceFile  string              `json:"source_file"`
 	} `json:"features"`
+	Decisions []struct {
+		Title        string              `json:"title"`
+		Summary      string              `json:"summary"`
+		Alternatives string              `json:"alternatives"`
+		Confidence   any                 `json:"confidence"`
+		Evidence     []core.EvidenceJSON `json:"evidence"`
+		SourceFile   string              `json:"source_file"`
+	} `json:"decisions"`
 	Constraints []struct {
 		Rule       string              `json:"rule"`
 		Reason     string              `json:"reason"`
@@ -228,6 +260,28 @@ func (a *DocAgent) parseFindings(parsed docAnalysisResponse) ([]core.Finding, []
 			Type:               core.FindingTypeFeature,
 			Title:              f.Name,
 			Description:        f.Description,
+			ConfidenceScore:    confidenceScore,
+			Confidence:         confidenceLabel,
+			Evidence:           evidence,
+			VerificationStatus: core.VerificationStatusPending,
+			SourceAgent:        a.Name(),
+		})
+	}
+
+	for _, d := range parsed.Decisions {
+		evidence := core.ConvertEvidence(d.Evidence)
+		if len(evidence) == 0 && d.SourceFile != "" {
+			evidence = []core.Evidence{{FilePath: d.SourceFile}}
+		}
+		confidenceScore, confidenceLabel := core.ParseConfidence(d.Confidence)
+		description := d.Summary
+		if d.Alternatives != "" {
+			description += "\nAlternatives considered: " + d.Alternatives
+		}
+		findings = append(findings, core.Finding{
+			Type:               core.FindingTypeDecision,
+			Title:              d.Title,
+			Description:        description,
 			ConfidenceScore:    confidenceScore,
 			Confidence:         confidenceLabel,
 			Evidence:           evidence,

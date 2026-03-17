@@ -9,20 +9,9 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
+	"github.com/josephgoksu/TaskWing/skills"
 	"github.com/spf13/cobra"
 )
-
-var slashContents = map[string]string{
-	"next":     slashNextContent,
-	"done":     slashDoneContent,
-	"status":   slashStatusContent,
-	"plan":     slashPlanContent,
-	"ask":      slashAskContent,
-	"remember": slashRememberContent,
-	"simplify": slashSimplifyContent,
-	"debug":    slashDebugContent,
-	"explain":  slashExplainContent,
-}
 
 var slashCmd = &cobra.Command{
 	Use:          "slash",
@@ -61,20 +50,19 @@ func init() {
 	rootCmd.AddCommand(slashCmd)
 
 	for _, slash := range bootstrap.SlashCommands {
-		content, ok := slashContents[slash.SlashCmd]
-		if !ok {
-			continue
-		}
-
+		name := slash.SlashCmd
 		short := fmt.Sprintf("Output /%s command content", slash.BaseName)
 		c := &cobra.Command{
-			Use:   slash.SlashCmd,
+			Use:   name,
 			Short: short,
-			Run: func(content string) func(*cobra.Command, []string) {
-				return func(cmd *cobra.Command, args []string) {
-					fmt.Print(content)
+			RunE: func(cmd *cobra.Command, args []string) error {
+				body, err := skills.GetBody(name)
+				if err != nil {
+					return fmt.Errorf("load skill content: %w", err)
 				}
-			}(content),
+				fmt.Print(body)
+				return nil
+			},
 		}
 
 		slashCmd.AddCommand(c)

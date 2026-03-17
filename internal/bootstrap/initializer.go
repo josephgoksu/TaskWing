@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/josephgoksu/TaskWing/skills"
 )
 
 // Initializer handles the setup of TaskWing project structure and integrations.
@@ -238,10 +240,11 @@ type aiHelperConfig struct {
 	singleFile     bool   // If true, generate a single file instead of directory with multiple files
 	singleFileName string // Filename for single-file mode (e.g., "copilot-instructions.md")
 	skillsDir      bool   // If true, use OpenCode-style skills directory structure
+	claudeSkills   bool   // If true, generate .claude/commands/taskwing/ with embedded content
 }
 
 var aiCatalog = []aiHelperConfig{
-	{name: "claude", displayName: "Claude Code", commandsDir: ".claude/commands", fileExt: ".md", singleFile: false},
+	{name: "claude", displayName: "Claude Code", commandsDir: ".claude/commands", fileExt: ".md", claudeSkills: true},
 	{name: "cursor", displayName: "Cursor", commandsDir: ".cursor/rules", fileExt: ".md", singleFile: false},
 	{name: "gemini", displayName: "Gemini CLI", commandsDir: ".gemini/commands", fileExt: ".toml", singleFile: false},
 	{name: "codex", displayName: "OpenAI Codex", commandsDir: ".codex/commands", fileExt: ".md", singleFile: false},
@@ -372,6 +375,9 @@ func AIToolConfigVersion(aiName string) string {
 	parts = append(parts, fmt.Sprintf("ext:%s", cfg.fileExt))
 	parts = append(parts, fmt.Sprintf("singleFile:%t", cfg.singleFile))
 	parts = append(parts, fmt.Sprintf("singleFileName:%s", cfg.singleFileName))
+	// Generation format marker: bump this to force regeneration when
+	// the content generation method changes (e.g., shell-out to embedded).
+	parts = append(parts, "gen:embedded-v1")
 
 	for _, cmd := range SlashCommands {
 		parts = append(parts, fmt.Sprintf("cmd:%s:%s:%s", cmd.BaseName, cmd.SlashCmd, cmd.Description))
@@ -509,6 +515,11 @@ func (i *Initializer) CreateSlashCommands(aiName string, verbose bool) error {
 		return i.createSingleFileInstructions(aiName, verbose)
 	}
 
+	// Handle Claude Code: .claude/commands/taskwing/<name>.md with embedded content
+	if cfg.claudeSkills {
+		return i.createClaudeSkills(verbose)
+	}
+
 	// Handle OpenCode commands directory structure
 	// OpenCode commands: .opencode/commands/<name>.md (flat structure)
 	// See: https://opencode.ai/docs/commands/
@@ -569,6 +580,75 @@ description: %s
 
 	if err := pruneStaleSlashCommands(commandsDir, cfg.fileExt, verbose); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// createClaudeSkills generates .claude/commands/taskwing/<name>.md with embedded content.
+// Unlike legacy commands that shell out to `taskwing slash <cmd>`, these embed the full
+// prompt content directly, removing the CLI indirection.
+// Uses the commands namespace system: .claude/commands/taskwing/next.md -> /taskwing:next
+func (i *Initializer) createClaudeSkills(verbose bool) error {
+	cfg := aiHelpers["claude"]
+	commandsDir := filepath.Join(i.basePath, cfg.commandsDir)
+	if err := os.MkdirAll(commandsDir, 0755); err != nil {
+		return fmt.Errorf("create commands dir: %w", err)
+	}
+
+	// Write marker file
+	configVersion := AIToolConfigVersion("claude")
+	markerPath := filepath.Join(commandsDir, TaskWingManagedFile)
+	markerContent := fmt.Sprintf("# This directory is managed by TaskWing\n# Created: %s\n# AI: claude\n# Version: %s\n",
+		time.Now().UTC().Format(time.RFC3339), configVersion)
+	if err := os.WriteFile(markerPath, []byte(markerContent), 0644); err != nil {
+		return fmt.Errorf("create marker file: %w", err)
+	}
+
+	// Create namespace subdirectory: .claude/commands/taskwing/
+	// This produces /taskwing:ask, /taskwing:next, etc.
+	nsDir := filepath.Join(commandsDir, slashCommandNamespace)
+	if err := os.MkdirAll(nsDir, 0755); err != nil {
+		return fmt.Errorf("create namespace dir %s: %w", slashCommandNamespace, err)
+	}
+
+	for _, cmd := range SlashCommands {
+		// Read embedded content from the skills package
+		body, err := skills.GetBody(cmd.SlashCmd)
+		if err != nil {
+			return fmt.Errorf("read embedded skill %s: %w", cmd.SlashCmd, err)
+		}
+
+		// Write as command file with frontmatter (description for Claude Code discovery)
+		fileName := cmd.SlashCmd + ".md"
+		content := fmt.Sprintf("---\ndescription: %s\n---\n%s", cmd.Description, body)
+
+		filePath := filepath.Join(nsDir, fileName)
+		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("create %s: %w", fileName, err)
+		}
+		if verbose {
+			fmt.Printf("  ✓ Created %s/%s/%s\n", cfg.commandsDir, slashCommandNamespace, fileName)
+		}
+	}
+
+	if err := pruneStaleSlashCommands(commandsDir, cfg.fileExt, verbose); err != nil {
+		return err
+	}
+
+	// Clean up intermediate .claude/skills/tw-*/ directories (from development builds)
+	skillsDir := filepath.Join(i.basePath, ".claude", "skills")
+	if entries, err := os.ReadDir(skillsDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() && strings.HasPrefix(e.Name(), "tw-") {
+				_ = os.RemoveAll(filepath.Join(skillsDir, e.Name()))
+				if verbose {
+					fmt.Printf("  ✓ Removed intermediate skill %s\n", e.Name())
+				}
+			}
+		}
+		// Remove marker from skills dir if present
+		_ = os.Remove(filepath.Join(skillsDir, TaskWingManagedFile))
 	}
 
 	return nil

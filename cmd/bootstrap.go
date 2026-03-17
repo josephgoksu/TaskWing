@@ -222,22 +222,48 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 
 	// Final success message
 	if !flags.Quiet {
-		if len(plan.ManagedDriftAIs) > 0 {
-			fmt.Printf("managed_drift_fixed: %s\n", strings.Join(plan.ManagedDriftAIs, ", "))
-		}
-		if len(plan.UnmanagedDriftAIs) > 0 {
-			fmt.Printf("unmanaged_drift_detected: %s\n", strings.Join(plan.UnmanagedDriftAIs, ", "))
-			fmt.Println("  ↳ Run `taskwing doctor --fix --adopt-unmanaged` to claim and repair unmanaged TaskWing-like configs.")
-		}
-		if len(plan.GlobalMCPDriftAIs) > 0 {
-			fmt.Printf("global_mcp_drift_detected: %s\n", strings.Join(plan.GlobalMCPDriftAIs, ", "))
-			fmt.Println("  ↳ Run `taskwing doctor --fix` to repair global MCP registration.")
-		}
 		fmt.Println()
 		fmt.Println("✅ Bootstrap complete!")
+		printPostBootstrapSummary()
 	}
 
 	return nil
+}
+
+// printPostBootstrapSummary shows a compact knowledge summary after bootstrap
+// so users immediately see what was extracted from their codebase.
+func printPostBootstrapSummary() {
+	repo, err := openRepo()
+	if err != nil {
+		return // non-fatal: skip summary if repo can't be opened
+	}
+	defer repo.Close()
+
+	nodes, err := repo.ListNodes("")
+	if err != nil || len(nodes) == 0 {
+		return
+	}
+
+	// Count by type
+	byType := make(map[string]int)
+	for _, n := range nodes {
+		t := n.Type
+		if t == "" {
+			t = "unknown"
+		}
+		byType[t]++
+	}
+
+	// Build stats string using canonical type order
+	var stats []string
+	for _, t := range memory.AllNodeTypes() {
+		if count := byType[t]; count > 0 {
+			stats = append(stats, fmt.Sprintf("%s %d", ui.TypeIcon(t), count))
+		}
+	}
+
+	fmt.Printf("\n   Knowledge: %d nodes (%s)\n", len(nodes), strings.Join(stats, " | "))
+	fmt.Println("   Run 'taskwing knowledge' to explore, or start Claude Code -- it already has context.")
 }
 
 // executeAction executes a single bootstrap action.
@@ -515,7 +541,7 @@ func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg
 	ui.RenderPageHeader("TaskWing Bootstrap", fmt.Sprintf("Using: %s (%s)", llmCfg.Model, llmCfg.Provider))
 
 	projectName := filepath.Base(cwd)
-	allAgents := bootstrap.NewDefaultAgents(llmCfg, cwd)
+	allAgents := bootstrap.NewDefaultAgents(llmCfg, cwd, nil)
 	defer core.CloseAgents(allAgents)
 
 	// Open repository for checkpoint tracking

@@ -779,78 +779,58 @@ func countSourceFiles(basePath string) int {
 func FormatPlanSummary(plan *Plan, quiet bool) string {
 	var sb strings.Builder
 
-	// Always show single-line status
-	fmt.Fprintf(&sb, "Bootstrap: mode=%s", plan.Mode)
-
-	if len(plan.Actions) > 0 {
-		actionNames := make([]string, len(plan.Actions))
-		for i, a := range plan.Actions {
-			actionNames[i] = string(a)
+	// Quiet mode: single-line machine-readable status
+	if quiet {
+		fmt.Fprintf(&sb, "Bootstrap: mode=%s", plan.Mode)
+		if len(plan.Actions) > 0 {
+			actionNames := make([]string, len(plan.Actions))
+			for i, a := range plan.Actions {
+				actionNames[i] = string(a)
+			}
+			fmt.Fprintf(&sb, " actions=[%s]", strings.Join(actionNames, ","))
 		}
-		fmt.Fprintf(&sb, " actions=[%s]", strings.Join(actionNames, ","))
+		sb.WriteString("\n")
+		return sb.String()
+	}
+
+	// Human-readable summary
+	fmt.Fprintf(&sb, "%s\n", plan.DetectedState)
+
+	if plan.RequiresRepoSelection && len(plan.DetectedRepos) > 0 {
+		fmt.Fprintf(&sb, "Workspace: %d repositories detected\n", len(plan.DetectedRepos))
+	}
+
+	// Show what will happen
+	if len(plan.Actions) > 0 {
+		sb.WriteString("\n")
+		for _, summary := range plan.ActionSummary {
+			fmt.Fprintf(&sb, "  %s\n", summary)
+		}
+	}
+
+	// Drift: show which tools are being updated (concise)
+	if len(plan.ManagedDriftAIs) > 0 {
+		fmt.Fprintf(&sb, "\n  Updating: %s\n", strings.Join(plan.ManagedDriftAIs, ", "))
+	}
+	if len(plan.UnmanagedDriftAIs) > 0 {
+		fmt.Fprintf(&sb, "\n  Detected unmanaged config: %s\n", strings.Join(plan.UnmanagedDriftAIs, ", "))
+		sb.WriteString("  Run 'taskwing doctor --fix --adopt-unmanaged' to claim.\n")
+	}
+	if len(plan.GlobalMCPDriftAIs) > 0 {
+		fmt.Fprintf(&sb, "\n  Missing global MCP: %s\n", strings.Join(plan.GlobalMCPDriftAIs, ", "))
+		sb.WriteString("  Run 'taskwing doctor --fix' to repair.\n")
+	}
+
+	if len(plan.SkippedActions) > 0 {
+		sb.WriteString("\n  Skipped:\n")
+		for _, skipped := range plan.SkippedActions {
+			fmt.Fprintf(&sb, "    %s\n", skipped)
+		}
 	}
 
 	if len(plan.Warnings) > 0 {
-		fmt.Fprintf(&sb, " warnings=%d", len(plan.Warnings))
-	}
-	if len(plan.ManagedDriftAIs) > 0 {
-		fmt.Fprintf(&sb, " managed_drift_fixed=%s", strings.Join(plan.ManagedDriftAIs, ","))
-	}
-	if len(plan.UnmanagedDriftAIs) > 0 {
-		fmt.Fprintf(&sb, " unmanaged_drift_detected=%s", strings.Join(plan.UnmanagedDriftAIs, ","))
-	}
-	if len(plan.GlobalMCPDriftAIs) > 0 {
-		fmt.Fprintf(&sb, " global_mcp_drift_detected=%s", strings.Join(plan.GlobalMCPDriftAIs, ","))
-	}
-
-	sb.WriteString("\n")
-
-	// Detailed output (not in quiet mode)
-	if !quiet {
-		fmt.Fprintf(&sb, "\nDetected: %s\n", plan.DetectedState)
-
-		if plan.RequiresRepoSelection && len(plan.DetectedRepos) > 0 {
-			fmt.Fprintf(&sb, "Workspace: Multi-repo (%d repositories detected)\n", len(plan.DetectedRepos))
-		}
-
-		if len(plan.Actions) > 0 {
-			sb.WriteString("\nActions:\n")
-			for _, summary := range plan.ActionSummary {
-				fmt.Fprintf(&sb, "  • %s\n", summary)
-			}
-		}
-		if len(plan.ManagedDriftAIs) > 0 || len(plan.UnmanagedDriftAIs) > 0 || len(plan.GlobalMCPDriftAIs) > 0 {
-			sb.WriteString("\nDrift:\n")
-			if len(plan.ManagedDriftAIs) > 0 {
-				fmt.Fprintf(&sb, "  • managed_drift_fixed: %s\n", strings.Join(plan.ManagedDriftAIs, ", "))
-			}
-			if len(plan.UnmanagedDriftAIs) > 0 {
-				fmt.Fprintf(&sb, "  • unmanaged_drift_detected: %s\n", strings.Join(plan.UnmanagedDriftAIs, ", "))
-			}
-			if len(plan.GlobalMCPDriftAIs) > 0 {
-				fmt.Fprintf(&sb, "  • global_mcp_drift_detected: %s\n", strings.Join(plan.GlobalMCPDriftAIs, ", "))
-			}
-		}
-
-		if len(plan.SkippedActions) > 0 {
-			sb.WriteString("\nSkipped:\n")
-			for _, skipped := range plan.SkippedActions {
-				fmt.Fprintf(&sb, "  ⊘ %s\n", skipped)
-			}
-		}
-
-		if len(plan.Warnings) > 0 {
-			sb.WriteString("\nWarnings:\n")
-			for _, warning := range plan.Warnings {
-				fmt.Fprintf(&sb, "  ⚠️  %s\n", warning)
-			}
-		}
-
-		if len(plan.Reasons) > 0 {
-			sb.WriteString("\nWhy:\n")
-			for _, reason := range plan.Reasons {
-				fmt.Fprintf(&sb, "  → %s\n", reason)
-			}
+		for _, warning := range plan.Warnings {
+			fmt.Fprintf(&sb, "\n  Warning: %s\n", warning)
 		}
 	}
 

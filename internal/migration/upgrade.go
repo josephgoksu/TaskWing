@@ -65,7 +65,7 @@ func CheckAndMigrate(projectDir, currentVersion string) (warnings []string, err 
 }
 
 // migrateLocalConfigs detects which AIs have managed markers and regenerates
-// their slash commands (which internally prunes stale tw-* files).
+// their slash commands/skills (which internally prunes stale files).
 func migrateLocalConfigs(projectDir string) {
 	for _, aiName := range bootstrap.ValidAINames() {
 		cfg, ok := bootstrap.AIHelperByName(aiName)
@@ -74,19 +74,31 @@ func migrateLocalConfigs(projectDir string) {
 		}
 
 		// Check if this AI has a managed marker
+		managed := false
 		if cfg.SingleFile {
 			// Single-file AIs (e.g., Copilot) embed the marker in file content.
-			// Check for the embedded marker before regenerating.
 			filePath := filepath.Join(projectDir, cfg.CommandsDir, cfg.SingleFileName)
 			content, err := os.ReadFile(filePath)
-			if err != nil || !strings.Contains(string(content), "<!-- TASKWING_MANAGED -->") {
-				continue
+			if err == nil && strings.Contains(string(content), "<!-- TASKWING_MANAGED -->") {
+				managed = true
 			}
 		} else {
 			markerPath := filepath.Join(projectDir, cfg.CommandsDir, bootstrap.TaskWingManagedFile)
-			if _, err := os.Stat(markerPath); err != nil {
-				continue
+			if _, err := os.Stat(markerPath); err == nil {
+				managed = true
 			}
+		}
+
+		// For Claude, also check legacy .claude/commands/ marker (migration from commands to skills)
+		if !managed && aiName == "claude" {
+			legacyMarker := filepath.Join(projectDir, ".claude", "commands", bootstrap.TaskWingManagedFile)
+			if _, err := os.Stat(legacyMarker); err == nil {
+				managed = true
+			}
+		}
+
+		if !managed {
+			continue
 		}
 
 		// Regenerate (this prunes stale files and creates new ones)

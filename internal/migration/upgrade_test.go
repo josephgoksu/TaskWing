@@ -77,17 +77,17 @@ func TestMigrationRunsOnVersionChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a managed Claude commands directory with a legacy tw-ask.md file
-	claudeDir := filepath.Join(dir, ".claude", "commands")
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
+	// Create a managed Claude commands directory (legacy format) with a flat tw-ask.md file
+	legacyCmdDir := filepath.Join(dir, ".claude", "commands")
+	if err := os.MkdirAll(legacyCmdDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	markerContent := "# This directory is managed by TaskWing\n# AI: claude\n# Version: old\n"
-	if err := os.WriteFile(filepath.Join(claudeDir, bootstrap.TaskWingManagedFile), []byte(markerContent), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(legacyCmdDir, bootstrap.TaskWingManagedFile), []byte(markerContent), 0644); err != nil {
 		t.Fatal(err)
 	}
-	// Write a legacy tw-ask.md file that should get pruned
-	if err := os.WriteFile(filepath.Join(claudeDir, "tw-ask.md"), []byte("legacy"), 0644); err != nil {
+	// Write a legacy tw-ask.md file that should get cleaned up
+	if err := os.WriteFile(filepath.Join(legacyCmdDir, "tw-ask.md"), []byte("legacy"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,14 +105,20 @@ func TestMigrationRunsOnVersionChange(t *testing.T) {
 	}
 
 	// Legacy tw-ask.md should be removed
-	if _, err := os.Stat(filepath.Join(claudeDir, "tw-ask.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(legacyCmdDir, "tw-ask.md")); !os.IsNotExist(err) {
 		t.Fatal("legacy tw-ask.md should have been pruned")
 	}
 
-	// New namespace directory should exist with regenerated commands
-	nsDir := filepath.Join(claudeDir, "taskwing")
+	// Commands namespace directory should exist with embedded content
+	nsDir := filepath.Join(legacyCmdDir, "taskwing")
 	if _, err := os.Stat(nsDir); os.IsNotExist(err) {
 		t.Fatal("taskwing/ namespace directory should have been created")
+	}
+
+	// At least one command should be generated with embedded content
+	askCmd := filepath.Join(nsDir, "ask.md")
+	if _, err := os.Stat(askCmd); os.IsNotExist(err) {
+		t.Fatal("taskwing/ask.md should have been created")
 	}
 }
 
@@ -126,13 +132,13 @@ func TestMigrationIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create managed Claude config
-	claudeDir := filepath.Join(dir, ".claude", "commands")
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
+	// Create managed Claude config (legacy commands directory)
+	legacyCmdDir := filepath.Join(dir, ".claude", "commands")
+	if err := os.MkdirAll(legacyCmdDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	markerContent := "# This directory is managed by TaskWing\n# AI: claude\n# Version: old\n"
-	if err := os.WriteFile(filepath.Join(claudeDir, bootstrap.TaskWingManagedFile), []byte(markerContent), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(legacyCmdDir, bootstrap.TaskWingManagedFile), []byte(markerContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
