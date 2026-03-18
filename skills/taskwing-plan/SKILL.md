@@ -10,10 +10,22 @@ argument-hint: "[goal description] or [--batch goal description]"
 
 **Example:** `/taskwing:plan Add Stripe billing integration`
 
-## TaskWing Workflow Contract v1 (Always On)
-1. No implementation before a clarified and approved plan/task checkpoint.
-2. No completion claim without fresh verification evidence.
-3. No debug fix proposal without root-cause evidence.
+The Workflow Contract lives in CLAUDE.md (single source of truth). Obey it always.
+
+## Kill Table
+
+| Impulse | Do Instead |
+|---------|------------|
+| Auto-answer clarifying questions yourself | Present them to the user and WAIT |
+| Skip the clarification checkpoint | STOP with refusal text |
+| Plan without clarifying first | Always run clarify before generate |
+| Assume the user approved | Require explicit "approve", "yes", or equivalent |
+
+## Operating Principles
+
+1. **Goal clarity first.** Never generate a plan from a vague goal. Run clarify until is_ready_to_plan is true.
+2. **User approves at every gate.** Checkpoints are hard gates, not suggestions. Missing approval = STOP.
+3. **Auto-start after finalize.** Once the plan is approved, immediately call `task(next)` with auto_start=true. Do not wait for the user to say "/taskwing:next".
 
 Hard gate for this command:
 - Do NOT generate, decompose, expand, or finalize a plan until the clarified goal checkpoint is explicitly approved.

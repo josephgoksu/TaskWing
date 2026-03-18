@@ -153,7 +153,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 | Capability | Description |
 |:-----------|:------------|
 | **Local knowledge** | Extracts decisions, patterns, and constraints into local SQLite |
-| **Goal to tasks** | Turns a goal into an executable plan with decomposed tasks |
+| **Plan to tasks** | Turns a plan into decomposed tasks with architecture context |
 | **AI-driven lifecycle** | Task execution -- next, start, complete, verify |
 | **Code analysis** | Symbol search, call graphs, impact analysis, simplification |
 | **Root cause first** | AI-powered diagnosis before proposing fixes |

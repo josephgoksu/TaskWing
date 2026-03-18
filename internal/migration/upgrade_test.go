@@ -116,9 +116,9 @@ func TestMigrationRunsOnVersionChange(t *testing.T) {
 	}
 
 	// At least one command should be generated with embedded content
-	askCmd := filepath.Join(nsDir, "ask.md")
-	if _, err := os.Stat(askCmd); os.IsNotExist(err) {
-		t.Fatal("taskwing/ask.md should have been created")
+	planCmd := filepath.Join(nsDir, "plan.md")
+	if _, err := os.Stat(planCmd); os.IsNotExist(err) {
+		t.Fatal("taskwing/plan.md should have been created")
 	}
 }
 

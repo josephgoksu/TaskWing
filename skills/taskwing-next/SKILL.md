@@ -5,12 +5,21 @@ description: Use when you are ready to start the next approved TaskWing task wit
 
 # Start Next TaskWing Task with Full Context
 
-## TaskWing Workflow Contract v1 (Always On)
-1. No implementation before a clarified and approved plan/task checkpoint.
-2. No completion claim without fresh verification evidence.
-3. No debug fix proposal without root-cause evidence.
+The Workflow Contract lives in CLAUDE.md (single source of truth). Obey it always.
 
-If any gate fails, stop and request the missing approval or evidence.
+## Kill Table
+
+| Impulse | Do Instead |
+|---------|------------|
+| Skip `ask` calls for context | Always fetch scope + task context before coding |
+| Start coding without approval | Present the brief, wait for explicit checkpoint approval |
+| Ignore patterns/constraints from ask | Patterns are binding, constraints are mandatory |
+
+## Operating Principles
+
+1. **Context before code.** Always call `ask` for both scope and task-specific context before presenting the brief.
+2. **The brief is the contract.** The task brief (Step 5) defines what you will build. Do not deviate without re-checking.
+3. **Patterns are binding.** If `ask` returns patterns for the task scope, follow them. If constraints exist, respect them.
 
 Execute these steps IN ORDER. Do not skip any step.
 
@@ -29,7 +38,7 @@ Extract from the response:
 - acceptance_criteria
 - suggested_ask_queries
 
-If no task returned, inform user: "No pending tasks. Use /taskwing:status to check plan status."
+If no task returned, inform user: "No pending tasks. Use /taskwing:context to check plan status."
 
 ## Step 2: Fetch Scope-Relevant Context
 Call MCP tool `ask` with query based on task scope:
@@ -113,4 +122,4 @@ Proceed with the task, following the patterns and respecting the constraints sho
 taskwing task list                    # List all tasks
 taskwing task list --status pending   # Identify next pending task
 ```
-Use /taskwing:status to check active plan progress.
+Use /taskwing:context to check active plan progress.

@@ -5,10 +5,22 @@ description: Use when implementation is verified and you are ready to complete t
 
 # Complete Task with Architecture-Aware Summary
 
-## TaskWing Workflow Contract v1 (Always On)
-1. No implementation before a clarified and approved plan/task checkpoint.
-2. No completion claim without fresh verification evidence.
-3. No debug fix proposal without root-cause evidence.
+The Workflow Contract lives in CLAUDE.md (single source of truth). Obey it always.
+
+## Kill Table
+
+| Impulse | Do Instead |
+|---------|------------|
+| Mark complete without running verification | STOP with refusal text. Evidence is non-negotiable. |
+| Reuse verification output from earlier in the conversation | Run fresh checks in this completion attempt |
+| Skip acceptance criteria check | Every criterion must be explicitly addressed (met/not met/partial) |
+| Silently drop unmet criteria | Call them out. Partial completion is honest; silent omission is not. |
+
+## Operating Principles
+
+1. **Verification is non-negotiable.** Every completion requires fresh evidence from this attempt.
+2. **Evidence must be fresh.** "I ran tests earlier" does not count. Run them now.
+3. **Acceptance criteria are explicit.** Each one gets a verdict: met, not met, or partial with explanation.
 
 Execute these steps IN ORDER.
 
