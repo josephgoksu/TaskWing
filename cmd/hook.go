@@ -249,13 +249,28 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 		})
 	}
 
-	// Check current task status
+	// Sync TasksCompleted from DB (source of truth) instead of trusting session JSON.
+	// This fixes the race where session save fails but task completion succeeds.
+	completedCount := 0
+	for _, t := range activePlan.Tasks {
+		if t.Status == task.StatusCompleted {
+			completedCount++
+		}
+	}
+	if completedCount > session.TasksCompleted {
+		session.TasksCompleted = completedCount
+	}
+
+	// Load current task from DB to verify status (don't trust session cache)
 	var currentTask *task.Task
 	if session.CurrentTaskID != "" {
-		var err error
 		currentTask, err = repo.GetTask(session.CurrentTaskID)
-		if err != nil && viper.GetBool("verbose") {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Could not load current task %s: %v\n", session.CurrentTaskID, err)
+		if err != nil {
+			// Task not found or DB error -- clear stale reference
+			session.CurrentTaskID = ""
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Could not load current task %s: %v\n", session.CurrentTaskID, err)
+			}
 		}
 	}
 
@@ -269,7 +284,6 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 
 	// No more tasks = plan complete
 	if nextTask == nil {
-		// Check if all tasks are done
 		allDone := true
 		for _, t := range activePlan.Tasks {
 			if t.Status != task.StatusCompleted {
@@ -290,28 +304,20 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	// Build context for next task
 	contextStr := buildTaskContext(repo, nextTask, activePlan)
 
-	// Update session state
+	// Run Sentinel + policy analysis on completed task (if just completed)
 	if currentTask != nil && currentTask.Status == task.StatusCompleted {
-		session.TasksCompleted++
-
-		// Run Sentinel analysis with git verification on the just-completed task
-		// Git verification catches cases where an agent lies about what files it modified
 		workDir, _ := os.Getwd()
 		sentinel := task.NewSentinel()
 		report := sentinel.AnalyzeWithVerification(context.Background(), currentTask, workDir)
 
-		// Track deviations in session
 		if report.HasDeviations() {
 			session.TotalDeviationsDetected += len(report.Deviations)
 			session.LastDeviationSummary = report.Summary
-
-			// Set critical flag for next continue-check to handle
 			if report.HasCriticalDeviations() {
 				session.LastTaskHadCriticalDeviation = true
 			}
 		}
 
-		// Run policy evaluation on completed task
 		policyResult := evaluateTaskPolicy(context.Background(), currentTask, activePlan.Goal, session.SessionID, workDir)
 		if policyResult != nil && !policyResult.Allowed {
 			session.TotalPolicyViolations += len(policyResult.Violations)
@@ -319,12 +325,19 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 			session.LastTaskHadPolicyViolation = true
 		}
 	}
+
+	// Update session state
 	session.CurrentTaskID = nextTask.ID
 	session.PlanID = activePlan.ID
 	session.TasksStarted++
+
+	// Save session with retry -- session sync failure is the #1 cause of hook unreliability
 	if err := saveHookSession(session); err != nil {
-		// Log to stderr but don't fail - hook must return valid JSON
-		fmt.Fprintf(os.Stderr, "[WARN] Failed to save session state: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[WARN] Session save failed, retrying: %v\n", err)
+		time.Sleep(100 * time.Millisecond)
+		if retryErr := saveHookSession(session); retryErr != nil {
+			fmt.Fprintf(os.Stderr, "[WARN] Session save retry also failed: %v\n", retryErr)
+		}
 	}
 
 	// Return block with next task context in reason field

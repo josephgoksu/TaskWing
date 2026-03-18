@@ -154,15 +154,19 @@ func NewPlanApp(ctx *Context) *PlanApp {
 	return pa
 }
 
-// defaultTaskEnricher executes all ask queries and aggregates results into a context summary.
+// defaultTaskEnricher executes ask queries and aggregates results into a context summary.
+// If no explicit queries are provided, it falls back to fetching project constraints
+// and decisions so every task has baseline project context.
 // This is the production implementation; tests can override TaskEnricher for mocking.
 func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (string, error) {
-	if len(queries) == 0 {
-		return "", nil
-	}
-
 	askApp := NewAskApp(a.ctx)
 	var contextParts []string
+
+	// Always include project constraints and key decisions as baseline context.
+	// This ensures every task knows the project's rules even without specific queries.
+	if len(queries) == 0 {
+		queries = []string{"project constraints and rules", "key technology decisions"}
+	}
 
 	for _, query := range queries {
 		result, err := askApp.Query(ctx, query, AskOptions{
