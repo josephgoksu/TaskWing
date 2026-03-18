@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -57,12 +57,12 @@ func (a *DocAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 					return output, nil
 				}
 				if len(findings) > 0 {
-					log.Printf("[doc] ReAct produced only %d findings (threshold %d), falling back to deterministic", len(findings), reactMinFindingsDoc)
+					slog.Debug("[doc] ReAct produced only N findings, falling back to deterministic", "count", len(findings), "threshold", reactMinFindingsDoc)
 				}
 			}
 		}
 		if err != nil && !errors.Is(err, ErrNoToolCalling) {
-			log.Printf("[doc] ReAct mode failed, falling back to deterministic: %v", err)
+			slog.Debug("[doc] ReAct mode failed, falling back to deterministic", "error", err)
 		}
 	}
 

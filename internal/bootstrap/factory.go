@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/impl"
@@ -75,7 +76,7 @@ func hasDependencyFiles(basePath string) bool {
 				continue
 			}
 			for _, name := range dependencyManifests {
-				p, err := safepath.SafeJoin(basePath, e.Name()+"/"+name)
+				p, err := safepath.SafeJoin(basePath, filepath.Join(e.Name(), name))
 				if err != nil {
 					continue
 				}

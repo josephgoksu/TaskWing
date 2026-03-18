@@ -214,6 +214,11 @@ func (c *statCache) stat(path string) (os.FileInfo, error) {
 	info, err := os.Stat(path)
 
 	c.mu.Lock()
+	// Re-check: another goroutine may have refreshed this entry while we were statting
+	if existing, ok := c.entries[path]; ok && time.Since(existing.checkedAt) < cacheTTL {
+		c.mu.Unlock()
+		return existing.info, existing.err
+	}
 	c.entries[path] = cacheEntry{info: info, err: err, checkedAt: time.Now()}
 	// Evict when cache grows too large
 	if len(c.entries) > cacheMaxSize {

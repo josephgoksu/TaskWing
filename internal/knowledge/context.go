@@ -196,8 +196,8 @@ func GetProjectContext(ctx context.Context, svc *Service, opts ContextOptions) (
 	}
 
 	// 1. Load ARCHITECTURE.md
-	if opts.IncludeArchitectureMD && memoryBasePath != "" {
-		archPath := filepath.Join(memoryBasePath, "..", "ARCHITECTURE.md")
+	if opts.IncludeArchitectureMD && basePath != "" {
+		archPath := filepath.Join(basePath, ".taskwing", "ARCHITECTURE.md")
 		if content, err := os.ReadFile(archPath); err == nil {
 			pc.ArchitectureMD = string(content)
 			pc.SearchLog = append(pc.SearchLog, "Loaded ARCHITECTURE.md")
@@ -209,8 +209,9 @@ func GetProjectContext(ctx context.Context, svc *Service, opts ContextOptions) (
 		constraints, err := svc.ListNodesByType(ctx, memory.NodeTypeConstraint)
 		if err != nil {
 			pc.SearchLog = append(pc.SearchLog, fmt.Sprintf("Constraint fetch failed: %v", err))
+			return pc, fmt.Errorf("constraint fetch: %w", err)
 		}
-		if err == nil && len(constraints) > 0 {
+		if len(constraints) > 0 {
 			// Annotate freshness
 			if opts.CheckFreshness && basePath != "" {
 				for i := range constraints {
