@@ -164,7 +164,7 @@ func runMCPServer(ctx context.Context) error {
 	// Register ask tool - retrieves stored codebase knowledge for AI context
 	tool := &mcpsdk.Tool{
 		Name:        "ask",
-		Description: "Search project knowledge: decisions, patterns, constraints, and code symbols. Returns an AI-synthesized answer and relevant context by default. Use {\"query\":\"search term\"} for semantic search.",
+		Description: "Search project knowledge: decisions, patterns, constraints, and code symbols. Returns an AI-synthesized answer and relevant context by default. Use {\"query\":\"search term\"} for semantic search. Use {\"all\":true} for a complete knowledge dump (no LLM calls, instant).",
 	}
 
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
@@ -320,6 +320,16 @@ REQUIRED FIELDS BY ACTION:
 // This ensures MCP and CLI use identical search logic with zero drift.
 // Uses the app.AskApp for all business logic - single source of truth.
 func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcppresenter.ProjectContextParams) (*mcpsdk.CallToolResultFor[any], error) {
+	// Fast path: all=true dumps every node from SQLite with no LLM calls.
+	// This is the MCP equivalent of `taskwing knowledge`.
+	if params.All {
+		nodes, err := repo.ListNodes("")
+		if err != nil {
+			return mcpErrorResponse(fmt.Errorf("list nodes: %w", err))
+		}
+		return mcpMarkdownResponse(mcppresenter.FormatKnowledgeDump(nodes))
+	}
+
 	// Create app context with query role - respects llm.models.query config (same as CLI)
 	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
 	askApp := app.NewAskApp(appCtx)
@@ -337,9 +347,8 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcpp
 	}
 
 	// Resolve workspace filtering
-	// params.All=true or empty workspace = search all workspaces
 	var workspace string
-	if !params.All && params.Workspace != "" {
+	if params.Workspace != "" {
 		if err := app.ValidateWorkspace(params.Workspace); err != nil {
 			return mcpValidationErrorResponse("workspace", err.Error())
 		}

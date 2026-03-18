@@ -32,16 +32,12 @@ Inject the complete project knowledge base into this conversation so you have fu
 
 ## Steps
 
-1. Call MCP tool `ask` with a broad query to retrieve all knowledge:
+1. Call MCP tool `ask` with `all=true` to dump all knowledge directly from SQLite (no LLM calls, instant):
 ```json
-{"query": "project decisions patterns constraints features", "all": true}
+{"all": true}
 ```
 
-2. Present the returned knowledge organized by type:
-   - **Constraints** first (mandatory rules)
-   - **Decisions** (technology and architecture choices)
-   - **Patterns** (recurring practices)
-   - **Features** (product capabilities)
+2. Present the returned knowledge verbatim. The response is already organized by type (constraints, decisions, patterns, features).
 
 3. After presenting, confirm: "Project context loaded. I now have full visibility into your architecture. What would you like to work on?"
 

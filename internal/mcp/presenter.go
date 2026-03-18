@@ -12,10 +12,63 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
+	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
+
+// FormatKnowledgeDump formats all knowledge nodes as Markdown, grouped by type.
+// This is the MCP equivalent of `taskwing knowledge` -- a direct SQLite dump
+// with no LLM calls, semantic search, or embedding lookups.
+func FormatKnowledgeDump(nodes []memory.Node) string {
+	if len(nodes) == 0 {
+		return "No knowledge nodes found. Run `taskwing bootstrap` to populate."
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("## Knowledge (%d nodes)\n\n", len(nodes)))
+
+	typeOrder := []string{"constraint", "decision", "feature", "pattern", "plan", "note", "metadata", "documentation"}
+	grouped := make(map[string][]memory.Node)
+	for i := range nodes {
+		t := nodes[i].Type
+		if t == "" {
+			t = "unknown"
+		}
+		grouped[t] = append(grouped[t], nodes[i])
+	}
+
+	for _, t := range typeOrder {
+		group := grouped[t]
+		if len(group) == 0 {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("### %s (%d)\n", cases.Title(language.English).String(t), len(group)))
+		for _, n := range group {
+			title := n.Summary
+			if title == "" {
+				title = truncate(n.Content, 120)
+			}
+			sb.WriteString(fmt.Sprintf("- **%s**", title))
+			if n.Workspace != "" && n.Workspace != "root" {
+				sb.WriteString(fmt.Sprintf(" [%s]", n.Workspace))
+			}
+			// Include content preview when it adds info beyond the summary
+			if n.Content != "" && n.Content != n.Summary {
+				content := cleanContent(n.Content, title)
+				if content != "" {
+					preview := truncate(content, 200)
+					sb.WriteString(fmt.Sprintf("\n  %s", preview))
+				}
+			}
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	return strings.TrimSpace(sb.String())
+}
 
 // FormatAsk converts an AskResult into token-efficient Markdown.
 // Structure: Answer (if present) -> Knowledge (grouped by type) -> Symbols
