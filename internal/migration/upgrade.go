@@ -89,14 +89,6 @@ func migrateLocalConfigs(projectDir string) {
 			}
 		}
 
-		// For Claude, also check legacy .claude/commands/ marker (migration from commands to skills)
-		if !managed && aiName == "claude" {
-			legacyMarker := filepath.Join(projectDir, ".claude", "commands", bootstrap.TaskWingManagedFile)
-			if _, err := os.Stat(legacyMarker); err == nil {
-				managed = true
-			}
-		}
-
 		if !managed {
 			continue
 		}

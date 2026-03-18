@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -73,9 +74,10 @@ func (r *Runner) RunWithOptions(ctx context.Context, projectPath string, opts Ru
 	}
 
 	// Wave 1: doc + deps (parallel)
-	wave1Results, _ := runParallel(ctx, wave1Agents, input)
-	// Wave 1 errors are non-fatal: code and git work independently.
-	// Partial wave1 results still provide useful context for wave 2.
+	wave1Results, wave1Err := runParallel(ctx, wave1Agents, input)
+	if wave1Err != nil {
+		slog.Debug("wave 1 agents returned errors (non-fatal)", "error", wave1Err)
+	}
 
 	// Build context from wave 1 findings for wave 2
 	wave1Context := buildWaveContext(wave1Results)

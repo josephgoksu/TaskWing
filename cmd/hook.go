@@ -267,9 +267,10 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 		currentTask, err = repo.GetTask(session.CurrentTaskID)
 		if err != nil {
 			// Task not found or DB error -- clear stale reference
+			staleID := session.CurrentTaskID
 			session.CurrentTaskID = ""
 			if viper.GetBool("verbose") {
-				fmt.Fprintf(os.Stderr, "[DEBUG] Could not load current task %s: %v\n", session.CurrentTaskID, err)
+				fmt.Fprintf(os.Stderr, "[DEBUG] Could not load current task %s: %v\n", staleID, err)
 			}
 		}
 	}

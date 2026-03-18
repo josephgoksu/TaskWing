@@ -165,7 +165,7 @@ Call MCP tool `plan` with action=decompose:
 ```json
 {
   "action": "decompose",
-  "plan_id": "[plan_id from Step 2]",
+  "clarify_session_id": "[clarify_session_id from Step 2]",
   "enriched_goal": "[enriched_goal from Step 2]"
 }
 ```
