@@ -119,7 +119,7 @@ func (a *TaskApp) Next(ctx context.Context, opts TaskNextOptions) (*TaskResult, 
 		return &TaskResult{
 			Success: true,
 			Message: "No pending tasks in this plan. All tasks may be completed or blocked.",
-			Hint:    "Use /taskwing:status to check progress.",
+			Hint:    "Use task MCP tool with action=current to check progress, or /taskwing:context for full status.",
 		}, nil
 	}
 

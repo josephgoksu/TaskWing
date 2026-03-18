@@ -165,15 +165,10 @@ Use these from your AI assistant once connected:
 
 | Command | When to use |
 |:--------|:------------|
-| `/taskwing:ask` | Search project knowledge (decisions, patterns, constraints) |
-| `/taskwing:remember` | Persist a decision, pattern, or insight to project memory |
+| `/taskwing:plan` | Clarify a goal and build an approved execution plan |
 | `/taskwing:next` | Start the next approved task with full context |
 | `/taskwing:done` | Complete the current task after verification |
-| `/taskwing:status` | Check current task progress and acceptance criteria |
-| `/taskwing:plan` | Clarify a goal and build an approved execution plan |
-| `/taskwing:debug` | Root-cause-first debugging before proposing fixes |
-| `/taskwing:explain` | Deep explanation of a code symbol and its call graph |
-| `/taskwing:simplify` | Simplify code while preserving behavior |
+| `/taskwing:context` | Get full project knowledge dump for complete architectural context |
 
 <details>
 <summary>MCP setup (manual)</summary>

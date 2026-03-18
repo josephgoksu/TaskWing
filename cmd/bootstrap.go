@@ -279,7 +279,7 @@ func printPostBootstrapSummary() {
 	}
 
 	fmt.Printf("\n   Knowledge: %d nodes (%s)\n", len(nodes), strings.Join(stats, ", "))
-	fmt.Println("   Run 'taskwing knowledge' to explore, or use /taskwing:ask in your AI tool.")
+	fmt.Println("   Run 'taskwing knowledge' to explore, or use the ask MCP tool in your AI tool.")
 }
 
 // executeAction executes a single bootstrap action.

@@ -63,7 +63,7 @@ When done:
 Check current status:
 
 ```text
-/taskwing:status
+/taskwing:context
 ```
 
 ## 3.5. First-Run Success Loop (<15 minutes)
