@@ -3,7 +3,6 @@ package policy
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -47,18 +46,10 @@ func NewBuiltinContextWithCodeIntel(workDir string, repo codeintel.Repository) *
 }
 
 // resolvePath converts a relative path to absolute using the work directory.
-// Uses safepath.SafeJoin to prevent path traversal via "../" in policy inputs.
+// Uses safepath for both relative and absolute paths to prevent traversal and prefix collisions.
 func (bc *BuiltinContext) resolvePath(path string) (string, error) {
 	if filepath.IsAbs(path) {
-		// Verify absolute path is within WorkDir
-		absWorkDir, err := filepath.Abs(bc.WorkDir)
-		if err != nil {
-			return "", fmt.Errorf("resolve work dir: %w", err)
-		}
-		if !strings.HasPrefix(filepath.Clean(path), absWorkDir) {
-			return "", fmt.Errorf("path outside work directory: %s", path)
-		}
-		return path, nil
+		return safepath.ValidateAbsPath(bc.WorkDir, path)
 	}
 	return safepath.SafeJoin(bc.WorkDir, path)
 }

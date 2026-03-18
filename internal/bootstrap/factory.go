@@ -2,11 +2,11 @@ package bootstrap
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/llm"
+	"github.com/josephgoksu/TaskWing/internal/safepath"
 )
 
 // NewDefaultAgents returns the standard set of agents for a bootstrap run.
@@ -57,20 +57,29 @@ var dependencyManifests = []string{
 }
 
 // hasDependencyFiles checks if any common dependency manifest exists at the project root.
+// Uses safepath.SafeJoin to prevent path traversal in basePath.
 func hasDependencyFiles(basePath string) bool {
 	for _, name := range dependencyManifests {
-		if _, err := os.Stat(filepath.Join(basePath, name)); err == nil {
+		p, err := safepath.SafeJoin(basePath, name)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
 			return true
 		}
 	}
-	// Also check for go.mod in subdirectories (monorepo)
+	// Also check for dependency files in subdirectories (monorepo)
 	if entries, err := os.ReadDir(basePath); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() {
 				continue
 			}
 			for _, name := range dependencyManifests {
-				if _, err := os.Stat(filepath.Join(basePath, e.Name(), name)); err == nil {
+				p, err := safepath.SafeJoin(basePath, e.Name()+"/"+name)
+				if err != nil {
+					continue
+				}
+				if _, err := os.Stat(p); err == nil {
 					return true
 				}
 			}

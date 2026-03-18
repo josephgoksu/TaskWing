@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
@@ -278,7 +279,7 @@ var commonDepFiles = []string{
 // hasAnyDependencyFile checks if at least one common dependency manifest exists.
 func hasAnyDependencyFile(basePath string) bool {
 	for _, name := range commonDepFiles {
-		if _, err := os.Stat(basePath + "/" + name); err == nil {
+		if _, err := os.Stat(filepath.Join(basePath, name)); err == nil {
 			return true
 		}
 	}

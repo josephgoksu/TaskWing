@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	agentcore "github.com/josephgoksu/TaskWing/internal/agents/core"
@@ -368,8 +369,14 @@ func validateAndResolvePath(requestedPath string, projectRoot string) (string, e
 		return "", fmt.Errorf("cannot resolve path without project root")
 	}
 
-	// SafeJoin resolves symlinks and ensures the result stays within projectRoot
-	absPath, err := safepath.SafeJoin(projectRoot, requestedPath)
+	// Support both relative and absolute paths within the project root
+	var absPath string
+	var err error
+	if filepath.IsAbs(requestedPath) {
+		absPath, err = safepath.ValidateAbsPath(projectRoot, requestedPath)
+	} else {
+		absPath, err = safepath.SafeJoin(projectRoot, requestedPath)
+	}
 	if err != nil {
 		return "", fmt.Errorf("path not allowed: %w", err)
 	}

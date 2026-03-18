@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -214,9 +215,13 @@ func (c *statCache) stat(path string) (os.FileInfo, error) {
 
 	c.mu.Lock()
 	c.entries[path] = cacheEntry{info: info, err: err, checkedAt: time.Now()}
-	// Evict expired entries when cache grows too large
+	// Evict when cache grows too large
 	if len(c.entries) > cacheMaxSize {
 		c.evictExpired()
+		// Fallback: if still over limit (burst scenario), evict oldest entries
+		if len(c.entries) > cacheMaxSize {
+			c.evictOldest(len(c.entries) - cacheMaxSize)
+		}
 	}
 	c.mu.Unlock()
 
@@ -230,6 +235,25 @@ func (c *statCache) evictExpired() {
 		if v.checkedAt.Before(cutoff) {
 			delete(c.entries, k)
 		}
+	}
+}
+
+// evictOldest removes the n oldest entries. Caller must hold write lock.
+func (c *statCache) evictOldest(n int) {
+	if n <= 0 {
+		return
+	}
+	type aged struct {
+		key string
+		at  time.Time
+	}
+	items := make([]aged, 0, len(c.entries))
+	for k, v := range c.entries {
+		items = append(items, aged{key: k, at: v.checkedAt})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].at.Before(items[j].at) })
+	for i := 0; i < n && i < len(items); i++ {
+		delete(c.entries, items[i].key)
 	}
 }
 
