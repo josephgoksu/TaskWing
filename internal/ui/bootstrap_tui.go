@@ -23,16 +23,17 @@ const (
 )
 
 type AgentState struct {
-	Name        string
-	Status      AgentStatus
-	Message     string
-	Result      *core.Output
-	Err         error
-	Spinner     spinner.Model
-	StartedAt   time.Time
-	LastTool    string
-	LastNode    string
-	LastEventAt time.Time
+	Name           string
+	Status         AgentStatus
+	Message        string
+	Result         *core.Output
+	Err            error
+	Spinner        spinner.Model
+	StartedAt      time.Time
+	LastTool       string
+	LastNode       string
+	LastEventAt    time.Time
+	ResultReceived bool // true once AgentResultMsg has been processed
 }
 
 type AgentResultMsg struct {
@@ -234,6 +235,7 @@ func (m BootstrapModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		allDone := true
 		for i, state := range m.Agents {
 			if state.Name == msg.Name {
+				state.ResultReceived = true
 				// AgentResultMsg is the final result - it overrides any intermediate
 				// errors captured during retry attempts. This fixes the bug where
 				// retryable errors (like JSON parse errors) would mark the agent as
@@ -262,7 +264,12 @@ func (m BootstrapModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.Agents[i] = state
 			}
-			if m.Agents[i].Status == StatusRunning {
+			// An agent is only "done" once its AgentResultMsg has arrived.
+			// Stream-based EventAgentError can set StatusError prematurely
+			// (e.g., ReAct max-step errors that the agent recovers from via
+			// deterministic fallback). Without this check, the TUI quits
+			// before the fallback completes on fast-finishing projects.
+			if !m.Agents[i].ResultReceived {
 				allDone = false
 			}
 		}
