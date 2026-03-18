@@ -118,7 +118,7 @@ type Flags struct {
 	TraceFile   string   `json:"trace_file,omitempty"`
 	Verbose     bool     `json:"verbose"`
 	Quiet       bool     `json:"quiet"`
-	Debug bool `json:"debug"` // Enable debug logging (dumps project context, git paths, etc.)
+	Debug       bool     `json:"debug"` // Enable debug logging (dumps project context, git paths, etc.)
 }
 
 // Plan captures the decisions about what to do.
@@ -146,9 +146,9 @@ type Plan struct {
 	SelectedAIs []string `json:"selected_ais,omitempty"` // User's actual AI selection
 
 	// Multi-repo workspace selection
-	DetectedRepos       []string `json:"detected_repos,omitempty"`
-	SelectedRepos       []string `json:"selected_repos,omitempty"`
-	RequiresRepoSelection bool   `json:"requires_repo_selection"`
+	DetectedRepos         []string `json:"detected_repos,omitempty"`
+	SelectedRepos         []string `json:"selected_repos,omitempty"`
+	RequiresRepoSelection bool     `json:"requires_repo_selection"`
 
 	// Error state
 	Error        error  `json:"-"`
@@ -296,7 +296,16 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		// Project OK but some AI configs need repair
 		plan.Mode = ModeRepair
 		aisToRepair := getAIsNeedingRepair(snap)
-		plan.DetectedState = fmt.Sprintf("AI configurations need repair: %s", strings.Join(aisToRepair, ", "))
+		// Include the reason for each AI needing repair
+		var repairDetails []string
+		for _, ai := range aisToRepair {
+			if health, ok := snap.AIHealth[ai]; ok && health.Reason != "" {
+				repairDetails = append(repairDetails, fmt.Sprintf("%s (%s)", ai, health.Reason))
+			} else {
+				repairDetails = append(repairDetails, ai)
+			}
+		}
+		plan.DetectedState = fmt.Sprintf("AI configurations need repair: %s", strings.Join(repairDetails, ", "))
 		plan.AIsNeedingRepair = aisToRepair
 		// Managed local drift is auto-repaired in bootstrap mode.
 		plan.RequiresUserInput = false
@@ -373,11 +382,9 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 			fmt.Sprintf("Unmanaged drift detected for: %s. TaskWing will not mutate these automatically.", strings.Join(plan.UnmanagedDriftAIs, ", ")))
 		plan.Warnings = append(plan.Warnings, "Run: taskwing doctor --fix --adopt-unmanaged")
 	}
-	if len(plan.GlobalMCPDriftAIs) > 0 {
-		plan.Warnings = append(plan.Warnings,
-			fmt.Sprintf("Global MCP drift detected for: %s. Bootstrap will not mutate global MCP in run mode.", strings.Join(plan.GlobalMCPDriftAIs, ", ")))
-		plan.Warnings = append(plan.Warnings, "Run: taskwing doctor --fix")
-	}
+	// Global MCP drift is not surfaced as a warning during bootstrap.
+	// Users who need global MCP can use 'tw doctor --fix' explicitly.
+	// Bootstrap should not nag about optional global configuration.
 
 	// NoOp detection
 	if len(plan.Actions) == 0 && plan.Mode != ModeError {
@@ -796,8 +803,12 @@ func FormatPlanSummary(plan *Plan, quiet bool) string {
 	// Human-readable summary
 	fmt.Fprintf(&sb, "%s\n", plan.DetectedState)
 
-	if plan.RequiresRepoSelection && len(plan.DetectedRepos) > 0 {
-		fmt.Fprintf(&sb, "Workspace: %d repositories detected\n", len(plan.DetectedRepos))
+	if plan.RequiresRepoSelection {
+		if len(plan.SelectedRepos) > 0 {
+			fmt.Fprintf(&sb, "Workspace: %d repositories selected\n", len(plan.SelectedRepos))
+		} else if len(plan.DetectedRepos) > 0 {
+			fmt.Fprintf(&sb, "Workspace: %d repositories detected\n", len(plan.DetectedRepos))
+		}
 	}
 
 	// Show what will happen
@@ -816,10 +827,8 @@ func FormatPlanSummary(plan *Plan, quiet bool) string {
 		fmt.Fprintf(&sb, "\n  Detected unmanaged config: %s\n", strings.Join(plan.UnmanagedDriftAIs, ", "))
 		sb.WriteString("  Run 'taskwing doctor --fix --adopt-unmanaged' to claim.\n")
 	}
-	if len(plan.GlobalMCPDriftAIs) > 0 {
-		fmt.Fprintf(&sb, "\n  Missing global MCP: %s\n", strings.Join(plan.GlobalMCPDriftAIs, ", "))
-		sb.WriteString("  Run 'taskwing doctor --fix' to repair.\n")
-	}
+	// Global MCP drift is not shown in bootstrap plan summary.
+	// Use 'tw doctor' for optional global MCP setup.
 
 	if len(plan.SkippedActions) > 0 {
 		sb.WriteString("\n  Skipped:\n")

@@ -3,7 +3,7 @@
 // Skills are self-contained SKILL.md files. They are the single source of truth
 // for prompt content used by both:
 //   - Claude Code commands (generated as .claude/commands/taskwing/*.md with embedded content)
-//   - CLI output (taskwing slash <cmd> for non-Claude-Code tools)
+//   - MCP tool responses (for non-Claude-Code tools)
 package skills
 
 import (

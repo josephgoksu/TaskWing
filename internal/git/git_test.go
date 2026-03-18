@@ -40,15 +40,21 @@ func (m *mockCommander) RunInDir(dir, name string, args ...string) (string, erro
 
 func TestGitWrapper_Exit128(t *testing.T) {
 	tests := []struct {
-		name       string
-		workDir    string
-		responses  map[string]struct{ output string; err error }
+		name      string
+		workDir   string
+		responses map[string]struct {
+			output string
+			err    error
+		}
 		wantIsRepo bool
 	}{
 		{
 			name:    "non-git directory returns false",
 			workDir: "/workspace/not-a-repo",
-			responses: map[string]struct{ output string; err error }{
+			responses: map[string]struct {
+				output string
+				err    error
+			}{
 				"/workspace/not-a-repo:git rev-parse --is-inside-work-tree": {
 					err: fmt.Errorf("exit status 128: fatal: not a git repository"),
 				},
@@ -58,7 +64,10 @@ func TestGitWrapper_Exit128(t *testing.T) {
 		{
 			name:    "valid git repo returns true",
 			workDir: "/workspace/valid-repo",
-			responses: map[string]struct{ output string; err error }{
+			responses: map[string]struct {
+				output string
+				err    error
+			}{
 				"/workspace/valid-repo:git rev-parse --is-inside-work-tree": {
 					output: "true",
 				},
@@ -68,7 +77,10 @@ func TestGitWrapper_Exit128(t *testing.T) {
 		{
 			name:    "empty directory with no response returns false",
 			workDir: "/tmp/empty",
-			responses: map[string]struct{ output string; err error }{},
+			responses: map[string]struct {
+				output string
+				err    error
+			}{},
 			wantIsRepo: false,
 		},
 	}

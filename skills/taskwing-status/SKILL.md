@@ -45,5 +45,5 @@ Commands:
 ## Fallback (No MCP)
 ```bash
 taskwing task list --status in_progress
-taskwing plan list
 ```
+Use /taskwing:plan to manage plans via MCP.

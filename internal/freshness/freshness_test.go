@@ -170,15 +170,15 @@ func TestDecaySmoothCurve(t *testing.T) {
 	}
 
 	tests := []struct {
-		present  []string
-		missing  []string
-		wantMin  float64
-		wantMax  float64
+		present []string
+		missing []string
+		wantMin float64
+		wantMax float64
 	}{
-		{[]string{"a.go", "b.go", "c.go"}, []string{"gone1.go"}, 0.75, 0.85}, // 1/4 missing: 0.8
-		{[]string{"a.go", "b.go"}, []string{"gone1.go", "gone2.go"}, 0.55, 0.65}, // 2/4 missing: 0.6
+		{[]string{"a.go", "b.go", "c.go"}, []string{"gone1.go"}, 0.75, 0.85},         // 1/4 missing: 0.8
+		{[]string{"a.go", "b.go"}, []string{"gone1.go", "gone2.go"}, 0.55, 0.65},     // 2/4 missing: 0.6
 		{[]string{"a.go"}, []string{"gone1.go", "gone2.go", "gone3.go"}, 0.35, 0.45}, // 3/4 missing: 0.4
-		{nil, []string{"gone1.go", "gone2.go", "gone3.go", "gone4.go"}, 0.15, 0.25}, // 4/4 missing: 0.2
+		{nil, []string{"gone1.go", "gone2.go", "gone3.go", "gone4.go"}, 0.15, 0.25},  // 4/4 missing: 0.2
 	}
 
 	for _, tt := range tests {

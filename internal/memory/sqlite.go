@@ -614,17 +614,17 @@ func (s *SQLiteStore) initSchema() error {
 		column string
 		ddl    string
 	}{
-		{"scope", "ALTER TABLE tasks ADD COLUMN scope TEXT"},                                       // e.g., "auth", "api", "vectorsearch"
-		{"keywords", "ALTER TABLE tasks ADD COLUMN keywords TEXT"},                                 // JSON array of extracted keywords
+		{"scope", "ALTER TABLE tasks ADD COLUMN scope TEXT"},                                 // e.g., "auth", "api", "vectorsearch"
+		{"keywords", "ALTER TABLE tasks ADD COLUMN keywords TEXT"},                           // JSON array of extracted keywords
 		{"suggested_ask_queries", "ALTER TABLE tasks ADD COLUMN suggested_ask_queries TEXT"}, // JSON array of pre-computed ask queries
-		{"claimed_by", "ALTER TABLE tasks ADD COLUMN claimed_by TEXT"},                             // Session ID that claimed this task
-		{"claimed_at", "ALTER TABLE tasks ADD COLUMN claimed_at TEXT"},                             // Timestamp when claimed
-		{"completed_at", "ALTER TABLE tasks ADD COLUMN completed_at TEXT"},                         // Timestamp when completed
-		{"completion_summary", "ALTER TABLE tasks ADD COLUMN completion_summary TEXT"},             // AI-generated summary on completion
-		{"files_modified", "ALTER TABLE tasks ADD COLUMN files_modified TEXT"},                     // JSON array of modified files
-		{"block_reason", "ALTER TABLE tasks ADD COLUMN block_reason TEXT"},                         // Reason if task is blocked
-		{"expected_files", "ALTER TABLE tasks ADD COLUMN expected_files TEXT"},                     // JSON array of expected files (for Sentinel)
-		{"git_baseline", "ALTER TABLE tasks ADD COLUMN git_baseline TEXT"},                         // JSON array of files already modified at task start
+		{"claimed_by", "ALTER TABLE tasks ADD COLUMN claimed_by TEXT"},                       // Session ID that claimed this task
+		{"claimed_at", "ALTER TABLE tasks ADD COLUMN claimed_at TEXT"},                       // Timestamp when claimed
+		{"completed_at", "ALTER TABLE tasks ADD COLUMN completed_at TEXT"},                   // Timestamp when completed
+		{"completion_summary", "ALTER TABLE tasks ADD COLUMN completion_summary TEXT"},       // AI-generated summary on completion
+		{"files_modified", "ALTER TABLE tasks ADD COLUMN files_modified TEXT"},               // JSON array of modified files
+		{"block_reason", "ALTER TABLE tasks ADD COLUMN block_reason TEXT"},                   // Reason if task is blocked
+		{"expected_files", "ALTER TABLE tasks ADD COLUMN expected_files TEXT"},               // JSON array of expected files (for Sentinel)
+		{"git_baseline", "ALTER TABLE tasks ADD COLUMN git_baseline TEXT"},                   // JSON array of files already modified at task start
 	}
 
 	for _, m := range taskMigrations {

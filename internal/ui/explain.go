@@ -11,19 +11,33 @@ import (
 
 // RenderExplainResult renders a deep explanation to the terminal.
 func RenderExplainResult(result *app.ExplainResult, verbose bool) {
-	// Symbol header
-	fmt.Printf("\n%s Symbol: %s (%s)\n", StyleBold("🔍"), result.Symbol.Name, result.Symbol.Kind)
-	fmt.Printf("   Location: %s\n", result.Symbol.Location)
+	// Header box - consistent with knowledge/bootstrap/ask
+	headerBox := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorPrimary).
+		Padding(0, 1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorSecondary)
+
+	fmt.Println()
+	fmt.Println(headerBox.Render(fmt.Sprintf("%s (%s)", result.Symbol.Name, result.Symbol.Kind)))
+
+	// Stats line
+	var metaParts []string
+	metaParts = append(metaParts, result.Symbol.Location)
 	if result.Symbol.Signature != "" {
-		fmt.Printf("   Signature: %s\n", result.Symbol.Signature)
+		metaParts = append(metaParts, result.Symbol.Signature)
 	}
+	fmt.Printf("  %s\n", StyleSubtle.Render(strings.Join(metaParts, "  ")))
+
 	if verbose && result.Symbol.DocComment != "" {
-		fmt.Printf("   Doc: %s\n", truncate(result.Symbol.DocComment, 100))
+		fmt.Printf("  %s\n", StyleSubtle.Render(truncate(result.Symbol.DocComment, 100)))
 	}
 
-	// Call graph
-	fmt.Printf("\n%s System Context\n", StyleBold("📊"))
-	fmt.Println("───────────────")
+	// Call graph section
+	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorText)
+	fmt.Println()
+	fmt.Printf("  %s\n", sectionStyle.Render("System Context"))
 
 	// Callers
 	fmt.Printf("\n⬆️  Called By (%d):\n", len(result.Callers))

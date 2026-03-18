@@ -197,9 +197,9 @@ func TestBootstrapRepro_GitLogExit128(t *testing.T) {
 	// Reproduce: git log fails with exit 128 when run against a non-git directory
 
 	tests := []struct {
-		name      string
-		workDir   string
-		responses map[string]mockResponse
+		name       string
+		workDir    string
+		responses  map[string]mockResponse
 		wantIsRepo bool
 	}{
 		{
@@ -301,10 +301,10 @@ func TestBootstrapRepro_ZeroDocsLoaded(t *testing.T) {
 	// but sub-repos contain documentation
 
 	tests := []struct {
-		name      string
-		setup     func(t *testing.T, dir string)
-		wantMin   int // minimum expected doc count
-		wantZero  bool
+		name     string
+		setup    func(t *testing.T, dir string)
+		wantMin  int // minimum expected doc count
+		wantZero bool
 	}{
 		{
 			name: "empty directory yields zero docs",

@@ -245,7 +245,7 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	activePlan, err := repo.GetActivePlan()
 	if err != nil || activePlan == nil {
 		return outputHookResponse(HookResponse{
-			Reason: "No active plan. Use 'taskwing plan start <plan-id>' to set one.",
+			Reason: "No active plan. Use /taskwing:plan to create one.",
 		})
 	}
 
@@ -350,34 +350,48 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 }
 
 // buildTaskContext creates the context string to inject for the next task.
-// Delegates to task.FormatRichContext for consistent presentation across CLI and MCP.
+// Uses the unified GetProjectContext API for retrieval.
 func buildTaskContext(repo *memory.Repository, nextTask *task.Task, plan *task.Plan) string {
 	ctx := context.Background()
 
-	// Get knowledge service for ask context
 	llmCfg, _ := getLLMConfigFromViper()
 	ks := knowledge.NewService(repo, llmCfg)
 
-	// Create search adapter that wraps knowledge.Service for the task package
-	searchFn := func(ctx context.Context, query string, limit int) ([]task.AskResult, error) {
-		searchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		results, err := ks.Search(searchCtx, query, limit)
-		if err != nil {
-			return nil, err
-		}
-		var adapted []task.AskResult
-		for _, r := range results {
-			adapted = append(adapted, task.AskResult{
-				Summary: r.Node.Summary,
-				Type:    r.Node.Type,
-				Content: r.Node.Text(),
-			})
-		}
-		return adapted, nil
+	opts := knowledge.DefaultContextOptions()
+	opts.Query = nextTask.Title + " " + nextTask.Description
+	opts.IncludeArchitectureMD = false // Too large for hook injection
+	opts.MaxNodes = 8
+	opts.UseLLMQueries = false // Speed: use task title directly
+
+	memoryPath, _ := config.GetMemoryBasePath()
+	opts.MemoryBasePath = memoryPath
+
+	pc, err := knowledge.GetProjectContext(ctx, ks, opts)
+	if err != nil {
+		return task.FormatRichContext(ctx, nextTask, plan, nil)
 	}
 
-	return task.FormatRichContext(ctx, nextTask, plan, searchFn)
+	// Combine unified context with task-specific formatting
+	projectCtx := pc.FormatCompact()
+
+	// Create search adapter backed by the already-retrieved nodes
+	searchFn := func(_ context.Context, _ string, _ int) ([]task.AskResult, error) {
+		var results []task.AskResult
+		for _, sn := range pc.RelevantNodes {
+			results = append(results, task.AskResult{
+				Summary: sn.Node.Summary,
+				Type:    sn.Node.Type,
+				Content: sn.Node.Text(),
+			})
+		}
+		return results, nil
+	}
+
+	richCtx := task.FormatRichContext(ctx, nextTask, plan, searchFn)
+	if projectCtx != "" {
+		return projectCtx + "\n\n" + richCtx
+	}
+	return richCtx
 }
 
 // runSessionInit initializes a new hook session
@@ -414,7 +428,7 @@ func runSessionInit() error {
 	// Note: Circuit breaker values shown are defaults; actual values depend on hook config
 	planInfo := session.PlanID
 	if planInfo == "" {
-		planInfo = "(none - use 'taskwing plan start <id>' to set)"
+		planInfo = "(none - use /taskwing:plan to create one)"
 	}
 
 	fmt.Printf(`TaskWing Session Initialized

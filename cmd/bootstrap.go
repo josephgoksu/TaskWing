@@ -71,7 +71,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		TraceFile:   getStringFlag(cmd, "trace-file"),
 		Verbose:     viper.GetBool("verbose"),
 		Quiet:       viper.GetBool("quiet"),
-		Debug: getBoolFlag(cmd, "debug"),
+		Debug:       getBoolFlag(cmd, "debug"),
 	}
 
 	// Validate flags early - fail fast on contradictions
@@ -158,25 +158,25 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	// ═══════════════════════════════════════════════════════════════════════
 	plan := bootstrap.DecidePlan(snapshot, flags)
 
-	// Always show plan summary (even in quiet mode, single line)
-	fmt.Print(bootstrap.FormatPlanSummary(plan, flags.Quiet))
-
-	// Handle error mode
+	// Handle error mode early (before any output)
 	if plan.Mode == bootstrap.ModeError {
+		fmt.Print(bootstrap.FormatPlanSummary(plan, flags.Quiet))
 		return plan.Error
 	}
 
-	// Handle preview mode - show plan and exit
-	if flags.Preview {
-		fmt.Println("\n💡 Preview mode - no changes made.")
-		return nil
-	}
-
-	// Handle NoOp mode
+	// Handle NoOp mode early
 	if plan.Mode == bootstrap.ModeNoOp {
+		fmt.Print(bootstrap.FormatPlanSummary(plan, flags.Quiet))
 		if !flags.Quiet {
 			fmt.Println("\n✅ Nothing to do - configuration is up to date.")
 		}
+		return nil
+	}
+
+	// Handle preview mode
+	if flags.Preview {
+		fmt.Print(bootstrap.FormatPlanSummary(plan, flags.Quiet))
+		fmt.Println("\n💡 Preview mode - no changes made.")
 		return nil
 	}
 
@@ -213,6 +213,9 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Show plan summary AFTER repo selection so it reflects the chosen scope
+	fmt.Print(bootstrap.FormatPlanSummary(plan, flags.Quiet))
+
 	// Execute actions in order
 	for _, action := range plan.Actions {
 		if err := executeAction(cmd.Context(), action, svc, cwd, flags, plan, llmCfg); err != nil {
@@ -244,7 +247,7 @@ func printPostBootstrapSummary() {
 		return
 	}
 
-	// Count by type
+	// Count by type using human-readable labels
 	byType := make(map[string]int)
 	for _, n := range nodes {
 		t := n.Type
@@ -254,16 +257,29 @@ func printPostBootstrapSummary() {
 		byType[t]++
 	}
 
-	// Build stats string using canonical type order
+	// Build stats with spelled-out type names
 	var stats []string
+	typeLabels := map[string]string{
+		"decision": "decisions", "feature": "features", "constraint": "constraints",
+		"pattern": "patterns", "plan": "plans", "note": "notes",
+		"metadata": "metadata", "documentation": "docs",
+	}
 	for _, t := range memory.AllNodeTypes() {
 		if count := byType[t]; count > 0 {
-			stats = append(stats, fmt.Sprintf("%s %d", ui.TypeIcon(t), count))
+			label := typeLabels[t]
+			if label == "" {
+				label = t
+			}
+			if count == 1 {
+				// Singularize
+				label = strings.TrimSuffix(label, "s")
+			}
+			stats = append(stats, fmt.Sprintf("%d %s", count, label))
 		}
 	}
 
-	fmt.Printf("\n   Knowledge: %d nodes (%s)\n", len(nodes), strings.Join(stats, " | "))
-	fmt.Println("   Run 'taskwing knowledge' to explore, or start Claude Code -- it already has context.")
+	fmt.Printf("\n   Knowledge: %d nodes (%s)\n", len(nodes), strings.Join(stats, ", "))
+	fmt.Println("   Run 'taskwing knowledge' to explore, or use /taskwing:ask in your AI tool.")
 }
 
 // executeAction executes a single bootstrap action.
@@ -396,17 +412,13 @@ func executeGenerateAIConfigs(svc *bootstrap.Service, flags bootstrap.Flags, pla
 		return nil
 	}
 
-	// Generate configs for each target AI
-	if !flags.Quiet {
-		fmt.Printf("🔧 Regenerating AI configurations for: %s\n", strings.Join(targetAIs, ", "))
-	}
-
+	// Generate configs (plan summary already showed which AIs are being updated)
 	if err := svc.RegenerateAIConfigs(flags.Verbose, targetAIs); err != nil {
 		return fmt.Errorf("regenerate AI configs failed: %w", err)
 	}
 
 	if !flags.Quiet {
-		fmt.Println("✓ AI configurations regenerated")
+		fmt.Printf("✓ AI configurations updated: %s\n", strings.Join(targetAIs, ", "))
 	}
 	return nil
 }
@@ -698,9 +710,11 @@ func runMultiRepoBootstrap(ctx context.Context, svc *bootstrap.Service, ws *proj
 	fmt.Println("")
 	ui.RenderPageHeader("TaskWing Multi-Repo Bootstrap", fmt.Sprintf("Workspace: %s | Services: %d", ws.Name, ws.ServiceCount()))
 
-	fmt.Printf("📦 Analyzing %d services. Running parallel analysis...\n", ws.ServiceCount())
+	fmt.Printf("📦 Analyzing %d services...\n", ws.ServiceCount())
 
-	findings, relationships, errs, err := svc.RunMultiRepoAnalysis(ctx, ws)
+	findings, relationships, errs, err := svc.RunMultiRepoAnalysis(ctx, ws, func(name, status string) {
+		fmt.Printf("  %s: %s\n", name, status)
+	})
 	if err != nil {
 		return err
 	}
@@ -712,14 +726,18 @@ func runMultiRepoBootstrap(ctx context.Context, svc *bootstrap.Service, ws *proj
 		}
 	}
 
-	fmt.Printf("📊 Aggregated: %d findings from %d services\n", len(findings), ws.ServiceCount()-len(errs))
-
 	if preview {
-		fmt.Println("\n💡 This was a preview. Run 'taskwing bootstrap' to save to memory.")
+		fmt.Printf("\n📊 Preview: %d findings from %d services\n", len(findings), ws.ServiceCount()-len(errs))
+		fmt.Println("💡 This was a preview. Run 'taskwing bootstrap' to save to memory.")
 		return nil
 	}
 
-	return svc.IngestDirectly(ctx, findings, relationships, viper.GetBool("quiet"))
+	if err := svc.IngestDirectly(ctx, findings, relationships, viper.GetBool("quiet")); err != nil {
+		return err
+	}
+
+	// Don't print completion here -- runBootstrap prints it after all actions finish.
+	return nil
 }
 
 // promptRepoSelection prompts the user to select which repositories to bootstrap.

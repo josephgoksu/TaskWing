@@ -60,7 +60,7 @@ func (r *Runner) RunWithOptions(ctx context.Context, projectPath string, opts Ru
 		BasePath:    projectPath,
 		ProjectName: filepath.Base(projectPath),
 		Mode:        core.ModeBootstrap,
-		Verbose:     true,
+		Verbose:     false, // Only enable with --verbose or --debug flags
 		Workspace:   workspace,
 	}
 
@@ -114,7 +114,7 @@ func splitAgentsByWave(agents []core.Agent) (wave1, wave2 []core.Agent) {
 // buildWaveContext converts wave 1 outputs into context for wave 2 agents.
 // Truncates descriptions and total size to avoid blowing up the code agent's context budget.
 func buildWaveContext(results []core.Output) map[string]any {
-	const maxDescLen = 200   // Truncate individual descriptions
+	const maxDescLen = 200     // Truncate individual descriptions
 	const maxSummaryLen = 6000 // Cap total summary (~1.5k tokens)
 
 	var summaryParts []string

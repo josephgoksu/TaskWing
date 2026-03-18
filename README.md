@@ -66,11 +66,8 @@ taskwing bootstrap
 # 2. Connect to your AI tool
 taskwing mcp install claude    # or: cursor, gemini, codex, copilot, opencode
 
-# 3. Set a goal and go
-taskwing goal "Add Stripe billing"
-# -> Plan decomposed into 5 executable tasks
-
-# 4. Execute with your AI assistant
+# 3. Plan and execute with your AI assistant
+/taskwing:plan       # Create a plan via MCP
 /taskwing:next       # Get next task with full context
 # ...work...
 /taskwing:done       # Mark complete, advance to next
@@ -252,11 +249,8 @@ Or configure interactively: `taskwing config`
 
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
-- `taskwing goal "<goal>"`
 - `taskwing ask "<query>"`
 - `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
 - `taskwing mcp`
 - `taskwing doctor`
 - `taskwing config`

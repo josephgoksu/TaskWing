@@ -564,20 +564,6 @@ func GetRecommendedModelForRole(providerID string, role ModelRole) *Model {
 	return GetDefaultModel(providerID)
 }
 
-// GetCategoryBadge returns an emoji badge for the model category.
-func GetCategoryBadge(category ModelCategory) string {
-	switch category {
-	case CategoryReasoning:
-		return "🧠"
-	case CategoryBalanced:
-		return "⚡"
-	case CategoryFast:
-		return "🚀"
-	default:
-		return ""
-	}
-}
-
 // InferProvider attempts to determine the provider from a model name.
 // Returns the provider ID and true if inference succeeded.
 func InferProvider(modelID string) (string, bool) {
@@ -635,8 +621,8 @@ type ModelOption struct {
 
 // modelWithOrder tracks a model's position in the registry for stable ordering.
 type modelWithOrder struct {
-	option       ModelOption
-	registryIdx  int // Position in ModelRegistry (newest first per provider)
+	option      ModelOption
+	registryIdx int // Position in ModelRegistry (newest first per provider)
 }
 
 // GetModelsForProvider returns available models for a provider (for UI selection).

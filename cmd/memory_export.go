@@ -21,8 +21,8 @@ type trainingMessage struct {
 }
 
 type trainingExample struct {
-	Messages []trainingMessage      `json:"messages"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Messages []trainingMessage `json:"messages"`
+	Metadata map[string]any    `json:"metadata,omitempty"`
 }
 
 // Classification system prompt (matches generate_classification_data.py)

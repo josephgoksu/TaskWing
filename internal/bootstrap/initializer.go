@@ -302,9 +302,8 @@ var SlashCommands = []SlashCommand{
 	{"taskwing:done", "done", "Use when implementation is verified and you are ready to complete the current task."},
 	{"taskwing:status", "status", "Use when you need current task progress and acceptance criteria status."},
 	{"taskwing:plan", "plan", "Use when you need to clarify a goal and build an approved execution plan."},
-	{"taskwing:debug", "debug", "Use when an issue requires root-cause-first debugging before proposing fixes."},
 	{"taskwing:explain", "explain", "Use when you need a deep explanation of a code symbol and its call graph."},
-	{"taskwing:simplify", "simplify", "Use when you want to simplify code while preserving behavior."},
+	{"taskwing:context", "context", "Use when you need the full project knowledge dump for complete architectural context."},
 }
 
 // SlashCommandNames returns slash command short names (e.g., "ask", "next", "done"), in canonical order.
@@ -343,17 +342,14 @@ func MCPToolNames() []string {
 
 // CoreCommand describes a CLI command included in documentation.
 type CoreCommand struct {
-	Display string `json:"display"` // e.g. "taskwing goal \"<goal>\""
+	Display string `json:"display"` // e.g. "taskwing bootstrap"
 }
 
 // CoreCommands is the curated list of CLI commands shown in documentation.
 var CoreCommands = []CoreCommand{
 	{"taskwing bootstrap"},
-	{"taskwing goal \"<goal>\""},
 	{"taskwing ask \"<query>\""},
 	{"taskwing task"},
-	{"taskwing plan status"},
-	{"taskwing slash"},
 	{"taskwing mcp"},
 	{"taskwing doctor"},
 	{"taskwing config"},
@@ -422,12 +418,19 @@ func expectedSlashCommandFiles(ext string) map[string]struct{} {
 	return expected
 }
 
+// deprecatedSlashCommands lists command names that were removed but whose files
+// may still exist from older bootstrap runs. These are always pruned.
+var deprecatedSlashCommands = []string{"debug", "simplify", "brief"}
+
 func managedSlashCommandBases() map[string]struct{} {
-	managed := make(map[string]struct{}, len(SlashCommands)*2)
+	managed := make(map[string]struct{}, len(SlashCommands)*2+len(deprecatedSlashCommands)*2)
 	for _, cmd := range SlashCommands {
 		managed[cmd.SlashCmd] = struct{}{}
-		// Also recognize legacy tw-* names for migration cleanup
 		managed["tw-"+cmd.SlashCmd] = struct{}{}
+	}
+	for _, name := range deprecatedSlashCommands {
+		managed[name] = struct{}{}
+		managed["tw-"+name] = struct{}{}
 	}
 	return managed
 }
@@ -552,21 +555,22 @@ func (i *Initializer) CreateSlashCommands(aiName string, verbose bool) error {
 	}
 
 	for _, cmd := range SlashCommands {
+		// Embed skill content directly from the skills package
+		body, err := skills.GetBody(cmd.SlashCmd)
+		if err != nil {
+			return fmt.Errorf("load skill content for %s: %w", cmd.SlashCmd, err)
+		}
+
 		var content, fileName string
 
 		if isTOML {
+			// Escape triple quotes in body for TOML
+			escapedBody := strings.ReplaceAll(body, `"""`, `\"\"\"`)
 			fileName = cmd.SlashCmd + ".toml"
-			content = fmt.Sprintf(`description = "%s"
-
-prompt = """!{taskwing slash %s}"""
-`, cmd.Description, cmd.SlashCmd)
+			content = fmt.Sprintf("description = %q\n\nprompt = \"\"\"%s\"\"\"\n", cmd.Description, escapedBody)
 		} else {
 			fileName = cmd.SlashCmd + ".md"
-			content = fmt.Sprintf(`---
-description: %s
----
-!taskwing slash %s
-`, cmd.Description, cmd.SlashCmd)
+			content = fmt.Sprintf("---\ndescription: %s\n---\n%s\n", cmd.Description, body)
 		}
 
 		filePath := filepath.Join(nsDir, fileName)
@@ -586,8 +590,7 @@ description: %s
 }
 
 // createClaudeSkills generates .claude/commands/taskwing/<name>.md with embedded content.
-// Unlike legacy commands that shell out to `taskwing slash <cmd>`, these embed the full
-// prompt content directly, removing the CLI indirection.
+// Embeds the full prompt content directly from the skills package.
 // Uses the commands namespace system: .claude/commands/taskwing/next.md -> /taskwing:next
 func (i *Initializer) createClaudeSkills(verbose bool) error {
 	cfg := aiHelpers["claude"]
@@ -824,14 +827,13 @@ func (i *Initializer) createOpenCodeCommands(aiName string, verbose bool) error 
 			return fmt.Errorf("invalid OpenCode command name '%s': must match ^[a-z0-9]+(-[a-z0-9]+)*$ (lowercase alphanumeric with hyphens)", cmd.SlashCmd)
 		}
 
-		// OpenCode command format: YAML frontmatter with description only
-		// The content after frontmatter is the prompt that gets executed
+		// OpenCode command format: YAML frontmatter + embedded content
 		// See: https://opencode.ai/docs/commands/
-		content := fmt.Sprintf(`---
-description: %s
----
-!taskwing slash %s
-`, cmd.Description, cmd.SlashCmd)
+		body, err := skills.GetBody(cmd.SlashCmd)
+		if err != nil {
+			return fmt.Errorf("load skill content for %s: %w", cmd.SlashCmd, err)
+		}
+		content := fmt.Sprintf("---\ndescription: %s\n---\n%s\n", cmd.Description, body)
 
 		// Write <name>.md file directly in commands directory
 		filePath := filepath.Join(commandsDir, cmd.SlashCmd+".md")
@@ -1162,36 +1164,22 @@ const (
 )
 
 // taskwingDocSectionHeader is the static top portion of the documentation block.
+// The behavioral instructions at the top tell AI tools WHEN to use TaskWing MCP,
+// not just what's available. This is what makes the AI proactively use the tools.
 const taskwingDocSectionHeader = `
 
 ## TaskWing Integration
 
-TaskWing extracts architectural knowledge from your codebase and stores it locally, giving every AI tool instant context via MCP.
+This project uses TaskWing for architectural knowledge management. You have access to TaskWing MCP tools.
 
-### Supported Models
+**When to use TaskWing MCP tools:**
+- Before modifying unfamiliar code: call ` + "`ask`" + ` to check for relevant decisions, constraints, and patterns
+- Before planning multi-step work: call ` + "`plan`" + ` with action=clarify to get a structured plan
+- When asked about architecture, tech stack, or "why" questions: call ` + "`ask`" + ` with answer=true
+- After making an architectural decision: call ` + "`remember`" + ` to persist it for future sessions
+- To understand a symbol's role and callers: call ` + "`code`" + ` with action=explain
 
-<!-- TASKWING_PROVIDERS_START -->
-[![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
-[![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
-[![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
-[![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-OpenAI--Compatible_Beta-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html)
-[![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
-<!-- TASKWING_PROVIDERS_END -->
-
-### Works With
-
-<!-- TASKWING_TOOLS_START -->
-[![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/claude-code)
-[![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex)
-[![Cursor](https://img.shields.io/badge/Cursor-111111?logo=cursor&logoColor=white)](https://cursor.com/)
-[![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-181717?logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
-[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
-[![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
-<!-- TASKWING_TOOLS_END -->
-
-<!-- TASKWING_LEGAL_START -->
-Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
-<!-- TASKWING_LEGAL_END -->
+**Do not** grep or read files to answer architecture questions when TaskWing MCP is available. The knowledge graph has pre-extracted, verified decisions with evidence.
 
 `
 

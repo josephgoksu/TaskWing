@@ -21,7 +21,6 @@ func setupFS(paths []string) afero.Fs {
 	return fs
 }
 
-
 func TestDetect_MonorepoRootWithGitOnly(t *testing.T) {
 	// Polyglot monorepo: .git at root, multiple subdirs with manifests, no root manifest
 	// This is the markwise-app scenario.

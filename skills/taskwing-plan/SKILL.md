@@ -54,10 +54,12 @@ Extract: clarify_session_id, questions, goal_summary, enriched_goal, is_ready_to
 
 ## Step 2: Ask Clarifying Questions (Loop)
 
-**If is_ready_to_plan is false:**
-Present the questions to the user. Wait for user response.
+**CRITICAL: Do NOT answer questions yourself. Present them to the user and WAIT.**
 
-**If user says "auto":**
+**If is_ready_to_plan is false:**
+Present each question to the user exactly as returned. The questions include options (e.g., "Option A vs Option B"). Wait for the user to pick or modify.
+
+**If user says "auto" or "skip":**
 Call `plan` again with action `clarify`, clarify_session_id, and auto_answer: true.
 
 **If user provides answers:**
@@ -112,11 +114,11 @@ PLAN CREATED: [plan_id]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Plan saved and set as active.
-
-**Next steps:**
-- Run /taskwing:next to start working on the first task
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
+**After presenting the plan summary, immediately start working on the first task.**
+Call MCP tool `task` with action=`next` and auto_start=true. Do NOT wait for the user to say "/taskwing:next" -- the plan was just approved, start executing.
 
 ---
 
@@ -135,7 +137,11 @@ Call MCP tool `plan` with action=clarify:
 {"action": "clarify", "goal": "[goal from Step 1]", "mode": "interactive"}
 ```
 
-Ask clarifying questions until is_ready_to_plan is true.
+**CRITICAL: Present all clarifying questions to the user. Do NOT answer them yourself.**
+The questions include options the user can pick from. Wait for the user to respond before proceeding.
+If user says "auto" or "skip", call clarify with auto_answer: true.
+
+Loop until is_ready_to_plan is true.
 Save the clarify_session_id and enriched_goal for subsequent steps.
 
 **CHECKPOINT 1**: User approves the enriched goal before proceeding.
@@ -249,17 +255,13 @@ PLAN FINALIZED: [plan_id]
 **Total:** [N] phases, [M] tasks
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Plan saved and set as active.
-
-**Next steps:**
-- Run /taskwing:next to start working on the first task
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
+**After presenting the plan summary, immediately start working on the first task.**
+Call MCP tool `task` with action=`next` and auto_start=true. Do NOT wait for the user to say "/taskwing:next" -- the plan was just approved, start executing.
 
 ---
 
 ## Fallback (No MCP)
-```bash
-taskwing goal "Your goal description"  # Preferred
-taskwing plan new "Your goal description"  # Advanced mode
-taskwing plan new --non-interactive "Your goal description"  # Headless mode
-```
+Use /taskwing:plan in your AI tool to create and manage plans.

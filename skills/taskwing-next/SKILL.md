@@ -29,7 +29,7 @@ Extract from the response:
 - acceptance_criteria
 - suggested_ask_queries
 
-If no task returned, inform user: "No pending tasks. Use 'taskwing plan list' to check plan status."
+If no task returned, inform user: "No pending tasks. Use /taskwing:status to check plan status."
 
 ## Step 2: Fetch Scope-Relevant Context
 Call MCP tool `ask` with query based on task scope:
@@ -112,5 +112,5 @@ Proceed with the task, following the patterns and respecting the constraints sho
 ```bash
 taskwing task list                    # List all tasks
 taskwing task list --status pending   # Identify next pending task
-taskwing plan status                  # Check active plan progress
 ```
+Use /taskwing:status to check active plan progress.

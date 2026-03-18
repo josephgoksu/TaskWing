@@ -169,8 +169,8 @@ type Task struct {
 	ValidationSteps    []string   `json:"validationSteps"` // CLI commands
 
 	// AI integration fields - for MCP tool context fetching
-	Scope                  string   `json:"scope,omitempty"`                  // e.g., "auth", "api", "vectorsearch"
-	Keywords               []string `json:"keywords,omitempty"`               // Extracted from title/description
+	Scope               string   `json:"scope,omitempty"`               // e.g., "auth", "api", "vectorsearch"
+	Keywords            []string `json:"keywords,omitempty"`            // Extracted from title/description
 	SuggestedAskQueries []string `json:"suggestedAskQueries,omitempty"` // Pre-computed queries for ask tool
 
 	// Session tracking - for AI tool state management

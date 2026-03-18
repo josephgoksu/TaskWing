@@ -70,7 +70,7 @@ func FormatNodesAsCompactBrief(nodes []memory.Node) string {
 			continue
 		}
 
-		fmt.Fprintf(&sb, "\n%s %ss\n", typeIcon(t), utils.ToTitle(t))
+		fmt.Fprintf(&sb, "\n%s %s\n", typeIcon(t), utils.ToTitle(typePluralLabel(t)))
 
 		for _, n := range groupNodes {
 			summary := n.Summary
@@ -82,6 +82,18 @@ func FormatNodesAsCompactBrief(nodes []memory.Node) string {
 	}
 
 	return sb.String()
+}
+
+// typePluralLabel returns the correct plural form for a node type.
+func typePluralLabel(t string) string {
+	switch t {
+	case memory.NodeTypeMetadata:
+		return "metadata"
+	case memory.NodeTypeDocumentation:
+		return "docs"
+	default:
+		return t + "s"
+	}
 }
 
 // typeIcon returns the emoji icon for a node type.

@@ -631,7 +631,7 @@ func FormatSummary(summary *knowledge.ProjectSummary) string {
 
 	if len(summary.Types) > 0 {
 		// Sort types for consistent output
-		typeOrder := []string{"decision", "pattern", "constraint", "feature", "plan", "note"}
+		typeOrder := []string{"decision", "feature", "constraint", "pattern", "plan", "note", "metadata", "documentation"}
 		for _, typeName := range typeOrder {
 			if ts, ok := summary.Types[typeName]; ok && ts.Count > 0 {
 				icon := typeIcon(typeName)

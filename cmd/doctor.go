@@ -446,7 +446,7 @@ func checkActivePlan() DoctorCheck {
 			Name:    "Active Plan",
 			Status:  "warn",
 			Message: "No active plan",
-			Hint:    "Run: taskwing goal \"your goal\"",
+			Hint:    "Use /taskwing:plan in your AI tool to create a plan",
 		}
 	}
 
@@ -516,8 +516,8 @@ func printNextSteps(checks []DoctorCheck) {
 	fmt.Println()
 	fmt.Println("Next steps:")
 	if !hasActivePlan {
-		fmt.Println("  1. Create and activate plan: taskwing goal \"your development goal\"")
-		fmt.Println("  2. Open Claude Code and run: /taskwing:next")
+		fmt.Println("  1. Open your AI tool and use /taskwing:plan to create a plan")
+		fmt.Println("  2. Run /taskwing:next to start the first task")
 	} else if !hasSession {
 		fmt.Println("  1. Open Claude Code (session will auto-initialize)")
 		fmt.Println("  2. Run: /taskwing:next")

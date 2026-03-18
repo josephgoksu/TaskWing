@@ -14,6 +14,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/project"
+	"github.com/josephgoksu/TaskWing/internal/ui"
 )
 
 // Service handles the bootstrapping process of extracting architectural knowledge.
@@ -57,22 +58,44 @@ func (s *Service) RegenerateAIConfigs(verbose bool, targetAIs []string) error {
 	return s.initializer.RegenerateConfigs(verbose, targetAIs)
 }
 
+// ProgressFunc is called during multi-repo analysis with the service name and status.
+type ProgressFunc func(serviceName string, status string)
+
 // RunMultiRepoAnalysis executes analysis for all services in a workspace.
 // Each service's findings are tagged with the service name as workspace.
-func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.WorkspaceInfo) ([]core.Finding, []core.Relationship, []string, error) {
+// If onProgress is non-nil, it is called before and after each service analysis.
+// NOTE: Not safe for concurrent use. Swaps global project context per-service.
+func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.WorkspaceInfo, onProgress ProgressFunc) ([]core.Finding, []core.Relationship, []string, error) {
 	var allFindings []core.Finding
 	var allRelationships []core.Relationship
 	var serviceErrors []string
 
-	for _, serviceName := range ws.Services {
+	// Save the workspace-level project context to restore after each service
+	workspaceCtx := config.GetProjectContext()
+
+	for i, serviceName := range ws.Services {
 		servicePath := ws.GetServicePath(serviceName)
+
+		if onProgress != nil {
+			onProgress(serviceName, fmt.Sprintf("[%d/%d] analyzing...", i+1, len(ws.Services)))
+		}
+
+		// Set per-service project context so git agents get the correct scopePath
+		if svcCtx, detectErr := project.Detect(servicePath); detectErr == nil {
+			_ = config.SetProjectContext(svcCtx)
+		}
+
 		runner := NewRunner(s.llmCfg, servicePath)
 
 		// Pass workspace (service name) to the runner so agents can tag their findings
 		results, err := runner.RunWithOptions(ctx, servicePath, RunOptions{Workspace: serviceName})
 		// Close runner immediately after use - NOT deferred in loop!
-		// Deferring in a loop keeps all resources open until function exit.
 		runner.Close()
+
+		// Restore workspace context after each service
+		if workspaceCtx != nil {
+			_ = config.SetProjectContext(workspaceCtx)
+		}
 
 		if err != nil {
 			serviceErrors = append(serviceErrors, fmt.Sprintf("%s: %s", serviceName, err.Error()))
@@ -117,6 +140,10 @@ func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.Workspac
 
 		allFindings = append(allFindings, findings...)
 		allRelationships = append(allRelationships, relationships...)
+
+		if onProgress != nil {
+			onProgress(serviceName, fmt.Sprintf("[%d/%d] done (%d findings)", i+1, len(ws.Services), len(findings)))
+		}
 	}
 
 	return allFindings, allRelationships, serviceErrors, nil
@@ -132,8 +159,8 @@ func (s *Service) ProcessAndSaveResults(ctx context.Context, results []core.Outp
 		fmt.Fprintf(os.Stderr, "⚠️  Failed to save bootstrap report: %v\n", err)
 	}
 
-	// 2. Print summary (could serve as return value if we want pure separation, but fine here for CLI svc)
-	printCoverageSummary(report)
+	// 2. Print summary using consistent UI renderer
+	ui.RenderBootstrapResults(report)
 
 	if isPreview {
 		fmt.Println("\n💡 This was a preview. Run 'taskwing bootstrap' to save to memory.")
@@ -431,43 +458,4 @@ func saveReport(path string, report *core.BootstrapReport) error {
 		return fmt.Errorf("marshal report: %w", err)
 	}
 	return os.WriteFile(path, data, 0644)
-}
-
-func printCoverageSummary(report *core.BootstrapReport) {
-	fmt.Println()
-	fmt.Println("📊 Bootstrap Coverage Report")
-	fmt.Println("────────────────────────────")
-	fmt.Printf("   Files analyzed: %d\n", report.Coverage.FilesAnalyzed)
-	fmt.Printf("   Files skipped:  %d\n", report.Coverage.FilesSkipped)
-	fmt.Printf("   Coverage:       %.1f%%\n", report.Coverage.CoveragePercent)
-	fmt.Printf("   Total findings: %d\n", report.TotalFindings)
-
-	if len(report.FindingCounts) > 0 {
-		fmt.Println()
-		fmt.Println("   Findings by type:")
-		for fType, count := range report.FindingCounts {
-			fmt.Printf("     • %s: %d\n", fType, count)
-		}
-	}
-
-	fmt.Println()
-	fmt.Println("   Per-agent coverage:")
-	for name, ar := range report.AgentReports {
-		status := "✓"
-		if ar.Error != "" {
-			status = "✗"
-		}
-		fileWord := "files"
-		if ar.Coverage.FilesAnalyzed == 1 {
-			fileWord = "file"
-		}
-		findingWord := "findings"
-		if ar.FindingCount == 1 {
-			findingWord = "finding"
-		}
-		fmt.Printf("     %s %s: %d %s, %d %s\n", status, name, ar.Coverage.FilesAnalyzed, fileWord, ar.FindingCount, findingWord)
-	}
-
-	fmt.Println()
-	fmt.Printf("📄 Full report: .taskwing/last-bootstrap-report.json\n")
 }

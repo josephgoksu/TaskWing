@@ -103,7 +103,7 @@ func (a *TaskApp) Next(ctx context.Context, opts TaskNextOptions) (*TaskResult, 
 		if activePlan == nil {
 			return &TaskResult{
 				Success: false,
-				Message: "No active plan found. Create one with 'taskwing goal \"<goal>\"'.",
+				Message: "No active plan found. Use /taskwing:plan to create one.",
 			}, nil
 		}
 		planID = activePlan.ID
@@ -119,7 +119,7 @@ func (a *TaskApp) Next(ctx context.Context, opts TaskNextOptions) (*TaskResult, 
 		return &TaskResult{
 			Success: true,
 			Message: "No pending tasks in this plan. All tasks may be completed or blocked.",
-			Hint:    "Check plan status with 'taskwing plan list' or create new tasks.",
+			Hint:    "Use /taskwing:status to check progress.",
 		}, nil
 	}
 

@@ -73,7 +73,14 @@ func (t *ReadFileTool) InvokableRun(ctx context.Context, argsJSON string, opts .
 	if err != nil {
 		return "", err
 	}
-	content, err := os.ReadFile(filepath.Join(t.basePath, cleanPath))
+	fullPath := filepath.Join(t.basePath, cleanPath)
+
+	// Check if path is a directory -- LLMs sometimes call read_file on dirs
+	if info, statErr := os.Stat(fullPath); statErr == nil && info.IsDir() {
+		return fmt.Sprintf("%s is a directory, not a file. Use list_dir to explore directories.", cleanPath), nil
+	}
+
+	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Sprintf("File not found: %s", cleanPath), nil

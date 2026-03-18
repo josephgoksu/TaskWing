@@ -72,10 +72,10 @@ type GenerateResult struct {
 
 // GenerateOptions configures the behavior of plan generation.
 type GenerateOptions struct {
-	Goal             string // Original user goal
-	ClarifySessionID string // Required: clarify session that reached ready state
-	EnrichedGoal     string // Fully clarified specification
-	Save             bool   // Whether to persist plan/tasks to DB
+	Goal             string           // Original user goal
+	ClarifySessionID string           // Required: clarify session that reached ready state
+	EnrichedGoal     string           // Fully clarified specification
+	Save             bool             // Whether to persist plan/tasks to DB
 	ExplicitTasks    []task.TaskInput // If provided, use these instead of LLM generation
 }
 
@@ -130,9 +130,8 @@ type PlanApp struct {
 	Repo             task.Repository
 	ClarifierFactory func(llm.Config) GoalsClarifier
 	PlannerFactory   func(llm.Config) TaskPlanner
-	ContextRetriever func(ctx context.Context, ks *knowledge.Service, goal, memoryPath string) (impl.SearchStrategyResult, error)
-	// TaskEnricher executes ask queries to populate task ContextSummary.
-	// If nil, tasks will not have embedded context (legacy behavior).
+	// TaskEnricher populates task ContextSummary at creation time.
+	// Uses GetProjectContext with compact options by default.
 	TaskEnricher TaskContextEnricher
 }
 
@@ -147,62 +146,55 @@ func NewPlanApp(ctx *Context) *PlanApp {
 		PlannerFactory: func(cfg llm.Config) TaskPlanner {
 			return impl.NewPlanningAgent(cfg)
 		},
-		ContextRetriever: impl.RetrieveContext,
 	}
-	// Initialize default TaskEnricher using AskApp
 	pa.TaskEnricher = pa.defaultTaskEnricher
 	return pa
 }
 
-// defaultTaskEnricher executes ask queries and aggregates results into a context summary.
-// If no explicit queries are provided, it falls back to fetching project constraints
-// and decisions so every task has baseline project context.
-// This is the production implementation; tests can override TaskEnricher for mocking.
+// retrieveContext performs unified project context retrieval for planning.
+// Returns the formatted context string ready for LLM prompt injection.
+func (a *PlanApp) retrieveContext(ctx context.Context, ks *knowledge.Service, goal, memoryPath string) (string, error) {
+	opts := knowledge.DefaultContextOptions()
+	opts.Query = goal
+	opts.MemoryBasePath = memoryPath
+
+	pc, err := knowledge.GetProjectContext(ctx, ks, opts)
+	if err != nil {
+		return "", err
+	}
+
+	return pc.Format(), nil
+}
+
+// defaultTaskEnricher uses GetProjectContext with compact options to enrich tasks.
 func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (string, error) {
-	askApp := NewAskApp(a.ctx)
-	var contextParts []string
-
-	// Always include project constraints and key decisions as baseline context.
-	// This ensures every task knows the project's rules even without specific queries.
-	if len(queries) == 0 {
-		queries = []string{"project constraints and rules", "key technology decisions"}
-	}
-
-	for _, query := range queries {
-		result, err := askApp.Query(ctx, query, AskOptions{
-			Limit:          3, // 3 results per query
-			GenerateAnswer: false,
-			IncludeSymbols: false, // Keep context focused on knowledge, not symbols
-			NoRewrite:      true,  // Skip rewriting for speed
-		})
-		if err != nil {
-			slog.Debug("task enrichment query failed", "query", query, "error", err)
-			continue
-		}
-
-		if len(result.Results) > 0 {
-			var parts []string
-			for _, node := range result.Results {
-				// Format: "- **Summary** (type): Content preview"
-				// Truncate to 300 chars (consistent with presentation.go)
-				content := node.Content
-				if len(content) > 300 {
-					content = content[:297] + "..."
-				}
-				parts = append(parts, fmt.Sprintf("- **%s** (%s): %s", node.Summary, node.Type, content))
-			}
-			if len(parts) > 0 {
-				contextParts = append(contextParts, strings.Join(parts, "\n"))
-			}
-		}
-	}
-
-	if len(contextParts) == 0 {
+	if a.ctx == nil || a.ctx.Repo == nil {
 		return "", nil
 	}
 
-	// Header matches presentation.go late binding for consistency
-	return "## Relevant Architecture Context\n" + strings.Join(contextParts, "\n"), nil
+	ks := knowledge.NewService(a.ctx.Repo, a.ctx.LLMCfg)
+
+	// Use the task's specific queries as the search query, or fall back to baseline
+	query := "project constraints and key technology decisions"
+	if len(queries) > 0 {
+		query = strings.Join(queries, " ")
+	}
+
+	opts := knowledge.DefaultContextOptions()
+	opts.Query = query
+	opts.IncludeArchitectureMD = false // Too large for per-task context
+	opts.MaxNodes = 8                  // Compact for task embedding
+	opts.UseLLMQueries = false         // Use queries directly for speed
+
+	memoryPath, _ := config.GetMemoryBasePath()
+	opts.MemoryBasePath = memoryPath
+
+	pc, err := knowledge.GetProjectContext(ctx, ks, opts)
+	if err != nil || (len(pc.Constraints) == 0 && len(pc.RelevantNodes) == 0) {
+		return "", err
+	}
+
+	return pc.FormatCompact(), nil
 }
 
 // Clarify refines a development goal by asking clarifying questions.
@@ -317,8 +309,8 @@ func (a *PlanApp) Clarify(ctx context.Context, opts ClarifyOptions) (*ClarifyRes
 	ks := knowledge.NewService(a.ctx.Repo, llmCfg)
 	var contextStr string
 	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
-		if result, err := a.ContextRetriever(ctx, ks, goal, memoryPath); err == nil {
-			contextStr = result.Context
+		if retrievedCtx, err := a.retrieveContext(ctx, ks, goal, memoryPath); err == nil {
+			contextStr = retrievedCtx
 		}
 	}
 
@@ -575,8 +567,8 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 	ks := knowledge.NewService(a.ctx.Repo, llmCfg)
 	var contextStr string
 	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
-		if result, err := a.ContextRetriever(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
-			contextStr = result.Context
+		if retrievedCtx, err := a.retrieveContext(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
+			contextStr = retrievedCtx
 		}
 	}
 
@@ -1374,8 +1366,8 @@ func (a *PlanApp) Decompose(ctx context.Context, opts DecomposeOptions) (*Decomp
 	ks := knowledge.NewService(a.ctx.Repo, llmCfg)
 	var contextStr string
 	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
-		if result, err := a.ContextRetriever(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
-			contextStr = result.Context
+		if retrievedCtx, err := a.retrieveContext(ctx, ks, opts.EnrichedGoal, memoryPath); err == nil {
+			contextStr = retrievedCtx
 		}
 	}
 
@@ -1548,8 +1540,8 @@ func (a *PlanApp) Expand(ctx context.Context, opts ExpandOptions) (*ExpandResult
 	ks := knowledge.NewService(a.ctx.Repo, llmCfg)
 	var contextStr string
 	if memoryPath, err := config.GetMemoryBasePath(); err == nil {
-		if result, err := a.ContextRetriever(ctx, ks, phase.Title+" "+phase.Description, memoryPath); err == nil {
-			contextStr = result.Context
+		if retrievedCtx, err := a.retrieveContext(ctx, ks, phase.Title+" "+phase.Description, memoryPath); err == nil {
+			contextStr = retrievedCtx
 		}
 	}
 

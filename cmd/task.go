@@ -69,7 +69,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		if isJSON() {
 			return printJSON([]any{})
 		}
-		fmt.Println("No plans found. Create one with: taskwing goal \"Your goal\"")
+		fmt.Println("No plans found. Use /taskwing:plan in your AI tool to create one")
 		return nil
 	}
 
@@ -122,36 +122,36 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	// Handle JSON output
 	if isJSON() {
 		type taskJSON struct {
-			ID                     string   `json:"id"`
-			PlanID                 string   `json:"plan_id"`
-			PlanStatus             string   `json:"plan_status"`
-			Title                  string   `json:"title"`
-			Description            string   `json:"description"`
-			Status                 string   `json:"status"`
-			Priority               int      `json:"priority"`
-			Agent                  string   `json:"assigned_agent"`
-			Acceptance             []string `json:"acceptance_criteria"`
-			Validation             []string `json:"validation_steps"`
-			Scope                  string   `json:"scope"`
-			Keywords               []string `json:"keywords"`
+			ID                  string   `json:"id"`
+			PlanID              string   `json:"plan_id"`
+			PlanStatus          string   `json:"plan_status"`
+			Title               string   `json:"title"`
+			Description         string   `json:"description"`
+			Status              string   `json:"status"`
+			Priority            int      `json:"priority"`
+			Agent               string   `json:"assigned_agent"`
+			Acceptance          []string `json:"acceptance_criteria"`
+			Validation          []string `json:"validation_steps"`
+			Scope               string   `json:"scope"`
+			Keywords            []string `json:"keywords"`
 			SuggestedAskQueries []string `json:"suggestedAskQueries"`
 		}
 		var jsonTasks []taskJSON
 		for _, tp := range allTasks {
 			t := tp.Task
 			jsonTasks = append(jsonTasks, taskJSON{
-				ID:                     t.ID,
-				PlanID:                 tp.PlanID,
-				PlanStatus:             string(tp.PlanStatus),
-				Title:                  t.Title,
-				Description:            t.Description,
-				Status:                 string(t.Status),
-				Priority:               t.Priority,
-				Agent:                  t.AssignedAgent,
-				Acceptance:             t.AcceptanceCriteria,
-				Validation:             t.ValidationSteps,
-				Scope:                  t.Scope,
-				Keywords:               t.Keywords,
+				ID:                  t.ID,
+				PlanID:              tp.PlanID,
+				PlanStatus:          string(tp.PlanStatus),
+				Title:               t.Title,
+				Description:         t.Description,
+				Status:              string(t.Status),
+				Priority:            t.Priority,
+				Agent:               t.AssignedAgent,
+				Acceptance:          t.AcceptanceCriteria,
+				Validation:          t.ValidationSteps,
+				Scope:               t.Scope,
+				Keywords:            t.Keywords,
 				SuggestedAskQueries: t.SuggestedAskQueries,
 			})
 		}
@@ -830,7 +830,7 @@ func runTaskAdd(cmd *cobra.Command, args []string) error {
 		// Use active plan
 		plan, err := repo.GetActivePlan()
 		if err != nil || plan == nil {
-			return fmt.Errorf("no active plan. Use --plan to specify a plan, or run 'taskwing plan start <id>' to set an active plan")
+			return fmt.Errorf("no active plan. Use /taskwing:plan in your AI tool to create one")
 		}
 		planID = plan.ID
 	}

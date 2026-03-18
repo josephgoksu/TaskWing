@@ -5,22 +5,23 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/josephgoksu/TaskWing/internal/freshness"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // RenderNodeList renders a list of knowledge nodes to stdout in compact mode.
-// For verbose output with full metadata, use RenderNodeListVerbose.
-func RenderNodeList(nodes []memory.Node) {
-	renderNodeListInternal(nodes, false)
+// basePath is the project root for freshness checks (empty to skip).
+func RenderNodeList(nodes []memory.Node, basePath string) {
+	renderNodeListInternal(nodes, false, basePath)
 }
 
 // RenderNodeListVerbose renders nodes with full metadata (ID, dates, type).
-func RenderNodeListVerbose(nodes []memory.Node) {
-	renderNodeListInternal(nodes, true)
+func RenderNodeListVerbose(nodes []memory.Node, basePath string) {
+	renderNodeListInternal(nodes, true, basePath)
 }
 
-func renderNodeListInternal(nodes []memory.Node, verbose bool) {
+func renderNodeListInternal(nodes []memory.Node, verbose bool, basePath string) {
 	// Group by type
 	byType := make(map[string][]memory.Node)
 	for _, n := range nodes {
@@ -48,7 +49,7 @@ func renderNodeListInternal(nodes []memory.Node, verbose bool) {
 	if verbose {
 		renderVerboseTable(byType, typeOrder)
 	} else {
-		renderGroupedList(byType, typeOrder, showWorkspace)
+		renderGroupedList(byType, typeOrder, showWorkspace, basePath)
 	}
 }
 
@@ -81,7 +82,7 @@ func renderHeader(byType map[string][]memory.Node, typeOrder []string, total int
 
 // renderGroupedList renders nodes grouped by type with section headers.
 // Each section shows a colored badge + count, then a simple indented list.
-func renderGroupedList(byType map[string][]memory.Node, typeOrder []string, showWorkspace bool) {
+func renderGroupedList(byType map[string][]memory.Node, typeOrder []string, showWorkspace bool, basePath string) {
 	termWidth := GetTerminalWidth()
 	// 6 = 4 indent + 2 safety margin
 	maxSummaryWidth := termWidth - 6
@@ -94,7 +95,8 @@ func renderGroupedList(byType map[string][]memory.Node, typeOrder []string, show
 
 	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorText)
 	itemStyle := lipgloss.NewStyle().Foreground(ColorText)
-	itemStyleAlt := lipgloss.NewStyle().Foreground(ColorDim)
+	indexStyle := lipgloss.NewStyle().Foreground(ColorDim)
+	staleStyle := lipgloss.NewStyle().Foreground(ColorWarning)
 	wsStyle := lipgloss.NewStyle().Foreground(ColorDim)
 
 	for _, t := range typeOrder {
@@ -108,30 +110,43 @@ func renderGroupedList(byType map[string][]memory.Node, typeOrder []string, show
 		label := fmt.Sprintf("%s (%d)", utils.ToTitle(typePlural(t, len(groupNodes))), len(groupNodes))
 		fmt.Printf("  %s %s\n", badge, sectionStyle.Render(label))
 
-		// Items
+		// Items with numbered indices for scanability
 		for i, n := range groupNodes {
 			summary := n.Summary
 			if summary == "" {
-				summary = utils.Truncate(n.Text(), maxSummaryWidth)
-			}
-			if lipgloss.Width(summary) > maxSummaryWidth {
-				summary = truncateToWidth(summary, maxSummaryWidth)
+				summary = utils.Truncate(n.Text(), maxSummaryWidth-4)
 			}
 
-			// Alternating styles for readability
-			style := itemStyle
-			if i%2 == 1 {
-				style = itemStyleAlt
+			// Check freshness if basePath is available and node has evidence
+			staleTag := ""
+			if basePath != "" && n.Evidence != "" {
+				result := freshness.Check(basePath, n.Evidence, n.CreatedAt)
+				if result.Status == freshness.StatusStale {
+					staleTag = staleStyle.Render(" [stale]")
+				} else if result.Status == freshness.StatusMissing {
+					staleTag = staleStyle.Render(" [missing]")
+				}
 			}
+
+			// Account for stale tag width in truncation
+			availWidth := maxSummaryWidth - 4
+			if staleTag != "" {
+				availWidth -= 9 // " [stale]" or " [missing]"
+			}
+			if lipgloss.Width(summary) > availWidth {
+				summary = truncateToWidth(summary, availWidth)
+			}
+
+			idx := indexStyle.Render(fmt.Sprintf("%d.", i+1))
 
 			if showWorkspace {
 				ws := n.Workspace
 				if ws == "" {
 					ws = "root"
 				}
-				fmt.Printf("    %s  %s\n", style.Render(padRight(summary, maxSummaryWidth)), wsStyle.Render(ws))
+				fmt.Printf("    %s %s%s  %s\n", idx, itemStyle.Render(padRight(summary, availWidth)), staleTag, wsStyle.Render(ws))
 			} else {
-				fmt.Printf("    %s\n", style.Render(summary))
+				fmt.Printf("    %s %s%s\n", idx, itemStyle.Render(summary), staleTag)
 			}
 		}
 		fmt.Println()

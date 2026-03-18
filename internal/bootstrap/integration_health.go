@@ -416,7 +416,7 @@ func evalCommandsComponent(basePath, aiName string, cfg aiHelperConfig) (Compone
 			if readErr != nil {
 				continue
 			}
-			if strings.Contains(strings.ToLower(string(b)), "taskwing slash") || strings.Contains(strings.ToLower(string(b)), "!taskwing") {
+			if strings.Contains(strings.ToLower(string(b)), "taskwing") {
 				taskwingLike = true
 				break
 			}

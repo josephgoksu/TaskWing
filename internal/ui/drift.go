@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/josephgoksu/TaskWing/internal/app"
 )
 
@@ -17,16 +18,40 @@ func RenderDriftReport(report *app.DriftReport, verbose bool) {
 
 	// No rules found
 	if report.RulesChecked == 0 {
-		fmt.Println("📋 No architectural rules found in knowledge base.")
-		fmt.Println("   Run 'taskwing bootstrap' to extract rules from your codebase,")
-		fmt.Println("   or refresh rules with 'taskwing bootstrap --force'")
+		fmt.Println("No architectural rules found in knowledge base.")
+		fmt.Println("  Run 'tw bootstrap' to extract rules, or 'tw bootstrap --force' to refresh.")
 		return
 	}
 
+	// Header box - consistent with knowledge/bootstrap
+	headerBox := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(ColorPrimary).
+		Padding(0, 1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ColorSecondary)
+
+	summary := fmt.Sprintf("Drift Analysis (%d rules checked)", report.RulesChecked)
+	fmt.Println()
+	fmt.Println(headerBox.Render(summary))
+
+	// Stats line
+	statParts := []string{
+		fmt.Sprintf("%d passed", len(report.Passed)),
+	}
+	if len(report.Violations) > 0 {
+		statParts = append(statParts, fmt.Sprintf("%d violations", len(report.Violations)))
+	}
+	if len(report.Warnings) > 0 {
+		statParts = append(statParts, fmt.Sprintf("%d warnings", len(report.Warnings)))
+	}
+	fmt.Printf("  %s\n", StyleSubtle.Render(strings.Join(statParts, "  ")))
+	fmt.Println()
+
 	// Violations
 	if len(report.Violations) > 0 {
-		fmt.Printf("❌ %s (%d)\n", StyleBold("VIOLATIONS"), len(report.Violations))
-		fmt.Println("────────────────────────")
+		sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorError)
+		fmt.Printf("  %s\n", sectionStyle.Render(fmt.Sprintf("Violations (%d)", len(report.Violations))))
 		fmt.Println()
 
 		// Group by rule
@@ -54,13 +79,13 @@ func RenderDriftReport(report *app.DriftReport, verbose bool) {
 
 	// Warnings
 	if len(report.Warnings) > 0 {
-		fmt.Printf("⚠️  %s (%d)\n", StyleBold("WARNINGS"), len(report.Warnings))
-		fmt.Println("────────────────────────")
+		warnStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorWarning)
+		fmt.Printf("  %s\n", warnStyle.Render(fmt.Sprintf("Warnings (%d)", len(report.Warnings))))
 		fmt.Println()
 
 		for i, w := range report.Warnings {
 			if i >= 3 && !verbose {
-				fmt.Printf("   ... and %d more (use --verbose to see all)\n", len(report.Warnings)-3)
+				fmt.Printf("    ... and %d more (use --verbose to see all)\n", len(report.Warnings)-3)
 				break
 			}
 			renderViolation(w, i+1)
@@ -70,39 +95,17 @@ func RenderDriftReport(report *app.DriftReport, verbose bool) {
 
 	// Passed rules
 	if len(report.Passed) > 0 {
-		fmt.Printf("✅ %s (%d)\n", StyleBold("PASSED"), len(report.Passed))
-		fmt.Println("────────────────────────")
+		passStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess)
+		fmt.Printf("  %s\n", passStyle.Render(fmt.Sprintf("Passed (%d)", len(report.Passed))))
 		for _, name := range report.Passed {
-			fmt.Printf("   ✓ %s\n", name)
+			fmt.Printf("    %s\n", StyleSubtle.Render(name))
 		}
 		fmt.Println()
 	}
 
-	// Summary
-	fmt.Println("────────────────────────")
-	fmt.Printf("📊 %s: ", StyleBold("Summary"))
-
-	parts := []string{}
+	// Actionable hint
 	if report.Summary.Violations > 0 {
-		parts = append(parts, fmt.Sprintf("%d violations", report.Summary.Violations))
-	}
-	if report.Summary.Warnings > 0 {
-		parts = append(parts, fmt.Sprintf("%d warnings", report.Summary.Warnings))
-	}
-	if report.Summary.Passed > 0 {
-		parts = append(parts, fmt.Sprintf("%d passed", report.Summary.Passed))
-	}
-
-	if len(parts) == 0 {
-		fmt.Println("no rules checked")
-	} else {
-		fmt.Println(strings.Join(parts, ", "))
-	}
-
-	// Hint for fixes
-	if report.Summary.Violations > 0 {
-		fmt.Println()
-		fmt.Println("💡 Review violations and update code to match documented architecture.")
+		fmt.Printf("  %s\n", StyleSubtle.Render("Review violations and update code to match documented architecture."))
 	}
 }
 
