@@ -5,10 +5,13 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
@@ -43,7 +46,36 @@ func (a *DepsAgent) Close() error {
 
 // Run executes the agent using Eino DeterministicChain.
 func (a *DepsAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
-	// Initialize chain (lazy)
+	// Quick pre-check: skip ReAct entirely if no dependency files exist.
+	// This avoids wasting 20 tool calls exploring an empty project.
+	if !hasAnyDependencyFile(input.BasePath) {
+		return core.Output{AgentName: a.Name(), Error: fmt.Errorf("no dependency files found")}, nil
+	}
+
+	// ReAct mode: attempt tool-calling exploration for richer findings.
+	// Tried BEFORE chain init to avoid wasting an LLM connection if ReAct succeeds.
+	{
+		userMsg := fmt.Sprintf("Analyze the dependencies for project %q. Start by listing the root directory to find dependency manifests (package.json, go.mod, Cargo.toml, etc.).", input.ProjectName)
+		raw, duration, err := runReactMode(ctx, a.LLMConfig(), input.BasePath, config.SystemPromptDepsReactAgent, userMsg, 20)
+		if err == nil && raw != "" {
+			parsed, parseErr := core.ParseJSONResponse[depsTechDecisionsResponse](raw)
+			if parseErr == nil {
+				findings := a.parseFindings(parsed)
+				if len(findings) >= reactMinFindingsDeps {
+					output := core.BuildOutput(a.Name(), findings, "ReAct exploration", duration)
+					return output, nil
+				}
+				if len(findings) > 0 {
+					log.Printf("[deps] ReAct produced only %d findings (threshold %d), falling back to deterministic", len(findings), reactMinFindingsDeps)
+				}
+			}
+		}
+		if err != nil && !errors.Is(err, ErrNoToolCalling) {
+			log.Printf("[deps] ReAct mode failed, falling back to deterministic: %v", err)
+		}
+	}
+
+	// Initialize chain for deterministic fallback (lazy)
 	if a.chain == nil {
 		chatModel, err := a.CreateCloseableChatModel(ctx)
 		if err != nil {
@@ -62,7 +94,7 @@ func (a *DepsAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 		a.chain = chain
 	}
 
-	// Initialize budget - use safe budget to avoid exceeding practical API limits
+	// Deterministic fallback: gather deps upfront, single LLM call
 	limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
 	budget := tools.NewSafeContextBudget(int(float64(limit) * 0.7))
 
@@ -235,6 +267,23 @@ func readFileWithLimit(path string, maxBytes int) ([]byte, error) {
 		return nil, err
 	}
 	return content[:n], nil
+}
+
+// commonDepFiles lists dependency manifests to check before running analysis.
+var commonDepFiles = []string{
+	"package.json", "go.mod", "Cargo.toml", "requirements.txt",
+	"Pipfile", "pyproject.toml", "pom.xml", "build.gradle",
+	"build.gradle.kts", "Gemfile", "composer.json", "pubspec.yaml",
+}
+
+// hasAnyDependencyFile checks if at least one common dependency manifest exists.
+func hasAnyDependencyFile(basePath string) bool {
+	for _, name := range commonDepFiles {
+		if _, err := os.Stat(filepath.Join(basePath, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func init() {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/josephgoksu/TaskWing/internal/app"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
@@ -114,10 +115,11 @@ func runKnowledge(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	basePath, _ := config.GetProjectRoot()
 	if viper.GetBool("verbose") {
-		ui.RenderNodeListVerbose(nodes)
+		ui.RenderNodeListVerbose(nodes, basePath)
 	} else {
-		ui.RenderNodeList(nodes)
+		ui.RenderNodeList(nodes, basePath)
 	}
 
 	if !isQuiet() {

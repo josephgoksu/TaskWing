@@ -79,7 +79,7 @@ func renderContextInternal(query string, scored []knowledge.ScoredNode, answer s
 func renderScoredNodePanel(index int, s knowledge.ScoredNode, maxScore float32, verbose bool) {
 	// Styles
 	var (
-		headerStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "6", Dark: "14"}).Bold(true)
+		headerStyle  = lipgloss.NewStyle().Foreground(ColorCyan).Bold(true)
 		metaStyle    = lipgloss.NewStyle().Foreground(ColorSecondary)
 		contentStyle = lipgloss.NewStyle().Foreground(ColorText)
 		barFull      = lipgloss.NewStyle().Foreground(ColorSuccess)
@@ -233,10 +233,10 @@ func renderContextWithSymbolsInternal(query string, scored []knowledge.ScoredNod
 func renderSymbolPanel(index int, sym app.SymbolResponse, verbose bool) {
 	// Styles
 	var (
-		headerStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "6", Dark: "14"}).Bold(true)
+		headerStyle   = lipgloss.NewStyle().Foreground(ColorCyan).Bold(true)
 		metaStyle     = lipgloss.NewStyle().Foreground(ColorSecondary)
-		locationStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "25", Dark: "39"})
-		panelBorder   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.AdaptiveColor{Light: "55", Dark: "63"}).Padding(0, 1).MarginTop(1)
+		locationStyle = lipgloss.NewStyle().Foreground(ColorBlue)
+		panelBorder   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ColorPurple).Padding(0, 1).MarginTop(1)
 	)
 
 	icon := symbolKindIcon(sym.Kind)
@@ -310,31 +310,34 @@ func getContentWithoutSummary(content, summary string) string {
 func RenderAskResult(result *app.AskResult, verbose bool) {
 	sectionStyle := lipgloss.NewStyle().Foreground(ColorPurple).Bold(true)
 
-	// Header with query in a styled box
-	headerBox := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(ColorPrimary).
-		Padding(0, 1).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorSecondary)
-
 	fmt.Println()
+
+	// Compact header: just the query, no box when there's an answer
 	if result.Answer != "" {
-		fmt.Println(headerBox.Render(fmt.Sprintf("Q: %s", result.Query)))
+		fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Render(
+			fmt.Sprintf("Q: %s", result.Query)))
 	} else {
+		headerBox := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(ColorPrimary).
+			Padding(0, 1).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(ColorSecondary)
 		fmt.Println(headerBox.Render(fmt.Sprintf("Search: %s", result.Query)))
 	}
 
-	// Pipeline & rewrite as dim metadata
-	var metaParts []string
-	metaParts = append(metaParts, result.Pipeline)
-	if result.RewrittenQuery != "" {
-		metaParts = append(metaParts, fmt.Sprintf("rewritten: %s", result.RewrittenQuery))
+	// Show result count as dim metadata (skip internal pipeline details)
+	if verbose {
+		var metaParts []string
+		metaParts = append(metaParts, result.Pipeline)
+		if result.RewrittenQuery != "" {
+			metaParts = append(metaParts, fmt.Sprintf("rewritten: %s", result.RewrittenQuery))
+		}
+		if result.Total > 0 || result.TotalSymbols > 0 {
+			metaParts = append(metaParts, fmt.Sprintf("%d knowledge, %d symbols", result.Total, result.TotalSymbols))
+		}
+		fmt.Println(StyleAskMeta.Render("  " + strings.Join(metaParts, " | ")))
 	}
-	if result.Total > 0 || result.TotalSymbols > 0 {
-		metaParts = append(metaParts, fmt.Sprintf("%d knowledge, %d symbols", result.Total, result.TotalSymbols))
-	}
-	fmt.Println(StyleAskMeta.Render("  " + strings.Join(metaParts, " | ")))
 
 	// Warning
 	if result.Warning != "" {
@@ -342,15 +345,25 @@ func RenderAskResult(result *app.AskResult, verbose bool) {
 		fmt.Println(RenderWarningPanel("Warning", result.Warning))
 	}
 
-	// Answer box with accent border
+	// Answer: render markdown with terminal formatting, adaptive width
 	if result.Answer != "" {
 		fmt.Println()
+		termWidth := GetTerminalWidth()
+		answerWidth := termWidth - 6 // 4 for border + 2 for padding
+		if answerWidth < 60 {
+			answerWidth = 60
+		}
+		if answerWidth > 120 {
+			answerWidth = 120
+		}
+
+		formatted := formatMarkdownForTerminal(result.Answer)
 		answerBox := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(ColorBlue).
-			Padding(1, 2).
-			Width(80)
-		fmt.Println(answerBox.Render(result.Answer))
+			Padding(0, 2).
+			Width(answerWidth)
+		fmt.Println(answerBox.Render(formatted))
 	}
 
 	// Sources as compact citations
@@ -391,6 +404,75 @@ func RenderAskResult(result *app.AskResult, verbose bool) {
 	}
 
 	fmt.Println()
+}
+
+// formatMarkdownForTerminal applies basic terminal formatting to markdown text.
+// Converts headings to bold+colored, **bold** to bold, --- to dim separators,
+// and preserves list indentation. This avoids a full glamour dependency.
+func formatMarkdownForTerminal(md string) string {
+	headingStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary)
+	subheadingStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorText)
+	separatorStyle := lipgloss.NewStyle().Foreground(ColorDim)
+	boldStyle := lipgloss.NewStyle().Bold(true)
+
+	lines := strings.Split(md, "\n")
+	var out []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Horizontal rules
+		if trimmed == "---" || trimmed == "***" || trimmed == "___" {
+			out = append(out, separatorStyle.Render(strings.Repeat("-", 50)))
+			continue
+		}
+
+		// Headings: ## and ###
+		if strings.HasPrefix(trimmed, "### ") {
+			text := strings.TrimPrefix(trimmed, "### ")
+			text = stripMarkdownBold(text)
+			out = append(out, "")
+			out = append(out, subheadingStyle.Render(text))
+			continue
+		}
+		if strings.HasPrefix(trimmed, "## ") {
+			text := strings.TrimPrefix(trimmed, "## ")
+			text = stripMarkdownBold(text)
+			out = append(out, "")
+			out = append(out, headingStyle.Render(text))
+			continue
+		}
+
+		// Inline **bold** replacement
+		processed := replaceMarkdownBold(line, boldStyle)
+		out = append(out, processed)
+	}
+
+	return strings.Join(out, "\n")
+}
+
+// stripMarkdownBold removes **markers** from text.
+func stripMarkdownBold(s string) string {
+	return strings.ReplaceAll(s, "**", "")
+}
+
+// replaceMarkdownBold converts **text** to bold-styled text.
+func replaceMarkdownBold(line string, style lipgloss.Style) string {
+	result := line
+	for {
+		start := strings.Index(result, "**")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result[start+2:], "**")
+		if end == -1 {
+			break
+		}
+		end += start + 2
+		boldText := result[start+2 : end]
+		result = result[:start] + style.Render(boldText) + result[end+2:]
+	}
+	return result
 }
 
 // renderCitation renders a knowledge source as a compact citation line.

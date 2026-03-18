@@ -16,7 +16,7 @@
 - `make test-quick`: fast local checks during iteration.
 - `make lint`: runs formatting and static analysis (`go fmt`, `go vet`, `staticcheck`, optional `golangci-lint`).
 - `go test ./...`: baseline CI-style test run.
-- `./scripts/check-doc-consistency.sh`: validates Markdown/doc sync rules used by CI.
+
 
 ## Coding Style & Naming Conventions
 
@@ -94,11 +94,8 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 <!-- TASKWING_COMMANDS_START -->
 
 - taskwing bootstrap
-- taskwing goal "<goal>"
 - taskwing ask "<query>"
 - taskwing task
-- taskwing plan status
-- taskwing slash
 - taskwing mcp
 - taskwing doctor
 - taskwing config

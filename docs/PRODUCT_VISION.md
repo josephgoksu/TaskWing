@@ -55,7 +55,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ```text
 ┌─────────────────────────────────────────────────────────┐
 │                    USER INTERFACE                        │
-│  taskwing goal "..."  │  /taskwing:next  │  /taskwing:done   │
+│  /taskwing:plan       │  /taskwing:next  │  /taskwing:done   │
 └─────────────────────────────────────────────────────────┘
                               │
                               v
@@ -83,11 +83,8 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
-- `taskwing goal "<goal>"`
 - `taskwing ask "<query>"`
 - `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
 - `taskwing mcp`
 - `taskwing doctor`
 - `taskwing config`
@@ -110,7 +107,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 ## Success Metrics
 
 1. Task accuracy: generated tasks reference correct files and patterns.
-2. Developer adoption: daily active users running `taskwing goal`.
+2. Developer adoption: daily active users running `/taskwing:plan`.
 3. Context utilization: MCP queries per plan execution.
 4. Time-to-root-cause: bug investigations with TaskWing context vs. without.
 

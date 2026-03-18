@@ -32,14 +32,14 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 	}
 
 	// 0. Verify Findings (if basePath is set)
-	verifiedCount, rejectedCount := 0, 0
+	rejectedCount := 0
 	if s.basePath != "" {
 		if verbose {
-			fmt.Print("  Verifying evidence")
+			fmt.Print("  Verifying evidence...")
 		}
-		findings, verifiedCount, rejectedCount = s.verifyFindings(ctx, findings, verbose)
+		findings, _, rejectedCount = s.verifyFindings(ctx, findings, verbose)
 		if verbose {
-			fmt.Printf(" done (%d verified, %d rejected)\n", verifiedCount, rejectedCount)
+			fmt.Println()
 		}
 	}
 
@@ -49,7 +49,7 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 	}
 
 	// 2. Ingest Nodes (Documents)
-	nodesCreated, skippedDuplicates, nodesByTitle, err := s.ingestNodesWithIndex(ctx, findings, verbose)
+	nodesCreated, _, nodesByTitle, err := s.ingestNodesWithIndex(ctx, findings, verbose)
 	if err != nil {
 		return err
 	}
@@ -68,10 +68,9 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 	if verbose {
 		fmt.Println(" done")
 		if rejectedCount > 0 {
-			fmt.Printf("\n⚠️  Rejected %d findings with unverifiable evidence.\n", rejectedCount)
+			fmt.Printf("  %d findings rejected (unverifiable evidence)\n", rejectedCount)
 		}
-		fmt.Printf("\n✅ Saved %d knowledge nodes (%d duplicates skipped), %d edges (%d evidence, %d semantic, %d llm) to memory.\n",
-			nodesCreated, skippedDuplicates, totalEdges, evidenceEdges, semanticEdges, llmEdges)
+		fmt.Printf("  Saved %d nodes, %d edges\n", nodesCreated, totalEdges)
 	}
 
 	return nil
@@ -90,27 +89,26 @@ func (s *Service) verifyFindings(ctx context.Context, findings []core.Finding, v
 	// Count results
 	verifiedCount := 0
 	rejectedCount := 0
+	partialCount := 0
 	for _, f := range verified {
 		switch f.VerificationStatus {
 		case core.VerificationStatusVerified:
 			verifiedCount++
-			if verbose {
-				fmt.Print("✓")
-			}
 		case core.VerificationStatusPartial:
-			verifiedCount++ // Partial counts as verified (kept)
-			if verbose {
-				fmt.Print("~")
-			}
+			verifiedCount++
+			partialCount++
 		case core.VerificationStatusRejected:
 			rejectedCount++
-			if verbose {
-				fmt.Print("✗")
-			}
-		default:
-			if verbose {
-				fmt.Print(".")
-			}
+		}
+	}
+
+	if verbose {
+		fmt.Printf(" %d verified", verifiedCount)
+		if partialCount > 0 {
+			fmt.Printf(" (%d partial)", partialCount)
+		}
+		if rejectedCount > 0 {
+			fmt.Printf(", %d rejected", rejectedCount)
 		}
 	}
 
@@ -152,7 +150,7 @@ func (s *Service) purgeStaleData(findings []core.Finding, filePaths []string, ve
 // ingestNodesWithIndex creates document nodes and returns a title->nodeID index for LLM relationship linking
 func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Finding, verbose bool) (int, int, map[string]string, error) {
 	if verbose {
-		fmt.Print("  Generating embeddings")
+		fmt.Printf("  Generating embeddings for %d findings...", len(findings))
 	}
 
 	nodesCreated := 0
@@ -260,9 +258,6 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 		if s.llmCfg.APIKey != "" {
 			if embedding, err := GenerateEmbedding(ctx, node.Text(), s.llmCfg); err == nil {
 				node.Embedding = embedding
-				if verbose {
-					fmt.Print(".")
-				}
 			}
 		}
 
@@ -272,6 +267,9 @@ func (s *Service) ingestNodesWithIndex(ctx context.Context, findings []core.Find
 			nodesCreated++
 			nodesByTitle[strings.ToLower(f.Title)] = nodeID
 		}
+	}
+	if verbose {
+		fmt.Printf(" %d created\n", nodesCreated)
 	}
 	return nodesCreated, skippedDuplicates, nodesByTitle, nil
 }
@@ -438,6 +436,7 @@ func (s *Service) linkByLLMRelationships(relationships []core.Relationship, node
 	}
 
 	count := 0
+	linkErrors := 0
 	for _, rel := range relationships {
 		// Look up node IDs by title (case-insensitive)
 		fromID := nodesByTitle[strings.ToLower(rel.From)]
@@ -474,10 +473,15 @@ func (s *Service) linkByLLMRelationships(relationships []core.Relationship, node
 		}
 
 		if err := s.repo.LinkNodes(fromID, toID, relationType, weight, props); err != nil {
-			fmt.Fprintf(os.Stderr, "⚠️  failed to link nodes (llm): %v\n", err)
+			linkErrors++
 		} else {
 			count++
 		}
+	}
+
+	// Single summary instead of per-failure warnings
+	if linkErrors > 0 {
+		fmt.Fprintf(os.Stderr, "⚠️  %d LLM relationship links skipped (node title mismatches)\n", linkErrors)
 	}
 
 	return count

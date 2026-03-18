@@ -118,7 +118,7 @@ type Flags struct {
 	TraceFile   string   `json:"trace_file,omitempty"`
 	Verbose     bool     `json:"verbose"`
 	Quiet       bool     `json:"quiet"`
-	Debug bool `json:"debug"` // Enable debug logging (dumps project context, git paths, etc.)
+	Debug       bool     `json:"debug"` // Enable debug logging (dumps project context, git paths, etc.)
 }
 
 // Plan captures the decisions about what to do.
@@ -146,9 +146,9 @@ type Plan struct {
 	SelectedAIs []string `json:"selected_ais,omitempty"` // User's actual AI selection
 
 	// Multi-repo workspace selection
-	DetectedRepos       []string `json:"detected_repos,omitempty"`
-	SelectedRepos       []string `json:"selected_repos,omitempty"`
-	RequiresRepoSelection bool   `json:"requires_repo_selection"`
+	DetectedRepos         []string `json:"detected_repos,omitempty"`
+	SelectedRepos         []string `json:"selected_repos,omitempty"`
+	RequiresRepoSelection bool     `json:"requires_repo_selection"`
 
 	// Error state
 	Error        error  `json:"-"`
@@ -296,7 +296,16 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		// Project OK but some AI configs need repair
 		plan.Mode = ModeRepair
 		aisToRepair := getAIsNeedingRepair(snap)
-		plan.DetectedState = fmt.Sprintf("AI configurations need repair: %s", strings.Join(aisToRepair, ", "))
+		// Include the reason for each AI needing repair
+		var repairDetails []string
+		for _, ai := range aisToRepair {
+			if health, ok := snap.AIHealth[ai]; ok && health.Reason != "" {
+				repairDetails = append(repairDetails, fmt.Sprintf("%s (%s)", ai, health.Reason))
+			} else {
+				repairDetails = append(repairDetails, ai)
+			}
+		}
+		plan.DetectedState = fmt.Sprintf("AI configurations need repair: %s", strings.Join(repairDetails, ", "))
 		plan.AIsNeedingRepair = aisToRepair
 		// Managed local drift is auto-repaired in bootstrap mode.
 		plan.RequiresUserInput = false
@@ -373,11 +382,9 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 			fmt.Sprintf("Unmanaged drift detected for: %s. TaskWing will not mutate these automatically.", strings.Join(plan.UnmanagedDriftAIs, ", ")))
 		plan.Warnings = append(plan.Warnings, "Run: taskwing doctor --fix --adopt-unmanaged")
 	}
-	if len(plan.GlobalMCPDriftAIs) > 0 {
-		plan.Warnings = append(plan.Warnings,
-			fmt.Sprintf("Global MCP drift detected for: %s. Bootstrap will not mutate global MCP in run mode.", strings.Join(plan.GlobalMCPDriftAIs, ", ")))
-		plan.Warnings = append(plan.Warnings, "Run: taskwing doctor --fix")
-	}
+	// Global MCP drift is not surfaced as a warning during bootstrap.
+	// Users who need global MCP can use 'tw doctor --fix' explicitly.
+	// Bootstrap should not nag about optional global configuration.
 
 	// NoOp detection
 	if len(plan.Actions) == 0 && plan.Mode != ModeError {
@@ -779,78 +786,60 @@ func countSourceFiles(basePath string) int {
 func FormatPlanSummary(plan *Plan, quiet bool) string {
 	var sb strings.Builder
 
-	// Always show single-line status
-	fmt.Fprintf(&sb, "Bootstrap: mode=%s", plan.Mode)
-
-	if len(plan.Actions) > 0 {
-		actionNames := make([]string, len(plan.Actions))
-		for i, a := range plan.Actions {
-			actionNames[i] = string(a)
+	// Quiet mode: single-line machine-readable status
+	if quiet {
+		fmt.Fprintf(&sb, "Bootstrap: mode=%s", plan.Mode)
+		if len(plan.Actions) > 0 {
+			actionNames := make([]string, len(plan.Actions))
+			for i, a := range plan.Actions {
+				actionNames[i] = string(a)
+			}
+			fmt.Fprintf(&sb, " actions=[%s]", strings.Join(actionNames, ","))
 		}
-		fmt.Fprintf(&sb, " actions=[%s]", strings.Join(actionNames, ","))
+		sb.WriteString("\n")
+		return sb.String()
+	}
+
+	// Human-readable summary
+	fmt.Fprintf(&sb, "%s\n", plan.DetectedState)
+
+	if plan.RequiresRepoSelection {
+		if len(plan.SelectedRepos) > 0 {
+			fmt.Fprintf(&sb, "Workspace: %d repositories selected\n", len(plan.SelectedRepos))
+		} else if len(plan.DetectedRepos) > 0 {
+			fmt.Fprintf(&sb, "Workspace: %d repositories detected\n", len(plan.DetectedRepos))
+		}
+	}
+
+	// Show what will happen
+	if len(plan.Actions) > 0 {
+		sb.WriteString("\n")
+		for _, summary := range plan.ActionSummary {
+			fmt.Fprintf(&sb, "  %s\n", summary)
+		}
+	}
+
+	// Drift: show which tools are being updated (concise)
+	if len(plan.ManagedDriftAIs) > 0 {
+		fmt.Fprintf(&sb, "\n  Updating: %s\n", strings.Join(plan.ManagedDriftAIs, ", "))
+	}
+	if len(plan.UnmanagedDriftAIs) > 0 {
+		fmt.Fprintf(&sb, "\n  Detected unmanaged config: %s\n", strings.Join(plan.UnmanagedDriftAIs, ", "))
+		sb.WriteString("  Run 'taskwing doctor --fix --adopt-unmanaged' to claim.\n")
+	}
+	// Global MCP drift is not shown in bootstrap plan summary.
+	// Use 'tw doctor' for optional global MCP setup.
+
+	if len(plan.SkippedActions) > 0 {
+		sb.WriteString("\n  Skipped:\n")
+		for _, skipped := range plan.SkippedActions {
+			fmt.Fprintf(&sb, "    %s\n", skipped)
+		}
 	}
 
 	if len(plan.Warnings) > 0 {
-		fmt.Fprintf(&sb, " warnings=%d", len(plan.Warnings))
-	}
-	if len(plan.ManagedDriftAIs) > 0 {
-		fmt.Fprintf(&sb, " managed_drift_fixed=%s", strings.Join(plan.ManagedDriftAIs, ","))
-	}
-	if len(plan.UnmanagedDriftAIs) > 0 {
-		fmt.Fprintf(&sb, " unmanaged_drift_detected=%s", strings.Join(plan.UnmanagedDriftAIs, ","))
-	}
-	if len(plan.GlobalMCPDriftAIs) > 0 {
-		fmt.Fprintf(&sb, " global_mcp_drift_detected=%s", strings.Join(plan.GlobalMCPDriftAIs, ","))
-	}
-
-	sb.WriteString("\n")
-
-	// Detailed output (not in quiet mode)
-	if !quiet {
-		fmt.Fprintf(&sb, "\nDetected: %s\n", plan.DetectedState)
-
-		if plan.RequiresRepoSelection && len(plan.DetectedRepos) > 0 {
-			fmt.Fprintf(&sb, "Workspace: Multi-repo (%d repositories detected)\n", len(plan.DetectedRepos))
-		}
-
-		if len(plan.Actions) > 0 {
-			sb.WriteString("\nActions:\n")
-			for _, summary := range plan.ActionSummary {
-				fmt.Fprintf(&sb, "  • %s\n", summary)
-			}
-		}
-		if len(plan.ManagedDriftAIs) > 0 || len(plan.UnmanagedDriftAIs) > 0 || len(plan.GlobalMCPDriftAIs) > 0 {
-			sb.WriteString("\nDrift:\n")
-			if len(plan.ManagedDriftAIs) > 0 {
-				fmt.Fprintf(&sb, "  • managed_drift_fixed: %s\n", strings.Join(plan.ManagedDriftAIs, ", "))
-			}
-			if len(plan.UnmanagedDriftAIs) > 0 {
-				fmt.Fprintf(&sb, "  • unmanaged_drift_detected: %s\n", strings.Join(plan.UnmanagedDriftAIs, ", "))
-			}
-			if len(plan.GlobalMCPDriftAIs) > 0 {
-				fmt.Fprintf(&sb, "  • global_mcp_drift_detected: %s\n", strings.Join(plan.GlobalMCPDriftAIs, ", "))
-			}
-		}
-
-		if len(plan.SkippedActions) > 0 {
-			sb.WriteString("\nSkipped:\n")
-			for _, skipped := range plan.SkippedActions {
-				fmt.Fprintf(&sb, "  ⊘ %s\n", skipped)
-			}
-		}
-
-		if len(plan.Warnings) > 0 {
-			sb.WriteString("\nWarnings:\n")
-			for _, warning := range plan.Warnings {
-				fmt.Fprintf(&sb, "  ⚠️  %s\n", warning)
-			}
-		}
-
-		if len(plan.Reasons) > 0 {
-			sb.WriteString("\nWhy:\n")
-			for _, reason := range plan.Reasons {
-				fmt.Fprintf(&sb, "  → %s\n", reason)
-			}
+		for _, warning := range plan.Warnings {
+			fmt.Fprintf(&sb, "\n  Warning: %s\n", warning)
 		}
 	}
 

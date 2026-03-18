@@ -32,15 +32,15 @@ func TestParseJSONResponse_Hallucination(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "valid JSON accepted",
-			input:   `{"title": "Valid Finding", "description": "desc", "evidence": [{"file_path": "main.go"}]}`,
-			wantErr: false,
+			name:      "valid JSON accepted",
+			input:     `{"title": "Valid Finding", "description": "desc", "evidence": [{"file_path": "main.go"}]}`,
+			wantErr:   false,
 			wantTitle: "Valid Finding",
 		},
 		{
-			name:    "JSON with markdown fences accepted",
-			input:   "```json\n{\"title\": \"Fenced\", \"description\": \"d\"}\n```",
-			wantErr: false,
+			name:      "JSON with markdown fences accepted",
+			input:     "```json\n{\"title\": \"Fenced\", \"description\": \"d\"}\n```",
+			wantErr:   false,
 			wantTitle: "Fenced",
 		},
 		{
@@ -50,9 +50,9 @@ func TestParseJSONResponse_Hallucination(t *testing.T) {
 			wantTitle: "Truncated",
 		},
 		{
-			name:    "JSON with trailing comma repaired",
-			input:   `{"title": "Trailing", "description": "desc",}`,
-			wantErr: false,
+			name:      "JSON with trailing comma repaired",
+			input:     `{"title": "Trailing", "description": "desc",}`,
+			wantErr:   false,
 			wantTitle: "Trailing",
 		},
 	}

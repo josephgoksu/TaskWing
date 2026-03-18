@@ -11,9 +11,3 @@ func EstimateTokens(text string) int {
 	// Standard heuristic: 1 token ≈ 4 characters
 	return (len(text) + 3) / 4 // Round up to be conservative
 }
-
-// EstimateBudgetChars converts a token budget to approximate character limit.
-// Use this when you want to enforce a character-based limit from a token budget.
-func EstimateBudgetChars(tokens int) int {
-	return tokens * 4
-}

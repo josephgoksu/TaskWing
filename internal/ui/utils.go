@@ -109,20 +109,6 @@ func RenderWarningPanel(title, content string) string {
 	return NewPanel(title, content).WithBorderColor(ColorWarning).Render()
 }
 
-// Truncate truncates a string to maxLen characters, adding ellipsis if needed.
-func Truncate(s string, maxLen int) string {
-	if maxLen <= 0 {
-		return s
-	}
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-3] + "..."
-}
-
 // WrapText wraps text to the specified width.
 func WrapText(text string, width int) string {
 	if width <= 0 {

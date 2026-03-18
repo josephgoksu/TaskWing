@@ -288,22 +288,33 @@ func (a *CodeAgent) runChunkedAnalysis(ctx context.Context, input core.Input, ba
 }
 
 // formatExistingKnowledge formats existing knowledge nodes for the prompt.
+// Also includes wave1 context from two-wave bootstrap execution if available.
 func (a *CodeAgent) formatExistingKnowledge(existingContext map[string]any) string {
 	if existingContext == nil {
 		return ""
 	}
 
+	var sb strings.Builder
+
+	// Include wave1 summary from two-wave execution
+	if wave1Summary, ok := existingContext["wave1_summary"]; ok {
+		if summary, ok := wave1Summary.(string); ok && summary != "" {
+			sb.WriteString("## Context from Documentation & Dependencies Analysis\n")
+			sb.WriteString(summary)
+			sb.WriteString("\n\n")
+		}
+	}
+
 	nodesObj, ok := existingContext["existing_nodes"]
 	if !ok {
-		return ""
+		return sb.String()
 	}
 
 	nodes, ok := nodesObj.([]memory.Node)
 	if !ok || len(nodes) == 0 {
-		return ""
+		return sb.String()
 	}
 
-	var sb strings.Builder
 	for _, n := range nodes {
 		fmt.Fprintf(&sb, "- [%s] %s: %s\n", n.Type, n.ID, n.Summary)
 	}

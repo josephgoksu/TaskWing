@@ -136,11 +136,9 @@ func (t *Table) Render() string {
 			if i < len(row) {
 				val = row[i]
 			}
-			// Truncate if needed (guard against zero/small widths)
-			if widths[i] >= 2 && len(val) > widths[i] {
-				val = val[:widths[i]-1] + "…"
-			} else if widths[i] == 1 && len(val) > 1 {
-				val = "…"
+			// Truncate if needed using display width (rune-safe)
+			if lipgloss.Width(val) > widths[i] {
+				val = truncateToWidth(val, widths[i])
 			}
 			cells = append(cells, cellStyle.Render(padRight(val, widths[i])))
 		}
@@ -150,12 +148,14 @@ func (t *Table) Render() string {
 	return sb.String()
 }
 
-// padRight pads a string to the specified width.
+// padRight pads a string to the specified display width.
+// Uses lipgloss.Width for correct handling of multi-byte and wide characters.
 func padRight(s string, width int) string {
-	if len(s) >= width {
+	visible := lipgloss.Width(s)
+	if visible >= width {
 		return s
 	}
-	return s + strings.Repeat(" ", width-len(s))
+	return s + strings.Repeat(" ", width-visible)
 }
 
 // GetTerminalWidthFor returns the terminal width for the given file descriptor, defaulting to 80.
@@ -170,6 +170,25 @@ func GetTerminalWidthFor(f *os.File) int {
 // GetTerminalWidth returns the current stdout terminal width, defaulting to 80.
 func GetTerminalWidth() int {
 	return GetTerminalWidthFor(os.Stdout)
+}
+
+// truncateToWidth truncates a string to fit within maxWidth display columns,
+// appending "..." if truncated. Safe for multi-byte and wide characters.
+func truncateToWidth(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= maxWidth {
+		return s
+	}
+	runes := []rune(s)
+	for i := len(runes); i > 0; i-- {
+		candidate := string(runes[:i]) + "..."
+		if lipgloss.Width(candidate) <= maxWidth {
+			return candidate
+		}
+	}
+	return s[:maxWidth]
 }
 
 // TruncateID shortens an ID for display (first 6 chars).

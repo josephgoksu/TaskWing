@@ -443,6 +443,9 @@ func (r *SQLiteRepository) GetImpactRadius(ctx context.Context, symbolID uint32,
 			Relation: relation,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
+	}
 
 	return results, nil
 }
@@ -519,6 +522,9 @@ func (r *SQLiteRepository) GetSymbolStats(ctx context.Context) (*SymbolStats, er
 		}
 		stats.ByLanguage[lang] = count
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
+	}
 
 	// Get kind breakdown
 	rows, err = r.db.QueryContext(ctx, "SELECT kind, COUNT(*) FROM symbols GROUP BY kind ORDER BY COUNT(*) DESC")
@@ -534,6 +540,9 @@ func (r *SQLiteRepository) GetSymbolStats(ctx context.Context) (*SymbolStats, er
 			continue
 		}
 		stats.ByKind[kind] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 
 	return stats, nil
@@ -557,6 +566,9 @@ func (r *SQLiteRepository) GetStaleSymbolFiles(ctx context.Context, checkPath fu
 		if !checkPath(filePath) {
 			staleFiles = append(staleFiles, filePath)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 
 	return staleFiles, nil
@@ -804,6 +816,9 @@ func scanSymbols(rows *sql.Rows) ([]Symbol, error) {
 
 		symbols = append(symbols, s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
+	}
 	return symbols, nil
 }
 
@@ -833,6 +848,9 @@ func scanSymbolsWithEmbeddings(rows *sql.Rows) ([]Symbol, error) {
 		}
 
 		symbols = append(symbols, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 	return symbols, nil
 }
@@ -965,6 +983,9 @@ func (r *SQLiteRepository) GetDependencies(ctx context.Context, ecosystem *strin
 
 		deps = append(deps, d)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
+	}
 
 	return deps, nil
 }
@@ -1015,6 +1036,9 @@ func (r *SQLiteRepository) SearchDependenciesFTS(ctx context.Context, query stri
 		d.LastModified, _ = time.Parse(time.RFC3339, lastModified)
 
 		deps = append(deps, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 
 	return deps, nil

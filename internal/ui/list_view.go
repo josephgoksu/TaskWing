@@ -5,22 +5,23 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/josephgoksu/TaskWing/internal/freshness"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // RenderNodeList renders a list of knowledge nodes to stdout in compact mode.
-// For verbose output with full metadata, use RenderNodeListVerbose.
-func RenderNodeList(nodes []memory.Node) {
-	renderNodeListInternal(nodes, false)
+// basePath is the project root for freshness checks (empty to skip).
+func RenderNodeList(nodes []memory.Node, basePath string) {
+	renderNodeListInternal(nodes, false, basePath)
 }
 
 // RenderNodeListVerbose renders nodes with full metadata (ID, dates, type).
-func RenderNodeListVerbose(nodes []memory.Node) {
-	renderNodeListInternal(nodes, true)
+func RenderNodeListVerbose(nodes []memory.Node, basePath string) {
+	renderNodeListInternal(nodes, true, basePath)
 }
 
-func renderNodeListInternal(nodes []memory.Node, verbose bool) {
+func renderNodeListInternal(nodes []memory.Node, verbose bool, basePath string) {
 	// Group by type
 	byType := make(map[string][]memory.Node)
 	for _, n := range nodes {
@@ -33,18 +34,36 @@ func renderNodeListInternal(nodes []memory.Node, verbose bool) {
 
 	// Calculate stats - use centralized type list
 	typeOrder := append(memory.AllNodeTypes(), "unknown")
-	var stats []string
-	totalCount := 0
 
+	totalCount := 0
+	for _, t := range typeOrder {
+		totalCount += len(byType[t])
+	}
+
+	// Check if workspace column is useful (more than one distinct workspace)
+	showWorkspace := hasMultipleWorkspaces(nodes)
+
+	// Render header with readable type counts
+	renderHeader(byType, typeOrder, totalCount)
+
+	if verbose {
+		renderVerboseTable(byType, typeOrder)
+	} else {
+		renderGroupedList(byType, typeOrder, showWorkspace, basePath)
+	}
+}
+
+// renderHeader displays the summary box with spelled-out type names.
+func renderHeader(byType map[string][]memory.Node, typeOrder []string, total int) {
+	var statParts []string
 	for _, t := range typeOrder {
 		count := len(byType[t])
 		if count > 0 {
-			totalCount += count
-			stats = append(stats, fmt.Sprintf("%s %d", TypeIcon(t), count))
+			label := typePlural(t, count)
+			statParts = append(statParts, fmt.Sprintf("%d %s", count, label))
 		}
 	}
 
-	// Render Header
 	headerBox := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(ColorPrimary).
@@ -52,88 +71,86 @@ func renderNodeListInternal(nodes []memory.Node, verbose bool) {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(ColorSecondary)
 
-	fmt.Println(headerBox.Render(fmt.Sprintf("Knowledge: %d nodes (%s)", totalCount, strings.Join(stats, " | "))))
-	fmt.Println()
+	fmt.Println(headerBox.Render(fmt.Sprintf("Project Knowledge (%d nodes)", total)))
 
-	if verbose {
-		renderVerboseTable(byType, typeOrder)
-	} else {
-		renderStyledTable(byType, typeOrder)
+	// Stats line below the box - readable breakdown
+	if len(statParts) > 0 {
+		fmt.Printf("  %s\n", StyleSubtle.Render(strings.Join(statParts, "  ")))
 	}
+	fmt.Println()
 }
 
-// renderStyledTable renders all nodes in a single styled table with category badges.
-func renderStyledTable(byType map[string][]memory.Node, typeOrder []string) {
-	// Collect all nodes in order
-	type nodeRow struct {
-		node memory.Node
+// renderGroupedList renders nodes grouped by type with section headers.
+// Each section shows a colored badge + count, then a simple indented list.
+func renderGroupedList(byType map[string][]memory.Node, typeOrder []string, showWorkspace bool, basePath string) {
+	termWidth := GetTerminalWidth()
+	// 6 = 4 indent + 2 safety margin
+	maxSummaryWidth := termWidth - 6
+	if showWorkspace {
+		maxSummaryWidth -= 14 // workspace column
 	}
-	var rows []nodeRow
+	if maxSummaryWidth < 40 {
+		maxSummaryWidth = 40
+	}
+
+	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorText)
+	itemStyle := lipgloss.NewStyle().Foreground(ColorText)
+	indexStyle := lipgloss.NewStyle().Foreground(ColorDim)
+	staleStyle := lipgloss.NewStyle().Foreground(ColorWarning)
+	wsStyle := lipgloss.NewStyle().Foreground(ColorDim)
 
 	for _, t := range typeOrder {
-		for _, n := range byType[t] {
-			rows = append(rows, nodeRow{node: n})
+		groupNodes := byType[t]
+		if len(groupNodes) == 0 {
+			continue
 		}
+
+		// Section header: badge + "Decisions (6)"
+		badge := CategoryBadge(t)
+		label := fmt.Sprintf("%s (%d)", utils.ToTitle(typePlural(t, len(groupNodes))), len(groupNodes))
+		fmt.Printf("  %s %s\n", badge, sectionStyle.Render(label))
+
+		// Items with numbered indices for scanability
+		for i, n := range groupNodes {
+			summary := n.Summary
+			if summary == "" {
+				summary = utils.Truncate(n.Text(), maxSummaryWidth-4)
+			}
+
+			// Check freshness if basePath is available and node has evidence
+			staleTag := ""
+			if basePath != "" && n.Evidence != "" {
+				result := freshness.Check(basePath, n.Evidence, n.CreatedAt)
+				if result.Status == freshness.StatusStale {
+					staleTag = staleStyle.Render(" [stale]")
+				} else if result.Status == freshness.StatusMissing {
+					staleTag = staleStyle.Render(" [missing]")
+				}
+			}
+
+			// Account for stale tag width in truncation
+			availWidth := maxSummaryWidth - 4
+			if staleTag != "" {
+				availWidth -= 9 // " [stale]" or " [missing]"
+			}
+			if lipgloss.Width(summary) > availWidth {
+				summary = truncateToWidth(summary, availWidth)
+			}
+
+			idx := indexStyle.Render(fmt.Sprintf("%d.", i+1))
+
+			if showWorkspace {
+				ws := n.Workspace
+				if ws == "" {
+					ws = "root"
+				}
+				fmt.Printf("    %s %s%s  %s\n", idx, itemStyle.Render(padRight(summary, availWidth)), staleTag, wsStyle.Render(ws))
+			} else {
+				fmt.Printf("    %s %s%s\n", idx, itemStyle.Render(summary), staleTag)
+			}
+		}
+		fmt.Println()
 	}
-
-	if len(rows) == 0 {
-		return
-	}
-
-	// Column widths
-	const (
-		colBadge     = 15
-		colSummary   = 50
-		colWorkspace = 12
-	)
-
-	// Header
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Underline(true)
-	dimSep := StyleSubtle.Render("  ")
-
-	fmt.Printf("  %s%s%s%s%s\n",
-		headerStyle.Render(padRight("Category", colBadge)),
-		dimSep,
-		headerStyle.Render(padRight("Summary", colSummary)),
-		dimSep,
-		headerStyle.Render(padRight("Workspace", colWorkspace)),
-	)
-
-	// Separator
-	fmt.Printf("  %s\n", StyleSubtle.Render(strings.Repeat("─", colBadge+colSummary+colWorkspace+6)))
-
-	// Rows with alternating colors
-	for i, r := range rows {
-		summary := r.node.Summary
-		if summary == "" {
-			summary = utils.Truncate(r.node.Text(), colSummary)
-		}
-		if len(summary) > colSummary {
-			summary = summary[:colSummary-1] + "…"
-		}
-
-		workspace := r.node.Workspace
-		if workspace == "" {
-			workspace = "root"
-		}
-
-		badge := CategoryBadge(r.node.Type)
-
-		// Alternating row style
-		var rowStyle lipgloss.Style
-		if i%2 == 0 {
-			rowStyle = StyleTableRowEven
-		} else {
-			rowStyle = StyleTableRowOdd
-		}
-
-		fmt.Printf("  %s  %s  %s\n",
-			badge+strings.Repeat(" ", max(0, colBadge-lipgloss.Width(badge))),
-			rowStyle.Render(padRight(summary, colSummary)),
-			StyleSubtle.Render(padRight(workspace, colWorkspace)),
-		)
-	}
-	fmt.Println()
 }
 
 // renderVerboseTable renders nodes as a table with full metadata.
@@ -144,7 +161,8 @@ func renderVerboseTable(byType map[string][]memory.Node, typeOrder []string) {
 			continue
 		}
 
-		fmt.Printf("  %s %s\n", CategoryBadge(t), StyleHeader.Render(fmt.Sprintf("%s %ss", TypeIcon(t), utils.ToTitle(t))))
+		label := fmt.Sprintf("%s (%d)", utils.ToTitle(typePlural(t, len(groupNodes))), len(groupNodes))
+		fmt.Printf("  %s %s\n", CategoryBadge(t), StyleHeader.Render(label))
 
 		table := &Table{
 			Headers:  []string{"ID", "Summary", "Workspace", "Created", "Agent"},
@@ -181,6 +199,69 @@ func renderVerboseTable(byType map[string][]memory.Node, typeOrder []string) {
 	}
 }
 
+// hasMultipleWorkspaces returns true if nodes span more than one workspace.
+// When false, the workspace column can be hidden to save horizontal space.
+func hasMultipleWorkspaces(nodes []memory.Node) bool {
+	if len(nodes) == 0 {
+		return false
+	}
+	first := nodes[0].Workspace
+	if first == "" {
+		first = "root"
+	}
+	for _, n := range nodes[1:] {
+		ws := n.Workspace
+		if ws == "" {
+			ws = "root"
+		}
+		if ws != first {
+			return true
+		}
+	}
+	return false
+}
+
+// typePlural returns the human-readable plural label for a node type.
+func typePlural(t string, count int) string {
+	if count == 1 {
+		return typeSingular(t)
+	}
+	switch t {
+	case memory.NodeTypeDecision:
+		return "decisions"
+	case memory.NodeTypeFeature:
+		return "features"
+	case memory.NodeTypeConstraint:
+		return "constraints"
+	case memory.NodeTypePattern:
+		return "patterns"
+	case memory.NodeTypePlan:
+		return "plans"
+	case memory.NodeTypeNote:
+		return "notes"
+	case memory.NodeTypeMetadata:
+		return "metadata"
+	case memory.NodeTypeDocumentation:
+		return "docs"
+	default:
+		return t + "s"
+	}
+}
+
+// typeSingular returns the human-readable singular label for a node type.
+func typeSingular(t string) string {
+	switch t {
+	case memory.NodeTypeDocumentation:
+		return "doc"
+	case memory.NodeTypeMetadata:
+		return "metadata"
+	default:
+		return t
+	}
+}
+
+// TypeIcon returns a short abbreviation for the header stats.
+// Used by bootstrap output and other compact displays.
 func TypeIcon(t string) string {
 	switch t {
 	case memory.NodeTypeDecision:

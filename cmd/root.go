@@ -124,10 +124,10 @@ func initCrashHandler() {
 // getCommandHint returns a helpful hint for common command mistakes
 func getCommandHint(cmd string) string {
 	hints := map[string]string{
-		"plans":   "Hint: To list plans, use: taskwing plan list",
+		"plans":   "Hint: Use /taskwing:plan in your AI tool",
 		"tasks":   "Hint: To list tasks, use: taskwing task list",
-		"create":  "Hint: To create and activate a plan, use: taskwing goal \"<goal>\"",
-		"new":     "Hint: To create and activate a plan, use: taskwing goal \"<goal>\"",
+		"create":  "Hint: Use /taskwing:plan in your AI tool",
+		"new":     "Hint: Use /taskwing:plan in your AI tool",
 		"install": "Hint: To install MCP, use: taskwing mcp install",
 	}
 
@@ -181,10 +181,12 @@ func GetVersion() string {
 // maybeRunPostUpgradeMigration runs a one-time migration when the CLI version
 // changes (e.g., after brew upgrade). Skips commands that don't need project context.
 func maybeRunPostUpgradeMigration(cmd *cobra.Command) {
-	// Skip the entire mcp subtree (and other commands that don't need migration)
+	// Skip commands that don't need migration (version, help)
+	// Note: mcp is NOT skipped -- when Claude Code starts the MCP server after
+	// a Brew upgrade, we want slash commands silently regenerated.
 	for c := cmd; c != nil; c = c.Parent() {
 		n := c.Name()
-		if n == "version" || n == "help" || n == "mcp" {
+		if n == "version" || n == "help" {
 			return
 		}
 	}
@@ -376,7 +378,7 @@ func trackCommandExecutionWithError(cmd *cobra.Command, args []string, success b
 	// Calculate duration in milliseconds
 	durationMs := time.Since(commandStartTime).Milliseconds()
 
-	// Get full command path (e.g., "plan new", "task list")
+	// Get full command path (e.g., "task list", "config set")
 	commandPath := getCommandPath(cmd)
 
 	// Build properties
@@ -396,7 +398,7 @@ func trackCommandExecutionWithError(cmd *cobra.Command, args []string, success b
 	telemetryClient.Track("command_executed", props)
 }
 
-// getCommandPath returns the full command path (e.g., "plan new", "task list").
+// getCommandPath returns the full command path (e.g., "task list", "config set").
 func getCommandPath(cmd *cobra.Command) string {
 	if cmd == nil {
 		return "unknown"

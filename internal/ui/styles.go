@@ -101,8 +101,8 @@ var (
 
 	// Ask Output Styles
 	StyleAskHeader     = lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Padding(0, 0)
-	StyleAskMeta       = lipgloss.NewStyle().Foreground(ColorDim)
-	StyleCitationPath  = lipgloss.NewStyle().Foreground(ColorDim).Italic(true)
+	StyleAskMeta       = StyleSubtle                                                 // Reuse subtle for dim metadata
+	StyleCitationPath  = lipgloss.NewStyle().Foreground(ColorSecondary).Italic(true) // Subtle + italic
 	StyleCitationBadge = lipgloss.NewStyle().Foreground(ColorCyan).Bold(true)
 )
 

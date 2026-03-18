@@ -83,15 +83,11 @@ TaskWing is a local-first AI knowledge layer. It extracts architectural decision
 cmd/                          # Cobra CLI commands
 ├── root.go                   # Base command, global flags (--json, --verbose, --preview, --quiet)
 ├── bootstrap.go              # Auto-generate knowledge from repo
-├── goal.go                   # Goal-first flow: clarify -> generate -> activate
 ├── knowledge.go              # View stored project knowledge nodes
-├── plan.go                   # Plan lifecycle management
 ├── task.go                   # Task lifecycle management
-├── slash.go                  # Slash command content for assistants
 ├── mcp_server.go             # MCP server for AI tool integration
 ├── doctor.go                 # Diagnostics and integration repair
 ├── config.go                 # Provider and runtime configuration
-├── start.go                  # Local API/dashboard runtime
 ├── hook.go                   # Hook handlers used by assistant integrations
 └── version.go                # Version output
 
@@ -235,7 +231,7 @@ Increment when:
 
 **NOT MINOR**: Internal refactors, new internal modules, code reorganization
 
-Examples: new `taskwing goal` command, new `--format` flag, adding Gemini provider
+Examples: new `taskwing config` subcommand, new `--format` flag, adding Gemini provider
 
 ### MAJOR (X.0.0) - Breaking changes only
 
@@ -353,11 +349,8 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
-- `taskwing goal "<goal>"`
 - `taskwing ask "<query>"`
 - `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
 - `taskwing mcp`
 - `taskwing doctor`
 - `taskwing config`

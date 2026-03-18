@@ -73,7 +73,14 @@ func (t *ReadFileTool) InvokableRun(ctx context.Context, argsJSON string, opts .
 	if err != nil {
 		return "", err
 	}
-	content, err := os.ReadFile(filepath.Join(t.basePath, cleanPath))
+	fullPath := filepath.Join(t.basePath, cleanPath)
+
+	// Check if path is a directory -- LLMs sometimes call read_file on dirs
+	if info, statErr := os.Stat(fullPath); statErr == nil && info.IsDir() {
+		return fmt.Sprintf("%s is a directory, not a file. Use list_dir to explore directories.", cleanPath), nil
+	}
+
+	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Sprintf("File not found: %s", cleanPath), nil
@@ -155,7 +162,7 @@ func (t *GrepTool) InvokableRun(ctx context.Context, argsJSON string, opts ...to
 	}
 	grepArgs = append(grepArgs, "--exclude-dir=node_modules", "--exclude-dir=vendor",
 		"--exclude-dir=.git", "--exclude-dir=dist", "--exclude-dir=build")
-	grepArgs = append(grepArgs, args.Pattern, searchPath)
+	grepArgs = append(grepArgs, "--", args.Pattern, searchPath)
 
 	cmd := exec.CommandContext(ctx, "grep", grepArgs...)
 	var stdout bytes.Buffer
@@ -344,6 +351,16 @@ func (t *ExecTool) InvokableRun(ctx context.Context, argsJSON string, opts ...to
 			allowed = append(allowed, cmd)
 		}
 		return "", fmt.Errorf("command '%s' not allowed. Allowed: %v", args.Command, allowed)
+	}
+
+	// Block dangerous find flags that allow arbitrary command execution
+	if args.Command == "find" {
+		for _, a := range args.Args {
+			lower := strings.ToLower(a)
+			if lower == "-exec" || lower == "-execdir" || lower == "-delete" || lower == "-ok" || lower == "-okdir" {
+				return "", fmt.Errorf("find flag '%s' is not allowed for security reasons", a)
+			}
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, args.Command, args.Args...)

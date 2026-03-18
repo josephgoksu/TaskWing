@@ -38,11 +38,13 @@ This creates `.taskwing/` and installs AI assistant integration files.
 
 ## 2. Create and Activate a Plan
 
-```bash
-taskwing goal "Add user authentication"
+In your AI tool, use the MCP workflow:
+
+```text
+/taskwing:plan
 ```
 
-`taskwing goal` runs clarify -> generate -> activate in one step.
+This runs clarify -> generate -> activate in one step via MCP.
 
 ## 3. Execute with Slash Commands
 
@@ -61,7 +63,7 @@ When done:
 Check current status:
 
 ```text
-/taskwing:status
+/taskwing:context
 ```
 
 ## 3.5. First-Run Success Loop (<15 minutes)
@@ -78,7 +80,6 @@ If you complete this loop once, your setup is healthy and your assistant workflo
 ## 4. Inspect Progress from CLI
 
 ```bash
-taskwing plan status
 taskwing task list
 ```
 
@@ -154,11 +155,8 @@ Recommended Bedrock model IDs:
 
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
-- `taskwing goal "<goal>"`
 - `taskwing ask "<query>"`
 - `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
 - `taskwing mcp`
 - `taskwing doctor`
 - `taskwing config`

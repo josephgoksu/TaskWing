@@ -245,17 +245,33 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	activePlan, err := repo.GetActivePlan()
 	if err != nil || activePlan == nil {
 		return outputHookResponse(HookResponse{
-			Reason: "No active plan. Use 'taskwing plan start <plan-id>' to set one.",
+			Reason: "No active plan. Use /taskwing:plan to create one.",
 		})
 	}
 
-	// Check current task status
+	// Sync TasksCompleted from DB (source of truth) instead of trusting session JSON.
+	// This fixes the race where session save fails but task completion succeeds.
+	completedCount := 0
+	for _, t := range activePlan.Tasks {
+		if t.Status == task.StatusCompleted {
+			completedCount++
+		}
+	}
+	if completedCount > session.TasksCompleted {
+		session.TasksCompleted = completedCount
+	}
+
+	// Load current task from DB to verify status (don't trust session cache)
 	var currentTask *task.Task
 	if session.CurrentTaskID != "" {
-		var err error
 		currentTask, err = repo.GetTask(session.CurrentTaskID)
-		if err != nil && viper.GetBool("verbose") {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Could not load current task %s: %v\n", session.CurrentTaskID, err)
+		if err != nil {
+			// Task not found or DB error -- clear stale reference
+			staleID := session.CurrentTaskID
+			session.CurrentTaskID = ""
+			if viper.GetBool("verbose") {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Could not load current task %s: %v\n", staleID, err)
+			}
 		}
 	}
 
@@ -269,7 +285,6 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 
 	// No more tasks = plan complete
 	if nextTask == nil {
-		// Check if all tasks are done
 		allDone := true
 		for _, t := range activePlan.Tasks {
 			if t.Status != task.StatusCompleted {
@@ -290,28 +305,20 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 	// Build context for next task
 	contextStr := buildTaskContext(repo, nextTask, activePlan)
 
-	// Update session state
+	// Run Sentinel + policy analysis on completed task (if just completed)
 	if currentTask != nil && currentTask.Status == task.StatusCompleted {
-		session.TasksCompleted++
-
-		// Run Sentinel analysis with git verification on the just-completed task
-		// Git verification catches cases where an agent lies about what files it modified
 		workDir, _ := os.Getwd()
 		sentinel := task.NewSentinel()
 		report := sentinel.AnalyzeWithVerification(context.Background(), currentTask, workDir)
 
-		// Track deviations in session
 		if report.HasDeviations() {
 			session.TotalDeviationsDetected += len(report.Deviations)
 			session.LastDeviationSummary = report.Summary
-
-			// Set critical flag for next continue-check to handle
 			if report.HasCriticalDeviations() {
 				session.LastTaskHadCriticalDeviation = true
 			}
 		}
 
-		// Run policy evaluation on completed task
 		policyResult := evaluateTaskPolicy(context.Background(), currentTask, activePlan.Goal, session.SessionID, workDir)
 		if policyResult != nil && !policyResult.Allowed {
 			session.TotalPolicyViolations += len(policyResult.Violations)
@@ -319,12 +326,19 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 			session.LastTaskHadPolicyViolation = true
 		}
 	}
+
+	// Update session state
 	session.CurrentTaskID = nextTask.ID
 	session.PlanID = activePlan.ID
 	session.TasksStarted++
+
+	// Save session with retry -- session sync failure is the #1 cause of hook unreliability
 	if err := saveHookSession(session); err != nil {
-		// Log to stderr but don't fail - hook must return valid JSON
-		fmt.Fprintf(os.Stderr, "[WARN] Failed to save session state: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[WARN] Session save failed, retrying: %v\n", err)
+		time.Sleep(100 * time.Millisecond)
+		if retryErr := saveHookSession(session); retryErr != nil {
+			fmt.Fprintf(os.Stderr, "[WARN] Session save retry also failed: %v\n", retryErr)
+		}
 	}
 
 	// Return block with next task context in reason field
@@ -337,34 +351,48 @@ func runContinueCheck(maxTasks, maxMinutes int) error {
 }
 
 // buildTaskContext creates the context string to inject for the next task.
-// Delegates to task.FormatRichContext for consistent presentation across CLI and MCP.
+// Uses the unified GetProjectContext API for retrieval.
 func buildTaskContext(repo *memory.Repository, nextTask *task.Task, plan *task.Plan) string {
 	ctx := context.Background()
 
-	// Get knowledge service for ask context
 	llmCfg, _ := getLLMConfigFromViper()
 	ks := knowledge.NewService(repo, llmCfg)
 
-	// Create search adapter that wraps knowledge.Service for the task package
-	searchFn := func(ctx context.Context, query string, limit int) ([]task.AskResult, error) {
-		searchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		results, err := ks.Search(searchCtx, query, limit)
-		if err != nil {
-			return nil, err
-		}
-		var adapted []task.AskResult
-		for _, r := range results {
-			adapted = append(adapted, task.AskResult{
-				Summary: r.Node.Summary,
-				Type:    r.Node.Type,
-				Content: r.Node.Text(),
-			})
-		}
-		return adapted, nil
+	opts := knowledge.DefaultContextOptions()
+	opts.Query = nextTask.Title + " " + nextTask.Description
+	opts.IncludeArchitectureMD = false // Too large for hook injection
+	opts.MaxNodes = 8
+	opts.UseLLMQueries = false // Speed: use task title directly
+
+	memoryPath, _ := config.GetMemoryBasePath()
+	opts.MemoryBasePath = memoryPath
+
+	pc, err := knowledge.GetProjectContext(ctx, ks, opts)
+	if err != nil {
+		return task.FormatRichContext(ctx, nextTask, plan, nil)
 	}
 
-	return task.FormatRichContext(ctx, nextTask, plan, searchFn)
+	// Combine unified context with task-specific formatting
+	projectCtx := pc.FormatCompact()
+
+	// Create search adapter backed by the already-retrieved nodes
+	searchFn := func(_ context.Context, _ string, _ int) ([]task.AskResult, error) {
+		var results []task.AskResult
+		for _, sn := range pc.RelevantNodes {
+			results = append(results, task.AskResult{
+				Summary: sn.Node.Summary,
+				Type:    sn.Node.Type,
+				Content: sn.Node.Text(),
+			})
+		}
+		return results, nil
+	}
+
+	richCtx := task.FormatRichContext(ctx, nextTask, plan, searchFn)
+	if projectCtx != "" {
+		return projectCtx + "\n\n" + richCtx
+	}
+	return richCtx
 }
 
 // runSessionInit initializes a new hook session
@@ -401,7 +429,7 @@ func runSessionInit() error {
 	// Note: Circuit breaker values shown are defaults; actual values depend on hook config
 	planInfo := session.PlanID
 	if planInfo == "" {
-		planInfo = "(none - use 'taskwing plan start <id>' to set)"
+		planInfo = "(none - use /taskwing:plan to create one)"
 	}
 
 	fmt.Printf(`TaskWing Session Initialized

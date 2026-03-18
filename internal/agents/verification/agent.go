@@ -371,4 +371,3 @@ func FilterVerifiedFindings(findings []core.Finding) []core.Finding {
 	}
 	return result
 }
-

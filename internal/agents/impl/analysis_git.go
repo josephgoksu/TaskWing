@@ -5,6 +5,7 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -57,7 +58,44 @@ func (a *GitAgent) Close() error {
 func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, error) {
 	start := time.Now()
 
-	// Initialize chain (lazy)
+	// Gather commits early to check if git history exists (needed for both paths)
+	chunks, projectMeta := gatherGitChunks(input.BasePath, input.Verbose)
+	if len(chunks) == 0 {
+		return core.Output{AgentName: a.Name(), Error: fmt.Errorf("no git history available")}, nil
+	}
+
+	// ReAct mode: attempt tool-calling exploration for richer findings.
+	// Tried BEFORE chain init to avoid wasting an LLM connection if ReAct succeeds.
+	{
+		userMsg := fmt.Sprintf("Analyze the git history for project %q. Start by running git log --oneline -100 to get an overview of recent commits.", input.ProjectName)
+		raw, reactDuration, err := runReactMode(ctx, a.LLMConfig(), input.BasePath, config.SystemPromptGitReactAgent, userMsg, 15)
+		if err == nil && raw != "" {
+			parsed, parseErr := core.ParseJSONResponse[gitMilestonesResponse](raw)
+			if parseErr == nil {
+				findings := a.parseFindings(parsed)
+				if len(findings) >= reactMinFindingsGit {
+					output := core.BuildOutput(a.Name(), findings, "ReAct exploration", reactDuration)
+					output.Coverage = core.CoverageStats{
+						FilesAnalyzed:   1,
+						TotalFiles:      1,
+						CoveragePercent: 100,
+						FilesRead: []core.FileRead{{
+							Path: ".git/logs/HEAD (ReAct exploration)",
+						}},
+					}
+					return output, nil
+				}
+				if len(findings) > 0 {
+					log.Printf("[git] ReAct produced only %d findings (threshold %d), falling back to deterministic", len(findings), reactMinFindingsGit)
+				}
+			}
+		}
+		if err != nil && !errors.Is(err, ErrNoToolCalling) {
+			log.Printf("[git] ReAct mode failed, falling back to deterministic: %v", err)
+		}
+	}
+
+	// Initialize chain for deterministic fallback (lazy)
 	if a.chain == nil {
 		chatModel, err := a.CreateCloseableChatModel(ctx)
 		if err != nil {
@@ -74,12 +112,6 @@ func (a *GitAgent) Run(ctx context.Context, input core.Input) (core.Output, erro
 			return core.Output{}, fmt.Errorf("create chain: %w", err)
 		}
 		a.chain = chain
-	}
-
-	// Gather commits and split into chunks
-	chunks, projectMeta := gatherGitChunks(input.BasePath, input.Verbose)
-	if len(chunks) == 0 {
-		return core.Output{AgentName: a.Name(), Error: fmt.Errorf("no git history available")}, nil
 	}
 
 	// Process chunks with recency weighting (newest first)

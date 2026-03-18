@@ -18,7 +18,7 @@ Get users to one visible success loop in under 15 minutes:
 ## First-Run Activation Path
 
 1. `taskwing bootstrap`
-2. `taskwing goal "<goal>"`
+2. `/taskwing:plan`
 3. `/taskwing:next`
 4. Implement scoped change
 5. `/taskwing:done`

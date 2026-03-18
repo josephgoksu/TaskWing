@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/afero"
 
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
+	"github.com/josephgoksu/TaskWing/internal/safepath"
 )
 
 // BuiltinContext holds dependencies for custom OPA built-ins.
@@ -45,11 +46,12 @@ func NewBuiltinContextWithCodeIntel(workDir string, repo codeintel.Repository) *
 }
 
 // resolvePath converts a relative path to absolute using the work directory.
-func (bc *BuiltinContext) resolvePath(path string) string {
+// Uses safepath for both relative and absolute paths to prevent traversal and prefix collisions.
+func (bc *BuiltinContext) resolvePath(path string) (string, error) {
 	if filepath.IsAbs(path) {
-		return path
+		return safepath.ValidateAbsPath(bc.WorkDir, path)
 	}
-	return filepath.Join(bc.WorkDir, path)
+	return safepath.SafeJoin(bc.WorkDir, path)
 }
 
 // RegisterBuiltins registers all TaskWing custom built-ins with OPA.
@@ -173,7 +175,10 @@ func RegisterBuiltins(ctx *BuiltinContext) []string {
 
 // fileLineCountImpl returns the number of lines in a file, or -1 if it doesn't exist.
 func fileLineCountImpl(ctx *BuiltinContext, path string) int {
-	fullPath := ctx.resolvePath(path)
+	fullPath, pathErr := ctx.resolvePath(path)
+	if pathErr != nil {
+		return -1
+	}
 
 	file, err := ctx.Fs.Open(fullPath)
 	if err != nil {
@@ -196,7 +201,10 @@ func fileLineCountImpl(ctx *BuiltinContext, path string) int {
 
 // hasPatternImpl returns true if the file contains text matching the regex pattern.
 func hasPatternImpl(ctx *BuiltinContext, path, pattern string) bool {
-	fullPath := ctx.resolvePath(path)
+	fullPath, pathErr := ctx.resolvePath(path)
+	if pathErr != nil {
+		return false
+	}
 
 	// Compile the regex
 	re, err := regexp.Compile(pattern)
@@ -215,7 +223,10 @@ func hasPatternImpl(ctx *BuiltinContext, path, pattern string) bool {
 // fileImportsImpl extracts imports from a file.
 // Currently supports Go import statements.
 func fileImportsImpl(ctx *BuiltinContext, path string) []string {
-	fullPath := ctx.resolvePath(path)
+	fullPath, pathErr := ctx.resolvePath(path)
+	if pathErr != nil {
+		return nil
+	}
 
 	content, err := afero.ReadFile(ctx.Fs, fullPath)
 	if err != nil {
@@ -294,7 +305,10 @@ func symbolExistsImpl(ctx *BuiltinContext, path, symbolName string) bool {
 	}
 
 	// Fallback: Simple text-based search
-	fullPath := ctx.resolvePath(path)
+	fullPath, pathErr := ctx.resolvePath(path)
+	if pathErr != nil {
+		return false
+	}
 	content, err := afero.ReadFile(ctx.Fs, fullPath)
 	if err != nil {
 		return false
@@ -327,7 +341,10 @@ func symbolExistsImpl(ctx *BuiltinContext, path, symbolName string) bool {
 
 // fileExistsImpl checks if a file exists.
 func fileExistsImpl(ctx *BuiltinContext, path string) bool {
-	fullPath := ctx.resolvePath(path)
+	fullPath, pathErr := ctx.resolvePath(path)
+	if pathErr != nil {
+		return false
+	}
 	exists, _ := afero.Exists(ctx.Fs, fullPath)
 	return exists
 }

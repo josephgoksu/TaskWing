@@ -266,7 +266,7 @@ func TestClaudeDriftDetection(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Write expected slash command files in the taskwing/ subdirectory
+		// Write expected command files in the taskwing/ subdirectory
 		for name := range expectedSlashCommandFiles(".md") {
 			if err := os.WriteFile(filepath.Join(nsDir, name), []byte("test"), 0o644); err != nil {
 				t.Fatal(err)

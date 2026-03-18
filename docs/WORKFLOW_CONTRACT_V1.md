@@ -47,5 +47,5 @@ KPI:
 ## Operating Policy
 
 - These gates are hard blockers for core workflow commands.
-- Commands that are primarily read-only (`/taskwing:ask`, `/taskwing:status`, `/taskwing:explain`, `/taskwing:simplify`) remain lightweight but must not bypass these gates.
+- Commands that are primarily read-only (`/taskwing:context`) and MCP tools (`ask`, `code`, `remember`) remain lightweight but must not bypass these gates.
 - Prompt regressions against this contract are release blockers.

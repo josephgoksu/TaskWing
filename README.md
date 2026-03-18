@@ -66,11 +66,8 @@ taskwing bootstrap
 # 2. Connect to your AI tool
 taskwing mcp install claude    # or: cursor, gemini, codex, copilot, opencode
 
-# 3. Set a goal and go
-taskwing goal "Add Stripe billing"
-# -> Plan decomposed into 5 executable tasks
-
-# 4. Execute with your AI assistant
+# 3. Plan and execute with your AI assistant
+/taskwing:plan       # Create a plan via MCP
 /taskwing:next       # Get next task with full context
 # ...work...
 /taskwing:done       # Mark complete, advance to next
@@ -156,7 +153,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 | Capability | Description |
 |:-----------|:------------|
 | **Local knowledge** | Extracts decisions, patterns, and constraints into local SQLite |
-| **Goal to tasks** | Turns a goal into an executable plan with decomposed tasks |
+| **Plan to tasks** | Turns a plan into decomposed tasks with architecture context |
 | **AI-driven lifecycle** | Task execution -- next, start, complete, verify |
 | **Code analysis** | Symbol search, call graphs, impact analysis, simplification |
 | **Root cause first** | AI-powered diagnosis before proposing fixes |
@@ -168,15 +165,10 @@ Use these from your AI assistant once connected:
 
 | Command | When to use |
 |:--------|:------------|
-| `/taskwing:ask` | Search project knowledge (decisions, patterns, constraints) |
-| `/taskwing:remember` | Persist a decision, pattern, or insight to project memory |
+| `/taskwing:plan` | Clarify a goal and build an approved execution plan |
 | `/taskwing:next` | Start the next approved task with full context |
 | `/taskwing:done` | Complete the current task after verification |
-| `/taskwing:status` | Check current task progress and acceptance criteria |
-| `/taskwing:plan` | Clarify a goal and build an approved execution plan |
-| `/taskwing:debug` | Root-cause-first debugging before proposing fixes |
-| `/taskwing:explain` | Deep explanation of a code symbol and its call graph |
-| `/taskwing:simplify` | Simplify code while preserving behavior |
+| `/taskwing:context` | Get full project knowledge dump for complete architectural context |
 
 <details>
 <summary>MCP setup (manual)</summary>
@@ -252,11 +244,8 @@ Or configure interactively: `taskwing config`
 
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
-- `taskwing goal "<goal>"`
 - `taskwing ask "<query>"`
 - `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
 - `taskwing mcp`
 - `taskwing doctor`
 - `taskwing config`

@@ -77,11 +77,9 @@ The system is composed of a CLI tool with an embedded MCP server and a web dashb
 | Command              | Description                               |
 | :------------------- | :---------------------------------------- |
 | `taskwing bootstrap` | Initialize project memory                 |
-| `taskwing goal`      | Create and activate a plan                |
 | `taskwing plan`      | Manage development plans                  |
 | `taskwing task`      | Manage execution tasks                    |
 | `taskwing start`     | Start API/watch/dashboard services        |
-| `taskwing slash`     | Output slash command prompts for AI tools |
 
 ### Frontend (`dashboard/`)
 
@@ -232,11 +230,8 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 
 <!-- TASKWING_COMMANDS_START -->
 - `taskwing bootstrap`
-- `taskwing goal "<goal>"`
 - `taskwing ask "<query>"`
 - `taskwing task`
-- `taskwing plan status`
-- `taskwing slash`
 - `taskwing mcp`
 - `taskwing doctor`
 - `taskwing config`

@@ -64,16 +64,6 @@ func GetProjectContext() *project.Context {
 	return projectContext
 }
 
-// GetProjectContextOrError returns the project context or an error if not set.
-// Use this when project context is required.
-func GetProjectContextOrError() (*project.Context, error) {
-	ctx := GetProjectContext()
-	if ctx == nil {
-		return nil, ErrProjectContextNotSet
-	}
-	return ctx, nil
-}
-
 // DetectAndSetProjectContext detects the project root and sets it.
 // Returns error if detection fails - no silent fallbacks.
 func DetectAndSetProjectContext() (*project.Context, error) {

@@ -47,21 +47,48 @@ const DefaultMaxInputTokens = 8192
 
 // ModelRegistry is the single source of truth for all supported models.
 // Add new models here - everything else derives from this registry.
-// Prices last updated: 2025-12 (via web research)
+// Models within each provider section are ordered NEWEST FIRST.
+// This order is used by the selection UI to show the most recent models at the top.
+// Prices last updated: 2026-03 (via web research)
 var ModelRegistry = []Model{
 	// ============================================
-	// OpenAI Models (2025)
-	// https://platform.openai.com/docs/models
+	// OpenAI Models (newest first)
+	// https://developers.openai.com/api/docs/models
+	// Prices verified: 2026-03-17
 	// ============================================
 	{
-		ID:               "o3",
+		ID:               "gpt-5.4",
 		Provider:         "OpenAI",
 		ProviderID:       ProviderOpenAI,
-		InputPer1M:       0.40,
-		OutputPer1M:      1.60,
+		Aliases:          []string{"gpt-5.4-2026-03-05"},
+		InputPer1M:       2.50,
+		OutputPer1M:      15.00,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
-		MaxInputTokens:   200_000,
+		MaxInputTokens:   1_050_000,
+	},
+	{
+		ID:               "gpt-5.4-mini",
+		Provider:         "OpenAI",
+		ProviderID:       ProviderOpenAI,
+		Aliases:          []string{"gpt-5.4-mini-2026-03-17"},
+		InputPer1M:       0.75,
+		OutputPer1M:      4.50,
+		IsDefault:        true,
+		SupportsThinking: true,
+		Category:         CategoryBalanced,
+		MaxInputTokens:   400_000,
+	},
+	{
+		ID:               "gpt-5.4-nano",
+		Provider:         "OpenAI",
+		ProviderID:       ProviderOpenAI,
+		Aliases:          []string{"gpt-5.4-nano-2026-03-17"},
+		InputPer1M:       0.20,
+		OutputPer1M:      1.25,
+		SupportsThinking: true,
+		Category:         CategoryFast,
+		MaxInputTokens:   400_000,
 	},
 	{
 		ID:               "o4-mini",
@@ -74,13 +101,23 @@ var ModelRegistry = []Model{
 		MaxInputTokens:   200_000,
 	},
 	{
+		ID:               "o3",
+		Provider:         "OpenAI",
+		ProviderID:       ProviderOpenAI,
+		InputPer1M:       2.00,
+		OutputPer1M:      8.00,
+		SupportsThinking: true,
+		Category:         CategoryReasoning,
+		MaxInputTokens:   200_000,
+	},
+	{
 		ID:             "gpt-5",
 		Provider:       "OpenAI",
 		ProviderID:     ProviderOpenAI,
 		InputPer1M:     1.25,
 		OutputPer1M:    10.00,
 		Category:       CategoryReasoning,
-		MaxInputTokens: 128_000,
+		MaxInputTokens: 400_000,
 	},
 	{
 		ID:             "gpt-5-mini",
@@ -88,9 +125,8 @@ var ModelRegistry = []Model{
 		ProviderID:     ProviderOpenAI,
 		InputPer1M:     0.25,
 		OutputPer1M:    2.00,
-		IsDefault:      true,
 		Category:       CategoryBalanced,
-		MaxInputTokens: 128_000,
+		MaxInputTokens: 400_000,
 	},
 	{
 		ID:             "gpt-5-nano",
@@ -99,7 +135,7 @@ var ModelRegistry = []Model{
 		InputPer1M:     0.05,
 		OutputPer1M:    0.40,
 		Category:       CategoryFast,
-		MaxInputTokens: 128_000,
+		MaxInputTokens: 400_000,
 	},
 	{
 		ID:             "gpt-4.1",
@@ -108,7 +144,7 @@ var ModelRegistry = []Model{
 		InputPer1M:     2.00,
 		OutputPer1M:    8.00,
 		Category:       CategoryReasoning,
-		MaxInputTokens: 1_000_000,
+		MaxInputTokens: 1_047_576,
 	},
 	{
 		ID:             "gpt-4.1-mini",
@@ -117,7 +153,7 @@ var ModelRegistry = []Model{
 		InputPer1M:     0.40,
 		OutputPer1M:    1.60,
 		Category:       CategoryBalanced,
-		MaxInputTokens: 1_000_000,
+		MaxInputTokens: 1_047_576,
 	},
 	{
 		ID:             "gpt-4.1-nano",
@@ -126,13 +162,45 @@ var ModelRegistry = []Model{
 		InputPer1M:     0.10,
 		OutputPer1M:    0.40,
 		Category:       CategoryFast,
-		MaxInputTokens: 1_000_000,
+		MaxInputTokens: 1_047_576,
 	},
 
 	// ============================================
-	// Anthropic Claude 4.x Models (2025)
-	// https://docs.anthropic.com/en/docs/about-claude/models
+	// Anthropic Claude Models (newest first)
+	// https://platform.claude.com/docs/en/docs/about-claude/models
 	// ============================================
+	{
+		ID:               "claude-opus-4-6",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		InputPer1M:       5.00,
+		OutputPer1M:      25.00,
+		SupportsThinking: true,
+		Category:         CategoryReasoning,
+		MaxInputTokens:   1_000_000,
+	},
+	{
+		ID:               "claude-sonnet-4-6",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		InputPer1M:       3.00,
+		OutputPer1M:      15.00,
+		IsDefault:        true,
+		SupportsThinking: true,
+		Category:         CategoryBalanced,
+		MaxInputTokens:   1_000_000,
+	},
+	{
+		ID:               "claude-haiku-4-5",
+		Provider:         "Anthropic",
+		ProviderID:       ProviderAnthropic,
+		Aliases:          []string{"claude-haiku-4-5-20251001"},
+		InputPer1M:       1.00,
+		OutputPer1M:      5.00,
+		SupportsThinking: true,
+		Category:         CategoryFast,
+		MaxInputTokens:   200_000,
+	},
 	{
 		ID:               "claude-sonnet-4-5",
 		Provider:         "Anthropic",
@@ -140,7 +208,6 @@ var ModelRegistry = []Model{
 		Aliases:          []string{"claude-sonnet-4-5-20250929"},
 		InputPer1M:       3.00,
 		OutputPer1M:      15.00,
-		IsDefault:        true,
 		SupportsThinking: true,
 		Category:         CategoryBalanced,
 		MaxInputTokens:   200_000,
@@ -157,21 +224,10 @@ var ModelRegistry = []Model{
 		MaxInputTokens:   200_000,
 	},
 	{
-		ID:               "claude-haiku-4-5",
-		Provider:         "Anthropic",
-		ProviderID:       ProviderAnthropic,
-		Aliases:          []string{"claude-haiku-4-5-20251001"},
-		InputPer1M:       1.00,
-		OutputPer1M:      5.00,
-		SupportsThinking: true,
-		Category:         CategoryFast,
-		MaxInputTokens:   200_000,
-	},
-	{
 		ID:               "claude-sonnet-4",
 		Provider:         "Anthropic",
 		ProviderID:       ProviderAnthropic,
-		Aliases:          []string{"claude-sonnet-4-20250514"},
+		Aliases:          []string{"claude-sonnet-4-20250514", "claude-sonnet-4-0"},
 		InputPer1M:       3.00,
 		OutputPer1M:      15.00,
 		SupportsThinking: true,
@@ -191,11 +247,44 @@ var ModelRegistry = []Model{
 	},
 
 	// ============================================
-	// AWS Bedrock OpenAI-Compatible Models (curated)
+	// AWS Bedrock OpenAI-Compatible Models (newest first)
 	// Sources:
 	// - https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
 	// - https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
 	// ============================================
+	{
+		ID:               "anthropic.claude-opus-4-6-v1",
+		Provider:         "AWS Bedrock",
+		ProviderID:       ProviderBedrock,
+		InputPer1M:       5.00,
+		OutputPer1M:      25.00,
+		SupportsThinking: true,
+		Category:         CategoryReasoning,
+		MaxInputTokens:   1_000_000,
+	},
+	{
+		ID:         "anthropic.claude-sonnet-4-6",
+		Provider:   "AWS Bedrock",
+		ProviderID: ProviderBedrock,
+		Aliases: []string{
+			"us.anthropic.claude-sonnet-4-6",
+			"eu.anthropic.claude-sonnet-4-6",
+		},
+		InputPer1M:       3.00,
+		OutputPer1M:      15.00,
+		IsDefault:        true,
+		SupportsThinking: true,
+		Category:         CategoryBalanced,
+		MaxInputTokens:   1_000_000,
+	},
+	{
+		ID:               "anthropic.claude-haiku-4-5-20251001-v1:0",
+		Provider:         "AWS Bedrock",
+		ProviderID:       ProviderBedrock,
+		SupportsThinking: true,
+		Category:         CategoryFast,
+		MaxInputTokens:   200_000,
+	},
 	{
 		ID:         "anthropic.claude-sonnet-4-5-20250929-v1:0",
 		Provider:   "AWS Bedrock",
@@ -207,23 +296,16 @@ var ModelRegistry = []Model{
 		},
 		InputPer1M:       3.00,
 		OutputPer1M:      15.00,
-		IsDefault:        true,
 		SupportsThinking: true,
 		Category:         CategoryBalanced,
-		MaxInputTokens:   200_000,
-	},
-	{
-		ID:               "anthropic.claude-opus-4-6-v1",
-		Provider:         "AWS Bedrock",
-		ProviderID:       ProviderBedrock,
-		SupportsThinking: true,
-		Category:         CategoryReasoning,
 		MaxInputTokens:   200_000,
 	},
 	{
 		ID:               "anthropic.claude-opus-4-5-20251101-v1:0",
 		Provider:         "AWS Bedrock",
 		ProviderID:       ProviderBedrock,
+		InputPer1M:       5.00,
+		OutputPer1M:      25.00,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
 		MaxInputTokens:   200_000,
@@ -236,14 +318,6 @@ var ModelRegistry = []Model{
 		OutputPer1M:      75.00,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
-		MaxInputTokens:   200_000,
-	},
-	{
-		ID:               "anthropic.claude-haiku-4-5-20251001-v1:0",
-		Provider:         "AWS Bedrock",
-		ProviderID:       ProviderBedrock,
-		SupportsThinking: true,
-		Category:         CategoryFast,
 		MaxInputTokens:   200_000,
 	},
 	{
@@ -301,18 +375,28 @@ var ModelRegistry = []Model{
 	},
 
 	// ============================================
-	// Google Gemini Models (2025)
+	// Google Gemini Models (newest first)
 	// https://ai.google.dev/gemini-api/docs/models
-	// Note: Gemini 1.5 retired April 2025
+	// https://ai.google.dev/pricing
 	// ============================================
 	{
-		ID:               "gemini-3-pro-preview",
+		ID:               "gemini-3.1-pro-preview",
 		Provider:         "Google",
 		ProviderID:       ProviderGemini,
 		InputPer1M:       2.00,
 		OutputPer1M:      12.00,
 		SupportsThinking: true,
 		Category:         CategoryReasoning,
+		MaxInputTokens:   1_000_000,
+	},
+	{
+		ID:               "gemini-3.1-flash-lite-preview",
+		Provider:         "Google",
+		ProviderID:       ProviderGemini,
+		InputPer1M:       0.25,
+		OutputPer1M:      1.50,
+		SupportsThinking: true,
+		Category:         CategoryFast,
 		MaxInputTokens:   1_000_000,
 	},
 	{
@@ -341,6 +425,7 @@ var ModelRegistry = []Model{
 		ProviderID:       ProviderGemini,
 		InputPer1M:       0.30,
 		OutputPer1M:      2.50,
+		IsDefault:        true,
 		SupportsThinking: true,
 		Category:         CategoryBalanced,
 		MaxInputTokens:   1_000_000,
@@ -354,25 +439,6 @@ var ModelRegistry = []Model{
 		SupportsThinking: true,
 		Category:         CategoryFast,
 		MaxInputTokens:   1_000_000,
-	},
-	{
-		ID:             "gemini-2.0-flash",
-		Provider:       "Google",
-		ProviderID:     ProviderGemini,
-		InputPer1M:     0.10,
-		OutputPer1M:    0.40,
-		IsDefault:      true,
-		Category:       CategoryBalanced,
-		MaxInputTokens: 1_000_000,
-	},
-	{
-		ID:             "gemini-2.0-flash-lite",
-		Provider:       "Google",
-		ProviderID:     ProviderGemini,
-		InputPer1M:     0.075,
-		OutputPer1M:    0.30,
-		Category:       CategoryFast,
-		MaxInputTokens: 1_000_000,
 	},
 
 	// ============================================
@@ -498,20 +564,6 @@ func GetRecommendedModelForRole(providerID string, role ModelRole) *Model {
 	return GetDefaultModel(providerID)
 }
 
-// GetCategoryBadge returns an emoji badge for the model category.
-func GetCategoryBadge(category ModelCategory) string {
-	switch category {
-	case CategoryReasoning:
-		return "🧠"
-	case CategoryBalanced:
-		return "⚡"
-	case CategoryFast:
-		return "🚀"
-	default:
-		return ""
-	}
-}
-
 // InferProvider attempts to determine the provider from a model name.
 // Returns the provider ID and true if inference succeeded.
 func InferProvider(modelID string) (string, bool) {
@@ -567,40 +619,40 @@ type ModelOption struct {
 	IsDefault   bool
 }
 
-// ModelOption represents a model choice for selection UI
-type modelWithPrice struct {
-	option     ModelOption
-	totalPrice float64 // input + output for sorting
+// modelWithOrder tracks a model's position in the registry for stable ordering.
+type modelWithOrder struct {
+	option      ModelOption
+	registryIdx int // Position in ModelRegistry (newest first per provider)
 }
 
 // GetModelsForProvider returns available models for a provider (for UI selection).
-// Models are sorted: default first, then by total price (cheapest to most expensive).
+// Models are sorted: default first, then in registry order (newest to oldest).
+// The ModelRegistry is the source of truth for ordering -- list newer models first.
 func GetModelsForProvider(providerID string) []ModelOption {
-	var models []modelWithPrice
+	var models []modelWithOrder
 
-	for _, m := range ModelRegistry {
+	for i, m := range ModelRegistry {
 		if m.ProviderID != providerID {
 			continue
 		}
 
-		models = append(models, modelWithPrice{
+		models = append(models, modelWithOrder{
 			option: ModelOption{
 				ID:          m.ID,
 				DisplayName: m.ID,
 				PriceInfo:   formatPriceInfo(m.ProviderID, m.InputPer1M, m.OutputPer1M),
 				IsDefault:   m.IsDefault,
 			},
-			totalPrice: m.InputPer1M + m.OutputPer1M,
+			registryIdx: i,
 		})
 	}
 
-	// Sort: default first, then by price descending (most capable/expensive first)
-	// Price is a reasonable proxy for capability - users want latest/best models first
+	// Sort: default first, then by registry order (newest to oldest)
 	sort.Slice(models, func(i, j int) bool {
 		if models[i].option.IsDefault != models[j].option.IsDefault {
 			return models[i].option.IsDefault
 		}
-		return models[i].totalPrice > models[j].totalPrice // descending
+		return models[i].registryIdx < models[j].registryIdx
 	})
 
 	options := make([]ModelOption, len(models))

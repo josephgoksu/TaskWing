@@ -9,35 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Focused `taskwing goal "<goal>"` command for one-shot clarify -> generate -> activate flow.
-- Hard-break CLI surface reduction to core execution workflow commands.
-- Local-only default server bind and strict CORS allowlist behavior.
-- Workflow contract documentation (`docs/WORKFLOW_CONTRACT_V1.md`) with hard-gate refusal language and KPIs.
-- Workflow operations docs for activation and feedback loops (`docs/WORKFLOW_PACK.md`, `docs/PROMPT_FAILURES_LOG.md`).
-- Prompt reliability tests for slash command contracts and cross-assistant command description parity.
+- `/taskwing:context` slash command for full project knowledge dump.
+- Security hardening: freshness validation, stricter input sanitization.
+- Prompt reliability tests for slash command contracts.
+- Kill tables and operating principles in skill prompts.
+- Workflow contract injection via SessionStart hook.
 
 ### Changed
 
-- Updated product messaging to the focused motto:
-  - "TaskWing helps turn a goal into executed tasks with persistent context across AI sessions."
-- Updated slash and MCP prompt contracts to unified `task` and `plan` action-based interfaces.
-- Purged stale/outdated architecture documentation that no longer matches shipped behavior.
-- Reworked `/taskwing:plan`, `/taskwing:next`, `/taskwing:done`, and `/taskwing:debug` prompts as explicit process contracts with hard gates and refusal fallbacks.
-- Updated slash command descriptions to trigger-focused "Use when ..." phrasing across assistant command generation.
-- Session initialization output now injects TaskWing Workflow Contract v1 for hook-enabled assistants.
+- Consolidated slash commands from 8 to 4: `plan`, `next`, `done`, `context`.
+- Planning is now MCP-tool-only (removed `taskwing plan` and `taskwing goal` CLI commands).
+- Unified context API replaces separate status/ask workflows.
+- Updated slash command and MCP prompt contracts to match reduced surface.
+- Product messaging focused: "TaskWing helps turn a goal into executed tasks with persistent context across AI sessions."
+
+### Removed
+
+- `taskwing goal` and `taskwing plan` CLI commands (use `/taskwing:plan` or `plan` MCP tool).
+- Slash commands: `/taskwing:ask`, `/taskwing:remember`, `/taskwing:status`, `/taskwing:debug`, `/taskwing:explain`, `/taskwing:simplify`.
+- Interactive plan TUI (`internal/ui/plan_tui.go`).
+- Net reduction of ~1,100 lines.
 
 ### Fixed
 
-- **RootPath resolution**: Reject `MarkerNone` contexts in `GetMemoryBasePath` to prevent accidental writes to `~/.taskwing/memory.db`. Also reject `.taskwing` markers above multi-repo workspaces during detection walk-up. (`TestRootPathResolution`, `TestBootstrapRepro_RootPathResolvesToHome`)
-- **FK constraint failures**: `LinkNodes` now pre-checks node existence before INSERT to avoid SQLite error 787. Duplicate edges handled gracefully. (`TestKnowledgeLinking_NoFK`)
-- **IsMonorepo misclassification**: `Detect()` now checks `hasNestedProjects()` in the `MarkerNone` fallback, so multi-repo workspaces are correctly classified. Resolves disagreement between `Detect()` and `DetectWorkspace()`. (`TestIsMonorepoDetection`, `TestBootstrapRepro_IsMonorepoMisclassification`)
-- **Zero docs loaded**: Added `LoadForServices` to `DocLoader` for multi-repo workspaces. Wired into `RunDeterministicBootstrap` via workspace auto-detection. (`TestDocIngestion`, `TestSubrepoMetadataExtraction`)
-- **Sub-repo metadata**: Verified per-repo workspace context in node storage with proper isolation and cross-workspace linking. (`TestSubrepoMetadataPresent`)
-- **Claude MCP drift**: Added filesystem-based drift detection tests with evidence traceability and Gate 3 consent enforcement for global mutations. (`TestClaudeDriftDetection`)
-- **Hallucinated findings**: Gate 3 enforcement in `NewFindingWithEvidence` — findings without evidence start as "skipped". Added `HasEvidence()` and `NeedsHumanVerification()` to `Finding`. (`TestGate3_Enforcement`, `TestParseJSONResponse_Hallucination`)
-- Priority scheduling semantics corrected (lower numeric priority executes first).
-- Unknown slash subcommands now fail explicitly instead of silently falling back.
-- MCP plan action descriptions aligned with implemented behavior.
+- RootPath resolution: reject `MarkerNone` contexts to prevent writes to `~/.taskwing/memory.db`.
+- FK constraint failures: `LinkNodes` pre-checks node existence before INSERT.
+- IsMonorepo misclassification in `MarkerNone` fallback.
+- Zero docs loaded for multi-repo workspaces.
+- Claude MCP drift detection with evidence traceability.
+- Hallucinated findings: Gate 3 enforcement requires evidence.
+- Priority scheduling semantics (lower numeric = execute first).
+- Unknown slash subcommands fail explicitly instead of silent fallback.
 
 ## [0.9.2] - 2025-08-30
 
