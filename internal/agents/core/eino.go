@@ -38,13 +38,35 @@ type DeterministicChain[T any] struct {
 	name  string
 }
 
+// ChainOption configures optional DeterministicChain behavior.
+type ChainOption func(*chainConfig)
+
+type chainConfig struct {
+	systemPrompt string
+}
+
+// WithSystemPrompt sets a stable system message prepended before the user template.
+// This enables prompt caching: providers cache the system message across calls
+// when it's byte-identical (Anthropic 90% discount, OpenAI 50%, Google 75%).
+func WithSystemPrompt(prompt string) ChainOption {
+	return func(c *chainConfig) {
+		c.systemPrompt = prompt
+	}
+}
+
 // NewDeterministicChain creates a standardized Eino chain for deterministic tasks.
 func NewDeterministicChain[T any](
 	ctx context.Context,
 	name string,
 	chatModel model.BaseChatModel,
 	templateStr string,
+	opts ...ChainOption,
 ) (*DeterministicChain[T], error) {
+
+	var cfg chainConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
 
 	// 1. Template Node (Custom Lambda)
 	tmpl, err := template.New(name).Parse(templateStr)
@@ -57,9 +79,13 @@ func NewDeterministicChain[T any](
 		if err := tmpl.Execute(&buf, input); err != nil {
 			return nil, fmt.Errorf("execute template: %w", err)
 		}
-		return []*schema.Message{
-			{Role: schema.User, Content: buf.String()},
-		}, nil
+		msgs := make([]*schema.Message, 0, 2)
+		// System message goes first (stable prefix, cached by providers).
+		if cfg.systemPrompt != "" {
+			msgs = append(msgs, schema.SystemMessage(cfg.systemPrompt))
+		}
+		msgs = append(msgs, &schema.Message{Role: schema.User, Content: buf.String()})
+		return msgs, nil
 	}
 
 	// 2. Model Node (Lambda Adapter)

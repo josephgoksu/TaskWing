@@ -58,7 +58,8 @@ func (a *ClarifyingAgent) Run(ctx context.Context, input core.Input) (core.Outpu
 			ctx,
 			a.Name(),
 			chatModel.BaseChatModel,
-			config.SystemPromptClarifyingAgent,
+			config.ClarifyingAgentUserTemplate,
+			core.WithSystemPrompt(config.ClarifyingAgentSystemPrompt),
 		)
 		if err != nil {
 			return core.Output{}, fmt.Errorf("create chain: %w", err)
@@ -228,7 +229,8 @@ func (a *PlanningAgent) Run(ctx context.Context, input core.Input) (core.Output,
 			ctx,
 			a.Name(),
 			chatModel.BaseChatModel,
-			config.SystemPromptPlanningAgent,
+			config.PlanningAgentUserTemplate,
+			core.WithSystemPrompt(config.PlanningAgentSystemPrompt),
 		)
 		if err != nil {
 			return core.Output{}, fmt.Errorf("create chain: %w", err)
@@ -328,7 +330,8 @@ func (a *DecompositionAgent) Run(ctx context.Context, input core.Input) (core.Ou
 			ctx,
 			a.Name(),
 			chatModel.BaseChatModel,
-			config.SystemPromptDecompositionAgent,
+			config.DecompositionAgentUserTemplate,
+			core.WithSystemPrompt(config.DecompositionAgentSystemPrompt),
 		)
 		if err != nil {
 			return core.Output{}, fmt.Errorf("create chain: %w", err)
@@ -419,7 +422,8 @@ func (a *ExpandAgent) Run(ctx context.Context, input core.Input) (core.Output, e
 			ctx,
 			a.Name(),
 			chatModel.BaseChatModel,
-			config.SystemPromptExpandAgent,
+			config.ExpandAgentUserTemplate,
+			core.WithSystemPrompt(config.ExpandAgentSystemPrompt),
 		)
 		if err != nil {
 			return core.Output{}, fmt.Errorf("create chain: %w", err)
