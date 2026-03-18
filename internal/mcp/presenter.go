@@ -27,9 +27,20 @@ func FormatKnowledgeDump(nodes []memory.Node) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("## Knowledge (%d nodes)\n\n", len(nodes)))
+	fmt.Fprintf(&sb, "## Knowledge (%d nodes)\n\n", len(nodes))
 
-	typeOrder := []string{"constraint", "decision", "feature", "pattern", "plan", "note", "metadata", "documentation"}
+	// Use canonical type list with constraints first (they are mandatory rules).
+	typeOrder := memory.AllNodeTypes()
+	// Reorder: constraints before decisions for context priming.
+	reordered := make([]string, 0, len(typeOrder)+1)
+	for _, t := range typeOrder {
+		if t == memory.NodeTypeConstraint {
+			reordered = append([]string{t}, reordered...)
+		} else {
+			reordered = append(reordered, t)
+		}
+	}
+
 	grouped := make(map[string][]memory.Node)
 	for i := range nodes {
 		t := nodes[i].Type
@@ -39,35 +50,48 @@ func FormatKnowledgeDump(nodes []memory.Node) string {
 		grouped[t] = append(grouped[t], nodes[i])
 	}
 
-	for _, t := range typeOrder {
-		group := grouped[t]
-		if len(group) == 0 {
-			continue
+	rendered := make(map[string]bool)
+	for _, t := range reordered {
+		writeNodeGroup(&sb, t, grouped[t])
+		rendered[t] = true
+	}
+
+	// Catch-all: render any types not in the canonical list (future-proofing).
+	for t, group := range grouped {
+		if !rendered[t] {
+			writeNodeGroup(&sb, t, group)
 		}
-		sb.WriteString(fmt.Sprintf("### %s (%d)\n", cases.Title(language.English).String(t), len(group)))
-		for _, n := range group {
-			title := n.Summary
-			if title == "" {
-				title = truncate(n.Content, 120)
-			}
-			sb.WriteString(fmt.Sprintf("- **%s**", title))
-			if n.Workspace != "" && n.Workspace != "root" {
-				sb.WriteString(fmt.Sprintf(" [%s]", n.Workspace))
-			}
-			// Include content preview when it adds info beyond the summary
-			if n.Content != "" && n.Content != n.Summary {
-				content := cleanContent(n.Content, title)
-				if content != "" {
-					preview := truncate(content, 200)
-					sb.WriteString(fmt.Sprintf("\n  %s", preview))
-				}
-			}
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\n")
 	}
 
 	return strings.TrimSpace(sb.String())
+}
+
+// writeNodeGroup writes a single type section for the knowledge dump.
+func writeNodeGroup(sb *strings.Builder, typeName string, nodes []memory.Node) {
+	if len(nodes) == 0 {
+		return
+	}
+	fmt.Fprintf(sb, "### %s (%d)\n", cases.Title(language.English).String(typeName), len(nodes))
+	for _, n := range nodes {
+		title := n.Summary
+		if title == "" {
+			title = truncate(n.Content, 120)
+		}
+		fmt.Fprintf(sb, "- **%s**", title)
+		if n.Workspace != "" && n.Workspace != "root" {
+			fmt.Fprintf(sb, " [%s]", n.Workspace)
+		}
+		// Include content preview when it adds info beyond the summary
+		if n.Content != "" && n.Content != n.Summary {
+			content := cleanContent(n.Content, title)
+			if content != "" {
+				preview := truncate(content, 200)
+				fmt.Fprintf(sb, "\n  %s", preview)
+			}
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n")
 }
 
 // FormatAsk converts an AskResult into token-efficient Markdown.

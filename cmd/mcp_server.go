@@ -168,6 +168,16 @@ func runMCPServer(ctx context.Context) error {
 	}
 
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
+		// Fast path: all=true dumps every node from SQLite with no LLM calls.
+		// Handled here to avoid the redundant ListNodes call in the normal path.
+		if params.Arguments.All {
+			nodes, err := repo.ListNodes("")
+			if err != nil {
+				return mcpErrorResponse(fmt.Errorf("list nodes: %w", err))
+			}
+			return mcpMarkdownResponse(mcppresenter.FormatKnowledgeDump(nodes))
+		}
+
 		// Node-based system only
 		nodes, err := repo.ListNodes("")
 		if err != nil {
@@ -320,16 +330,6 @@ REQUIRED FIELDS BY ACTION:
 // This ensures MCP and CLI use identical search logic with zero drift.
 // Uses the app.AskApp for all business logic - single source of truth.
 func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcppresenter.ProjectContextParams) (*mcpsdk.CallToolResultFor[any], error) {
-	// Fast path: all=true dumps every node from SQLite with no LLM calls.
-	// This is the MCP equivalent of `taskwing knowledge`.
-	if params.All {
-		nodes, err := repo.ListNodes("")
-		if err != nil {
-			return mcpErrorResponse(fmt.Errorf("list nodes: %w", err))
-		}
-		return mcpMarkdownResponse(mcppresenter.FormatKnowledgeDump(nodes))
-	}
-
 	// Create app context with query role - respects llm.models.query config (same as CLI)
 	appCtx := app.NewContextForRole(repo, llm.RoleQuery)
 	askApp := app.NewAskApp(appCtx)
