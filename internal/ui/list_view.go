@@ -84,11 +84,46 @@ func renderHeader(byType map[string][]memory.Node, typeOrder []string, total int
 // Each section shows a colored badge + count, then a simple indented list.
 func renderGroupedList(byType map[string][]memory.Node, typeOrder []string, showWorkspace bool, basePath string) {
 	termWidth := GetTerminalWidth()
-	// 6 = 4 indent + 2 safety margin
-	maxSummaryWidth := termWidth - 6
+
+	// Calculate the widest workspace name across all nodes
+	maxWsWidth := 0
 	if showWorkspace {
-		maxSummaryWidth -= 14 // workspace column
+		for _, t := range typeOrder {
+			for _, n := range byType[t] {
+				ws := n.Workspace
+				if ws == "" {
+					ws = "root"
+				}
+				if len(ws) > maxWsWidth {
+					maxWsWidth = len(ws)
+				}
+			}
+		}
+		// Minimum workspace column width
+		if maxWsWidth < 4 {
+			maxWsWidth = 4
+		}
 	}
+
+	// Find the largest group to determine index column width
+	maxGroupSize := 0
+	for _, t := range typeOrder {
+		if len(byType[t]) > maxGroupSize {
+			maxGroupSize = len(byType[t])
+		}
+	}
+	indexWidth := len(fmt.Sprintf("%d.", maxGroupSize))
+	if indexWidth < 2 {
+		indexWidth = 2
+	}
+
+	// Calculate available width for summary text
+	// Layout: 4 indent + indexWidth + 1 space + summary + 2 gap + workspace
+	overhead := 4 + indexWidth + 1 + 2 // indent + index + space + safety
+	if showWorkspace {
+		overhead += 2 + maxWsWidth // gap + workspace column
+	}
+	maxSummaryWidth := termWidth - overhead
 	if maxSummaryWidth < 40 {
 		maxSummaryWidth = 40
 	}
@@ -119,25 +154,30 @@ func renderGroupedList(byType map[string][]memory.Node, typeOrder []string, show
 
 			// Check freshness if basePath is available and node has evidence
 			staleTag := ""
+			staleTagWidth := 0
 			if basePath != "" && n.Evidence != "" {
 				result := freshness.Check(basePath, n.Evidence, n.CreatedAt)
 				if result.Status == freshness.StatusStale {
 					staleTag = staleStyle.Render(" [stale]")
+					staleTagWidth = 8 // " [stale]"
 				} else if result.Status == freshness.StatusMissing {
 					staleTag = staleStyle.Render(" [missing]")
+					staleTagWidth = 10 // " [missing]"
 				}
 			}
 
 			// Account for stale tag width in truncation
-			availWidth := maxSummaryWidth - 4
-			if staleTag != "" {
-				availWidth -= 9 // " [stale]" or " [missing]"
+			availWidth := maxSummaryWidth
+			if staleTagWidth > 0 {
+				availWidth -= staleTagWidth
 			}
 			if lipgloss.Width(summary) > availWidth {
 				summary = truncateToWidth(summary, availWidth)
 			}
 
-			idx := indexStyle.Render(fmt.Sprintf("%d.", i+1))
+			// Right-align index numbers within the index column
+			idxText := fmt.Sprintf("%d.", i+1)
+			idx := indexStyle.Render(padRight(idxText, indexWidth))
 
 			if showWorkspace {
 				ws := n.Workspace
