@@ -568,6 +568,7 @@ func (s *SQLiteStore) initSchema() error {
 		// Workspace scoping (monorepo support) - enables filtering knowledge by service/workspace
 		// 'root' = global knowledge at repo root, service names (e.g., 'osprey', 'studio') for scoped knowledge
 		{"workspace", "ALTER TABLE nodes ADD COLUMN workspace TEXT DEFAULT 'root'"},
+		{"stale_count", "ALTER TABLE nodes ADD COLUMN stale_count INTEGER DEFAULT 0"},
 	}
 
 	for _, m := range migrations {
@@ -1100,6 +1101,80 @@ func (s *SQLiteStore) DeleteNodesByAgent(agentName string) error {
 	return nil
 }
 
+// MarkNodesStaleByAgent marks active nodes from a specific agent as stale.
+// When workspaces is non-empty, only marks nodes in those workspaces.
+func (s *SQLiteStore) MarkNodesStaleByAgent(agentName string, workspaces ...string) error {
+	if len(workspaces) > 0 {
+		placeholders := "?" + strings.Repeat(",?", len(workspaces)-1)
+		args := []any{agentName}
+		for _, ws := range workspaces {
+			args = append(args, ws)
+		}
+		_, err := s.db.Exec(fmt.Sprintf(`
+			UPDATE nodes SET stale_count = CASE
+				WHEN stale_count = 0 THEN 1 ELSE stale_count + 1
+			END WHERE source_agent = ? AND workspace IN (%s)
+		`, placeholders), args...)
+		if err != nil {
+			return fmt.Errorf("mark nodes stale by agent (scoped): %w", err)
+		}
+		return nil
+	}
+	_, err := s.db.Exec(`
+		UPDATE nodes SET stale_count = CASE
+			WHEN stale_count = 0 THEN 1 ELSE stale_count + 1
+		END WHERE source_agent = ?
+	`, agentName)
+	if err != nil {
+		return fmt.Errorf("mark nodes stale by agent: %w", err)
+	}
+	return nil
+}
+
+// ReconcileStaleNodes deletes two-strike nodes and demotes one-strike nodes.
+// When workspaces is non-empty, only reconciles nodes in those workspaces.
+func (s *SQLiteStore) ReconcileStaleNodes(agentName string, workspaces ...string) (int, int, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, 0, fmt.Errorf("begin reconcile transaction: %w", err)
+	}
+	defer func() { rollbackWithLog(tx, "reconcile-stale") }()
+
+	var wsFilter string
+	var deleteArgs, demoteArgs []any
+	if len(workspaces) > 0 {
+		placeholders := "?" + strings.Repeat(",?", len(workspaces)-1)
+		wsFilter = fmt.Sprintf(" AND workspace IN (%s)", placeholders)
+		deleteArgs = []any{agentName}
+		demoteArgs = []any{agentName}
+		for _, ws := range workspaces {
+			deleteArgs = append(deleteArgs, ws)
+			demoteArgs = append(demoteArgs, ws)
+		}
+	} else {
+		deleteArgs = []any{agentName}
+		demoteArgs = []any{agentName}
+	}
+
+	result, err := tx.Exec("DELETE FROM nodes WHERE source_agent = ? AND stale_count >= 2"+wsFilter, deleteArgs...)
+	if err != nil {
+		return 0, 0, fmt.Errorf("delete stale nodes: %w", err)
+	}
+	deleted, _ := result.RowsAffected()
+
+	result, err = tx.Exec(`UPDATE nodes SET verification_status = 'stale', confidence_score = confidence_score * 0.5
+		WHERE source_agent = ? AND stale_count = 1`+wsFilter, demoteArgs...)
+	if err != nil {
+		return 0, 0, fmt.Errorf("demote stale nodes: %w", err)
+	}
+	demoted, _ := result.RowsAffected()
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, fmt.Errorf("commit reconcile: %w", err)
+	}
+	return int(deleted), int(demoted), nil
+}
+
 // DeleteNodesByFiles removes nodes from a specific agent that reference any of the given files.
 // Used for incremental updates to avoid full agent purge.
 func (s *SQLiteStore) DeleteNodesByFiles(agentName string, filePaths []string) error {
@@ -1341,7 +1416,8 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 		_, err = tx.Exec(`
 			UPDATE nodes SET content = ?, type = ?, embedding = ?,
 			       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?,
-			       debt_score = ?, debt_reason = ?, refactor_hint = ?
+			       debt_score = ?, debt_reason = ?, refactor_hint = ?,
+			       stale_count = 0
 			WHERE id = ?
 		`, n.Content, n.Type, embeddingBytes,
 			n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
@@ -2036,7 +2112,7 @@ func bytesToFloat32Slice(buf []byte) []float32 {
 }
 
 const (
-	textSimilarityThreshold = 0.35
+	textSimilarityThreshold = 0.45
 )
 
 var stopWords = map[string]bool{
@@ -2053,18 +2129,39 @@ var stopWords = map[string]bool{
 	"most": true, "other": true, "some": true, "such": true, "no": true, "not": true,
 	"only": true, "same": true, "so": true, "than": true, "too": true, "very": true,
 	"just": true, "also": true, "now": true, "here": true, "there": true, "then": true,
+	// Prepositions/connectors that don't carry semantic meaning in knowledge titles
+	"via": true, "through": true, "from": true, "into": true, "using": true, "based": true,
+	"over": true, "about": true, "between": true, "across": true, "around": true,
+}
+
+// naiveStem applies minimal suffix stripping for dedup matching.
+func naiveStem(w string) string {
+	if stemExceptions[w] {
+		return w
+	}
+	if strings.HasSuffix(w, "ies") && len(w) > 5 {
+		return w[:len(w)-3] + "y"
+	}
+	if strings.HasSuffix(w, "s") && !strings.HasSuffix(w, "ss") && !strings.HasSuffix(w, "us") && len(w) > 4 {
+		return w[:len(w)-1]
+	}
+	return w
+}
+
+var stemExceptions = map[string]bool{
+	"basis": true, "analysis": true, "alias": true,
+	"bus": true, "status": true, "focus": true,
 }
 
 func wordTokens(s string) map[string]bool {
 	tokens := make(map[string]bool)
 	s = strings.ToLower(s)
-	// Replace hyphens and underscores with spaces before tokenizing
 	s = strings.ReplaceAll(s, "-", " ")
 	s = strings.ReplaceAll(s, "_", " ")
 	words := strings.Fields(s)
 	for _, w := range words {
 		if len(w) > 2 && !stopWords[w] {
-			tokens[w] = true
+			tokens[naiveStem(w)] = true
 		}
 	}
 	return tokens

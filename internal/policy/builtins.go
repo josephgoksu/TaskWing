@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/afero"
 
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
-	"github.com/josephgoksu/TaskWing/internal/safepath"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // BuiltinContext holds dependencies for custom OPA built-ins.
@@ -49,9 +49,9 @@ func NewBuiltinContextWithCodeIntel(workDir string, repo codeintel.Repository) *
 // Uses safepath for both relative and absolute paths to prevent traversal and prefix collisions.
 func (bc *BuiltinContext) resolvePath(path string) (string, error) {
 	if filepath.IsAbs(path) {
-		return safepath.ValidateAbsPath(bc.WorkDir, path)
+		return utils.ValidateAbsPath(bc.WorkDir, path)
 	}
-	return safepath.SafeJoin(bc.WorkDir, path)
+	return utils.SafeJoin(bc.WorkDir, path)
 }
 
 // RegisterBuiltins registers all TaskWing custom built-ins with OPA.

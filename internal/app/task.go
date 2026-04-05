@@ -2,13 +2,10 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/git"
 	"github.com/josephgoksu/TaskWing/internal/policy"
 	"github.com/josephgoksu/TaskWing/internal/task"
@@ -513,39 +510,9 @@ func (a *TaskApp) Complete(ctx context.Context, opts TaskCompleteOptions) (*Task
 		// All tasks complete - run audit first, then create PR if verified
 		hint += "All tasks in this plan are complete!"
 
-		// Trigger automatic audit
-		auditTriggered = true
-		hint += " Running audit verification..."
-
-		// Create audit service and run with auto-fix
-		auditService := impl.NewService(workDir, a.ctx.LLMCfg)
-		auditCtx, auditCancel := context.WithTimeout(ctx, 5*time.Minute)
-		defer auditCancel()
-
-		auditResult, auditErr := auditService.AuditWithAutoFix(auditCtx, plan)
-		if auditErr != nil {
-			auditStatus = "error"
-			hint += fmt.Sprintf(" Audit failed: %v", auditErr)
-		} else {
-			auditStatus = auditResult.FinalStatus
-			if auditResult.FinalStatus == "verified" {
-				auditPlanStatus = task.PlanStatusVerified
-				hint += " Plan VERIFIED - all checks passed!"
-			} else {
-				auditPlanStatus = task.PlanStatusNeedsRevision
-				hint += fmt.Sprintf(" Plan needs revision after %d fix attempts.", auditResult.Attempts)
-				if auditResult.FinalAudit != nil && len(auditResult.FinalAudit.SemanticResult.Issues) > 0 {
-					hint += fmt.Sprintf(" Issues: %v", auditResult.FinalAudit.SemanticResult.Issues)
-				}
-			}
-
-			// Store audit report in database
-			auditReport := auditResult.ToAuditReportWithFixes()
-			reportJSON, marshalErr := json.Marshal(auditReport)
-			if marshalErr == nil {
-				_ = repo.UpdatePlanAuditReport(plan.ID, auditPlanStatus, string(reportJSON))
-			}
-		}
+		// Audit service removed
+		auditTriggered = false
+		_ = auditTriggered
 
 		// Only create PR if audit passed
 		if auditStatus == "verified" && gitClient.IsRepository() && gitClient.IsGhInstalled() {

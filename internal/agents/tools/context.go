@@ -196,7 +196,7 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 
 	// Root and docs/ (existing behavior)
 	gatherFromDir(g.BasePath, "", 4000)
-	gatherFromDir(filepath.Join(g.BasePath, "docs"), "docs", 3000)
+	gatherFromDir(filepath.Join(g.BasePath, "docs"), "docs", 5000)
 
 	// NEW: Recursively gather package-level READMEs from common source directories
 	// These contain critical implementation details (auth patterns, error handling, etc.)
@@ -272,7 +272,7 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 				return nil
 			}
 			// Package docs can be longer - they contain implementation details
-			maxLen := 3000
+			maxLen := 5000
 			truncated := len(content) > maxLen
 			if truncated {
 				content = append(content[:maxLen], []byte("\n...[truncated]")...)
@@ -334,9 +334,9 @@ func (g *ContextGatherer) GatherKeyFiles() string {
 		if err != nil {
 			continue
 		}
-		truncated := len(content) > 3000
+		truncated := len(content) > 5000
 		if truncated {
-			content = append(content[:3000], []byte("\n...[truncated]")...)
+			content = append(content[:5000], []byte("\n...[truncated]")...)
 		}
 
 		formatted := fmt.Sprintf("## %s\n```\n%s\n```\n\n", relPath, string(content))
@@ -355,7 +355,7 @@ func (g *ContextGatherer) GatherKeyFiles() string {
 // GatherCIConfigs reads CI/CD workflow files from .github, .gitlab, .circleci.
 func (g *ContextGatherer) GatherCIConfigs() string {
 	var sb strings.Builder
-	maxPerFile := 3000
+	maxPerFile := 5000
 
 	// GitHub Actions
 	ghWorkflows, ghErr := utils.SafeJoin(g.BasePath, filepath.Join(".github", "workflows"))

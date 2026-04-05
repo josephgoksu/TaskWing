@@ -28,6 +28,8 @@ type Repository interface {
 	DeleteNodesByAgent(agent string) error
 	DeleteNodesByFiles(agent string, filePaths []string) error
 	GetNodesByFiles(agent string, filePaths []string) ([]memory.Node, error)
+	MarkNodesStaleByAgent(agent string, workspaces ...string) error
+	ReconcileStaleNodes(agent string, workspaces ...string) (int, int, error)
 
 	// Graph edge operations
 	LinkNodes(from, to, relation string, confidence float64, properties map[string]any) error

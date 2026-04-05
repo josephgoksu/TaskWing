@@ -302,8 +302,8 @@ func splitAgentsByWave(agents []core.Agent) (wave1, wave2 []core.Agent) {
 // buildWaveContext converts wave 1 outputs into context for wave 2 agents.
 // Truncates descriptions and total size to avoid blowing up the code agent's context budget.
 func buildWaveContext(results []core.Output) map[string]any {
-	const maxDescLen = 200     // Truncate individual descriptions
-	const maxSummaryLen = 6000 // Cap total summary (~1.5k tokens)
+	const maxDescLen = 400      // Truncate individual descriptions
+	const maxSummaryLen = 12000 // Cap total summary (~3k tokens)
 
 	var summaryParts []string
 	totalLen := 0

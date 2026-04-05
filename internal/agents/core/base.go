@@ -6,7 +6,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/schema"
@@ -61,26 +60,6 @@ func (b *BaseAgent) Generate(ctx context.Context, messages []*schema.Message) (s
 		return "", fmt.Errorf("llm generate: %w", err)
 	}
 	return resp.Content, nil
-}
-
-// formatMessagesForLogging formats messages for crash log context.
-func formatMessagesForLogging(messages []*schema.Message) string {
-	var parts []string
-	for _, m := range messages {
-		var role string
-		switch m.Role {
-		case schema.User:
-			role = "user"
-		case schema.Assistant:
-			role = "assistant"
-		case schema.System:
-			role = "system"
-		default:
-			role = "unknown"
-		}
-		parts = append(parts, fmt.Sprintf("[%s]: %s", role, m.Content))
-	}
-	return strings.Join(parts, "\n---\n")
 }
 
 // GenerateFromPrompt is a convenience method for single-prompt calls.

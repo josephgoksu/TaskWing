@@ -182,8 +182,8 @@ func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (st
 
 	opts := knowledge.DefaultContextOptions()
 	opts.Query = query
-	opts.IncludeArchitectureMD = false // Too large for per-task context
-	opts.MaxNodes = 8                  // Compact for task embedding
+	opts.IncludeArchitectureMD = false // Included selectively for first task
+	opts.MaxNodes = 20                 // Richer context with batch embeddings
 	opts.UseLLMQueries = false         // Use queries directly for speed
 
 	memoryPath, _ := config.GetMemoryBasePath()
@@ -679,7 +679,7 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 		}
 
 		semanticResult := middleware.Validate(&planner.LLMPlanResponse{
-			GoalSummary:         truncateString(opts.Goal, 100),
+			GoalSummary:         truncateString(opts.Goal, 500),
 			Rationale:           opts.EnrichedGoal,
 			Tasks:               plannerTasks,
 			EstimatedComplexity: "medium", // Default
@@ -863,165 +863,32 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen]
 }
 
-// Audit runs verification on a completed plan.
-func (a *PlanApp) Audit(ctx context.Context, opts AuditOptions) (*AuditResult, error) {
-	repo := a.Repo
-	llmCfg := a.ctx.LLMCfg
-
-	// Determine which plan to audit
-	var plan *task.Plan
-	var err error
-
-	if opts.PlanID != "" {
-		plan, err = repo.GetPlan(opts.PlanID)
-		if err != nil {
-			return &AuditResult{
-				Success: false,
-				Message: fmt.Sprintf("Failed to get plan: %v", err),
-			}, nil
-		}
-	} else {
-		plan, err = repo.GetActivePlan()
-		if err != nil {
-			return &AuditResult{
-				Success: false,
-				Message: fmt.Sprintf("Failed to get active plan: %v", err),
-			}, nil
-		}
+// loadArchitectureMD reads .taskwing/ARCHITECTURE.md for the current project.
+// Caps at 8000 chars to avoid blowing up the first task's context.
+func loadArchitectureMD() string {
+	memoryPath, err := config.GetMemoryBasePath()
+	if err != nil || memoryPath == "" {
+		return ""
 	}
-
-	if plan == nil {
-		return &AuditResult{
-			Success: false,
-			Message: "No plan found. Create a plan first with plan action=clarify and then plan action=generate.",
-			Hint:    "Use plan action=clarify to start defining your development goal.",
-		}, nil
-	}
-
-	// Check if plan has completed tasks
-	completedCount := 0
-	for _, t := range plan.Tasks {
-		if t.Status == task.StatusCompleted {
-			completedCount++
-		}
-	}
-
-	if completedCount == 0 {
-		return &AuditResult{
-			Success: false,
-			PlanID:  plan.ID,
-			Message: "No completed tasks to impl. Complete tasks first.",
-			Hint:    "Use task action=next to get the next pending task.",
-		}, nil
-	}
-
-	// Get working directory
-	workDir, _ := os.Getwd()
-
-	// Create audit service
-	auditService := impl.NewService(workDir, llmCfg)
-
-	if !opts.AutoFix {
-		auditResult, err := auditService.Audit(ctx, plan)
-		if err != nil {
-			return &AuditResult{
-				Success: false,
-				PlanID:  plan.ID,
-				Message: fmt.Sprintf("Audit failed: %v", err),
-			}, nil
-		}
-
-		result := &AuditResult{
-			Success:        true,
-			PlanID:         plan.ID,
-			RetryCount:     1,
-			BuildPassed:    auditResult.BuildResult.Passed,
-			TestsPassed:    auditResult.TestResult.Passed,
-			SemanticIssues: auditResult.SemanticResult.Issues,
-		}
-
-		// Update plan status in database
-		var newStatus task.PlanStatus
-		if auditResult.Status == "passed" {
-			result.Status = "verified"
-			newStatus = task.PlanStatusVerified
-			result.Message = "Plan verified successfully. All checks passed."
-			result.Hint = "The plan is complete and verified. You can create a PR or start a new plan."
-		} else {
-			result.Status = "needs_revision"
-			newStatus = task.PlanStatusNeedsRevision
-			result.Message = "Plan needs revision. One or more checks failed."
-			result.Hint = "Review the failed checks and fix them, then run audit again."
-		}
-		result.PlanStatus = newStatus
-
-		// Store audit report
-		report := task.AuditReport{
-			Status:         auditResult.Status,
-			BuildOutput:    auditResult.BuildResult.Output,
-			TestOutput:     auditResult.TestResult.Output,
-			SemanticIssues: auditResult.SemanticResult.Issues,
-			RetryCount:     1,
-			CompletedAt:    time.Now().UTC(),
-		}
-		if !auditResult.BuildResult.Passed && auditResult.BuildResult.Error != "" {
-			report.ErrorMessage = "Build failed: " + auditResult.BuildResult.Error
-		} else if !auditResult.TestResult.Passed && auditResult.TestResult.Error != "" {
-			report.ErrorMessage = "Tests failed: " + auditResult.TestResult.Error
-		}
-		reportJSON, marshalErr := json.Marshal(report)
-		if marshalErr == nil {
-			_ = repo.UpdatePlanAuditReport(plan.ID, newStatus, string(reportJSON))
-		}
-
-		return result, nil
-	}
-
-	// Run audit with auto-fix
-	autoFixResult, err := auditService.AuditWithAutoFix(ctx, plan)
+	basePath := filepath.Dir(filepath.Dir(memoryPath))
+	content, err := os.ReadFile(filepath.Join(basePath, ".taskwing", "ARCHITECTURE.md"))
 	if err != nil {
-		return &AuditResult{
-			Success: false,
-			PlanID:  plan.ID,
-			Message: fmt.Sprintf("Audit failed: %v", err),
-		}, nil
+		return ""
 	}
-
-	result := &AuditResult{
-		Success:    true,
-		PlanID:     plan.ID,
-		Status:     autoFixResult.FinalStatus,
-		RetryCount: autoFixResult.Attempts,
+	const maxArchLen = 8000
+	if len(content) > maxArchLen {
+		content = append(content[:maxArchLen], []byte("\n...[truncated]")...)
 	}
-	result.FixesApplied = autoFixResult.FixesApplied
+	return string(content)
+}
 
-	if autoFixResult.FinalAudit != nil {
-		result.BuildPassed = autoFixResult.FinalAudit.BuildResult.Passed
-		result.TestsPassed = autoFixResult.FinalAudit.TestResult.Passed
-		result.SemanticIssues = autoFixResult.FinalAudit.SemanticResult.Issues
-	}
-
-	// Update plan status in database
-	var newStatus task.PlanStatus
-	if autoFixResult.FinalStatus == "verified" {
-		newStatus = task.PlanStatusVerified
-		result.Message = "Plan verified successfully. All checks passed."
-		result.Hint = "The plan is complete and verified. You can create a PR or start a new plan."
-	} else {
-		newStatus = task.PlanStatusNeedsRevision
-		result.Message = fmt.Sprintf("Plan needs revision after %d fix attempts.", autoFixResult.Attempts)
-		result.Hint = "Review the semantic issues and fix them manually, then run audit again."
-	}
-	result.PlanStatus = newStatus
-
-	// Store audit report
-	auditReport := autoFixResult.ToAuditReportWithFixes()
-	reportJSON, marshalErr := json.Marshal(auditReport)
-	if marshalErr == nil {
-		_ = repo.UpdatePlanAuditReport(plan.ID, newStatus, string(reportJSON))
-	}
-
-	return result, nil
+// Audit runs verification on a completed plan.
+func (a *PlanApp) Audit(_ context.Context, _ AuditOptions) (*AuditResult, error) {
+	return &AuditResult{
+		Success: false,
+		Message: "Audit service has been removed. Use your AI tool's built-in verification instead.",
+		Hint:    "Run your project's build and test commands directly to verify plan completion.",
+	}, nil
 }
 
 // parseQuestionsFromMetadata extracts questions from agent metadata,
@@ -1141,6 +1008,13 @@ func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[strin
 				}
 			}
 
+			// First task gets ARCHITECTURE.md for full architectural context
+			if i == 0 {
+				if archContent := loadArchitectureMD(); archContent != "" {
+					t.ContextSummary = "## Architecture Overview\n" + archContent + "\n\n" + t.ContextSummary
+				}
+			}
+
 			tasks = append(tasks, t)
 			titleToID[pt.Title] = id
 
@@ -1225,6 +1099,13 @@ func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[strin
 				if a.TaskEnricher != nil && len(newTask.SuggestedAskQueries) > 0 {
 					if contextSummary, err := a.TaskEnricher(ctx, newTask.SuggestedAskQueries); err == nil && contextSummary != "" {
 						newTask.ContextSummary = contextSummary
+					}
+				}
+
+				// First task gets ARCHITECTURE.md for full architectural context
+				if i == 0 {
+					if archContent := loadArchitectureMD(); archContent != "" {
+						newTask.ContextSummary = "## Architecture Overview\n" + archContent + "\n\n" + newTask.ContextSummary
 					}
 				}
 

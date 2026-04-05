@@ -114,10 +114,6 @@ func (b *BatchClient) GetResults(ctx context.Context, outputFileID string) ([]Ba
 
 	// Parse JSONL - each line is a batch response object
 	var results []BatchResult
-	decoder := json.NewDecoder(io.NopCloser(io.Reader(nil)))
-	_ = decoder // just for type check
-
-	// Manual line-by-line JSONL parsing since json.Decoder.More() doesn't handle newline-delimited JSON well
 	lines := splitJSONL(data)
 	for _, line := range lines {
 		var resp batchResponseLine

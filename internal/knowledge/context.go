@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/freshness"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/utils"
 )
@@ -73,8 +72,8 @@ func DefaultContextOptions() ContextOptions {
 		IncludeRelevantNodes:  true,
 		UseLLMQueries:         true,
 		IncludeSymbols:        false,
-		MaxNodes:              15,
-		NodesPerQuery:         3,
+		MaxNodes:              25,
+		NodesPerQuery:         5,
 		CheckFreshness:        true,
 	}
 }
@@ -163,7 +162,7 @@ func (pc *ProjectContext) FormatCompact() string {
 	if len(pc.Constraints) > 0 {
 		sb.WriteString("## Architectural Constraints\n")
 		for _, n := range pc.Constraints {
-			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", n.Summary, utils.Truncate(n.Text(), 200)))
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", n.Summary, utils.Truncate(n.Text(), 500)))
 		}
 		sb.WriteString("\n")
 	}
@@ -174,7 +173,7 @@ func (pc *ProjectContext) FormatCompact() string {
 			if node.Node == nil {
 				continue
 			}
-			content := utils.Truncate(node.Node.Text(), 300)
+			content := utils.Truncate(node.Node.Text(), 800)
 			sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", node.Node.Summary, node.Node.Type, content))
 		}
 	}
@@ -285,10 +284,10 @@ func annotateFreshness(n *memory.Node, basePath string) {
 	if n.Evidence == "" {
 		return
 	}
-	result := freshness.Check(basePath, n.Evidence, n.CreatedAt)
-	if result.Status == freshness.StatusStale {
+	result := Check(basePath, n.Evidence, n.CreatedAt)
+	if result.Status == StatusStale {
 		n.Summary += " [STALE]"
-	} else if result.Status == freshness.StatusMissing {
+	} else if result.Status == StatusMissing {
 		n.Summary += " [MISSING]"
 	}
 }
@@ -298,10 +297,10 @@ func annotateFreshnessScored(sn *ScoredNode, basePath string) {
 	if sn.Node == nil || sn.Node.Evidence == "" {
 		return
 	}
-	result := freshness.Check(basePath, sn.Node.Evidence, sn.Node.CreatedAt)
-	if result.Status == freshness.StatusStale {
+	result := Check(basePath, sn.Node.Evidence, sn.Node.CreatedAt)
+	if result.Status == StatusStale {
 		sn.Node.Summary += " [STALE]"
-	} else if result.Status == freshness.StatusMissing {
+	} else if result.Status == StatusMissing {
 		sn.Node.Summary += " [MISSING]"
 	}
 }

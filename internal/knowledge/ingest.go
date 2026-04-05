@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -43,24 +44,27 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 		}
 	}
 
-	// 1. Purge Stale Data
-	if err := s.purgeStaleData(findings, filePaths, verbose); err != nil {
+	// 1. Mark existing nodes as stale (merge-and-mark, not destructive delete)
+	if err := s.markStaleData(findings, filePaths, verbose); err != nil {
 		return err
 	}
 
-	// 2. Ingest Nodes (Documents)
+	// 2. Ingest Nodes (Documents) - upserts reset stale_count for matched nodes
 	nodesCreated, _, nodesByTitle, err := s.ingestNodesWithIndex(ctx, findings, verbose)
 	if err != nil {
 		return err
 	}
 
-	// 3. Link Knowledge Graph (evidence-based + semantic)
+	// 3. Reconcile stale nodes (two-strike delete, one-strike demote)
+	totalDeleted, totalDemoted := s.reconcileStaleNodes(findings, verbose)
+
+	// 4. Link Knowledge Graph (evidence-based + semantic)
 	evidenceEdges, semanticEdges, err := s.linkKnowledgeGraph(verbose)
 	if err != nil {
 		return err
 	}
 
-	// 4. Process LLM-extracted relationships
+	// 5. Process LLM-extracted relationships
 	llmEdges := s.linkByLLMRelationships(relationships, nodesByTitle)
 
 	totalEdges := evidenceEdges + semanticEdges + llmEdges
@@ -71,6 +75,11 @@ func (s *Service) IngestFindingsWithRelationships(ctx context.Context, findings 
 			fmt.Printf("  %d findings rejected (unverifiable evidence)\n", rejectedCount)
 		}
 		fmt.Printf("  Saved %d nodes, %d edges\n", nodesCreated, totalEdges)
+	}
+
+	// Log staleness bookkeeping at debug level only
+	if totalDeleted > 0 || totalDemoted > 0 {
+		slog.Debug("stale node reconciliation", "deleted", totalDeleted, "demoted", totalDemoted)
 	}
 
 	return nil
@@ -115,36 +124,74 @@ func (s *Service) verifyFindings(ctx context.Context, findings []core.Finding, v
 	return filtered, verifiedCount, rejectedCount
 }
 
-// purgeStaleData removes nodes from agents involved in the current finding set.
-// If filePaths is provided, only nodes referencing those files are purged (incremental).
-// Otherwise, all nodes for the agent are purged (full update).
-func (s *Service) purgeStaleData(findings []core.Finding, filePaths []string, verbose bool) error {
+// extractWorkspaces returns unique workspace names from findings metadata.
+func extractWorkspaces(findings []core.Finding) []string {
+	seen := make(map[string]bool)
+	for _, f := range findings {
+		ws := ""
+		if f.Metadata != nil {
+			ws, _ = f.Metadata["service"].(string)
+		}
+		if ws == "" {
+			ws = "root"
+		}
+		seen[ws] = true
+	}
+	var workspaces []string
+	for ws := range seen {
+		workspaces = append(workspaces, ws)
+	}
+	return workspaces
+}
+
+// markStaleData marks existing nodes as potentially stale before ingesting new findings.
+// Scoped to the workspaces present in the current findings.
+func (s *Service) markStaleData(findings []core.Finding, filePaths []string, verbose bool) error {
+	workspaces := extractWorkspaces(findings)
 	seenAgents := make(map[string]bool)
 	for _, f := range findings {
 		if f.SourceAgent != "" && !seenAgents[f.SourceAgent] {
 			seenAgents[f.SourceAgent] = true
 
-			// Incremental Purge
 			if len(filePaths) > 0 {
 				if verbose {
-					fmt.Printf("  ♻️  Purging stale nodes for agent %s (files: %d)\n", f.SourceAgent, len(filePaths))
+					fmt.Printf("  ♻️  Marking stale nodes for agent %s (files: %d)\n", f.SourceAgent, len(filePaths))
 				}
 				if err := s.repo.DeleteNodesByFiles(f.SourceAgent, filePaths); err != nil {
-					return fmt.Errorf("purge files for agent %s: %w", f.SourceAgent, err)
+					return fmt.Errorf("mark stale files for agent %s: %w", f.SourceAgent, err)
 				}
 				continue
 			}
 
-			// Full Purge
 			if verbose {
-				fmt.Printf("  ♻️  Purging all stale nodes for agent: %s\n", f.SourceAgent)
+				fmt.Printf("  ♻️  Marking nodes for agent: %s\n", f.SourceAgent)
 			}
-			if err := s.repo.DeleteNodesByAgent(f.SourceAgent); err != nil {
-				return fmt.Errorf("purge agent %s: %w", f.SourceAgent, err)
+			if err := s.repo.MarkNodesStaleByAgent(f.SourceAgent, workspaces...); err != nil {
+				return fmt.Errorf("mark stale agent %s: %w", f.SourceAgent, err)
 			}
 		}
 	}
 	return nil
+}
+
+// reconcileStaleNodes processes nodes after ingestion.
+func (s *Service) reconcileStaleNodes(findings []core.Finding, verbose bool) (int, int) {
+	workspaces := extractWorkspaces(findings)
+	seenAgents := make(map[string]bool)
+	totalDeleted, totalDemoted := 0, 0
+	for _, f := range findings {
+		if f.SourceAgent != "" && !seenAgents[f.SourceAgent] {
+			seenAgents[f.SourceAgent] = true
+			deleted, demoted, err := s.repo.ReconcileStaleNodes(f.SourceAgent, workspaces...)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  reconcile stale nodes for %s: %v\n", f.SourceAgent, err)
+				continue
+			}
+			totalDeleted += deleted
+			totalDemoted += demoted
+		}
+	}
+	return totalDeleted, totalDemoted
 }
 
 // ingestNodesWithIndex creates document nodes and returns a title->nodeID index for LLM relationship linking
@@ -481,7 +528,7 @@ func (s *Service) linkByLLMRelationships(relationships []core.Relationship, node
 
 	// Single summary instead of per-failure warnings
 	if linkErrors > 0 {
-		fmt.Fprintf(os.Stderr, "⚠️  %d LLM relationship links skipped (node title mismatches)\n", linkErrors)
+		slog.Debug("LLM relationship links skipped", "count", linkErrors, "reason", "node title mismatches")
 	}
 
 	return count

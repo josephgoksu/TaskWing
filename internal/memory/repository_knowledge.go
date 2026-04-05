@@ -70,6 +70,14 @@ func (r *Repository) GetNodesByFiles(agent string, filePaths []string) ([]Node, 
 	return r.db.GetNodesByFiles(agent, filePaths)
 }
 
+func (r *Repository) MarkNodesStaleByAgent(agent string, workspaces ...string) error {
+	return r.db.MarkNodesStaleByAgent(agent, workspaces...)
+}
+
+func (r *Repository) ReconcileStaleNodes(agent string, workspaces ...string) (int, int, error) {
+	return r.db.ReconcileStaleNodes(agent, workspaces...)
+}
+
 func (r *Repository) UpsertNodeBySummary(n Node) error {
 	return r.db.UpsertNodeBySummary(n)
 }

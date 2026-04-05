@@ -13,7 +13,6 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
-	"github.com/josephgoksu/TaskWing/internal/freshness"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
@@ -546,7 +545,7 @@ func annotateResultFreshness(basePath string, results []knowledge.NodeResponse) 
 		// Reconstruct evidence JSON from the parsed EvidenceRef slice
 		// for the freshness checker
 		if len(node.Evidence) == 0 {
-			node.FreshnessStatus = string(freshness.StatusNoEvidence)
+			node.FreshnessStatus = string(knowledge.StatusNoEvidence)
 			continue
 		}
 
@@ -572,10 +571,10 @@ func annotateResultFreshness(basePath string, results []knowledge.NodeResponse) 
 			refTime = time.Now().Add(-24 * time.Hour)
 		}
 
-		result := freshness.Check(basePath, string(evJSON), refTime)
+		result := knowledge.Check(basePath, string(evJSON), refTime)
 
 		node.FreshnessStatus = string(result.Status)
-		node.FreshnessNote = freshness.FormatStatus(result, nil)
+		node.FreshnessNote = knowledge.FormatStatus(result, nil)
 		node.StaleFiles = result.StaleFiles
 
 		// Adjust confidence if stale or missing
