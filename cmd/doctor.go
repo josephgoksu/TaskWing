@@ -269,11 +269,21 @@ func checksFromIntegrationReports(reports map[string]bootstrap.IntegrationReport
 	for _, ai := range ais {
 		report := reports[ai]
 		if len(report.Issues) == 0 {
-			checks = append(checks, DoctorCheck{
-				Name:    fmt.Sprintf("Integration (%s)", ai),
-				Status:  "ok",
-				Message: "Healthy",
-			})
+			// Distinguish "healthy and configured" from "not configured at all"
+			if !report.CommandsDirExists && !report.MarkerFileExists && report.CommandFilesCount == 0 {
+				checks = append(checks, DoctorCheck{
+					Name:    fmt.Sprintf("Integration (%s)", ai),
+					Status:  "warn",
+					Message: "Not configured",
+					Hint:    fmt.Sprintf("Run: taskwing bootstrap to generate %s integration", ai),
+				})
+			} else {
+				checks = append(checks, DoctorCheck{
+					Name:    fmt.Sprintf("Integration (%s)", ai),
+					Status:  "ok",
+					Message: "Healthy",
+				})
+			}
 			continue
 		}
 		for _, issue := range report.Issues {

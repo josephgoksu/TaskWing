@@ -1,7 +1,7 @@
 // Package freshness provides query-time validation of knowledge graph findings.
 // It checks whether evidence files have changed since findings were last verified,
 // adjusting confidence scores and adding staleness metadata to MCP responses.
-package freshness
+package knowledge
 
 import (
 	"encoding/json"

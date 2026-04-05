@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/safepath"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/josephgoksu/TaskWing/skills"
 )
 
@@ -641,7 +641,7 @@ func (i *Initializer) createClaudeSkills(verbose bool) error {
 	if entries, err := os.ReadDir(skillsDir); err == nil {
 		for _, e := range entries {
 			if e.IsDir() && strings.HasPrefix(e.Name(), "tw-") {
-				p, err := safepath.SafeJoin(skillsDir, e.Name())
+				p, err := utils.SafeJoin(skillsDir, e.Name())
 				if err != nil {
 					continue
 				}

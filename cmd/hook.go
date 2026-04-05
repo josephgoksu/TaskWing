@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/brief"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -449,7 +448,7 @@ Use /taskwing:next to start the first task, or it will auto-continue after each 
 
 	// Auto-inject project knowledge brief
 	if repo != nil {
-		briefContent, err := brief.GenerateCompactBrief(repo)
+		briefContent, err := knowledge.GenerateCompactBrief(repo)
 		if err == nil && briefContent != "" {
 			fmt.Printf("\n%s\n", briefContent)
 		}

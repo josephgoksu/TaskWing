@@ -294,7 +294,7 @@ RESPOND IN JSON:
 {
   "tech_decisions": [
     {
-      "title": "Technology decision title",
+      "title": "Specific library/tool - Purpose (e.g. 'Rich text editor - Tiptap', 'Primary database - MongoDB')",
       "category": "Which layer this belongs to (CLI Layer, Storage Layer, UI Layer, etc.)",
       "what": "What technology/framework/library",
       "why": "Why this choice matters or was likely made",
@@ -315,7 +315,9 @@ RESPOND IN JSON:
 DEPENDENCIES:
 {{.DepsInfo}}
 
-Respond with PROPER JSON only. Do not use spaces in decimal numbers (e.g. use 0.9, NOT 0. 9). Every decision MUST have evidence with exact dependency line.`
+Respond with PROPER JSON only. Do not use spaces in decimal numbers (e.g. use 0.9, NOT 0. 9). Every decision MUST have evidence with exact dependency line.
+Titles MUST name the specific library/tool, not just the category. Bad: "UI Component Library". Good: "UI primitives - Radix UI + shadcn".
+Include ALL notable dependencies, even transitive ones visible in the manifest (e.g., Preact alongside React).`
 
 // PromptTemplateCodeAgent is the template for the code analysis agent.
 // Use with Eino ChatTemplate (Go Template format).
@@ -428,7 +430,7 @@ RESPOND IN JSON:
   ],
   "patterns": [
     {
-      "name": "Pattern Name",
+      "name": "Pattern Name (e.g. 'Resilience helpers for retry, timeout, and circuit breaker')",
       "context": "Where and how it is applied",
       "solution": "How it solves the problem",
       "consequences": "Benefits and drawbacks",
@@ -464,7 +466,8 @@ DIRECTORY STRUCTURE:
 SOURCE CODE:
 {{.SourceCode}}
 
-Respond with JSON only. Every finding MUST have evidence with file path, line numbers, and snippet.`
+Respond with JSON only. Every finding MUST have evidence with file path, line numbers, and snippet.
+Extract BOTH decisions AND utils. Patterns are especially valuable for: resilience (retry, circuit breaker, timeout packages), middleware chains (CORS, auth, rate limiting), modular code organization (feature-based monolith, hexagonal layers), and CI/CD workflows found in code.`
 
 // PromptTemplateClassify is the template for content classification.
 // Use with fmt.Sprintf(PromptTemplateClassify, content)
@@ -751,9 +754,11 @@ Discover features, technology decisions, constraints, and workflows by reading d
 2. Read README.md first for project overview
 3. Search for decision-related docs: grep for "why", "chose", "alternative", "decision"
 4. Read any docs/ or architecture/ directories
-5. Look for CI/CD configs (.github/workflows/, Makefile)
-6. Search for constraint keywords: "MUST", "CRITICAL", "REQUIRED", "NEVER"
-7. When you have enough context, provide your analysis
+5. Look for CI/CD configs (.github/workflows/, Makefile) - these are RICH sources of workflow patterns
+6. Look for internal/ or src/ directories with README.md files - package docs describe patterns
+7. Search for constraint keywords: "MUST", "CRITICAL", "REQUIRED", "NEVER"
+8. Look for constraint-rich locations: docs/ops/, docs/security/, CONTRIBUTING.md, governance docs
+9. When you have enough context, provide your analysis
 
 ## CRITICAL: Evidence Requirements
 Every finding MUST include structured evidence with:
@@ -817,7 +822,8 @@ Confidence scores (0.0-1.0):
 - Don't guess - use tools to verify assumptions
 - Every finding MUST have at least one evidence item with file_path, line numbers, and snippet
 - Confidence must be a NUMBER between 0.0 and 1.0
-- Stop when you have 5-15 solid findings with evidence`
+- Stop when you have 8-20 solid findings with evidence, including at least 2 workflows/patterns
+- Workflows are HIGH VALUE: CI/CD pipelines, development setup steps, release processes, API change procedures, resilience patterns (retry, circuit breaker, middleware chains)`
 
 // SystemPromptDepsReactAgent is the system prompt for the ReAct dependency analysis agent.
 // It explores dependency manifests and traces how dependencies are actually used.
@@ -857,7 +863,7 @@ Confidence scores (0.0-1.0):
 {
   "tech_decisions": [
     {
-      "title": "Technology decision title",
+      "title": "Specific library/tool - Purpose (e.g. 'Rich text editor - Tiptap', 'Primary database - MongoDB')",
       "category": "Which layer (CLI Layer, Storage Layer, UI Layer, API Layer, Testing, etc.)",
       "what": "What technology/framework/library",
       "why": "Why this choice matters or was likely made (inferred from usage)",
@@ -876,7 +882,9 @@ Confidence scores (0.0-1.0):
 - Trace key deps to usage sites for stronger evidence
 - Every finding MUST have evidence with file_path, line numbers, and snippet
 - Confidence must be a NUMBER between 0.0 and 1.0
-- Stop when you have 5-15 solid findings with evidence`
+- Stop when you have 5-15 solid findings with evidence
+- Titles MUST name the specific library/tool, not just the category. Bad: "UI Component Library". Good: "UI primitives - Radix UI + shadcn"
+- Include ALL notable dependencies, even transitive ones visible in the manifest (e.g., Preact alongside React)`
 
 // SystemPromptGitReactAgent is the system prompt for the ReAct git history analysis agent.
 // It explores git history dynamically to find significant milestones.

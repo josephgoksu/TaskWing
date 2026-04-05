@@ -164,8 +164,19 @@ func (v *Agent) checkEvidence(evidence core.Evidence) core.EvidenceCheckResult {
 		result.ErrorMessage = "failed to read file: " + err.Error()
 		return result
 	}
-
 	fileContent := string(content)
+
+	// For dependency manifests, use grep_pattern as primary evidence.
+	// Manifest line numbers shift frequently (dep adds/removes), so don't penalize line drift.
+	if isDependencyManifest(evidence.FilePath) && evidence.GrepPattern != "" {
+		if strings.Contains(fileContent, evidence.GrepPattern) {
+			result.SnippetFound = true
+			result.LineNumbersMatch = true
+			result.SimilarityScore = 1.0
+			return result
+		}
+	}
+
 	normalizedSnippet := normalizeWhitespace(evidence.Snippet)
 
 	if containsNormalized(fileContent, normalizedSnippet) {
@@ -370,4 +381,18 @@ func FilterVerifiedFindings(findings []core.Finding) []core.Finding {
 		}
 	}
 	return result
+}
+
+// isDependencyManifest returns true if the file path is a known dependency manifest.
+// These files have frequently shifting line numbers, so the verifier uses relaxed matching.
+func isDependencyManifest(filePath string) bool {
+	base := filepath.Base(filePath)
+	switch base {
+	case "package.json", "go.mod", "go.sum", "Cargo.toml", "Cargo.lock",
+		"requirements.txt", "pyproject.toml", "pom.xml", "build.gradle",
+		"build.gradle.kts", "Gemfile", "composer.json", "pubspec.yaml",
+		"Pipfile", "poetry.lock", "bun.lock", "yarn.lock", "pnpm-lock.yaml":
+		return true
+	}
+	return false
 }

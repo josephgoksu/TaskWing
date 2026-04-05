@@ -21,7 +21,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/patterns"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // FileCategory represents the type of file for routing purposes
@@ -245,14 +245,14 @@ func (w *WatchAgent) categorize(relPath string) FileCategory {
 	}
 
 	// Check ignored directories using centralized patterns
-	for ig := range patterns.IgnoredDirs {
+	for ig := range utils.IgnoredDirs {
 		if strings.Contains(relPath, ig+string(os.PathSeparator)) || name == ig {
 			return FileCategoryIgnore
 		}
 	}
 
 	// Dependency files (high priority)
-	if patterns.IsDependencyFile(name) {
+	if utils.IsDependencyFile(name) {
 		return FileCategoryDeps
 	}
 
@@ -262,12 +262,12 @@ func (w *WatchAgent) categorize(relPath string) FileCategory {
 	}
 
 	// Config files
-	if patterns.IsConfigFile(name, ext) {
+	if utils.IsConfigFile(name, ext) {
 		return FileCategoryConfig
 	}
 
 	// Code files
-	if patterns.IsCodeFile(ext) {
+	if utils.IsCodeFile(ext) {
 		return FileCategoryCode
 	}
 

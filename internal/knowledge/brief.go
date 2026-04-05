@@ -1,7 +1,7 @@
 /*
 Copyright © 2025 Joseph Goksu josephgoksu@gmail.com
 */
-package brief
+package knowledge
 
 import (
 	"fmt"

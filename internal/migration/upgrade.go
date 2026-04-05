@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
-	"github.com/josephgoksu/TaskWing/internal/mcpcfg"
+	"github.com/josephgoksu/TaskWing/internal/config"
 )
 
 // CheckAndMigrate runs a post-upgrade migration if the CLI version has changed
@@ -119,16 +119,16 @@ func checkGlobalMCPLegacyAt(configPath string) []string {
 		return nil
 	}
 
-	var config struct {
+	var mcpCfg struct {
 		MCPServers map[string]json.RawMessage `json:"mcpServers"`
 	}
-	if err := json.Unmarshal(content, &config); err != nil {
+	if err := json.Unmarshal(content, &mcpCfg); err != nil {
 		return nil
 	}
 
 	var warnings []string
-	for name := range config.MCPServers {
-		if mcpcfg.IsLegacyServerName(name) {
+	for name := range mcpCfg.MCPServers {
+		if config.IsLegacyServerName(name) {
 			warnings = append(warnings, fmt.Sprintf("Global MCP config has legacy server name %q. Run: taskwing doctor --fix --yes", name))
 		}
 	}

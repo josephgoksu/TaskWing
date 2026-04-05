@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/mcpcfg"
+	"github.com/josephgoksu/TaskWing/internal/config"
 )
 
 // mcpDetectTimeout is the maximum time to wait for CLI commands during detection.
@@ -53,7 +53,7 @@ func detectClaudeMCP() bool {
 	if err != nil {
 		return false
 	}
-	return mcpcfg.ContainsCanonicalServerName(string(output))
+	return config.ContainsCanonicalServerName(string(output))
 }
 
 // detectGeminiMCP checks if Gemini CLI has taskwing configured.
@@ -75,7 +75,7 @@ func detectGeminiMCP() bool {
 	if err != nil {
 		return false
 	}
-	return mcpcfg.ContainsCanonicalServerName(string(output))
+	return config.ContainsCanonicalServerName(string(output))
 }
 
 // detectCodexMCP checks if Codex CLI has taskwing configured.
@@ -95,5 +95,5 @@ func detectCodexMCP() bool {
 	if err != nil {
 		return false
 	}
-	return mcpcfg.ContainsCanonicalServerName(string(output))
+	return config.ContainsCanonicalServerName(string(output))
 }

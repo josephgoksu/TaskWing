@@ -18,7 +18,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/tools"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/safepath"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // DepsAgent analyzes dependencies to understand technology choices.
@@ -132,6 +132,62 @@ func (a *DepsAgent) Run(ctx context.Context, input core.Input) (core.Output, err
 	return output, nil
 }
 
+// PrepareForBatch gathers dependency context and renders the prompt for batch submission.
+func (a *DepsAgent) PrepareForBatch(ctx context.Context, input core.Input) ([]core.BatchMessage, error) {
+	if !hasAnyDependencyFile(input.BasePath) {
+		return nil, fmt.Errorf("no dependency files found")
+	}
+
+	limit := llm.GetMaxInputTokens(a.LLMConfig().Model)
+	budget := tools.NewSafeContextBudget(int(float64(limit) * 0.7))
+	depsInfo, _ := gatherDepsWithTracking(input.BasePath, budget)
+	if depsInfo == "" {
+		return nil, fmt.Errorf("no dependency files found")
+	}
+
+	// Initialize chain to access template rendering
+	if a.chain == nil {
+		chatModel, err := a.CreateCloseableChatModel(ctx)
+		if err != nil {
+			return nil, err
+		}
+		a.modelCloser = chatModel
+		chain, err := core.NewDeterministicChain[depsTechDecisionsResponse](
+			ctx, a.Name(), chatModel.BaseChatModel, config.PromptTemplateDepsAgent,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create chain: %w", err)
+		}
+		a.chain = chain
+	}
+
+	chainInput := map[string]any{
+		"ProjectName": input.ProjectName,
+		"DepsInfo":    depsInfo,
+	}
+
+	msgs, err := a.chain.RenderMessages(ctx, chainInput)
+	if err != nil {
+		return nil, fmt.Errorf("render prompt: %w", err)
+	}
+
+	var batchMsgs []core.BatchMessage
+	for _, m := range msgs {
+		batchMsgs = append(batchMsgs, core.BatchMessage{Role: string(m.Role), Content: m.Content})
+	}
+	return batchMsgs, nil
+}
+
+// ParseBatchResult parses raw LLM response text into findings.
+func (a *DepsAgent) ParseBatchResult(raw string) (core.Output, error) {
+	parsed, err := core.ParseJSONResponse[depsTechDecisionsResponse](raw)
+	if err != nil {
+		return core.Output{AgentName: a.Name()}, fmt.Errorf("parse batch result: %w", err)
+	}
+	findings := a.parseFindings(parsed)
+	return core.BuildOutput(a.Name(), findings, "batch API", 0), nil
+}
+
 type depsTechDecisionsResponse struct {
 	TechDecisions []struct {
 		Title      string              `json:"title"`
@@ -225,7 +281,7 @@ func gatherDepsWithTracking(basePath string, budget *tools.ContextBudget) (strin
 				break
 			}
 			relFile := strings.TrimPrefix(file, "./")
-			fullPath, pathErr := safepath.SafeJoin(basePath, relFile)
+			fullPath, pathErr := utils.SafeJoin(basePath, relFile)
 			if pathErr != nil {
 				continue
 			}

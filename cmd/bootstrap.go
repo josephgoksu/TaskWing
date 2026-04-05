@@ -20,7 +20,6 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/project"
 	"github.com/josephgoksu/TaskWing/internal/ui"
@@ -96,7 +95,7 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 	}
 
 	// Track user input for crash logging
-	logger.SetLastInput(fmt.Sprintf("bootstrap (skip-analyze=%v, dir=%s)", flags.SkipAnalyze, cwd))
+	config.SetLastInput(fmt.Sprintf("bootstrap (skip-analyze=%v, dir=%s)", flags.SkipAnalyze, cwd))
 
 	// Debug mode: dump diagnostic info early
 	if flags.Debug {
@@ -548,6 +547,8 @@ func init() {
 }
 
 // runAgentTUI handles the interactive UI part, delegating work to the service
+// runBatchBootstrap uses the OpenAI Batch API for 50% cost reduction.
+// Batchable agents have their prompts collected and submitted as a single batch.
 func runAgentTUI(ctx context.Context, svc *bootstrap.Service, cwd string, llmCfg llm.Config, flags bootstrap.Flags) error {
 	fmt.Println("")
 	ui.RenderPageHeader("TaskWing Bootstrap", fmt.Sprintf("Using: %s (%s)", llmCfg.Model, llmCfg.Provider))

@@ -11,7 +11,6 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/logger"
 )
 
 // BaseAgent provides shared functionality for all LLM-powered agents.
@@ -56,9 +55,6 @@ func (b *BaseAgent) Generate(ctx context.Context, messages []*schema.Message) (s
 		return "", err
 	}
 	defer func() { _ = chatModel.Close() }()
-
-	// Track last prompt for crash logging
-	logger.SetLastPrompt(formatMessagesForLogging(messages))
 
 	resp, err := chatModel.Generate(ctx, messages)
 	if err != nil {

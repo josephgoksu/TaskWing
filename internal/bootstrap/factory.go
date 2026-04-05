@@ -7,7 +7,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/agents/impl"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/safepath"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // NewDefaultAgents returns the standard set of agents for a bootstrap run.
@@ -58,10 +58,10 @@ var dependencyManifests = []string{
 }
 
 // hasDependencyFiles checks if any common dependency manifest exists at the project root.
-// Uses safepath.SafeJoin to prevent path traversal in basePath.
+// Uses utils.SafeJoin to prevent path traversal in basePath.
 func hasDependencyFiles(basePath string) bool {
 	for _, name := range dependencyManifests {
-		p, err := safepath.SafeJoin(basePath, name)
+		p, err := utils.SafeJoin(basePath, name)
 		if err != nil {
 			continue
 		}
@@ -76,7 +76,7 @@ func hasDependencyFiles(basePath string) bool {
 				continue
 			}
 			for _, name := range dependencyManifests {
-				p, err := safepath.SafeJoin(basePath, filepath.Join(e.Name(), name))
+				p, err := utils.SafeJoin(basePath, filepath.Join(e.Name(), name))
 				if err != nil {
 					continue
 				}

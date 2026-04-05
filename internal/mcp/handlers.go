@@ -16,7 +16,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
-	"github.com/josephgoksu/TaskWing/internal/safepath"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // CodeToolResult represents the response from the unified code tool.
@@ -362,7 +362,7 @@ func readFileContent(path string) (string, error) {
 }
 
 // validateAndResolvePath validates a file path to prevent path traversal attacks.
-// Uses safepath.SafeJoin which resolves symlinks and prevents escape from base directory.
+// Uses utils.SafeJoin which resolves symlinks and prevents escape from base directory.
 // Returns the resolved absolute path if valid, or an error if the path is unsafe.
 func validateAndResolvePath(requestedPath string, projectRoot string) (string, error) {
 	if projectRoot == "" {
@@ -373,9 +373,9 @@ func validateAndResolvePath(requestedPath string, projectRoot string) (string, e
 	var absPath string
 	var err error
 	if filepath.IsAbs(requestedPath) {
-		absPath, err = safepath.ValidateAbsPath(projectRoot, requestedPath)
+		absPath, err = utils.ValidateAbsPath(projectRoot, requestedPath)
 	} else {
-		absPath, err = safepath.SafeJoin(projectRoot, requestedPath)
+		absPath, err = utils.SafeJoin(projectRoot, requestedPath)
 	}
 	if err != nil {
 		return "", fmt.Errorf("path not allowed: %w", err)

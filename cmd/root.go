@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/config"
-	"github.com/josephgoksu/TaskWing/internal/logger"
 	"github.com/josephgoksu/TaskWing/internal/migration"
 	"github.com/josephgoksu/TaskWing/internal/telemetry"
 	"github.com/josephgoksu/TaskWing/internal/ui"
@@ -75,7 +74,7 @@ Every AI tool gets instant context via MCP, without your knowledge base leaving 
 func Execute() {
 	// Set up crash handler
 	initCrashHandler()
-	defer logger.HandlePanic()
+	defer config.HandlePanic()
 
 	// Enable Cobra's built-in suggestions
 	rootCmd.SuggestionsMinimumDistance = 2
@@ -106,18 +105,18 @@ func Execute() {
 // initCrashHandler sets up the crash logging context.
 func initCrashHandler() {
 	// Set version
-	logger.SetVersion(version)
+	config.SetVersion(version)
 
 	// Set base path for crash logs
 	basePath, err := config.GetMemoryBasePath()
 	if err == nil {
 		// Use the parent of memory path (i.e., .taskwing)
-		logger.SetBasePath(strings.TrimSuffix(basePath, "/memory"))
+		config.SetBasePath(strings.TrimSuffix(basePath, "/memory"))
 	}
 
 	// Set command name (will be updated by each subcommand if needed)
 	if len(os.Args) > 1 {
-		logger.SetCommand(strings.Join(os.Args[1:], " "))
+		config.SetCommand(strings.Join(os.Args[1:], " "))
 	}
 }
 

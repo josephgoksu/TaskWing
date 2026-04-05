@@ -330,6 +330,14 @@ func DecidePlan(snap *Snapshot, flags Flags) *Plan {
 		plan.Reasons = append(plan.Reasons, "Project directory is healthy")
 		plan.Reasons = append(plan.Reasons, fmt.Sprintf("Local AI configs found: %s", strings.Join(snap.ExistingLocalAI, ", ")))
 
+		// Auto-generate configs for missing AIs that aren't configured yet.
+		// This handles the case where one AI (e.g., opencode) was set up but others
+		// (e.g., claude, cursor) were never generated.
+		if len(snap.MissingLocalAIs) > 0 {
+			plan.AIsNeedingRepair = snap.MissingLocalAIs
+			plan.Reasons = append(plan.Reasons, fmt.Sprintf("Missing AI configs will be generated: %s", strings.Join(snap.MissingLocalAIs, ", ")))
+		}
+
 	default:
 		// Fallback - shouldn't happen but be explicit
 		plan.Mode = ModeRun
@@ -415,6 +423,12 @@ func decideActions(snap *Snapshot, flags Flags, mode BootstrapMode) []Action {
 			}
 		case ModeReconfigure:
 			actions = append(actions, ActionGenerateAIConfigs, ActionInstallMCP)
+		case ModeRun:
+			// Auto-generate configs for AIs that are completely missing.
+			// This covers the case where project+some AIs exist but others were never set up.
+			if len(snap.MissingLocalAIs) > 0 {
+				actions = append(actions, ActionGenerateAIConfigs)
+			}
 		}
 	}
 
@@ -732,7 +746,7 @@ var sourceExtensions = map[string]bool{
 	".exs":   true,
 }
 
-// countSourceFiles counts source files recursively, respecting common ignore patterns.
+// countSourceFiles counts source files recursively, respecting common ignore utils.
 // Uses a reasonable limit to avoid spending too long on huge repos.
 func countSourceFiles(basePath string) int {
 	count := 0

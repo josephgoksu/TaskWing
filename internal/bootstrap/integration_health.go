@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/josephgoksu/TaskWing/internal/mcpcfg"
+	"github.com/josephgoksu/TaskWing/internal/config"
 )
 
 // Ownership describes who owns a configuration artifact.
@@ -648,29 +648,29 @@ func evalOpenCodeLocalMCP(basePath string) (ComponentStatus, string) {
 		return ComponentStatusInvalid, "opencode.json mcp section has invalid type"
 	}
 	for name := range mcpMap {
-		if mcpcfg.IsLegacyServerName(name) {
-			return ComponentStatusInvalid, fmt.Sprintf("non-canonical MCP server key %q found (expected %q)", name, mcpcfg.CanonicalServerName)
+		if config.IsLegacyServerName(name) {
+			return ComponentStatusInvalid, fmt.Sprintf("non-canonical MCP server key %q found (expected %q)", name, config.CanonicalServerName)
 		}
 	}
-	raw, ok := mcpMap[mcpcfg.CanonicalServerName]
+	raw, ok := mcpMap[config.CanonicalServerName]
 	if !ok {
-		return ComponentStatusMissing, mcpcfg.CanonicalServerName + " entry missing in opencode.json"
+		return ComponentStatusMissing, config.CanonicalServerName + " entry missing in opencode.json"
 	}
 	entry, ok := raw.(map[string]any)
 	if !ok {
-		return ComponentStatusInvalid, mcpcfg.CanonicalServerName + " entry has invalid format"
+		return ComponentStatusInvalid, config.CanonicalServerName + " entry has invalid format"
 	}
 	typeStr, _ := entry["type"].(string)
 	if typeStr != "local" {
-		return ComponentStatusInvalid, mcpcfg.CanonicalServerName + " entry type must be local"
+		return ComponentStatusInvalid, config.CanonicalServerName + " entry type must be local"
 	}
 	cmdRaw, ok := entry["command"].([]any)
 	if !ok || len(cmdRaw) < 2 {
-		return ComponentStatusInvalid, mcpcfg.CanonicalServerName + " command must be array with binary and mcp"
+		return ComponentStatusInvalid, config.CanonicalServerName + " command must be array with binary and mcp"
 	}
 	last, _ := cmdRaw[len(cmdRaw)-1].(string)
 	if strings.TrimSpace(last) != "mcp" {
-		return ComponentStatusInvalid, mcpcfg.CanonicalServerName + " command must end with 'mcp'"
+		return ComponentStatusInvalid, config.CanonicalServerName + " command must end with 'mcp'"
 	}
 	return ComponentStatusOK, ""
 }
@@ -692,15 +692,15 @@ func hasTaskWingInMapJSON(path, rootKey string) (ComponentStatus, string) {
 	if !ok {
 		return ComponentStatusInvalid, fmt.Sprintf("%s has invalid %s format", path, rootKey)
 	}
-	if _, ok := m[mcpcfg.CanonicalServerName]; ok {
+	if _, ok := m[config.CanonicalServerName]; ok {
 		return ComponentStatusOK, ""
 	}
 	for name := range m {
-		if mcpcfg.IsLegacyServerName(name) {
-			return ComponentStatusInvalid, fmt.Sprintf("non-canonical MCP server key %q found (expected %q)", name, mcpcfg.CanonicalServerName)
+		if config.IsLegacyServerName(name) {
+			return ComponentStatusInvalid, fmt.Sprintf("non-canonical MCP server key %q found (expected %q)", name, config.CanonicalServerName)
 		}
 	}
-	return ComponentStatusMissing, fmt.Sprintf("%s missing in %s", mcpcfg.CanonicalServerName, path)
+	return ComponentStatusMissing, fmt.Sprintf("%s missing in %s", config.CanonicalServerName, path)
 }
 
 func parseManagedMarkerVersion(path string) string {

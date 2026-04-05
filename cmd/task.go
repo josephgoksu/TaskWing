@@ -10,7 +10,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/app"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/ui"
-	"github.com/josephgoksu/TaskWing/internal/util"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -217,7 +217,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 
 			// ID - Cyan and bold, use ShortID for consistent display
 			// Full task IDs are 13 chars (task-xxxxxxxx), display fits in 14-char column
-			tid := util.ShortID(t.ID, util.TaskIDLength)
+			tid := utils.ShortID(t.ID, utils.TaskIDLength)
 			idStr := idStyle.Render(tid)
 
 			// Status - Color coded
@@ -329,7 +329,7 @@ Examples:
 		defer func() { _ = repo.Close() }()
 
 		// Resolve prefix to full task ID
-		taskID, err := util.ResolveTaskID(cmd.Context(), repo, idOrPrefix)
+		taskID, err := utils.ResolveTaskID(cmd.Context(), repo, idOrPrefix)
 		if err != nil {
 			return fmt.Errorf("failed to resolve task ID: %w", err)
 		}

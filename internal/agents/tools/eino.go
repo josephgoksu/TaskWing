@@ -16,7 +16,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
-	"github.com/josephgoksu/TaskWing/internal/patterns"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 var errPathTraversal = errors.New("path traversal not allowed")
@@ -262,7 +262,7 @@ func (t *ListDirTool) InvokableRun(ctx context.Context, argsJSON string, opts ..
 			}
 			return nil
 		}
-		if d.IsDir() && patterns.IgnoredDirs[name] {
+		if d.IsDir() && utils.IgnoredDirs[name] {
 			return filepath.SkipDir
 		}
 		indent := strings.Repeat("  ", depth)

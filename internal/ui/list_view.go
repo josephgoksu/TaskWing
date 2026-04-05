@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/josephgoksu/TaskWing/internal/freshness"
+	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/utils"
 )
@@ -50,6 +50,28 @@ func renderNodeListInternal(nodes []memory.Node, verbose bool, basePath string) 
 		renderVerboseTable(byType, typeOrder)
 	} else {
 		renderGroupedList(byType, typeOrder, showWorkspace, basePath)
+	}
+
+	// Compact legend for stale/missing tags (only shown when relevant)
+	var staleCount, missingCount int
+	for _, n := range nodes {
+		switch n.VerificationStatus {
+		case "stale":
+			staleCount++
+		case "missing":
+			missingCount++
+		}
+	}
+	if staleCount > 0 || missingCount > 0 {
+		dimStyle := lipgloss.NewStyle().Foreground(ColorDim)
+		var parts []string
+		if staleCount > 0 {
+			parts = append(parts, fmt.Sprintf("[stale]=%d not re-extracted last run", staleCount))
+		}
+		if missingCount > 0 {
+			parts = append(parts, fmt.Sprintf("[missing]=%d evidence files gone", missingCount))
+		}
+		fmt.Printf("\n  %s\n", dimStyle.Render(strings.Join(parts, "  ")))
 	}
 }
 
@@ -156,11 +178,11 @@ func renderGroupedList(byType map[string][]memory.Node, typeOrder []string, show
 			staleTag := ""
 			staleTagWidth := 0
 			if basePath != "" && n.Evidence != "" {
-				result := freshness.Check(basePath, n.Evidence, n.CreatedAt)
-				if result.Status == freshness.StatusStale {
+				result := knowledge.Check(basePath, n.Evidence, n.CreatedAt)
+				if result.Status == knowledge.StatusStale {
 					staleTag = staleStyle.Render(" [stale]")
 					staleTagWidth = 8 // " [stale]"
-				} else if result.Status == freshness.StatusMissing {
+				} else if result.Status == knowledge.StatusMissing {
 					staleTag = staleStyle.Render(" [missing]")
 					staleTagWidth = 10 // " [missing]"
 				}

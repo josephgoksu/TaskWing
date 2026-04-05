@@ -1,7 +1,7 @@
 // Package safepath provides helpers to prevent path traversal attacks.
 // All functions validate that resolved paths remain within an expected
 // base directory, even when symlinks are involved.
-package safepath
+package utils
 
 import (
 	"errors"

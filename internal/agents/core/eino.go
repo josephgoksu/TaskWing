@@ -34,8 +34,9 @@ const (
 
 // DeterministicChain is a reusable pipeline: Map -> Template -> Model -> Parser -> Output
 type DeterministicChain[T any] struct {
-	chain compose.Runnable[map[string]any, T]
-	name  string
+	chain      compose.Runnable[map[string]any, T]
+	name       string
+	renderFunc func(ctx context.Context, input map[string]any) ([]*schema.Message, error)
 }
 
 // ChainOption configures optional DeterministicChain behavior.
@@ -117,9 +118,25 @@ func NewDeterministicChain[T any](
 	}
 
 	return &DeterministicChain[T]{
-		chain: compiledChain,
-		name:  name,
+		chain:      compiledChain,
+		name:       name,
+		renderFunc: templateFunc,
 	}, nil
+}
+
+// RenderMessages renders the prompt template into messages without calling the LLM.
+// Used by the batch API path to collect prompts for batch submission.
+func (c *DeterministicChain[T]) RenderMessages(ctx context.Context, input map[string]any) ([]*schema.Message, error) {
+	if c.renderFunc == nil {
+		return nil, fmt.Errorf("chain %s: render function not available", c.name)
+	}
+	return c.renderFunc(ctx, input)
+}
+
+// ParseResponse parses raw LLM response text into the chain's output type.
+// Used by the batch API path to parse batch results without re-running the chain.
+func (c *DeterministicChain[T]) ParseResponse(raw string) (T, error) {
+	return ParseJSONResponse[T](raw)
 }
 
 // Invoke executes the chain with manual timing and retry logic for transient failures.

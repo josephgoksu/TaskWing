@@ -181,7 +181,7 @@ type PlanningAgent struct {
 }
 
 // PlanningTask represents a single task in the plan.
-// Fields align with planner.LLMTaskSchema for validation compatibility.
+// Fields align with task.LLMTaskSchema for validation compatibility.
 type PlanningTask struct {
 	Title              string   `json:"title"`
 	Description        string   `json:"description"`

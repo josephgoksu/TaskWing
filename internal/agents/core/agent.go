@@ -22,6 +22,22 @@ type CloseableAgent interface {
 	Close() error
 }
 
+// BatchableAgent is an agent that can render its deterministic prompt for batch submission.
+// Agents implement this to support the OpenAI Batch API path (50% cost reduction).
+// PrepareForBatch gathers context and renders the prompt without calling the LLM.
+// ParseBatchResult takes raw LLM response text and converts it to findings.
+type BatchableAgent interface {
+	Agent
+	PrepareForBatch(ctx context.Context, input Input) (messages []BatchMessage, err error)
+	ParseBatchResult(raw string) (Output, error)
+}
+
+// BatchMessage represents a chat message for batch submission.
+type BatchMessage struct {
+	Role    string // "system", "user", "assistant"
+	Content string
+}
+
 // CloseAgents closes all agents that implement CloseableAgent.
 // Safe to call on agents that don't implement CloseableAgent.
 func CloseAgents(agents []Agent) {

@@ -1,5 +1,5 @@
 // Package util provides shared utility functions.
-package util
+package utils
 
 import (
 	"context"

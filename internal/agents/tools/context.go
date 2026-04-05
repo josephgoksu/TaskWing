@@ -11,8 +11,7 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/patterns"
-	"github.com/josephgoksu/TaskWing/internal/safepath"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // Package-level config file map (avoid allocation on every call)
@@ -134,7 +133,7 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 	seen := make(map[string]bool) // Key: relative path (lowercase) for consistent deduplication
 
 	gatherFromDir := func(dir, prefix string, maxLen int) {
-		safeDir, err := safepath.ValidateAbsPath(g.BasePath, dir)
+		safeDir, err := utils.ValidateAbsPath(g.BasePath, dir)
 		if err != nil {
 			// If dir == g.BasePath itself, allow it.
 			if dir != g.BasePath {
@@ -166,7 +165,7 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			if seen[key] {
 				continue
 			}
-			filePath, joinErr := safepath.SafeJoin(g.BasePath, relPath)
+			filePath, joinErr := utils.SafeJoin(g.BasePath, relPath)
 			if joinErr != nil {
 				continue
 			}
@@ -206,11 +205,11 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 	// Also check for monorepo subdirectories (e.g., backend-go/internal)
 	entries, _ := os.ReadDir(g.BasePath)
 	for _, entry := range entries {
-		if entry.IsDir() && !patterns.ShouldIgnoreDir(entry.Name()) {
+		if entry.IsDir() && !utils.ShouldIgnoreDir(entry.Name()) {
 			// Check if subdir has its own internal/pkg/src
 			for _, subPkgDir := range []string{"internal", "pkg", "src"} {
 				subPath := filepath.Join(entry.Name(), subPkgDir)
-				fullSub, joinErr := safepath.SafeJoin(g.BasePath, subPath)
+				fullSub, joinErr := utils.SafeJoin(g.BasePath, subPath)
 				if joinErr != nil {
 					continue
 				}
@@ -251,7 +250,7 @@ func (g *ContextGatherer) GatherMarkdownDocs() string {
 			}
 
 			if d.IsDir() {
-				if patterns.ShouldIgnoreDir(d.Name()) {
+				if utils.ShouldIgnoreDir(d.Name()) {
 					return filepath.SkipDir
 				}
 				return nil
@@ -306,12 +305,12 @@ func (g *ContextGatherer) GatherKeyFiles() string {
 	}
 
 	// 2. Add Rule Files (GEMINI.md, etc.)
-	for name := range patterns.RuleFiles {
+	for name := range utils.RuleFiles {
 		keyFiles = append(keyFiles, name)
 	}
 
 	// 3. Add Important Dotfiles
-	for name := range patterns.ImportantDotFiles {
+	for name := range utils.ImportantDotFiles {
 		keyFiles = append(keyFiles, name)
 	}
 
@@ -327,7 +326,7 @@ func (g *ContextGatherer) GatherKeyFiles() string {
 		}
 		seen[keyLower] = true
 
-		fullPath, joinErr := safepath.SafeJoin(g.BasePath, relPath)
+		fullPath, joinErr := utils.SafeJoin(g.BasePath, relPath)
 		if joinErr != nil {
 			continue
 		}
@@ -359,7 +358,7 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 	maxPerFile := 3000
 
 	// GitHub Actions
-	ghWorkflows, ghErr := safepath.SafeJoin(g.BasePath, filepath.Join(".github", "workflows"))
+	ghWorkflows, ghErr := utils.SafeJoin(g.BasePath, filepath.Join(".github", "workflows"))
 	if ghErr == nil {
 		if entries, err := os.ReadDir(ghWorkflows); err == nil {
 			for _, entry := range entries {
@@ -373,7 +372,7 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 				if g.budget != nil && g.budget.IsExhausted() {
 					break
 				}
-				wfPath, wfErr := safepath.SafeJoin(g.BasePath, filepath.Join(".github", "workflows", name))
+				wfPath, wfErr := utils.SafeJoin(g.BasePath, filepath.Join(".github", "workflows", name))
 				if wfErr != nil {
 					continue
 				}
@@ -400,7 +399,7 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 	}
 
 	// GitLab CI
-	gitlabPath, glErr := safepath.SafeJoin(g.BasePath, ".gitlab-ci.yml")
+	gitlabPath, glErr := utils.SafeJoin(g.BasePath, ".gitlab-ci.yml")
 	if glErr == nil {
 		if content, err := os.ReadFile(gitlabPath); err == nil {
 			if g.budget != nil && g.budget.IsExhausted() {
@@ -422,7 +421,7 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 	}
 
 	// CircleCI
-	circlePath, ccErr := safepath.SafeJoin(g.BasePath, filepath.Join(".circleci", "config.yml"))
+	circlePath, ccErr := utils.SafeJoin(g.BasePath, filepath.Join(".circleci", "config.yml"))
 	if ccErr == nil {
 		if content, err := os.ReadFile(circlePath); err == nil {
 			if g.budget != nil && g.budget.IsExhausted() {
@@ -450,7 +449,7 @@ func (g *ContextGatherer) GatherCIConfigs() string {
 func (g *ContextGatherer) GatherSpecificFiles(files []string) string {
 	var sb strings.Builder
 	for _, relPath := range files {
-		fullPath, joinErr := safepath.SafeJoin(g.BasePath, relPath)
+		fullPath, joinErr := utils.SafeJoin(g.BasePath, relPath)
 		if joinErr != nil {
 			continue
 		}
@@ -470,7 +469,7 @@ func (g *ContextGatherer) GatherSpecificFiles(files []string) string {
 // GatherSourceCode reads key source files: entry points, handlers, configs, middleware.
 // Returns file contents with line numbers for evidence extraction.
 // Handles both standard projects and monorepos.
-// Uses a priority-based walk system since Go's filepath.Glob doesn't support ** patterns.
+// Uses a priority-based walk system since Go's filepath.Glob doesn't support ** utils.
 func (g *ContextGatherer) GatherSourceCode() string {
 	var sb strings.Builder
 	gathered := 0
@@ -499,7 +498,7 @@ func (g *ContextGatherer) GatherSourceCode() string {
 			g.recordSkip(relPath, "character budget exhausted")
 			return false
 		}
-		fullPath, joinErr := safepath.SafeJoin(g.BasePath, relPath)
+		fullPath, joinErr := utils.SafeJoin(g.BasePath, relPath)
 		if joinErr != nil {
 			g.recordSkip(relPath, "path validation failed")
 			return false
@@ -510,7 +509,7 @@ func (g *ContextGatherer) GatherSourceCode() string {
 		}
 		// Only add code files (filter by extension)
 		ext := filepath.Ext(relPath)
-		if !patterns.CodeExtensions[ext] && !patterns.ConfigExtensions[ext] && !isConfigFile(filepath.Base(relPath)) {
+		if !utils.CodeExtensions[ext] && !utils.ConfigExtensions[ext] && !isConfigFile(filepath.Base(relPath)) {
 			g.recordSkip(relPath, "not a recognized code/config file")
 			return false
 		}
@@ -601,7 +600,7 @@ func (g *ContextGatherer) GatherSourceCode() string {
 			if !entry.IsDir() {
 				continue
 			}
-			if patterns.ShouldIgnoreDir(entry.Name()) || patterns.ShouldSkipDotEntry(entry.Name(), true) {
+			if utils.ShouldIgnoreDir(entry.Name()) || utils.ShouldSkipDotEntry(entry.Name(), true) {
 				continue
 			}
 			subdir := entry.Name()
@@ -683,11 +682,11 @@ func (g *ContextGatherer) GatherSourceCode() string {
 				return nil
 			}
 			if d.IsDir() {
-				if patterns.ShouldIgnoreDir(d.Name()) {
+				if utils.ShouldIgnoreDir(d.Name()) {
 					return filepath.SkipDir
 				}
 				// Skip dot-directories (except allowed ones like .github)
-				if patterns.ShouldSkipDotEntry(d.Name(), true) {
+				if utils.ShouldSkipDotEntry(d.Name(), true) {
 					return filepath.SkipDir
 				}
 				return nil
@@ -711,8 +710,8 @@ func (g *ContextGatherer) GatherSourceCode() string {
 			nameLower := strings.ToLower(name)
 
 			// Determine file category and base priority
-			isCode := patterns.CodeExtensions[ext]
-			isConfig := patterns.ConfigExtensions[ext] || isConfigFile(name)
+			isCode := utils.CodeExtensions[ext]
+			isConfig := utils.ConfigExtensions[ext] || isConfigFile(name)
 			isCIFile := strings.Contains(relPath, ".github") || strings.Contains(relPath, ".gitlab") || strings.Contains(relPath, ".circleci")
 
 			// Skip files that aren't code, config, or CI
@@ -826,13 +825,13 @@ func (g *ContextGatherer) ListDirectoryTree(maxDepth int) string {
 			return nil
 		}
 		// Skip ignored directories and non-allowed dot entries
-		if patterns.ShouldIgnoreDir(d.Name()) {
+		if utils.ShouldIgnoreDir(d.Name()) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if patterns.ShouldSkipDotEntry(d.Name(), d.IsDir()) {
+		if utils.ShouldSkipDotEntry(d.Name(), d.IsDir()) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}

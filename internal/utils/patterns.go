@@ -2,7 +2,7 @@
 Package patterns provides centralized file and directory patterns for the codebase.
 This is the SINGLE source of truth for ignore lists, file extensions, and path patterns.
 */
-package patterns
+package utils
 
 import "strings"
 

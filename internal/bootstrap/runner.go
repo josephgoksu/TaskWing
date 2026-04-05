@@ -16,12 +16,14 @@ import (
 // Runner manages the execution of multiple agents
 type Runner struct {
 	agents []core.Agent
+	llmCfg llm.Config
 }
 
 // NewRunner creates a standard runner with default agents
 func NewRunner(cfg llm.Config, projectPath string) *Runner {
 	return &Runner{
 		agents: NewDefaultAgents(cfg, projectPath, nil),
+		llmCfg: cfg,
 	}
 }
 
@@ -36,6 +38,16 @@ type RunOptions struct {
 	Workspace string // Workspace name for monorepo support ('root' for global, service name for scoped)
 }
 
+// ProviderSupportsBatch returns true if the provider has a batch API with cost savings.
+func ProviderSupportsBatch(provider llm.Provider) bool {
+	switch provider {
+	case llm.ProviderOpenAI, llm.ProviderAnthropic:
+		return true
+	default:
+		return false
+	}
+}
+
 // Run executes all agents in parallel and returns raw agent outputs.
 // Respects context cancellation - returns early if context is cancelled.
 func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Output, error) {
@@ -43,8 +55,9 @@ func (r *Runner) Run(ctx context.Context, projectPath string) ([]core.Output, er
 }
 
 // RunWithOptions executes agents with the given options.
-// For bootstrap mode, uses two-wave execution: doc+deps first, then code+git
-// with context from wave 1. Watch mode uses single-wave parallel execution.
+// Automatically uses the Batch API when the provider supports it (OpenAI, Anthropic)
+// for 50% cost reduction on batchable agents. Non-batchable agents run in parallel.
+// Falls back to sync execution if batch submission fails.
 func (r *Runner) RunWithOptions(ctx context.Context, projectPath string, opts RunOptions) ([]core.Output, error) {
 	select {
 	case <-ctx.Done():
@@ -52,6 +65,20 @@ func (r *Runner) RunWithOptions(ctx context.Context, projectPath string, opts Ru
 	default:
 	}
 
+	// Auto-batch when provider supports it and there are batchable agents
+	if ProviderSupportsBatch(r.llmCfg.Provider) && hasBatchableAgents(r.agents) {
+		results, err := r.runWithBatch(ctx, projectPath, opts)
+		if err == nil {
+			return results, nil
+		}
+		slog.Warn("batch execution failed, falling back to sync", "error", err)
+	}
+
+	return r.runSync(ctx, projectPath, opts)
+}
+
+// runSync is the original wave-based parallel execution path.
+func (r *Runner) runSync(ctx context.Context, projectPath string, opts RunOptions) ([]core.Output, error) {
 	workspace := opts.Workspace
 	if workspace == "" {
 		workspace = "root"
@@ -61,7 +88,7 @@ func (r *Runner) RunWithOptions(ctx context.Context, projectPath string, opts Ru
 		BasePath:    projectPath,
 		ProjectName: filepath.Base(projectPath),
 		Mode:        core.ModeBootstrap,
-		Verbose:     false, // Only enable with --verbose or --debug flags
+		Verbose:     false,
 		Workspace:   workspace,
 	}
 
@@ -93,11 +120,170 @@ func (r *Runner) RunWithOptions(ctx context.Context, projectPath string, opts Ru
 
 	wave2Results, err := runParallel(ctx, wave2Agents, wave2Input)
 	if err != nil {
-		// Return wave 1 results even if wave 2 fails
 		return append(wave1Results, wave2Results...), err
 	}
 
 	return append(wave1Results, wave2Results...), nil
+}
+
+// hasBatchableAgents returns true if any agent implements BatchableAgent.
+func hasBatchableAgents(agents []core.Agent) bool {
+	for _, a := range agents {
+		if _, ok := a.(core.BatchableAgent); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// runWithBatch executes batchable agents via the Batch API and non-batchable agents in parallel.
+// Called automatically by RunWithOptions when the provider supports batch.
+func (r *Runner) runWithBatch(ctx context.Context, projectPath string, opts RunOptions) ([]core.Output, error) {
+	workspace := opts.Workspace
+	if workspace == "" {
+		workspace = "root"
+	}
+
+	input := core.Input{
+		BasePath:    projectPath,
+		ProjectName: filepath.Base(projectPath),
+		Mode:        core.ModeBootstrap,
+		Verbose:     false,
+		Workspace:   workspace,
+	}
+
+	// Split agents into batchable vs non-batchable
+	var batchable []core.BatchableAgent
+	var nonBatchable []core.Agent
+	for _, a := range r.agents {
+		if ba, ok := a.(core.BatchableAgent); ok {
+			batchable = append(batchable, ba)
+		} else {
+			nonBatchable = append(nonBatchable, a)
+		}
+	}
+
+	// If nothing is batchable, fall back to sync
+	if len(batchable) == 0 {
+		return r.runSync(ctx, projectPath, opts)
+	}
+
+	// Phase 1: Prepare batch requests (render prompts without calling LLM)
+	var batchRequests []llm.BatchRequest
+	var batchAgents []core.BatchableAgent // track which agents mapped to which requests
+	for _, ba := range batchable {
+		msgs, err := ba.PrepareForBatch(ctx, input)
+		if err != nil {
+			slog.Debug("agent not batchable, will run sync", "agent", ba.Name(), "error", err)
+			nonBatchable = append(nonBatchable, ba)
+			continue
+		}
+
+		var batchMsgs []llm.BatchMessage
+		for _, m := range msgs {
+			batchMsgs = append(batchMsgs, llm.BatchMessage{Role: m.Role, Content: m.Content})
+		}
+
+		batchRequests = append(batchRequests, llm.BatchRequest{
+			CustomID: ba.Name(),
+			Model:    r.llmCfg.Model,
+			Messages: batchMsgs,
+		})
+		batchAgents = append(batchAgents, ba)
+	}
+
+	// Phase 2: Run non-batchable agents in parallel while batch processes
+	var nonBatchResults []core.Output
+	var batchResults []core.Output
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	// Start non-batchable agents immediately
+	if len(nonBatchable) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results, _ := runParallel(ctx, nonBatchable, input)
+			mu.Lock()
+			nonBatchResults = results
+			mu.Unlock()
+		}()
+	}
+
+	// Submit and wait for batch
+	if len(batchRequests) > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results := r.executeBatch(ctx, batchRequests, batchAgents)
+			mu.Lock()
+			batchResults = results
+			mu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+
+	return append(nonBatchResults, batchResults...), nil
+}
+
+// executeBatch submits batch requests and parses results back into agent outputs.
+// Falls back to sync execution for individual agents if batch fails.
+func (r *Runner) executeBatch(ctx context.Context, requests []llm.BatchRequest, agents []core.BatchableAgent) []core.Output {
+	client := llm.NewBatchClient(r.llmCfg.APIKey, r.llmCfg.BaseURL)
+
+	batchID, err := client.Submit(ctx, requests)
+	if err != nil {
+		slog.Warn("batch submission failed, running agents synchronously", "error", err)
+		return r.runBatchableFallback(ctx, agents)
+	}
+
+	slog.Debug("batch submitted", "batch_id", batchID, "agents", len(requests))
+
+	// Poll for completion (5 second intervals)
+	results, err := client.WaitForCompletion(ctx, batchID, 5*time.Second, nil)
+	if err != nil {
+		slog.Warn("batch failed, running agents synchronously", "error", err)
+		return r.runBatchableFallback(ctx, agents)
+	}
+
+	// Map results back to agents by custom_id
+	resultMap := make(map[string]llm.BatchResult)
+	for _, r := range results {
+		resultMap[r.CustomID] = r
+	}
+
+	var outputs []core.Output
+	for _, agent := range agents {
+		result, ok := resultMap[agent.Name()]
+		if !ok || result.StatusCode != 200 || result.Content == "" {
+			slog.Warn("batch result missing or failed for agent", "agent", agent.Name(),
+				"found", ok, "status", result.StatusCode, "error", result.Error)
+			continue
+		}
+
+		output, err := agent.ParseBatchResult(result.Content)
+		if err != nil {
+			slog.Warn("failed to parse batch result", "agent", agent.Name(), "error", err)
+			continue
+		}
+		outputs = append(outputs, output)
+	}
+
+	return outputs
+}
+
+// runBatchableFallback runs batchable agents via their normal Run method.
+func (r *Runner) runBatchableFallback(ctx context.Context, agents []core.BatchableAgent) []core.Output {
+	var regularAgents []core.Agent
+	for _, a := range agents {
+		regularAgents = append(regularAgents, a)
+	}
+	input := core.Input{
+		Mode: core.ModeBootstrap,
+	}
+	results, _ := runParallel(ctx, regularAgents, input)
+	return results
 }
 
 // splitAgentsByWave separates agents into wave 1 (doc, deps) and wave 2 (code, git).

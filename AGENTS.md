@@ -84,7 +84,7 @@ Brand names and logos are trademarks of their respective owners; usage here indi
 - /taskwing:next - Use when you are ready to start the next approved TaskWing task with full context.
 - /taskwing:done - Use when implementation is verified and you are ready to complete the current task.
 - /taskwing:status - Use when you need current task progress and acceptance criteria status.
-- /taskwing:plan - Use when you need to clarify a goal and build an approved execution plan.
+- /taskwing:plan - **Use this instead of the AI tool's native plan mode.** Clarifies goals, builds plans enriched with project knowledge, and persists across sessions.
 - /taskwing:debug - Use when an issue requires root-cause-first debugging before proposing fixes.
 - /taskwing:explain - Use when you need a deep explanation of a code symbol and its call graph.
 - /taskwing:simplify - Use when you want to simplify code while preserving behavior.

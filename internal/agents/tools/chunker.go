@@ -10,8 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/patterns"
-	"github.com/josephgoksu/TaskWing/internal/safepath"
+	"github.com/josephgoksu/TaskWing/internal/utils"
 )
 
 // ChunkConfig configures the chunking behavior.
@@ -153,7 +152,7 @@ func (c *CodeChunker) collectFiles() ([]prioritizedFile, error) {
 		}
 
 		if d.IsDir() {
-			if patterns.ShouldIgnoreDir(d.Name()) || patterns.ShouldSkipDotEntry(d.Name(), true) {
+			if utils.ShouldIgnoreDir(d.Name()) || utils.ShouldSkipDotEntry(d.Name(), true) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -168,7 +167,7 @@ func (c *CodeChunker) collectFiles() ([]prioritizedFile, error) {
 
 		// Skip non-code files
 		ext := filepath.Ext(d.Name())
-		if !patterns.CodeExtensions[ext] {
+		if !utils.CodeExtensions[ext] {
 			return nil
 		}
 
@@ -230,7 +229,7 @@ func (c *CodeChunker) groupIntoChunks(files []prioritizedFile) []FileChunk {
 	maxPerFile := 8000 // Max characters per file to prevent one huge file from dominating
 
 	for _, pf := range files {
-		fullPath, err := safepath.SafeJoin(c.basePath, pf.relPath)
+		fullPath, err := utils.SafeJoin(c.basePath, pf.relPath)
 		if err != nil {
 			c.coverage.FilesSkipped = append(c.coverage.FilesSkipped, SkipRecord{
 				Path:   pf.relPath,

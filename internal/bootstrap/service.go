@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/josephgoksu/TaskWing/internal/agents/core"
@@ -287,7 +288,11 @@ func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (
 		// Track warning instead of silently swallowing
 		result.Warnings = append(result.Warnings, fmt.Sprintf("git stats: %v", err))
 		if !isQuiet {
-			fmt.Printf(" skipped (%v)\n", err)
+			if strings.Contains(err.Error(), "not a git repository") {
+				fmt.Println(" skipped (not a git repository)")
+			} else {
+				fmt.Printf(" skipped (%v)\n", err)
+			}
 		}
 	} else {
 		if !isQuiet {
