@@ -61,6 +61,10 @@ type Node struct {
 
 	// RefactorHint provides guidance on how to eliminate this debt
 	RefactorHint string `json:"refactorHint,omitempty"`
+
+	// CompactSummary is an LLM-generated dense summary for context packing.
+	// Populated during bootstrap ingestion. Used by FormatCompact() instead of truncation.
+	CompactSummary string `json:"compactSummary,omitempty"`
 }
 
 // DebtLevel returns human-readable debt classification for a node.

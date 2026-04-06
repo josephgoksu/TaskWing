@@ -203,7 +203,10 @@ func (pc *ProjectContext) FormatCompact(modelID ...string) string {
 			if node.Node == nil {
 				continue
 			}
-			content := utils.Truncate(node.Node.Text(), nodeChars)
+			content := node.Node.CompactSummary
+			if content == "" {
+				content = utils.Truncate(node.Node.Text(), nodeChars)
+			}
 			sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", node.Node.Summary, node.Node.Type, content))
 		}
 	}

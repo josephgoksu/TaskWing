@@ -116,7 +116,7 @@ type TaskPlanner interface {
 // TaskContextEnricher executes ask queries and returns aggregated context for a task.
 // This is used during task creation to populate ContextSummary (early binding).
 // See docs/architecture/ADR_CONTEXT_BINDING.md for the full context binding design.
-type TaskContextEnricher func(ctx context.Context, queries []string) (string, error)
+type TaskContextEnricher func(ctx context.Context, queries []string, scope string) (string, error)
 
 const (
 	defaultClarifyMaxRounds            = 5
@@ -167,17 +167,21 @@ func (a *PlanApp) retrieveContext(ctx context.Context, ks *knowledge.Service, go
 }
 
 // defaultTaskEnricher uses GetProjectContext with compact options to enrich tasks.
-func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (string, error) {
+func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string, scope string) (string, error) {
 	if a.ctx == nil || a.ctx.Repo == nil {
 		return "", nil
 	}
 
 	ks := knowledge.NewService(a.ctx.Repo, a.ctx.LLMCfg)
 
-	// Use the task's specific queries as the search query, or fall back to baseline
-	query := "project constraints and key technology decisions"
+	// Build scope-aware query: prefer task queries, fall back to scope-based, then generic
+	var query string
 	if len(queries) > 0 {
 		query = strings.Join(queries, " ")
+	} else if scope != "" {
+		query = scope + " patterns constraints decisions"
+	} else {
+		query = "project constraints and key technology decisions"
 	}
 
 	modelID := a.ctx.LLMCfg.Model
@@ -1002,8 +1006,8 @@ func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[strin
 			t.EnrichAIFields()
 
 			// Populate ContextSummary by executing ask queries
-			if a.TaskEnricher != nil && len(t.SuggestedAskQueries) > 0 {
-				if contextSummary, err := a.TaskEnricher(ctx, t.SuggestedAskQueries); err == nil && contextSummary != "" {
+			if a.TaskEnricher != nil && (len(t.SuggestedAskQueries) > 0 || t.Scope != "") {
+				if contextSummary, err := a.TaskEnricher(ctx, t.SuggestedAskQueries, t.Scope); err == nil && contextSummary != "" {
 					t.ContextSummary = contextSummary
 				}
 			}
@@ -1096,8 +1100,8 @@ func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[strin
 				newTask.EnrichAIFields()
 
 				// Populate ContextSummary by executing ask queries
-				if a.TaskEnricher != nil && len(newTask.SuggestedAskQueries) > 0 {
-					if contextSummary, err := a.TaskEnricher(ctx, newTask.SuggestedAskQueries); err == nil && contextSummary != "" {
+				if a.TaskEnricher != nil && (len(newTask.SuggestedAskQueries) > 0 || newTask.Scope != "") {
+					if contextSummary, err := a.TaskEnricher(ctx, newTask.SuggestedAskQueries, newTask.Scope); err == nil && contextSummary != "" {
 						newTask.ContextSummary = contextSummary
 					}
 				}

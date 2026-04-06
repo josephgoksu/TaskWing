@@ -569,6 +569,7 @@ func (s *SQLiteStore) initSchema() error {
 		// 'root' = global knowledge at repo root, service names (e.g., 'osprey', 'studio') for scoped knowledge
 		{"workspace", "ALTER TABLE nodes ADD COLUMN workspace TEXT DEFAULT 'root'"},
 		{"stale_count", "ALTER TABLE nodes ADD COLUMN stale_count INTEGER DEFAULT 0"},
+		{"compact_summary", "ALTER TABLE nodes ADD COLUMN compact_summary TEXT DEFAULT ''"},
 	}
 
 	for _, m := range migrations {

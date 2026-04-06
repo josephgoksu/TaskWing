@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/eino/schema"
+	"github.com/josephgoksu/TaskWing/internal/agents/core"
 	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/llm"
@@ -475,6 +477,11 @@ Tasks Completed: %d
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `, session.SessionID, int(elapsed.Minutes()), session.TasksCompleted)
 
+	// Dream Consolidation: extract knowledge from completed tasks
+	if session.TasksCompleted > 0 {
+		dreamConsolidate(session)
+	}
+
 	// Remove session file
 	sessionPath, err := getHookSessionPath()
 	if err == nil {
@@ -482,6 +489,115 @@ Tasks Completed: %d
 	}
 
 	return nil
+}
+
+// dreamConsolidate extracts architectural knowledge from completed tasks
+// and writes it to the knowledge graph with source_agent="dream".
+func dreamConsolidate(session *HookSession) {
+	repo, err := openRepo()
+	if err != nil {
+		return
+	}
+	defer func() { _ = repo.Close() }()
+
+	// Get completed tasks from the active plan
+	plan, err := repo.GetActivePlan()
+	if err != nil || plan == nil {
+		return
+	}
+
+	// Collect completed task summaries
+	var taskSummaries []string
+	for _, t := range plan.Tasks {
+		if t.Status == task.StatusCompleted && t.CompletionSummary != "" {
+			taskSummaries = append(taskSummaries, fmt.Sprintf("- %s: %s", t.Title, t.CompletionSummary))
+		}
+	}
+	if len(taskSummaries) == 0 {
+		return
+	}
+
+	// Get LLM config - use fast model for cheap background work
+	llmCfg, err := config.LoadLLMConfig()
+	if err != nil {
+		return
+	}
+	if llmCfg.APIKey == "" {
+		return
+	}
+	fastModel := llm.GetRecommendedModelForRole(string(llmCfg.Provider), llm.RoleQuery)
+	if fastModel != nil {
+		llmCfg.Model = fastModel.ID
+	}
+
+	// Generate findings via LLM
+	prompt := fmt.Sprintf(`You completed these tasks in a development session:
+
+%s
+
+Extract any NEW architectural decisions, patterns, or constraints that were established or discovered during this work. Only include items that would be valuable for future sessions.
+
+Respond in JSON:
+{"findings": [{"type": "decision|pattern|constraint", "title": "...", "description": "..."}]}
+
+If nothing notable was established, respond with: {"findings": []}`, strings.Join(taskSummaries, "\n"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	chatModel, err := llm.NewCloseableChatModel(ctx, llmCfg)
+	if err != nil {
+		return
+	}
+	defer func() { _ = chatModel.Close() }()
+
+	resp, err := chatModel.Generate(ctx, []*schema.Message{schema.UserMessage(prompt)})
+	if err != nil {
+		return
+	}
+
+	// Parse findings
+	type dreamFinding struct {
+		Type        string `json:"type"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	type dreamResponse struct {
+		Findings []dreamFinding `json:"findings"`
+	}
+
+	parsed, err := core.ParseJSONResponse[dreamResponse](resp.Content)
+	if err != nil || len(parsed.Findings) == 0 {
+		return
+	}
+
+	// Convert to core.Finding and ingest
+	var findings []core.Finding
+	for _, f := range parsed.Findings {
+		findingType := core.FindingTypeDecision
+		switch f.Type {
+		case "pattern":
+			findingType = core.FindingTypePattern
+		case "constraint":
+			findingType = core.FindingTypeConstraint
+		}
+		findings = append(findings, core.Finding{
+			Type:            findingType,
+			Title:           f.Title,
+			Description:     f.Description,
+			ConfidenceScore: 0.6,
+			SourceAgent:     "dream",
+		})
+	}
+
+	ks := knowledge.NewService(repo, llmCfg)
+	memoryPath, _ := config.GetMemoryBasePath()
+	if memoryPath != "" {
+		ks.SetBasePath(filepath.Dir(filepath.Dir(memoryPath)))
+	}
+	_ = ks.IngestFindings(ctx, findings, nil, false)
+
+	fmt.Printf("  Dream: extracted %d knowledge items from session\n", len(findings))
 }
 
 // Session persistence helpers
