@@ -35,7 +35,8 @@ func (r *Runner) Close() {
 
 // RunOptions configures a runner execution.
 type RunOptions struct {
-	Workspace string // Workspace name for monorepo support ('root' for global, service name for scoped)
+	Workspace    string   // Workspace name for monorepo support ('root' for global, service name for scoped)
+	ChangedFiles []string // If set, only analyze these files (incremental mode)
 }
 
 // ProviderSupportsBatch returns true if the provider has a batch API with cost savings.

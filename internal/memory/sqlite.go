@@ -1445,7 +1445,13 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 			continue
 		}
 		sim := textSimilarity(n.Summary, existingSummary)
-		if sim >= textSimilarityThreshold {
+		// Use higher threshold for short summaries where common prefixes
+		// (e.g., "Documentation: X.md" vs "Documentation: Y.md") inflate Jaccard scores
+		threshold := textSimilarityThreshold
+		if len(n.Summary) < 50 || len(existingSummary) < 50 {
+			threshold = 0.7
+		}
+		if sim >= threshold {
 			_ = rows.Close() // Close before executing update
 			// Found a similar node - update it instead of inserting new (including evidence and debt columns)
 			if n.Content != similarContent {

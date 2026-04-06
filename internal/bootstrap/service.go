@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -88,8 +89,41 @@ func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.Workspac
 
 		runner := NewRunner(s.llmCfg, servicePath)
 
+		// Incremental mode: check if we can skip or limit analysis
+		opts := RunOptions{Workspace: serviceName}
+		stateKey := "bootstrap-sha-" + serviceName
+		dbPath := filepath.Join(s.basePath, ".taskwing", "memory")
+		if store, storeErr := memory.NewSQLiteStore(dbPath); storeErr == nil {
+			if state, stateErr := store.GetBootstrapState(stateKey); stateErr == nil && state != nil && state.Checksum != "" {
+				headSHA := getGitHEAD(servicePath)
+				if headSHA != "" && headSHA == state.Checksum {
+					if onProgress != nil {
+						onProgress(serviceName, fmt.Sprintf("[%d/%d] no changes", i+1, len(ws.Services)))
+					}
+					_ = store.Close()
+					runner.Close()
+					continue
+				}
+				if headSHA != "" {
+					changedFiles := getChangedFilesSince(servicePath, state.Checksum)
+					if changedFiles != nil && len(changedFiles) == 0 {
+						if onProgress != nil {
+							onProgress(serviceName, fmt.Sprintf("[%d/%d] no changes", i+1, len(ws.Services)))
+						}
+						_ = store.Close()
+						runner.Close()
+						continue
+					}
+					if changedFiles != nil && len(changedFiles) < 50 {
+						opts.ChangedFiles = changedFiles
+					}
+				}
+			}
+			_ = store.Close()
+		}
+
 		// Pass workspace (service name) to the runner so agents can tag their findings
-		results, err := runner.RunWithOptions(ctx, servicePath, RunOptions{Workspace: serviceName})
+		results, err := runner.RunWithOptions(ctx, servicePath, opts)
 		// Close runner immediately after use - NOT deferred in loop!
 		runner.Close()
 
@@ -141,6 +175,18 @@ func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.Workspac
 
 		allFindings = append(allFindings, findings...)
 		allRelationships = append(allRelationships, relationships...)
+
+		// Save git SHA for incremental mode on next run
+		if headSHA := getGitHEAD(servicePath); headSHA != "" {
+			if store, storeErr := memory.NewSQLiteStore(dbPath); storeErr == nil {
+				_ = store.SetBootstrapState(&memory.BootstrapState{
+					Component: stateKey,
+					Status:    "completed",
+					Checksum:  headSHA,
+				})
+				_ = store.Close()
+			}
+		}
 
 		if onProgress != nil {
 			onProgress(serviceName, fmt.Sprintf("[%d/%d] done (%d findings)", i+1, len(ws.Services), len(findings)))
@@ -452,6 +498,36 @@ func generateReport(projectPath string, results []core.Output, findings []core.F
 
 	report.Finalize(findings, totalDuration)
 	return report
+}
+
+// getGitHEAD returns the current git HEAD SHA for a directory, or empty string if not a git repo.
+func getGitHEAD(dir string) string {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// getChangedFilesSince returns files changed between oldSHA and HEAD in the given directory.
+// Returns nil if git operations fail (triggers full bootstrap fallback).
+func getChangedFilesSince(dir, oldSHA string) []string {
+	if oldSHA == "" {
+		return nil
+	}
+	cmd := exec.Command("git", "diff", "--name-only", oldSHA+"..HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
+		return []string{} // No changes - empty slice means "nothing changed"
+	}
+	return strings.Split(raw, "\n")
 }
 
 func saveReport(path string, report *core.BootstrapReport) error {
