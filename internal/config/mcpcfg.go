@@ -23,28 +23,10 @@ func ContainsCanonicalServerName(text string) bool {
 	return strings.Contains(text, CanonicalServerName)
 }
 
-// SetLastInput, SetVersion, HandlePanic are lightweight stubs
-// for the removed crash-logging subsystem (internal/logger).
+// No-op stubs for the removed crash-logging subsystem (internal/logger).
 
-var lastInput string
-var appVersion string
-var basePath string
-var lastCommand string
-
-// SetLastInput records the last user input for diagnostics.
-func SetLastInput(input string) { lastInput = input }
-
-// SetVersion stores the app version for diagnostics.
-func SetVersion(v string) { appVersion = v }
-
-// SetBasePath records the project base path for diagnostics.
-func SetBasePath(p string) { basePath = p }
-
-// SetCommand records the current command for diagnostics.
-func SetCommand(cmd string) { lastCommand = cmd }
-
-// HandlePanic is a no-op recovery handler. The crash-logging subsystem was removed.
-func HandlePanic() {
-	// Intentionally empty. Previously wrote crash logs to disk.
-	// Removed to reduce complexity. Panics propagate to the Go runtime.
-}
+func SetLastInput(_ string) {}
+func SetVersion(_ string)   {}
+func SetBasePath(_ string)  {}
+func SetCommand(_ string)   {}
+func HandlePanic()          {}
