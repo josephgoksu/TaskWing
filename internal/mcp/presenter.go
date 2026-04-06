@@ -742,60 +742,54 @@ func FormatClarifyResult(result *app.ClarifyResult) string {
 
 	var sb strings.Builder
 
-	// Ready status
 	if result.IsReadyToPlan {
+		// Ready state: concise, actionable
 		sb.WriteString("## ✅ Ready to Generate Plan\n\n")
+		if result.ClarifySessionID != "" {
+			sb.WriteString(fmt.Sprintf("**Session**: `%s` | **Round**: %d\n\n", result.ClarifySessionID, result.RoundIndex))
+		}
+		if result.GoalSummary != "" {
+			sb.WriteString(fmt.Sprintf("**Goal**: %s\n\n", result.GoalSummary))
+		}
+		if result.EnrichedGoal != "" {
+			sb.WriteString("### What will be built\n")
+			sb.WriteString(result.EnrichedGoal)
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString("> Approve this specification, then the plan will be generated with tasks.\n")
 	} else {
-		sb.WriteString("## 🔍 Clarification Needed\n\n")
-	}
-
-	if result.ClarifySessionID != "" {
-		sb.WriteString(fmt.Sprintf("**Clarify Session**: `%s`\n", result.ClarifySessionID))
-		sb.WriteString(fmt.Sprintf("**Round**: %d\n\n", result.RoundIndex))
-	}
-
-	// Goal summary
-	if result.GoalSummary != "" {
-		sb.WriteString(fmt.Sprintf("**Goal**: %s\n\n", result.GoalSummary))
-	}
-
-	// Questions (if not ready)
-	if len(result.Questions) > 0 && !result.IsReadyToPlan {
-		sb.WriteString("### Questions\n")
-		for i, q := range result.Questions {
-			sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, q))
+		// Needs clarification: show questions prominently
+		sb.WriteString("## 🔍 Decisions Needed Before Planning\n\n")
+		if result.ClarifySessionID != "" {
+			sb.WriteString(fmt.Sprintf("**Session**: `%s` | **Round**: %d\n\n", result.ClarifySessionID, result.RoundIndex))
 		}
-		sb.WriteString("\n")
-	}
-
-	// Enriched goal draft is always shown so user/agent can refine every round.
-	if result.EnrichedGoal != "" {
-		sb.WriteString("### Enriched Specification\n")
-		sb.WriteString(result.EnrichedGoal)
-		sb.WriteString("\n\n")
-		if result.IsReadyToPlan {
-			sb.WriteString("> **Next**: Call `plan` with action=`generate`, this `enriched_goal`, and `clarify_session_id` to create tasks.\n")
+		if result.GoalSummary != "" {
+			sb.WriteString(fmt.Sprintf("**Goal**: %s\n\n", result.GoalSummary))
 		}
-	}
 
-	if !result.IsReadyToPlan && result.ClarifySessionID != "" {
-		sb.WriteString("### Next Clarify Call Payload\n")
-		sb.WriteString("```json\n")
-		sb.WriteString("{\n")
-		sb.WriteString("  \"action\": \"clarify\",\n")
-		sb.WriteString(fmt.Sprintf("  \"clarify_session_id\": \"%s\",\n", result.ClarifySessionID))
-		sb.WriteString("  \"answers\": [\n")
-		sb.WriteString("    {\"question\": \"<question>\", \"answer\": \"<answer>\"}\n")
-		sb.WriteString("  ]\n")
-		sb.WriteString("}\n")
-		sb.WriteString("```\n")
+		// Questions with clear formatting
+		if len(result.Questions) > 0 {
+			for i, q := range result.Questions {
+				sb.WriteString(fmt.Sprintf("### Decision %d\n", i+1))
+				sb.WriteString(fmt.Sprintf("%s\n\n", q))
+			}
+		}
+
+		// Show enriched spec as collapsible context
+		if result.EnrichedGoal != "" {
+			sb.WriteString("### Draft Specification\n")
+			sb.WriteString(result.EnrichedGoal)
+			sb.WriteString("\n\n")
+		}
+
+		sb.WriteString("> Answer the decisions above, or say **auto** to let TaskWing choose.\n")
 	}
 
 	if result.MaxRoundsReached {
-		sb.WriteString("\n⚠️ Clarification reached maximum rounds before becoming ready.\n")
+		sb.WriteString("\n⚠️ Maximum clarification rounds reached.\n")
 	}
 
-	// Context used
+	// Context transparency: show what knowledge was consulted
 	if result.ContextUsed != "" {
 		sb.WriteString(fmt.Sprintf("\n*%s*\n", result.ContextUsed))
 	}
@@ -820,25 +814,22 @@ func FormatGenerateResult(result *app.GenerateResult) string {
 	var sb strings.Builder
 
 	sb.WriteString("## ✅ Plan Generated\n\n")
-	sb.WriteString(fmt.Sprintf("**Plan ID**: `%s`\n", result.PlanID))
-	sb.WriteString(fmt.Sprintf("**Goal**: %s\n\n", result.Goal))
+	sb.WriteString(fmt.Sprintf("**Plan**: `%s`\n", result.PlanID))
+	sb.WriteString(fmt.Sprintf("**Goal**: %s\n", result.Goal))
+	sb.WriteString(fmt.Sprintf("**Tasks**: %d\n\n", len(result.Tasks)))
 
-	// Tasks
+	// Tasks as a table for scannability
 	if len(result.Tasks) > 0 {
-		sb.WriteString("### Tasks\n")
+		sb.WriteString("| # | Task | Priority |\n")
+		sb.WriteString("|---|------|----------|\n")
 		for i, t := range result.Tasks {
-			sb.WriteString(fmt.Sprintf("%d. **%s** (P%d)\n", i+1, t.Title, t.Priority))
-			if t.Description != "" {
-				desc := truncate(t.Description, 100)
-				sb.WriteString(fmt.Sprintf("   %s\n", desc))
-			}
+			sb.WriteString(fmt.Sprintf("| %d | %s | P%d |\n", i+1, t.Title, t.Priority))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Hint
 	if result.Hint != "" {
-		sb.WriteString(fmt.Sprintf("> **Hint**: %s\n", result.Hint))
+		sb.WriteString(fmt.Sprintf("> %s\n", result.Hint))
 	}
 
 	return strings.TrimSpace(sb.String())
