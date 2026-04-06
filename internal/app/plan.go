@@ -174,20 +174,26 @@ func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string, sco
 
 	ks := knowledge.NewService(a.ctx.Repo, a.ctx.LLMCfg)
 
-	// Build scope-aware query: prefer task queries, fall back to scope-based, then generic
+	// Scope-aware query with broad project context as baseline.
+	// The scope narrows the search, but constraints are always included
+	// (IncludeConstraints=true) so the task always has the full project rules.
 	var query string
-	if len(queries) > 0 {
+	if len(queries) > 0 && scope != "" {
+		// Combine both: task-specific queries + scope for broader coverage
+		query = strings.Join(queries, " ") + " " + scope
+	} else if len(queries) > 0 {
 		query = strings.Join(queries, " ")
 	} else if scope != "" {
 		query = scope + " patterns constraints decisions"
 	} else {
-		query = "project constraints and key technology decisions"
+		query = "project architecture patterns constraints decisions"
 	}
 
 	modelID := a.ctx.LLMCfg.Model
 	opts := knowledge.DefaultContextOptionsForModel(modelID)
 	opts.Query = query
 	opts.IncludeArchitectureMD = false // Included selectively for first task
+	opts.IncludeConstraints = true     // Always include all constraints regardless of scope
 	opts.UseLLMQueries = false         // Use queries directly for speed
 
 	memoryPath, _ := config.GetMemoryBasePath()
