@@ -108,7 +108,7 @@ func (r *Runner) runSync(ctx context.Context, projectPath string, opts RunOption
 	}
 
 	// Build context from wave 1 findings for wave 2
-	wave1Context := buildWaveContext(wave1Results)
+	wave1Context := buildWaveContext(wave1Results, r.llmCfg.Model)
 
 	// Wave 2: code + git (parallel, with wave 1 context)
 	wave2Input := input
@@ -301,10 +301,15 @@ func splitAgentsByWave(agents []core.Agent) (wave1, wave2 []core.Agent) {
 }
 
 // buildWaveContext converts wave 1 outputs into context for wave 2 agents.
-// Truncates descriptions and total size to avoid blowing up the code agent's context budget.
-func buildWaveContext(results []core.Output) map[string]any {
-	const maxDescLen = 400      // Truncate individual descriptions
-	const maxSummaryLen = 12000 // Cap total summary (~3k tokens)
+// Budget is derived from model capacity when modelID is provided.
+func buildWaveContext(results []core.Output, modelID ...string) map[string]any {
+	maxDescLen := 400
+	maxSummaryLen := 12000
+	if len(modelID) > 0 && modelID[0] != "" {
+		budgets := llm.ComputeBudgets(modelID[0])
+		maxDescLen = budgets.WaveDescChars
+		maxSummaryLen = budgets.WaveSummaryChars
+	}
 
 	var summaryParts []string
 	totalLen := 0

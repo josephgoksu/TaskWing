@@ -180,10 +180,10 @@ func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (st
 		query = strings.Join(queries, " ")
 	}
 
-	opts := knowledge.DefaultContextOptions()
+	modelID := a.ctx.LLMCfg.Model
+	opts := knowledge.DefaultContextOptionsForModel(modelID)
 	opts.Query = query
 	opts.IncludeArchitectureMD = false // Included selectively for first task
-	opts.MaxNodes = 20                 // Richer context with batch embeddings
 	opts.UseLLMQueries = false         // Use queries directly for speed
 
 	memoryPath, _ := config.GetMemoryBasePath()
@@ -194,7 +194,7 @@ func (a *PlanApp) defaultTaskEnricher(ctx context.Context, queries []string) (st
 		return "", err
 	}
 
-	return pc.FormatCompact(), nil
+	return pc.FormatCompact(modelID), nil
 }
 
 // Clarify refines a development goal by asking clarifying questions.
@@ -679,7 +679,7 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 		}
 
 		semanticResult := middleware.Validate(&planner.LLMPlanResponse{
-			GoalSummary:         truncateString(opts.Goal, 500),
+			GoalSummary:         truncateString(opts.Goal, llm.ComputeBudgets(llmCfg.Model).GoalSummaryChars),
 			Rationale:           opts.EnrichedGoal,
 			Tasks:               plannerTasks,
 			EstimatedComplexity: "medium", // Default
@@ -864,8 +864,8 @@ func truncateString(s string, maxLen int) string {
 }
 
 // loadArchitectureMD reads .taskwing/ARCHITECTURE.md for the current project.
-// Caps at 8000 chars to avoid blowing up the first task's context.
-func loadArchitectureMD() string {
+// Cap derived from model capacity.
+func loadArchitectureMD(modelID string) string {
 	memoryPath, err := config.GetMemoryBasePath()
 	if err != nil || memoryPath == "" {
 		return ""
@@ -875,9 +875,9 @@ func loadArchitectureMD() string {
 	if err != nil {
 		return ""
 	}
-	const maxArchLen = 8000
-	if len(content) > maxArchLen {
-		content = append(content[:maxArchLen], []byte("\n...[truncated]")...)
+	maxLen := llm.ComputeBudgets(modelID).ArchitectureMDChars
+	if len(content) > maxLen {
+		content = append(content[:maxLen], []byte("\n...[truncated]")...)
 	}
 	return string(content)
 }
@@ -1010,7 +1010,7 @@ func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[strin
 
 			// First task gets ARCHITECTURE.md for full architectural context
 			if i == 0 {
-				if archContent := loadArchitectureMD(); archContent != "" {
+				if archContent := loadArchitectureMD(a.ctx.LLMCfg.Model); archContent != "" {
 					t.ContextSummary = "## Architecture Overview\n" + archContent + "\n\n" + t.ContextSummary
 				}
 			}
@@ -1104,7 +1104,7 @@ func (a *PlanApp) parseTasksFromMetadata(ctx context.Context, metadata map[strin
 
 				// First task gets ARCHITECTURE.md for full architectural context
 				if i == 0 {
-					if archContent := loadArchitectureMD(); archContent != "" {
+					if archContent := loadArchitectureMD(a.ctx.LLMCfg.Model); archContent != "" {
 						newTask.ContextSummary = "## Architecture Overview\n" + archContent + "\n\n" + newTask.ContextSummary
 					}
 				}

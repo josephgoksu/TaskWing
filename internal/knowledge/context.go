@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/llm"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 	"github.com/josephgoksu/TaskWing/internal/utils"
 )
@@ -62,9 +63,14 @@ type ContextOptions struct {
 	// MemoryBasePath is the .taskwing/memory path.
 	// Resolved from config if empty.
 	MemoryBasePath string
+
+	// ModelID is used to derive context budgets from model capacity.
+	// If empty, uses conservative defaults.
+	ModelID string
 }
 
 // DefaultContextOptions returns options optimized for rich planning-grade context.
+// Uses conservative defaults that work for 32K+ models.
 func DefaultContextOptions() ContextOptions {
 	return ContextOptions{
 		IncludeArchitectureMD: true,
@@ -75,6 +81,22 @@ func DefaultContextOptions() ContextOptions {
 		MaxNodes:              25,
 		NodesPerQuery:         5,
 		CheckFreshness:        true,
+	}
+}
+
+// DefaultContextOptionsForModel returns options scaled to the model's context window.
+func DefaultContextOptionsForModel(modelID string) ContextOptions {
+	budgets := llm.ComputeBudgets(modelID)
+	return ContextOptions{
+		IncludeArchitectureMD: true,
+		IncludeConstraints:    true,
+		IncludeRelevantNodes:  true,
+		UseLLMQueries:         true,
+		IncludeSymbols:        false,
+		MaxNodes:              budgets.DefaultMaxNodes,
+		NodesPerQuery:         budgets.NodesPerQuery,
+		CheckFreshness:        true,
+		ModelID:               modelID,
 	}
 }
 
@@ -154,15 +176,23 @@ func (pc *ProjectContext) Format() string {
 	return sb.String()
 }
 
-// FormatCompact returns a shorter version suitable for task context embedding.
-// Omits ARCHITECTURE.md (too large for per-task context) and truncates content.
-func (pc *ProjectContext) FormatCompact() string {
+// FormatCompact returns a version suitable for task context embedding.
+// Budget is derived from ModelID if set, otherwise uses conservative defaults.
+func (pc *ProjectContext) FormatCompact(modelID ...string) string {
+	constraintChars := 500
+	nodeChars := 800
+	if len(modelID) > 0 && modelID[0] != "" {
+		budgets := llm.ComputeBudgets(modelID[0])
+		constraintChars = budgets.ConstraintChars
+		nodeChars = budgets.RelevantNodeChars
+	}
+
 	var sb strings.Builder
 
 	if len(pc.Constraints) > 0 {
 		sb.WriteString("## Architectural Constraints\n")
 		for _, n := range pc.Constraints {
-			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", n.Summary, utils.Truncate(n.Text(), 500)))
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", n.Summary, utils.Truncate(n.Text(), constraintChars)))
 		}
 		sb.WriteString("\n")
 	}
@@ -173,7 +203,7 @@ func (pc *ProjectContext) FormatCompact() string {
 			if node.Node == nil {
 				continue
 			}
-			content := utils.Truncate(node.Node.Text(), 800)
+			content := utils.Truncate(node.Node.Text(), nodeChars)
 			sb.WriteString(fmt.Sprintf("- **%s** (%s): %s\n", node.Node.Summary, node.Node.Type, content))
 		}
 	}
