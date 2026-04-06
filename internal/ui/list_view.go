@@ -52,26 +52,16 @@ func renderNodeListInternal(nodes []memory.Node, verbose bool, basePath string) 
 		renderGroupedList(byType, typeOrder, showWorkspace, basePath)
 	}
 
-	// Compact legend for stale/missing tags (only shown when relevant)
-	var staleCount, missingCount int
+	// Legend for [missing] tag (stale nodes are now deleted immediately, no tag needed)
+	var missingCount int
 	for _, n := range nodes {
-		switch n.VerificationStatus {
-		case "stale":
-			staleCount++
-		case "missing":
+		if n.VerificationStatus == "missing" {
 			missingCount++
 		}
 	}
-	if staleCount > 0 || missingCount > 0 {
+	if missingCount > 0 {
 		dimStyle := lipgloss.NewStyle().Foreground(ColorDim)
-		var parts []string
-		if staleCount > 0 {
-			parts = append(parts, fmt.Sprintf("[stale]=%d not re-extracted last run", staleCount))
-		}
-		if missingCount > 0 {
-			parts = append(parts, fmt.Sprintf("[missing]=%d evidence files gone", missingCount))
-		}
-		fmt.Printf("\n  %s\n", dimStyle.Render(strings.Join(parts, "  ")))
+		fmt.Printf("\n  %s\n", dimStyle.Render(fmt.Sprintf("[missing]=%d evidence files no longer on disk", missingCount)))
 	}
 }
 
@@ -174,15 +164,12 @@ func renderGroupedList(byType map[string][]memory.Node, typeOrder []string, show
 				summary = utils.Truncate(n.Text(), maxSummaryWidth-4)
 			}
 
-			// Check freshness if basePath is available and node has evidence
+			// Check freshness: only show [missing] (stale nodes are deleted immediately now)
 			staleTag := ""
 			staleTagWidth := 0
 			if basePath != "" && n.Evidence != "" {
 				result := knowledge.Check(basePath, n.Evidence, n.CreatedAt)
-				if result.Status == knowledge.StatusStale {
-					staleTag = staleStyle.Render(" [stale]")
-					staleTagWidth = 8 // " [stale]"
-				} else if result.Status == knowledge.StatusMissing {
+				if result.Status == knowledge.StatusMissing {
 					staleTag = staleStyle.Render(" [missing]")
 					staleTagWidth = 10 // " [missing]"
 				}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1142,38 +1143,48 @@ func (s *SQLiteStore) ReconcileStaleNodes(agentName string, workspaces ...string
 	defer func() { rollbackWithLog(tx, "reconcile-stale") }()
 
 	var wsFilter string
-	var deleteArgs, demoteArgs []any
+	var deleteArgs []any
 	if len(workspaces) > 0 {
 		placeholders := "?" + strings.Repeat(",?", len(workspaces)-1)
 		wsFilter = fmt.Sprintf(" AND workspace IN (%s)", placeholders)
 		deleteArgs = []any{agentName}
-		demoteArgs = []any{agentName}
 		for _, ws := range workspaces {
 			deleteArgs = append(deleteArgs, ws)
-			demoteArgs = append(demoteArgs, ws)
 		}
 	} else {
 		deleteArgs = []any{agentName}
-		demoteArgs = []any{agentName}
 	}
 
-	result, err := tx.Exec("DELETE FROM nodes WHERE source_agent = ? AND stale_count >= 2"+wsFilter, deleteArgs...)
+	// Get IDs of stale nodes for cascading edge cleanup
+	idRows, err := tx.Query("SELECT id FROM nodes WHERE source_agent = ? AND stale_count >= 1"+wsFilter, deleteArgs...)
+	if err != nil {
+		return 0, 0, fmt.Errorf("query stale node IDs: %w", err)
+	}
+	var staleIDs []string
+	for idRows.Next() {
+		var id string
+		if err := idRows.Scan(&id); err == nil {
+			staleIDs = append(staleIDs, id)
+		}
+	}
+	_ = idRows.Close()
+
+	// Cascade: delete edges referencing stale nodes
+	for _, id := range staleIDs {
+		_, _ = tx.Exec("DELETE FROM node_edges WHERE from_node_id = ? OR to_node_id = ?", id, id)
+	}
+
+	// Delete stale nodes immediately (no demotion, no two-strike)
+	result, err := tx.Exec("DELETE FROM nodes WHERE source_agent = ? AND stale_count >= 1"+wsFilter, deleteArgs...)
 	if err != nil {
 		return 0, 0, fmt.Errorf("delete stale nodes: %w", err)
 	}
 	deleted, _ := result.RowsAffected()
 
-	result, err = tx.Exec(`UPDATE nodes SET verification_status = 'stale', confidence_score = confidence_score * 0.5
-		WHERE source_agent = ? AND stale_count = 1`+wsFilter, demoteArgs...)
-	if err != nil {
-		return 0, 0, fmt.Errorf("demote stale nodes: %w", err)
-	}
-	demoted, _ := result.RowsAffected()
-
 	if err := tx.Commit(); err != nil {
 		return 0, 0, fmt.Errorf("commit reconcile: %w", err)
 	}
-	return int(deleted), int(demoted), nil
+	return int(deleted), 0, nil
 }
 
 // DeleteNodesByFiles removes nodes from a specific agent that reference any of the given files.
@@ -1486,7 +1497,71 @@ func (s *SQLiteStore) UpsertNodeBySummary(n Node) error {
 	}
 	_ = rows.Close()
 
-	// No similar node found - insert new node (including evidence and debt columns)
+	// Third pass: embedding-based cosine similarity (catches semantic duplicates
+	// where wording differs but meaning is identical, e.g. "Repository pattern
+	// for persistence" vs "Repository abstraction unifies database access")
+	if len(n.Embedding) > 0 {
+		embRows, embErr := tx.Query(`
+			SELECT id, summary, content, embedding FROM nodes
+			WHERE source_agent = ? AND embedding IS NOT NULL AND length(embedding) > 0
+		`, n.SourceAgent)
+		if embErr == nil {
+			const cosineThreshold float32 = 0.85
+			var bestID, bestSummary, bestContent string
+			var bestScore float32
+			for embRows.Next() {
+				var eid, esummary, econtent string
+				var rawEmb []byte
+				if err := embRows.Scan(&eid, &esummary, &econtent, &rawEmb); err != nil {
+					continue
+				}
+				existing := bytesToFloat32Slice(rawEmb)
+				if len(existing) != len(n.Embedding) {
+					continue
+				}
+				score := cosineSimilarityF32(n.Embedding, existing)
+				if score >= cosineThreshold && score > bestScore {
+					bestScore = score
+					bestID = eid
+					bestSummary = esummary
+					bestContent = econtent
+				}
+			}
+			_ = embRows.Close()
+
+			if bestID != "" {
+				// Merge into the semantically matching node
+				_ = bestSummary // used for logging if needed
+				if n.Content != bestContent {
+					_, err = tx.Exec(`
+						UPDATE nodes SET content = ?, type = ?, embedding = ?, summary = ?,
+						       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?,
+						       debt_score = ?, debt_reason = ?, refactor_hint = ?,
+						       stale_count = 0
+						WHERE id = ?
+					`, n.Content, n.Type, embeddingBytes, n.Summary,
+						n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
+						n.DebtScore, n.DebtReason, n.RefactorHint, bestID)
+				} else {
+					_, err = tx.Exec(`
+						UPDATE nodes SET type = ?, embedding = ?, summary = ?,
+						       evidence = ?, verification_status = ?, verification_result = ?, confidence_score = ?,
+						       debt_score = ?, debt_reason = ?, refactor_hint = ?,
+						       stale_count = 0
+						WHERE id = ?
+					`, n.Type, embeddingBytes, n.Summary,
+						n.Evidence, n.VerificationStatus, n.VerificationResult, n.ConfidenceScore,
+						n.DebtScore, n.DebtReason, n.RefactorHint, bestID)
+				}
+				if err != nil {
+					return fmt.Errorf("update embedding-matched node: %w", err)
+				}
+				return tx.Commit()
+			}
+		}
+	}
+
+	// No match found by any method - insert new node
 	_, err = tx.Exec(`
 		INSERT INTO nodes (id, content, type, summary, source_agent, workspace, embedding, created_at,
 		                   evidence, verification_status, verification_result, confidence_score,
@@ -2116,6 +2191,23 @@ func bytesToFloat32Slice(buf []byte) []float32 {
 		floats[i] = *(*float32)(unsafe.Pointer(&bits))
 	}
 	return floats
+}
+
+// cosineSimilarityF32 computes cosine similarity between two float32 vectors.
+func cosineSimilarityF32(a, b []float32) float32 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+	var dot, normA, normB float64
+	for i := range a {
+		dot += float64(a[i]) * float64(b[i])
+		normA += float64(a[i]) * float64(a[i])
+		normB += float64(b[i]) * float64(b[i])
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return float32(dot / (math.Sqrt(normA) * math.Sqrt(normB)))
 }
 
 const (
