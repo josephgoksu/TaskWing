@@ -147,6 +147,45 @@ func GetMemoryBasePathOrGlobal() (string, error) {
 	return filepath.Join(dir, "memory"), nil
 }
 
+// AutonomousModeMarkerName is the marker file written when the user explicitly
+// invokes autonomous task execution (e.g. via /taskwing:next or task action=next).
+// The continue-check Stop hook only auto-continues to the next task when this
+// marker exists. Without it, ANY assistant turn that ends would trigger the
+// hook to start executing tasks - even harmless commands like /taskwing:context.
+const AutonomousModeMarkerName = ".autonomous_mode"
+
+// MarkAutonomousMode writes the autonomous mode marker file to the project's
+// memory directory. Called by the MCP task next handler when the user
+// explicitly starts task execution. Failure to write is non-fatal.
+func MarkAutonomousMode() {
+	memoryPath, err := GetMemoryBasePath()
+	if err != nil {
+		return
+	}
+	markerPath := filepath.Join(memoryPath, AutonomousModeMarkerName)
+	_ = os.WriteFile(markerPath, []byte("1"), 0644)
+}
+
+// IsAutonomousMode returns true if the autonomous mode marker exists in the
+// project's memory directory. Used by the continue-check hook to decide
+// whether to block the assistant turn and continue to the next task.
+func IsAutonomousMode(memoryPath string) bool {
+	if memoryPath == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(memoryPath, AutonomousModeMarkerName))
+	return err == nil
+}
+
+// ClearAutonomousMode removes the autonomous mode marker. Called by the
+// session-end hook to ensure a fresh session does not auto-continue.
+func ClearAutonomousMode(memoryPath string) {
+	if memoryPath == "" {
+		return
+	}
+	_ = os.Remove(filepath.Join(memoryPath, AutonomousModeMarkerName))
+}
+
 // GetProjectRoot returns the detected project root path.
 // Returns error if project context is not set.
 func GetProjectRoot() (string, error) {

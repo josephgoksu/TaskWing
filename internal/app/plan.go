@@ -538,21 +538,19 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 			Message: "goal is required",
 		}, nil
 	}
-	if strings.TrimSpace(opts.ClarifySessionID) == "" {
+	// Require either an enriched_goal (user-provided) or a clarify_session_id.
+	// If both are missing, there's nothing to generate from.
+	if opts.EnrichedGoal == "" && strings.TrimSpace(opts.ClarifySessionID) == "" {
 		return &GenerateResult{
 			Success: false,
-			Message: "clarify_session_id is required (run Clarify first)",
-			Hint:    "Call plan action=clarify until is_ready_to_plan=true, then pass clarify_session_id to generate.",
-		}, nil
-	}
-	if opts.EnrichedGoal == "" {
-		return &GenerateResult{
-			Success: false,
-			Message: "enriched_goal is required (run Clarify first)",
+			Message: "Either enriched_goal or clarify_session_id is required",
+			Hint:    "Provide enriched_goal directly, or run plan action=clarify first.",
 		}, nil
 	}
 
-	if a.ctx != nil && a.ctx.Repo != nil {
+	// Only validate the clarify session if one was provided.
+	// Users with a pre-built enriched_goal can skip the clarify round-trip.
+	if strings.TrimSpace(opts.ClarifySessionID) != "" && a.ctx != nil && a.ctx.Repo != nil {
 		session, err := a.ctx.Repo.GetClarifySession(strings.TrimSpace(opts.ClarifySessionID))
 		if err != nil {
 			return &GenerateResult{
@@ -566,6 +564,10 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 				Message: "clarification is not complete for this session",
 				Hint:    "Continue plan action=clarify with clarify_session_id and answers until is_ready_to_plan=true.",
 			}, nil
+		}
+		// If no enriched_goal was provided but session exists, use the session's enriched goal
+		if opts.EnrichedGoal == "" {
+			opts.EnrichedGoal = session.EnrichedGoal
 		}
 	}
 
@@ -665,8 +667,13 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 
 	// Run semantic validation (file paths, shell commands)
 	var semanticWarnings, semanticErrors []string
+	// Track whether this is a passthrough call (user provided tasks directly).
+	// Passthrough skips semantic validation and path correction since the user
+	// trusts their own input and does not want TaskWing to rewrite it.
+	isPassthrough := len(opts.ExplicitTasks) > 0
+
 	var validationStats *planner.SemanticValidationStats
-	{
+	if !isPassthrough {
 		// Prefer project base path when available (MCP/CLI may run from different cwd)
 		workDir := a.ctx.BasePath
 		if workDir == "" {
@@ -717,8 +724,9 @@ func (a *PlanApp) Generate(ctx context.Context, opts GenerateOptions) (*Generate
 		}
 	}
 
-	// Run PlanVerifier to auto-correct paths and commands using code intelligence
-	{
+	// Run PlanVerifier to auto-correct paths and commands using code intelligence.
+	// Skipped for passthrough mode since the user trusts their own paths.
+	if !isPassthrough {
 		// Try to get codeintel QueryService (optional - best effort)
 		var queryService *codeintel.QueryService
 		var db *sql.DB

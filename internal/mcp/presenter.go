@@ -985,12 +985,7 @@ func FormatExpandResult(result *app.ExpandResult) string {
 		}
 		sb.WriteString(fmt.Sprintf("%d. **%s**%s (P%d)\n", i+1, t.Title, complexityBadge, t.Priority))
 		if t.Description != "" {
-			// Show first 100 chars of description
-			desc := t.Description
-			if len(desc) > 100 {
-				desc = desc[:97] + "..."
-			}
-			sb.WriteString(fmt.Sprintf("   %s\n", desc))
+			sb.WriteString(fmt.Sprintf("   %s\n", t.Description))
 		}
 	}
 	sb.WriteString("\n")

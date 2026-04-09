@@ -556,6 +556,11 @@ func handleTaskNext(ctx context.Context, repo *memory.Repository, params TaskToo
 		createBranch = *params.CreateBranch
 	}
 
+	// Mark autonomous mode: the user explicitly invoked task execution.
+	// The continue-check Stop hook only auto-continues when this marker exists,
+	// preventing accidental task execution after innocent commands like /taskwing:context.
+	config.MarkAutonomousMode()
+
 	result, err := taskApp.Next(ctx, app.TaskNextOptions{
 		PlanID:            params.PlanID,
 		SessionID:         sessionID, // Use validated/trimmed value
@@ -835,32 +840,34 @@ func handlePlanClarify(ctx context.Context, repo *memory.Repository, params Plan
 }
 
 // handlePlanGenerate implements the 'generate' action - create a plan with tasks.
+// Supports two modes:
+//   - Standard: LLM generates tasks from clarified goal (requires clarify_session_id + enriched_goal)
+//   - Passthrough: caller provides tasks directly, bypassing LLM rewriting
+//     (requires goal + tasks, clarify_session_id optional)
 func handlePlanGenerate(ctx context.Context, repo *memory.Repository, params PlanToolParams) (*PlanToolResult, error) {
-	// Validate ALL required fields at once to avoid sequential error frustration
 	goal := strings.TrimSpace(params.Goal)
 	enrichedGoal := strings.TrimSpace(params.EnrichedGoal)
 	clarifySessionID := strings.TrimSpace(params.ClarifySessionID)
+	isPassthrough := len(params.Tasks) > 0
 
 	var missingFields []string
 	if goal == "" {
 		missingFields = append(missingFields, "goal")
 	}
-	if enrichedGoal == "" {
-		missingFields = append(missingFields, "enriched_goal")
-	}
-	if clarifySessionID == "" {
-		missingFields = append(missingFields, "clarify_session_id")
+	// Passthrough mode: only require tasks (already checked via isPassthrough).
+	// Standard mode: require enriched_goal or clarify_session_id to derive one.
+	if !isPassthrough {
+		if enrichedGoal == "" && clarifySessionID == "" {
+			missingFields = append(missingFields, "enriched_goal_or_clarify_session_id")
+		}
 	}
 
 	if len(missingFields) > 0 {
+		hint := "First call `plan clarify` until is_ready_to_plan=true, then pass goal, enriched_goal, and clarify_session_id to generate. Or provide a tasks array for passthrough mode."
 		return &PlanToolResult{
-			Action: "generate",
-			Error:  fmt.Sprintf("missing required fields: %v", missingFields),
-			Content: FormatMultiValidationError(
-				"generate",
-				missingFields,
-				"First call `plan clarify` until is_ready_to_plan=true, then pass goal, enriched_goal, and clarify_session_id to generate.",
-			),
+			Action:  "generate",
+			Error:   fmt.Sprintf("missing required fields: %v", missingFields),
+			Content: FormatMultiValidationError("generate", missingFields, hint),
 		}, nil
 	}
 

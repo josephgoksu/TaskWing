@@ -168,6 +168,16 @@ func init() {
 
 // runContinueCheck implements the main circuit breaker logic
 func runContinueCheck(maxTasks, maxMinutes int) error {
+	// Bail early if the user has not explicitly entered autonomous mode.
+	// The autonomous marker is set by the MCP `task next` handler when the user
+	// invokes /taskwing:next. Without it, ANY assistant turn would auto-continue
+	// to task execution - even harmless commands like /taskwing:context.
+	memoryPath, _ := resolveHookMemoryPath()
+	if !config.IsAutonomousMode(memoryPath) {
+		// Allow the assistant turn to end naturally - no blocking, no continuation.
+		return outputHookResponse(HookResponse{})
+	}
+
 	// Load session state
 	session, err := loadHookSession()
 	if err != nil {
@@ -426,6 +436,12 @@ func runSessionInit() error {
 		return fmt.Errorf("failed to save session: %w", err)
 	}
 
+	// Clear any stale autonomous marker from a previous session that may not
+	// have ended cleanly. New sessions always start in manual mode.
+	if memoryPath, mpErr := resolveHookMemoryPath(); mpErr == nil {
+		config.ClearAutonomousMode(memoryPath)
+	}
+
 	// Output context for SessionStart (gets added to conversation)
 	// Note: Circuit breaker values shown are defaults; actual values depend on hook config
 	planInfo := session.PlanID
@@ -480,6 +496,11 @@ Tasks Completed: %d
 	// Dream Consolidation: extract knowledge from completed tasks
 	if session.TasksCompleted > 0 {
 		dreamConsolidate(session)
+	}
+
+	// Clear autonomous mode marker so the next session starts in manual mode.
+	if memoryPath, mpErr := resolveHookMemoryPath(); mpErr == nil {
+		config.ClearAutonomousMode(memoryPath)
 	}
 
 	// Remove session file

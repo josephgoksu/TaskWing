@@ -328,8 +328,12 @@ type PlanToolParams struct {
 	// Optional for: decompose (allows user modifications)
 	Phases []PhaseInput `json:"phases,omitempty"`
 
-	// Tasks is user-edited task data for expand feedback.
-	// Optional for: expand (allows user modifications)
+	// Tasks is user-provided task data. Two uses:
+	//   - expand: user-edited task data as feedback for regeneration
+	//   - generate: PASSTHROUGH mode - tasks stored verbatim, skipping LLM
+	//     rewriting, semantic validation, and path correction. When tasks are
+	//     provided to generate, clarify_session_id becomes optional since the
+	//     user has already defined the plan structure.
 	Tasks []TaskInput `json:"tasks,omitempty"`
 
 	// Feedback is a regeneration hint when user wants changes.
