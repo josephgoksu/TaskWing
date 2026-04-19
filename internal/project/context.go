@@ -24,9 +24,6 @@ const (
 	// MarkerNone indicates no project marker was found.
 	MarkerNone MarkerType = iota
 
-	// MarkerTaskWing indicates a .taskwing directory was found (highest priority).
-	MarkerTaskWing
-
 	// MarkerGoMod indicates a go.mod file was found.
 	MarkerGoMod
 
@@ -51,8 +48,6 @@ func (m MarkerType) String() string {
 	switch m {
 	case MarkerNone:
 		return "none"
-	case MarkerTaskWing:
-		return ".taskwing"
 	case MarkerGoMod:
 		return "go.mod"
 	case MarkerPackageJSON:
@@ -74,8 +69,6 @@ func (m MarkerType) String() string {
 // Higher values indicate higher priority.
 func (m MarkerType) Priority() int {
 	switch m {
-	case MarkerTaskWing:
-		return 100 // Highest - explicit context
 	case MarkerGoMod, MarkerPackageJSON, MarkerCargoToml, MarkerPomXML, MarkerPyProjectToml:
 		return 50 // Medium - language manifests
 	case MarkerGit:
@@ -143,11 +136,6 @@ func relativePath(base, target string) (string, error) {
 		return ".", nil
 	}
 	return rel, nil
-}
-
-// HasTaskWingDir returns true if the project already has a .taskwing directory.
-func (c *Context) HasTaskWingDir() bool {
-	return c.MarkerType == MarkerTaskWing
 }
 
 // Detector defines the interface for project detection.

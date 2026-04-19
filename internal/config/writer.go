@@ -66,7 +66,7 @@ llm:
 			content += fmt.Sprintf(`  apiKeys:
     %s: %s
 `, provider, quotedKey)
-			// Note: No longer writing legacy llm.apiKey - read path handles migration
+
 		}
 		return os.WriteFile(configFile, []byte(content), 0600)
 	}

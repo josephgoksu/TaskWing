@@ -23,10 +23,3 @@ func ContainsCanonicalServerName(text string) bool {
 	return strings.Contains(text, CanonicalServerName)
 }
 
-// No-op stubs for the removed crash-logging subsystem (internal/logger).
-
-func SetLastInput(_ string) {}
-func SetVersion(_ string)   {}
-func SetBasePath(_ string)  {}
-func SetCommand(_ string)   {}
-func HandlePanic()          {}

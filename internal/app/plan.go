@@ -881,15 +881,14 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen]
 }
 
-// loadArchitectureMD reads .taskwing/ARCHITECTURE.md for the current project.
+// loadArchitectureMD reads ARCHITECTURE.md from the global project store.
 // Cap derived from model capacity.
 func loadArchitectureMD(modelID string) string {
 	memoryPath, err := config.GetMemoryBasePath()
 	if err != nil || memoryPath == "" {
 		return ""
 	}
-	basePath := filepath.Dir(filepath.Dir(memoryPath))
-	content, err := os.ReadFile(filepath.Join(basePath, ".taskwing", "ARCHITECTURE.md"))
+	content, err := os.ReadFile(filepath.Join(memoryPath, "ARCHITECTURE.md"))
 	if err != nil {
 		return ""
 	}

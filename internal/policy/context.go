@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/spf13/afero"
 )
 
@@ -194,7 +195,11 @@ func LoadProtectedZonesFromConfig(workDir string) []string {
 
 // LoadProtectedZonesFromConfigWithFs loads protected zones using a custom filesystem.
 func LoadProtectedZonesFromConfigWithFs(workDir string, fs afero.Fs) []string {
-	configPath := filepath.Join(workDir, ".taskwing", "protected_zones.txt")
+	storePath, err := config.GetProjectStorePath(workDir)
+	if err != nil {
+		return nil
+	}
+	configPath := filepath.Join(storePath, "protected_zones.txt")
 
 	content, err := afero.ReadFile(fs, configPath)
 	if err != nil {

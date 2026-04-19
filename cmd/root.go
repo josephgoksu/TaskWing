@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/migration"
 	"github.com/josephgoksu/TaskWing/internal/telemetry"
 	"github.com/josephgoksu/TaskWing/internal/ui"
@@ -72,10 +71,6 @@ Every AI tool gets instant context via MCP, without your knowledge base leaving 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	// Set up crash handler
-	initCrashHandler()
-	defer config.HandlePanic()
-
 	// Enable Cobra's built-in suggestions
 	rootCmd.SuggestionsMinimumDistance = 2
 
@@ -99,24 +94,6 @@ func Execute() {
 			}
 		}
 		os.Exit(1)
-	}
-}
-
-// initCrashHandler sets up the crash logging context.
-func initCrashHandler() {
-	// Set version
-	config.SetVersion(version)
-
-	// Set base path for crash logs
-	basePath, err := config.GetMemoryBasePath()
-	if err == nil {
-		// Use the parent of memory path (i.e., .taskwing)
-		config.SetBasePath(strings.TrimSuffix(basePath, "/memory"))
-	}
-
-	// Set command name (will be updated by each subcommand if needed)
-	if len(os.Args) > 1 {
-		config.SetCommand(strings.Join(os.Args[1:], " "))
 	}
 }
 
@@ -146,12 +123,14 @@ func init() {
 	rootCmd.PersistentFlags().Bool("quiet", false, "Minimal output")
 	rootCmd.PersistentFlags().Bool("preview", false, "Dry run (no changes)")
 	rootCmd.PersistentFlags().Bool("no-telemetry", false, "Disable telemetry for this command")
+	rootCmd.PersistentFlags().String("profile", "", "Named config profile from ~/.taskwing/profiles/ (or TASKWING_PROFILE env)")
 
 	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	_ = viper.BindPFlag("json", rootCmd.PersistentFlags().Lookup("json"))
 	_ = viper.BindPFlag("quiet", rootCmd.PersistentFlags().Lookup("quiet"))
 	_ = viper.BindPFlag("preview", rootCmd.PersistentFlags().Lookup("preview"))
 	_ = viper.BindPFlag("no-telemetry", rootCmd.PersistentFlags().Lookup("no-telemetry"))
+	_ = viper.BindPFlag("profile", rootCmd.PersistentFlags().Lookup("profile"))
 
 	// Custom Help Template
 	rootCmd.SetHelpTemplate(`{{if .Long}}

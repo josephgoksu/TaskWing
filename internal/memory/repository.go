@@ -9,9 +9,12 @@ import (
 
 // Repository orchestrates access to both the database and the filesystem.
 // It ensures that data is synchronized between the two stores.
+// When global is set, knowledge queries (ListNodes, etc.) return the union
+// of project and global nodes, with project nodes ranked first.
 type Repository struct {
-	db    *SQLiteStore
-	files *MarkdownStore
+	db     *SQLiteStore
+	files  *MarkdownStore
+	global *Repository // optional global knowledge layer
 }
 
 // NewRepository creates a new repository backed by SQLite and the filesystem.
@@ -32,6 +35,27 @@ func NewDefaultRepository(basePath string) (*Repository, error) {
 	return NewRepository(db, files), nil
 }
 
+// SetGlobal attaches a global knowledge repository for union queries.
+func (r *Repository) SetGlobal(global *Repository) {
+	r.global = global
+}
+
+// Global returns the global knowledge repository, or nil if not set.
+func (r *Repository) Global() *Repository {
+	return r.global
+}
+
+// CreateNodeGlobal creates a node in the global knowledge database.
+func (r *Repository) CreateNodeGlobal(n *Node) error {
+	if r.global == nil {
+		return fmt.Errorf("global knowledge database not available")
+	}
+	if n.Workspace == "" {
+		n.Workspace = "global"
+	}
+	return r.global.CreateNode(n)
+}
+
 // GetDB returns the underlying SQLiteStore (temporary helper during refactor)
 func (r *Repository) GetDB() *SQLiteStore {
 	return r.db
@@ -47,9 +71,15 @@ func (r *Repository) Repair() error {
 	return r.db.Repair()
 }
 
-// Close closes the underlying database connection.
+// Close closes the underlying database connection and the global repo if set.
 func (r *Repository) Close() error {
-	return r.db.Close()
+	err := r.db.Close()
+	if r.global != nil {
+		if gErr := r.global.Close(); gErr != nil && err == nil {
+			err = gErr
+		}
+	}
+	return err
 }
 
 // === Task Repository Methods (delegate to SQLiteStore) ===

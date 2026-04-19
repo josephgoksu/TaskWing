@@ -17,10 +17,7 @@ var markerFiles = []struct {
 	name       string
 	markerType MarkerType
 }{
-	// Highest priority: explicit TaskWing context
-	{".taskwing", MarkerTaskWing},
-
-	// Medium priority: language manifests
+	// Language manifests
 	{"go.mod", MarkerGoMod},
 	{"package.json", MarkerPackageJSON},
 	{"Cargo.toml", MarkerCargoToml},
@@ -72,33 +69,7 @@ func (d *detector) Detect(startPath string) (*Context, error) {
 			gitRoot = current
 		}
 
-		// If .taskwing found, check if it's a valid project marker
-		if marker == MarkerTaskWing {
-			// CRITICAL FIX: Reject .taskwing directories that are above the real project.
-			// Cases where .taskwing should be SKIPPED:
-			// 1. A .git was found below — .taskwing is above gitRoot (likely global config)
-			// 2. .taskwing is above startPath and startPath has nested projects (multi-repo workspace)
-			skipTaskWing := false
-			if gitRoot != "" && gitRoot != current {
-				skipTaskWing = true // .taskwing is above gitRoot
-			} else if current != absPath && d.hasNestedProjects(absPath) {
-				skipTaskWing = true // .taskwing is above a multi-repo workspace
-			}
-
-			if !skipTaskWing {
-				if gitRoot == "" {
-					gitRoot = d.findGitRoot(current)
-				}
-				return &Context{
-					RootPath:   current,
-					MarkerType: MarkerTaskWing,
-					GitRoot:    gitRoot,
-					IsMonorepo: gitRoot != "" && (gitRoot != current || d.hasNestedProjects(current)),
-				}, nil
-			}
-		}
-
-		// Track language manifest as candidate (but continue upward looking for .taskwing)
+		// Track language manifest as candidate
 		if marker.IsLanguageManifest() {
 			// Only update if this is a higher priority or first candidate
 			if bestCandidate == nil || marker.Priority() > bestCandidate.MarkerType.Priority() {

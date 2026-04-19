@@ -1,11 +1,11 @@
 ---
 name: taskwing-context
-description: Use when you need the full project knowledge dump for complete architectural context.
+description: Use when you need project knowledge for architectural context. Returns a compact summary by default.
 ---
 
 # Project Context Dump
 
-Inject the complete project knowledge base into this conversation so you have full architectural context.
+Load the project knowledge base into this conversation for architectural context.
 
 ## When to Use
 
@@ -28,21 +28,33 @@ Inject the complete project knowledge base into this conversation so you have fu
 1. **Constraints first.** Always present constraints before decisions and patterns. They are mandatory rules.
 2. **Decisions second.** Technology and architecture choices frame the project.
 3. **Patterns third.** Recurring practices inform how to write code in this project.
-4. **Completeness over brevity.** Do not omit nodes. The user needs the full picture.
 
 ## Steps
 
-1. Call MCP tool `ask` with `all=true` to dump all knowledge directly from SQLite (no LLM calls, instant):
+1. Call MCP tool `ask` with `all=true` to get a compact knowledge summary (titles + one-liners, grouped by type):
 ```json
 {"all": true}
 ```
 
-2. Present the returned knowledge verbatim. The response is already organized by type (constraints, decisions, patterns, features).
+2. Present the returned knowledge verbatim. The response is organized by type (constraints, decisions, patterns, features).
 
 3. After presenting, confirm: "Project context loaded. I now have full visibility into your architecture. What would you like to work on?"
+
+## Full Detail Mode
+
+If you need the complete knowledge dump with snippets and evidence (for deep investigation), use paginated full detail:
+```json
+{"all": true, "detail": "full", "page": 1}
+```
+Continue with `page=2`, `page=3`, etc. until all pages are retrieved.
+
+For scoped full detail on a specific topic:
+```json
+{"query": "auth", "detail": "full"}
+```
 
 ## Important
 
 - This is a READ-ONLY operation. It does not modify the knowledge base.
-- If the knowledge base is empty, tell the user to run `tw bootstrap` first.
+- If the knowledge base is empty, tell the user to run `taskwing bootstrap` first.
 - Do NOT summarize or filter the results. Show everything so the user can verify.

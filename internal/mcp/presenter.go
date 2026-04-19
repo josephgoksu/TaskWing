@@ -18,20 +18,82 @@ import (
 	"golang.org/x/text/language"
 )
 
-// FormatKnowledgeDump formats all knowledge nodes as Markdown, grouped by type.
-// This is the MCP equivalent of `taskwing knowledge` -- a direct SQLite dump
-// with no LLM calls, semantic search, or embedding lookups.
-func FormatKnowledgeDump(nodes []memory.Node) string {
+// FormatKnowledgeSummary formats knowledge nodes as a compact summary: titles and one-liners only.
+// Targets ~8K chars for ~300 nodes by omitting content, evidence, and snippets.
+func FormatKnowledgeSummary(nodes []memory.Node) string {
 	if len(nodes) == 0 {
 		return "No knowledge nodes found. Run `taskwing bootstrap` to populate."
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "## Knowledge (%d nodes)\n\n", len(nodes))
+	fmt.Fprintf(&sb, "## Knowledge Summary (%d nodes)\n\n", len(nodes))
 
-	// Use canonical type list with constraints first (they are mandatory rules).
+	grouped, typeOrder := groupNodesByType(nodes)
+
+	for _, t := range typeOrder {
+		group := grouped[t]
+		if len(group) == 0 {
+			continue
+		}
+		fmt.Fprintf(&sb, "### %s (%d)\n", cases.Title(language.English).String(t), len(group))
+		for _, n := range group {
+			title := n.Summary
+			if title == "" {
+				title = truncate(n.Content, 120)
+			}
+			fmt.Fprintf(&sb, "- %s", title)
+			if n.Workspace != "" && n.Workspace != "root" {
+				fmt.Fprintf(&sb, " [%s]", n.Workspace)
+			}
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	return strings.TrimSpace(sb.String())
+}
+
+// FormatKnowledgePage formats a paginated slice of knowledge nodes with full detail.
+func FormatKnowledgePage(nodes []memory.Node, page, pageSize int) string {
+	total := len(nodes)
+	if total == 0 {
+		return "No knowledge nodes found. Run `taskwing bootstrap` to populate."
+	}
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if page < 1 {
+		page = 1
+	}
+
+	totalPages := (total + pageSize - 1) / pageSize
+	if page > totalPages {
+		page = totalPages
+	}
+
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+
+	slice := nodes[start:end]
+	content := FormatKnowledgeFull(slice)
+
+	var sb strings.Builder
+	sb.WriteString(content)
+	sb.WriteString("\n\n---\n")
+	fmt.Fprintf(&sb, "Page %d/%d | %d total nodes", page, totalPages, total)
+	if page < totalPages {
+		fmt.Fprintf(&sb, " | Use `page=%d` for more", page+1)
+	}
+	return sb.String()
+}
+
+// groupNodesByType groups nodes by type and returns a deterministic type order
+// with constraints first (they are mandatory rules for context priming).
+func groupNodesByType(nodes []memory.Node) (map[string][]memory.Node, []string) {
 	typeOrder := memory.AllNodeTypes()
-	// Reorder: constraints before decisions for context priming.
 	reordered := make([]string, 0, len(typeOrder)+1)
 	for _, t := range typeOrder {
 		if t == memory.NodeTypeConstraint {
@@ -50,17 +112,35 @@ func FormatKnowledgeDump(nodes []memory.Node) string {
 		grouped[t] = append(grouped[t], nodes[i])
 	}
 
-	rendered := make(map[string]bool)
+	// Append any types not in the canonical list.
+	seen := make(map[string]bool)
 	for _, t := range reordered {
-		writeNodeGroup(&sb, t, grouped[t])
-		rendered[t] = true
+		seen[t] = true
+	}
+	for t := range grouped {
+		if !seen[t] {
+			reordered = append(reordered, t)
+		}
 	}
 
-	// Catch-all: render any types not in the canonical list (future-proofing).
-	for t, group := range grouped {
-		if !rendered[t] {
-			writeNodeGroup(&sb, t, group)
-		}
+	return grouped, reordered
+}
+
+// FormatKnowledgeFull formats all knowledge nodes as Markdown, grouped by type.
+// This is the MCP equivalent of `taskwing knowledge` -- a direct SQLite dump
+// with no LLM calls, semantic search, or embedding lookups.
+func FormatKnowledgeFull(nodes []memory.Node) string {
+	if len(nodes) == 0 {
+		return "No knowledge nodes found. Run `taskwing bootstrap` to populate."
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "## Knowledge (%d nodes)\n\n", len(nodes))
+
+	grouped, typeOrder := groupNodesByType(nodes)
+
+	for _, t := range typeOrder {
+		writeNodeGroup(&sb, t, grouped[t])
 	}
 
 	return strings.TrimSpace(sb.String())

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/project"
 )
 
@@ -560,46 +561,39 @@ func generateSkippedActions(snap *Snapshot, flags Flags) []string {
 func probeProjectHealth(basePath string) ProjectHealth {
 	health := ProjectHealth{}
 
-	taskwingDir := filepath.Join(basePath, ".taskwing")
-	memoryDir := filepath.Join(taskwingDir, "memory")
-	plansDir := filepath.Join(taskwingDir, "plans")
-
-	// Check directory existence
-	if info, err := os.Stat(taskwingDir); err != nil {
+	// Resolve global store path for this project
+	storePath, err := config.GetProjectStorePath(basePath)
+	if err != nil {
 		health.Status = HealthMissing
-		health.Reason = ".taskwing/ directory does not exist"
+		health.Reason = fmt.Sprintf("cannot resolve project store: %v", err)
+		return health
+	}
+
+	// Check store directory existence
+	if info, err := os.Stat(storePath); err != nil {
+		health.Status = HealthMissing
+		health.Reason = "project store does not exist in ~/.taskwing/projects/"
 		return health
 	} else if !info.IsDir() {
 		health.Status = HealthInvalid
-		health.Reason = ".taskwing exists but is not a directory"
+		health.Reason = "project store path exists but is not a directory"
 		return health
 	}
 	health.DirExists = true
+	health.MemoryDirExists = true // store IS the memory dir now
 
-	// Check subdirectories
-	if info, err := os.Stat(memoryDir); err == nil && info.IsDir() {
-		health.MemoryDirExists = true
+	// Check if DB file exists
+	dbPath := filepath.Join(storePath, "memory.db")
+	if _, err := os.Stat(dbPath); err == nil {
+		health.DBAccessible = true
 	}
-	if info, err := os.Stat(plansDir); err == nil && info.IsDir() {
-		health.PlansDirExists = true
-	}
-
-	// Check if we can access/create DB (simplified - just check memory dir)
-	health.DBAccessible = health.MemoryDirExists
 
 	// Determine overall status
-	if health.DirExists && health.MemoryDirExists && health.PlansDirExists {
+	if health.DirExists && health.DBAccessible {
 		health.Status = HealthOK
 	} else if health.DirExists {
 		health.Status = HealthPartial
-		var missing []string
-		if !health.MemoryDirExists {
-			missing = append(missing, "memory/")
-		}
-		if !health.PlansDirExists {
-			missing = append(missing, "plans/")
-		}
-		health.Reason = fmt.Sprintf("missing subdirectories: %s", strings.Join(missing, ", "))
+		health.Reason = "store exists but memory.db not found"
 	}
 
 	return health

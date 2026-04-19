@@ -9,6 +9,7 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/knowledge"
 	"github.com/josephgoksu/TaskWing/internal/memory"
 )
+
 // RenderAskResult displays a complete AskResult from the ask pipeline.
 // This is the primary rendering function for the `taskwing ask` command.
 func RenderAskResult(result *app.AskResult, verbose bool) {

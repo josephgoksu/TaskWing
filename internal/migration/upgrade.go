@@ -19,11 +19,14 @@ import (
 //   - Sub-millisecond on the happy path (version matches)
 //   - Non-fatal on all error paths (never blocks user commands)
 func CheckAndMigrate(projectDir, currentVersion string) (warnings []string, err error) {
-	taskwingDir := filepath.Join(projectDir, ".taskwing")
-	versionFile := filepath.Join(taskwingDir, "version")
+	storePath, storeErr := config.GetProjectStorePath(projectDir)
+	if storeErr != nil {
+		return nil, nil // Can't resolve store, nothing to migrate
+	}
+	versionFile := filepath.Join(storePath, "version")
 
-	// Not bootstrapped or inaccessible — nothing to migrate
-	if _, err := os.Stat(taskwingDir); err != nil {
+	// Not bootstrapped or inaccessible
+	if _, err := os.Stat(storePath); err != nil {
 		return nil, nil
 	}
 

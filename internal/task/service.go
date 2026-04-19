@@ -248,7 +248,7 @@ func (s *Service) FormatPlanMarkdown(plan *Plan) string {
 }
 
 // ExportPlanToFile writes the plan markdown to a file.
-// If validPath is empty, it generates a default filename in .taskwing/plans/.
+// If validPath is empty, it generates a default filename in the plans directory.
 func (s *Service) ExportPlanToFile(plan *Plan, customPath string) (string, error) {
 	content := s.FormatPlanMarkdown(plan)
 

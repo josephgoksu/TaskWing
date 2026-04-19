@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/spf13/afero"
 )
 
@@ -164,7 +165,11 @@ func (l *Loader) ListFiles() ([]string, error) {
 }
 
 // GetPoliciesPath constructs the full path to the policies directory
-// given a project root path.
+// given a project root path. Resolves via global project store.
 func GetPoliciesPath(projectRoot string) string {
-	return filepath.Join(projectRoot, ".taskwing", DefaultPoliciesDir)
+	storePath, err := config.GetProjectStorePath(projectRoot)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(storePath, DefaultPoliciesDir)
 }

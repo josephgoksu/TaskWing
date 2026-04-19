@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/codeintel"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/llm"
-	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/spf13/viper"
 
 	_ "modernc.org/sqlite" // SQLite driver
@@ -46,11 +46,12 @@ type SymbolContext struct {
 // NewSymbolContext creates a new symbol context gatherer.
 // Returns nil if the index is not available (fallback to raw files).
 func NewSymbolContext(basePath string, llmCfg llm.Config) (*SymbolContext, error) {
-	// Try to open the database
-	dbPath, err := utils.SafeJoin(basePath, filepath.Join(".taskwing", "memory", "memory.db"))
+	// Try to open the database from global store
+	storePath, err := config.GetProjectStorePath(basePath)
 	if err != nil {
-		return nil, fmt.Errorf("invalid db path: %w", err)
+		return nil, fmt.Errorf("resolve project store: %w", err)
 	}
+	dbPath := filepath.Join(storePath, "memory.db")
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("index not available: %s", dbPath)
 	}

@@ -20,17 +20,44 @@ func (r *Repository) GetNodeEdges(nodeID string) ([]NodeEdge, error) {
 // === Node Access ===
 
 func (r *Repository) ListNodes(filter string) ([]Node, error) {
-	return r.db.ListNodes(filter)
+	nodes, err := r.db.ListNodes(filter)
+	if err != nil {
+		return nil, err
+	}
+	if r.global != nil {
+		globalNodes, err := r.global.db.ListNodes(filter)
+		if err == nil {
+			nodes = deduplicateNodes(nodes, globalNodes)
+		}
+	}
+	return nodes, nil
 }
 
 // ListNodesFiltered returns nodes matching the given filter criteria.
 // This is the preferred method for workspace-aware queries.
 func (r *Repository) ListNodesFiltered(filter NodeFilter) ([]Node, error) {
-	return r.db.ListNodesFiltered(filter)
+	nodes, err := r.db.ListNodesFiltered(filter)
+	if err != nil {
+		return nil, err
+	}
+	if r.global != nil {
+		globalNodes, err := r.global.db.ListNodesFiltered(filter)
+		if err == nil {
+			nodes = deduplicateNodes(nodes, globalNodes)
+		}
+	}
+	return nodes, nil
 }
 
 func (r *Repository) GetNode(id string) (*Node, error) {
-	return r.db.GetNode(id)
+	node, err := r.db.GetNode(id)
+	if err == nil && node != nil {
+		return node, nil
+	}
+	if r.global != nil {
+		return r.global.db.GetNode(id)
+	}
+	return node, err
 }
 
 func (r *Repository) CreateNode(n *Node) error {
@@ -91,22 +118,62 @@ func (r *Repository) ClearAllKnowledge() error {
 
 // ListNodesWithEmbeddings returns all nodes with embeddings in a single query.
 func (r *Repository) ListNodesWithEmbeddings() ([]Node, error) {
-	return r.db.ListNodesWithEmbeddings()
+	nodes, err := r.db.ListNodesWithEmbeddings()
+	if err != nil {
+		return nil, err
+	}
+	if r.global != nil {
+		globalNodes, err := r.global.db.ListNodesWithEmbeddings()
+		if err == nil {
+			nodes = deduplicateNodes(nodes, globalNodes)
+		}
+	}
+	return nodes, nil
 }
 
 // ListNodesWithEmbeddingsFiltered returns nodes with embeddings matching the filter.
 func (r *Repository) ListNodesWithEmbeddingsFiltered(filter NodeFilter) ([]Node, error) {
-	return r.db.ListNodesWithEmbeddingsFiltered(filter)
+	nodes, err := r.db.ListNodesWithEmbeddingsFiltered(filter)
+	if err != nil {
+		return nil, err
+	}
+	if r.global != nil {
+		globalNodes, err := r.global.db.ListNodesWithEmbeddingsFiltered(filter)
+		if err == nil {
+			nodes = deduplicateNodes(nodes, globalNodes)
+		}
+	}
+	return nodes, nil
 }
 
 // SearchFTS performs full-text search using FTS5 with BM25 ranking.
 func (r *Repository) SearchFTS(query string, limit int) ([]FTSResult, error) {
-	return r.db.SearchFTS(query, limit)
+	results, err := r.db.SearchFTS(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	if r.global != nil {
+		globalResults, err := r.global.db.SearchFTS(query, limit)
+		if err == nil {
+			results = deduplicateFTSResults(results, globalResults)
+		}
+	}
+	return results, nil
 }
 
 // SearchFTSFiltered performs full-text search with workspace filtering.
 func (r *Repository) SearchFTSFiltered(query string, limit int, filter NodeFilter) ([]FTSResult, error) {
-	return r.db.SearchFTSFiltered(query, limit, filter)
+	results, err := r.db.SearchFTSFiltered(query, limit, filter)
+	if err != nil {
+		return nil, err
+	}
+	if r.global != nil {
+		globalResults, err := r.global.db.SearchFTSFiltered(query, limit, filter)
+		if err == nil {
+			results = deduplicateFTSResults(results, globalResults)
+		}
+	}
+	return results, nil
 }
 
 // RebuildFTS rebuilds the FTS5 index from existing nodes.
@@ -117,4 +184,38 @@ func (r *Repository) RebuildFTS() error {
 // GetEmbeddingStats returns statistics about embeddings in the database.
 func (r *Repository) GetEmbeddingStats() (*EmbeddingStats, error) {
 	return r.db.GetEmbeddingStats()
+}
+
+// deduplicateNodes appends globalNodes to existing, skipping any with duplicate summaries.
+func deduplicateNodes(existing, globalNodes []Node) []Node {
+	seen := make(map[string]bool, len(existing))
+	for _, n := range existing {
+		if n.Summary != "" {
+			seen[n.Summary] = true
+		}
+	}
+	for _, n := range globalNodes {
+		if n.Summary != "" && seen[n.Summary] {
+			continue
+		}
+		existing = append(existing, n)
+	}
+	return existing
+}
+
+// deduplicateFTSResults appends global results to existing, skipping duplicates by node summary.
+func deduplicateFTSResults(existing, globalResults []FTSResult) []FTSResult {
+	seen := make(map[string]bool, len(existing))
+	for _, r := range existing {
+		if r.Node.Summary != "" {
+			seen[r.Node.Summary] = true
+		}
+	}
+	for _, r := range globalResults {
+		if r.Node.Summary != "" && seen[r.Node.Summary] {
+			continue
+		}
+		existing = append(existing, r)
+	}
+	return existing
 }

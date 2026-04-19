@@ -33,29 +33,61 @@ func initConfig() {
 	// This finds the nearest .taskwing, go.mod, package.json, etc.
 	projectCtx := detectProjectRoot()
 
-	// ALWAYS add global config path first (highest priority for user settings)
-	viper.AddConfigPath(filepath.Join(home, ".taskwing"))
+	// Layered config loading: global first, then project merges on top.
+	// Resolution order: project > profile > global > env vars > defaults
+	viper.SetConfigType("yaml")
 
-	// Add detected project root's .taskwing directory for project-specific config
-	if projectCtx != nil && projectCtx.RootPath != "" {
-		projectConfigPath := filepath.Join(projectCtx.RootPath, ".taskwing")
-		if info, err := os.Stat(projectConfigPath); err == nil && info.IsDir() {
-			viper.AddConfigPath(projectConfigPath)
+	// 1. Load global config as base layer
+	globalConfigFile := filepath.Join(home, ".taskwing", "config.yaml")
+	if _, err := os.Stat(globalConfigFile); err == nil {
+		viper.SetConfigFile(globalConfigFile)
+		if err := viper.ReadInConfig(); err == nil {
+			if viper.GetBool("verbose") && !viper.GetBool("json") {
+				fmt.Fprintln(os.Stderr, "Loaded global config:", globalConfigFile)
+			}
 		}
 	}
 
-	// Legacy: Also check CWD's .taskwing directory (for backwards compatibility)
-	if _, err := os.Stat(".taskwing"); !os.IsNotExist(err) {
-		viper.AddConfigPath(".taskwing")
+	// 2. Load profile config (merges on top of global)
+	// Check env var first, then scan os.Args for --profile flag
+	// (Cobra hasn't parsed flags yet when initConfig runs)
+	profileName := os.Getenv("TASKWING_PROFILE")
+	if profileName == "" {
+		profileName = viper.GetString("profile") // from global config.yaml
+	}
+	if profileName == "" {
+		profileName = scanFlagFromArgs("profile")
+	}
+	if profileName != "" && filepath.Base(profileName) == profileName && !strings.Contains(profileName, "..") {
+		profileFile := filepath.Join(home, ".taskwing", "profiles", profileName+".yaml")
+		if _, err := os.Stat(profileFile); err == nil {
+			profileViper := viper.New()
+			profileViper.SetConfigFile(profileFile)
+			if err := profileViper.ReadInConfig(); err == nil {
+				if err := viper.MergeConfigMap(profileViper.AllSettings()); err == nil {
+					if viper.GetBool("verbose") && !viper.GetBool("json") {
+						fmt.Fprintln(os.Stderr, "Loaded profile config:", profileFile)
+					}
+				}
+			}
+		}
 	}
 
-	viper.SetConfigName("config") // looks for config.yaml
-	viper.SetConfigType("yaml")
-
-	// Attempt to read the configuration file
-	if err := viper.ReadInConfig(); err == nil {
-		if viper.GetBool("verbose") && !viper.GetBool("json") {
-			fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+	// 3. Load project config from global store (merges on top, highest file-based priority)
+	if projectCtx != nil && projectCtx.RootPath != "" {
+		if storePath, err := config.GetProjectStorePath(projectCtx.RootPath); err == nil {
+			projectConfigFile := filepath.Join(storePath, "config.yaml")
+			if _, err := os.Stat(projectConfigFile); err == nil {
+				projectViper := viper.New()
+				projectViper.SetConfigFile(projectConfigFile)
+				if err := projectViper.ReadInConfig(); err == nil {
+					if err := viper.MergeConfigMap(projectViper.AllSettings()); err == nil {
+						if viper.GetBool("verbose") && !viper.GetBool("json") {
+							fmt.Fprintln(os.Stderr, "Loaded project config:", projectConfigFile)
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -66,11 +98,8 @@ func initConfig() {
 	viper.SetDefault("preview", false)
 
 	// Memory store path: do NOT set a default here.
-	// GetMemoryBasePath() has FAIL-FAST semantics:
-	// 1. If user sets memory.path in config → use that
-	// 2. Detected project root → use {project_root}/.taskwing/memory
-	// 3. Otherwise → return error (no silent fallbacks)
-	// For non-project commands (help, version), GetMemoryBasePathOrGlobal() provides ~/.taskwing fallback.
+	// GetMemoryBasePath() resolves to ~/.taskwing/projects/<slug>/ via GetProjectStorePath.
+	// For non-project commands (help, version), GetMemoryBasePathOrGlobal() provides fallback.
 
 	// LLM defaults (for bootstrap scanner)
 	// Do NOT set defaults for llm.provider, llm.apiKey, or llm.model
@@ -114,4 +143,19 @@ func detectProjectRoot() *project.Context {
 	}
 
 	return ctx
+}
+
+// scanFlagFromArgs extracts a flag value from os.Args before Cobra parses them.
+// Supports --flag=value and --flag value forms.
+func scanFlagFromArgs(name string) string {
+	prefix := "--" + name
+	for i, arg := range os.Args {
+		if arg == prefix && i+1 < len(os.Args) {
+			return os.Args[i+1]
+		}
+		if val, ok := strings.CutPrefix(arg, prefix+"="); ok {
+			return val
+		}
+	}
+	return ""
 }

@@ -19,7 +19,7 @@ import (
 // SQLiteStore implements MemoryStore using SQLite for persistence.
 type SQLiteStore struct {
 	db       *sql.DB
-	basePath string // Path to .taskwing/memory directory
+	basePath string // Path to project store directory
 }
 
 // NewSQLiteStore creates a new SQLite-backed memory store.

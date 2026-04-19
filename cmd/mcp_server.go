@@ -92,25 +92,36 @@ func mcpFormattedErrorResponse(formattedError string) (*mcpsdk.CallToolResultFor
 	}, nil
 }
 
-// initMCPRepository initializes the project-scoped memory repository.
+// initMCPRepository initializes the project-scoped memory repository with optional global knowledge.
 // Fail-fast behavior is intentional: MCP must not silently fall back to global memory,
 // otherwise it can serve context from the wrong project.
 func initMCPRepository() (*memory.Repository, error) {
 	memoryPath, err := config.GetMemoryBasePath()
 	if err != nil {
-		switch {
-		case errors.Is(err, config.ErrNoTaskWingDir):
-			return nil, fmt.Errorf("project memory is not initialized. Run 'taskwing bootstrap' in this repository first")
-		case errors.Is(err, config.ErrProjectContextNotSet):
-			return nil, fmt.Errorf("project context is not initialized. Run this command from your project root and ensure '.taskwing/' exists")
-		default:
-			return nil, fmt.Errorf("determine memory path: %w", err)
+		if errors.Is(err, config.ErrProjectContextNotSet) {
+			return nil, fmt.Errorf("no project detected. Run this command from a project directory with .git, go.mod, or package.json")
 		}
+		return nil, fmt.Errorf("determine memory path: %w", err)
 	}
 
 	repo, err := memory.NewDefaultRepository(memoryPath)
 	if err != nil {
 		return nil, fmt.Errorf("open memory at %s: %w", memoryPath, err)
+	}
+
+	// Attach global knowledge repo if the knowledge dir already exists.
+	// We don't create it eagerly -- it's created on first `remember --global`.
+	globalPath, gErr := config.GetGlobalKnowledgePath()
+	if gErr == nil {
+		if info, err := os.Stat(globalPath); err == nil && info.IsDir() {
+			globalRepo, gErr := memory.NewDefaultRepository(globalPath)
+			if gErr == nil {
+				repo.SetGlobal(globalRepo)
+				if viper.GetBool("verbose") {
+					fmt.Fprintf(os.Stderr, "[DEBUG] Global knowledge loaded from: %s\n", globalPath)
+				}
+			}
+		}
 	}
 
 	if viper.GetBool("verbose") {
@@ -164,39 +175,34 @@ func runMCPServer(ctx context.Context) error {
 	// Register ask tool - retrieves stored codebase knowledge for AI context
 	tool := &mcpsdk.Tool{
 		Name:        "ask",
-		Description: "Search project knowledge: decisions, patterns, constraints, and code symbols. Returns an AI-synthesized answer and relevant context by default. Use {\"query\":\"search term\"} for semantic search. Use {\"all\":true} for a complete knowledge dump (no LLM calls, instant).",
+		Description: "Search project knowledge: decisions, patterns, constraints, and code symbols. Returns an AI-synthesized answer and relevant context by default. Use {\"query\":\"search term\"} for semantic search. Use {\"all\":true} for a compact knowledge summary (no LLM calls, instant). Use {\"all\":true, \"detail\":\"full\", \"page\":1} for full detail with pagination. Use {\"query\":\"auth\", \"detail\":\"full\"} for full detail on matching nodes only.",
 	}
 
 	mcpsdk.AddTool(server, tool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.ProjectContextParams]) (*mcpsdk.CallToolResultFor[any], error) {
-		// Fast path: all=true dumps every node from SQLite with no LLM calls.
-		// Handled here to avoid the redundant ListNodes call in the normal path.
+		// Fast path: all=true dumps knowledge from SQLite with no LLM calls.
 		if params.Arguments.All {
 			nodes, err := repo.ListNodes("")
 			if err != nil {
 				return mcpErrorResponse(fmt.Errorf("list nodes: %w", err))
 			}
-			return mcpMarkdownResponse(mcppresenter.FormatKnowledgeDump(nodes))
+			if params.Arguments.Detail == "full" {
+				page := max(params.Arguments.Page, 1)
+				pageSize := params.Arguments.PageSize
+				if pageSize <= 0 {
+					pageSize = 50
+				}
+				return mcpMarkdownResponse(mcppresenter.FormatKnowledgePage(nodes, page, pageSize))
+			}
+			return mcpMarkdownResponse(mcppresenter.FormatKnowledgeSummary(nodes))
 		}
 
-		// Node-based system only
-		nodes, err := repo.ListNodes("")
-		if err != nil {
-			return mcpErrorResponse(fmt.Errorf("list nodes: %w", err))
-		}
-		if len(nodes) == 0 {
-			return &mcpsdk.CallToolResultFor[any]{
-				Content: []mcpsdk.Content{
-					&mcpsdk.TextContent{Text: "Project memory is empty. Run 'taskwing bootstrap' to analyze this repository and generate context."},
-				},
-			}, nil
-		}
 		return handleNodeContext(ctx, repo, params.Arguments)
 	})
 
 	// Register remember tool - add knowledge to project memory
 	rememberTool := &mcpsdk.Tool{
 		Name:        "remember",
-		Description: "Add knowledge to project memory. Use this to persist decisions, patterns, or insights discovered during the session. Content will be classified automatically using AI.",
+		Description: "Add knowledge to project memory. Use this to persist decisions, patterns, or insights discovered during the session. Content will be classified automatically using AI. Use {\"global\":true} to store in global knowledge (~/.taskwing/knowledge/) for cross-project persistence.",
 	}
 	mcpsdk.AddTool(server, rememberTool, func(ctx context.Context, session *mcpsdk.ServerSession, params *mcpsdk.CallToolParamsFor[mcppresenter.RememberParams]) (*mcpsdk.CallToolResultFor[any], error) {
 		return handleRemember(ctx, repo, params.Arguments)
@@ -371,13 +377,27 @@ func handleNodeContext(ctx context.Context, repo *memory.Repository, params mcpp
 		return mcpErrorResponse(fmt.Errorf("search failed: %w", err))
 	}
 
+	// detail=full returns matched nodes with full content
+	if params.Detail == "full" {
+		nodes := make([]memory.Node, len(result.Results))
+		for i, r := range result.Results {
+			nodes[i] = memory.Node{
+				ID:      r.ID,
+				Type:    r.Type,
+				Summary: r.Summary,
+				Content: r.Content,
+			}
+		}
+		return mcpMarkdownResponse(mcppresenter.FormatKnowledgeFull(nodes))
+	}
+
 	// Return token-efficient Markdown instead of verbose JSON
 	return mcpMarkdownResponse(mcppresenter.FormatAsk(result))
 }
 
 // === Shared Tool Handlers ===
 
-// handleRemember adds knowledge to project memory.
+// handleRemember adds knowledge to project or global memory.
 // Uses app.MemoryApp for all business logic - single source of truth.
 func handleRemember(ctx context.Context, repo *memory.Repository, params mcppresenter.RememberParams) (*mcpsdk.CallToolResultFor[any], error) {
 	content := strings.TrimSpace(params.Content)
@@ -385,9 +405,27 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params mcppres
 		return mcpValidationErrorResponse("content", "content is required")
 	}
 
+	// Route to global knowledge DB if requested
+	targetRepo := repo
+	if params.Global {
+		if repo.Global() == nil {
+			// Auto-initialize global knowledge on first write
+			globalPath, err := config.EnsureGlobalKnowledgePath()
+			if err != nil {
+				return mcpErrorResponse(fmt.Errorf("create global knowledge dir: %w", err))
+			}
+			globalRepo, err := memory.NewDefaultRepository(globalPath)
+			if err != nil {
+				return mcpErrorResponse(fmt.Errorf("open global knowledge db: %w", err))
+			}
+			repo.SetGlobal(globalRepo)
+		}
+		targetRepo = repo.Global()
+	}
+
 	// Use MemoryApp for add (same as CLI memory ingestion path)
 	// Use RoleBootstrap for knowledge ingestion (classification + embedding)
-	appCtx := app.NewContextForRole(repo, llm.RoleBootstrap)
+	appCtx := app.NewContextForRole(targetRepo, llm.RoleBootstrap)
 	memoryApp := app.NewMemoryApp(appCtx)
 
 	result, err := memoryApp.Add(ctx, content, app.AddOptions{
@@ -397,6 +435,11 @@ func handleRemember(ctx context.Context, repo *memory.Repository, params mcppres
 		return mcpErrorResponse(fmt.Errorf("failed to add knowledge: %w", err))
 	}
 
+	prefix := ""
+	if params.Global {
+		prefix = "[Global] "
+	}
+
 	// Return token-efficient Markdown instead of verbose JSON
-	return mcpMarkdownResponse(mcppresenter.FormatRemember(result))
+	return mcpMarkdownResponse(prefix + mcppresenter.FormatRemember(result))
 }

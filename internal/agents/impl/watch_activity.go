@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/josephgoksu/TaskWing/internal/config"
 )
 
 // ActivityLog records watch mode activity
@@ -36,7 +38,11 @@ type ActivityEntry struct {
 
 // NewActivityLog creates a new activity logger
 func NewActivityLog(basePath string) *ActivityLog {
-	logPath := filepath.Join(basePath, ".taskwing", "activity.json")
+	storePath, err := config.GetProjectStorePath(basePath)
+	if err != nil {
+		storePath = basePath // fallback if store unavailable
+	}
+	logPath := filepath.Join(storePath, "activity.json")
 
 	log := &ActivityLog{
 		logPath: logPath,

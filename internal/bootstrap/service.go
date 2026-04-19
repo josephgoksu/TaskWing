@@ -22,7 +22,8 @@ import (
 // Service handles the bootstrapping process of extracting architectural knowledge.
 // It orchestrates analysis agents, result aggregation, and storage ingestion.
 type Service struct {
-	basePath    string
+	basePath    string       // project root (for file scanning)
+	storePath   string       // global store (~/.taskwing/projects/<slug>/)
 	llmCfg      llm.Config
 	initializer *Initializer
 }
@@ -35,11 +36,12 @@ type BootstrapResult struct {
 }
 
 // NewService creates a new bootstrap service.
-func NewService(basePath string, llmCfg llm.Config) *Service {
+func NewService(basePath, storePath string, llmCfg llm.Config) *Service {
 	return &Service{
 		basePath:    basePath,
+		storePath:   storePath,
 		llmCfg:      llmCfg,
-		initializer: NewInitializer(basePath),
+		initializer: NewInitializer(basePath, storePath),
 	}
 }
 
@@ -92,7 +94,7 @@ func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.Workspac
 		// Incremental mode: check if we can skip or limit analysis
 		opts := RunOptions{Workspace: serviceName}
 		stateKey := "bootstrap-sha-" + serviceName
-		dbPath := filepath.Join(s.basePath, ".taskwing", "memory")
+		dbPath := s.storePath
 		if store, storeErr := memory.NewSQLiteStore(dbPath); storeErr == nil {
 			if state, stateErr := store.GetBootstrapState(stateKey); stateErr == nil && state != nil && state.Checksum != "" {
 				headSHA := getGitHEAD(servicePath)
@@ -200,7 +202,7 @@ func (s *Service) RunMultiRepoAnalysis(ctx context.Context, ws *project.Workspac
 func (s *Service) ProcessAndSaveResults(ctx context.Context, results []core.Output, findings []core.Finding, relationships []core.Relationship, isPreview, isQuiet bool) error {
 	// 1. Generate and save report
 	report := generateReport(s.basePath, results, findings)
-	reportPath := filepath.Join(s.basePath, ".taskwing", "last-bootstrap-report.json")
+	reportPath := filepath.Join(s.storePath, "last-bootstrap-report.json")
 	if err := saveReport(reportPath, report); err != nil {
 		// Non-fatal warning
 		fmt.Fprintf(os.Stderr, "⚠️  Failed to save bootstrap report: %v\n", err)

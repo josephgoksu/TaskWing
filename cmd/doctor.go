@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/josephgoksu/TaskWing/internal/bootstrap"
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/task"
 	"github.com/josephgoksu/TaskWing/internal/ui"
 	"github.com/spf13/cobra"
@@ -403,23 +404,22 @@ func applyRepairPrimitive(primitive, aiName, cwd, binPath string, init *bootstra
 }
 
 func checkTaskWingInit(cwd string) DoctorCheck {
-	taskwingDir := filepath.Join(cwd, ".taskwing")
-	memoryDir := filepath.Join(taskwingDir, "memory")
-
-	if _, err := os.Stat(taskwingDir); os.IsNotExist(err) {
+	storePath, err := config.GetProjectStorePath(cwd)
+	if err != nil {
 		return DoctorCheck{
 			Name:    "Initialization",
 			Status:  "fail",
-			Message: "Not initialized",
+			Message: "Cannot resolve project store",
 			Hint:    "Run: taskwing bootstrap",
 		}
 	}
 
-	if _, err := os.Stat(memoryDir); os.IsNotExist(err) {
+	dbPath := filepath.Join(storePath, "memory.db")
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return DoctorCheck{
 			Name:    "Initialization",
 			Status:  "warn",
-			Message: "Partially initialized (missing memory/)",
+			Message: fmt.Sprintf("Project store exists at %s but no memory.db", storePath),
 			Hint:    "Run: taskwing bootstrap",
 		}
 	}
@@ -427,7 +427,7 @@ func checkTaskWingInit(cwd string) DoctorCheck {
 	return DoctorCheck{
 		Name:    "Initialization",
 		Status:  "ok",
-		Message: ".taskwing/ directory exists",
+		Message: fmt.Sprintf("Project store: %s", storePath),
 	}
 }
 

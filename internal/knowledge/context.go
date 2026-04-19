@@ -227,9 +227,9 @@ func GetProjectContext(ctx context.Context, svc *Service, opts ContextOptions) (
 		basePath = filepath.Dir(filepath.Dir(memoryBasePath))
 	}
 
-	// 1. Load ARCHITECTURE.md
-	if opts.IncludeArchitectureMD && basePath != "" {
-		archPath := filepath.Join(basePath, ".taskwing", "ARCHITECTURE.md")
+	// 1. Load ARCHITECTURE.md from global project store
+	if opts.IncludeArchitectureMD && memoryBasePath != "" {
+		archPath := filepath.Join(memoryBasePath, "ARCHITECTURE.md")
 		if content, err := os.ReadFile(archPath); err == nil {
 			pc.ArchitectureMD = string(content)
 			pc.SearchLog = append(pc.SearchLog, "Loaded ARCHITECTURE.md")
@@ -337,4 +337,3 @@ func annotateFreshnessScored(sn *ScoredNode, basePath string) {
 		sn.Node.Summary += " [MISSING]"
 	}
 }
-

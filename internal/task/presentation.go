@@ -22,7 +22,7 @@ type AskResult struct {
 //
 // Context Binding Strategy (see docs/architecture/ADR_CONTEXT_BINDING.md):
 // - Early binding: Uses Task.ContextSummary if available (populated at creation)
-// - Late binding: Falls back to searchFn if ContextSummary is empty (backward compatibility)
+// - Late binding: Falls back to searchFn if ContextSummary is empty
 func FormatRichContext(ctx context.Context, t *Task, p *Plan, searchFn AskSearchFunc) string {
 	var askContext string
 

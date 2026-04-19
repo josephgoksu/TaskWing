@@ -327,31 +327,16 @@ func ResolveLLMTimeout() (time.Duration, error) {
 }
 
 // ResolveAPIKey returns the best API key for the given provider using
-// per-provider config keys, provider-specific env vars, then legacy config.
+// per-provider config keys, then provider-specific env vars.
 func ResolveAPIKey(provider llm.Provider) string {
-	keyFromViper := func(path string) string {
-		if viper.IsSet(path) {
-			return strings.TrimSpace(viper.GetString(path))
-		}
-		return ""
-	}
-
 	// 1) Per-provider config key (llm.apiKeys.<provider>)
-	perProviderKey := keyFromViper(fmt.Sprintf("llm.apiKeys.%s", provider))
-	if perProviderKey != "" {
-		return perProviderKey
+	perProviderKey := fmt.Sprintf("llm.apiKeys.%s", provider)
+	if viper.IsSet(perProviderKey) {
+		if key := strings.TrimSpace(viper.GetString(perProviderKey)); key != "" {
+			return key
+		}
 	}
 
 	// 2) Provider-specific env vars (centralized in llm.GetEnvValueForProvider)
-	envKey := llm.GetEnvValueForProvider(string(provider))
-
-	// OpenAI: allow legacy key; others: ignore legacy to avoid wrong-key usage.
-	if provider == llm.ProviderOpenAI {
-		legacyKey := keyFromViper("llm.apiKey")
-		if legacyKey != "" {
-			return legacyKey
-		}
-	}
-
-	return envKey
+	return llm.GetEnvValueForProvider(string(provider))
 }

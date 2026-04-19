@@ -81,22 +81,6 @@ func (l *DocLoader) Load() ([]DocFile, error) {
 		}
 	}
 
-	// Scan .taskwing/ directory for existing docs
-	taskwingDir := filepath.Join(l.basePath, ".taskwing")
-	if info, err := os.Stat(taskwingDir); err == nil && info.IsDir() {
-		// Load ARCHITECTURE.md if generated
-		archPath := filepath.Join(taskwingDir, "ARCHITECTURE.md")
-		if content, err := l.loadFile(archPath); err == nil {
-			docs = append(docs, DocFile{
-				Path:     ".taskwing/ARCHITECTURE.md",
-				Name:     "ARCHITECTURE.md",
-				Content:  content,
-				Size:     len(content),
-				Category: "architecture",
-			})
-		}
-	}
-
 	return docs, nil
 }
 

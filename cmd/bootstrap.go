@@ -94,9 +94,6 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get current directory: %w", err)
 	}
 
-	// Track user input for crash logging
-	config.SetLastInput(fmt.Sprintf("bootstrap (skip-analyze=%v, dir=%s)", flags.SkipAnalyze, cwd))
-
 	// Debug mode: dump diagnostic info early
 	if flags.Debug {
 		fmt.Fprintln(os.Stderr, "")
@@ -192,8 +189,12 @@ func runBootstrap(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Initialize Service
-	svc := bootstrap.NewService(cwd, llmCfg)
+	// Initialize Service with global store path
+	storePath, err := config.GetProjectStorePath(cwd)
+	if err != nil {
+		return fmt.Errorf("resolve project store: %w", err)
+	}
+	svc := bootstrap.NewService(cwd, storePath, llmCfg)
 	svc.SetVersion(version)
 
 	// Prompt for repo selection in multi-repo workspaces.
@@ -287,12 +288,6 @@ func executeAction(ctx context.Context, action bootstrap.Action, svc *bootstrap.
 	case bootstrap.ActionInitProject:
 		if err := executeInitProject(svc, flags, plan); err != nil {
 			return err
-		}
-		// Re-detect project context now that local .taskwing/ exists.
-		// Without this, the cached context still points to ~/.taskwing/ (HOME)
-		// and all subsequent DB operations write to the wrong database.
-		if freshCtx, err := project.Detect(cwd); err == nil {
-			_ = config.SetProjectContext(freshCtx)
 		}
 		return nil
 
@@ -795,7 +790,11 @@ func setupTrace(stream *core.StreamingOutput, trace bool, traceFile string, trac
 	// Enable full payload capture so trace includes LLM messages and responses
 	stream.SetIncludePayloads(true)
 	if traceFile == "" {
-		traceFile = filepath.Join(cwd, ".taskwing", "logs", "bootstrap.trace.jsonl")
+		if sp, err := config.GetProjectStorePath(cwd); err == nil {
+			traceFile = filepath.Join(sp, "bootstrap.trace.jsonl")
+		} else {
+			traceFile = filepath.Join(cwd, "bootstrap.trace.jsonl")
+		}
 	}
 	var out *os.File
 	var cleanup func()

@@ -12,20 +12,26 @@ import (
 	"strings"
 	"time"
 
+	"github.com/josephgoksu/TaskWing/internal/config"
 	"github.com/josephgoksu/TaskWing/internal/utils"
 	"github.com/josephgoksu/TaskWing/skills"
 )
 
 // Initializer handles the setup of TaskWing project structure and integrations.
 type Initializer struct {
-	basePath string
-	// Version is the CLI version to stamp in .taskwing/version.
+	basePath  string // project root (for file scanning, AI config generation)
+	storePath string // global store path (~/.taskwing/projects/<slug>/) for memory and metadata
+	// Version is the CLI version to stamp in the store's version file.
 	// If empty, no version file is written.
 	Version string
 }
 
-func NewInitializer(basePath string) *Initializer {
-	return &Initializer{basePath: basePath}
+func NewInitializer(basePath string, storePath ...string) *Initializer {
+	sp := ""
+	if len(storePath) > 0 {
+		sp = storePath[0]
+	}
+	return &Initializer{basePath: basePath, storePath: sp}
 }
 
 // ValidAINames returns the list of supported AI assistant names.
@@ -87,7 +93,15 @@ func (i *Initializer) AdoptAIConfig(aiName string, verbose bool) (*AdoptionResul
 	}
 
 	ts := time.Now().UTC().Format("20060102T150405Z")
-	backupDir := filepath.Join(i.basePath, ".taskwing", "backups", "ai-configs", ts, aiName)
+	backupBase := i.storePath
+	if backupBase == "" {
+		storePath, err := config.GetProjectStorePath(i.basePath)
+		if err != nil {
+			return nil, fmt.Errorf("resolve project store for backup: %w", err)
+		}
+		backupBase = storePath
+	}
+	backupDir := filepath.Join(backupBase, "backups", "ai-configs", ts, aiName)
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		return nil, fmt.Errorf("create backup dir: %w", err)
 	}
@@ -207,25 +221,17 @@ func (i *Initializer) setupAIIntegrations(verbose bool, selectedAIs []string, sh
 }
 
 func (i *Initializer) createStructure(verbose bool) error {
-	fmt.Println("📁 Creating .taskwing/ structure...")
-	dirs := []string{
-		".taskwing",
-		".taskwing/memory",
-		".taskwing/plans",
+	fmt.Println("📁 Creating project store...")
+	if err := os.MkdirAll(i.storePath, 0700); err != nil {
+		return fmt.Errorf("create store: %w", err)
 	}
-	for _, dir := range dirs {
-		fullPath := filepath.Join(i.basePath, dir)
-		if err := os.MkdirAll(fullPath, 0755); err != nil {
-			return fmt.Errorf("create %s: %w", dir, err)
-		}
-		if verbose {
-			fmt.Printf("  ✓ Created %s\n", dir)
-		}
+	if verbose {
+		fmt.Printf("  ✓ Created %s\n", i.storePath)
 	}
 
 	// Track CLI version for post-upgrade migration detection
 	if i.Version != "" {
-		versionPath := filepath.Join(i.basePath, ".taskwing", "version")
+		versionPath := filepath.Join(i.storePath, "version")
 		_ = os.WriteFile(versionPath, []byte(i.Version), 0644)
 	}
 

@@ -9,18 +9,18 @@ type ContextBudgets struct {
 	MaxInputTokens int
 
 	// Planning and task context
-	GoalSummaryChars     int // Max chars for user's planning goal
-	TaskMaxNodes         int // Max knowledge nodes per task enrichment
-	ConstraintChars      int // Max chars per constraint in compact context
-	RelevantNodeChars    int // Max chars per relevant node in compact context
-	DefaultMaxNodes      int // Max nodes for planning context retrieval
-	NodesPerQuery        int // Max results per search query
-	ArchitectureMDChars  int // Max chars for ARCHITECTURE.md in first task
+	GoalSummaryChars    int // Max chars for user's planning goal
+	TaskMaxNodes        int // Max knowledge nodes per task enrichment
+	ConstraintChars     int // Max chars per constraint in compact context
+	RelevantNodeChars   int // Max chars per relevant node in compact context
+	DefaultMaxNodes     int // Max nodes for planning context retrieval
+	NodesPerQuery       int // Max results per search query
+	ArchitectureMDChars int // Max chars for ARCHITECTURE.md in first task
 
 	// Agent context
-	WaveDescChars        int // Max chars per description in wave context
-	WaveSummaryChars     int // Total wave context budget
-	DocFileChars         int // Max chars per documentation file for agents
+	WaveDescChars    int // Max chars per description in wave context
+	WaveSummaryChars int // Total wave context budget
+	DocFileChars     int // Max chars per documentation file for agents
 }
 
 // ComputeBudgets derives context limits from a model's context window.

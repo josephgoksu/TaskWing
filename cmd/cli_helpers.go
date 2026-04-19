@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -81,7 +82,10 @@ func isMissingProjectMemoryError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "no .taskwing directory found at project root")
+	errStr := err.Error()
+	return errors.Is(err, config.ErrProjectContextNotSet) ||
+		strings.Contains(errStr, "no project marker found") ||
+		strings.Contains(errStr, "no project detected")
 }
 
 func confirmOrAbort(prompt string) bool {

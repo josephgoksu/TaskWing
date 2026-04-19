@@ -637,12 +637,10 @@ func resolveHookMemoryPath() (string, error) {
 		return memoryPath, nil
 	}
 
-	// Claude hooks expose CLAUDE_PROJECT_DIR; use it before global fallback
-	// to keep session state isolated per project even if project context wasn't set.
+	// Claude hooks expose CLAUDE_PROJECT_DIR; use it to resolve the global project store.
 	if projectDir := strings.TrimSpace(os.Getenv("CLAUDE_PROJECT_DIR")); projectDir != "" {
-		taskwingDir := filepath.Join(projectDir, ".taskwing")
-		if info, statErr := os.Stat(taskwingDir); statErr == nil && info.IsDir() {
-			return filepath.Join(taskwingDir, "memory"), nil
+		if storePath, err := config.GetProjectStorePath(projectDir); err == nil {
+			return storePath, nil
 		}
 	}
 

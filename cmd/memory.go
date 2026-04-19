@@ -420,7 +420,7 @@ The generated file includes:
   • Design Patterns (recurring workflows)
   • Key Decisions (cross-cutting decisions by source)
 
-The file is written to .taskwing/memory/ARCHITECTURE.md
+The file is written to the global project store (ARCHITECTURE.md)
 
 Examples:
   taskwing memory export                    # Generate with project name from cwd

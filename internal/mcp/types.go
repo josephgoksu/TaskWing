@@ -215,12 +215,16 @@ type ProjectContextParams struct {
 	Answer    bool   `json:"answer,omitempty"`    // If true, generate RAG answer using LLM
 	Workspace string `json:"workspace,omitempty"` // Filter by workspace (e.g., 'osprey'). Empty = all workspaces.
 	All       bool   `json:"all,omitempty"`       // Explicitly search all workspaces (ignore auto-detection)
+	Detail    string `json:"detail,omitempty"`    // "summary" (default) or "full"
+	Page      int    `json:"page,omitempty"`      // 1-indexed page number for full detail (default 1)
+	PageSize  int    `json:"page_size,omitempty"` // nodes per page for full detail (default 50)
 }
 
 // RememberParams defines the parameters for the remember tool.
 type RememberParams struct {
-	Content string `json:"content"`        // Required: knowledge to store
-	Type    string `json:"type,omitempty"` // Optional: decision, feature, plan, note
+	Content string `json:"content"`          // Required: knowledge to store
+	Type    string `json:"type,omitempty"`   // Optional: decision, feature, plan, note
+	Global  bool   `json:"global,omitempty"` // Store in global knowledge (~/.taskwing/knowledge/) instead of project
 }
 
 // DebugToolParams defines the parameters for the debug tool.

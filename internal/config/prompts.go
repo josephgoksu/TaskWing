@@ -532,7 +532,6 @@ Architectural Knowledge:
 {{if .History}}Previous Clarifications:
 {{.History}}{{end}}`
 
-
 // PlanningAgentSystemPrompt is the stable system message for the Planning Agent.
 const PlanningAgentSystemPrompt = `You are an Engineering Lead creating a development plan.
 Your input is an "Enriched Goal" and relevant context from the project knowledge graph.
@@ -573,7 +572,6 @@ const PlanningAgentUserTemplate = `Enriched Goal: {{.Goal}}
 Knowledge Graph:
 {{.Context}}`
 
-
 // DecompositionAgentSystemPrompt is the stable system message for the Decomposition Agent.
 const DecompositionAgentSystemPrompt = `You are an Engineering Lead decomposing a development goal into high-level phases.
 Break the goal into 3-5 logical phases that deliver incremental value.
@@ -603,7 +601,6 @@ const DecompositionAgentUserTemplate = `Enriched Goal: {{.EnrichedGoal}}
 
 Knowledge Graph:
 {{.Context}}`
-
 
 // ExpandAgentSystemPrompt is the stable system message for the Expand Agent.
 const ExpandAgentSystemPrompt = `You are an Engineering Lead expanding a development phase into detailed tasks.
@@ -644,7 +641,6 @@ Overall Goal: {{.EnrichedGoal}}
 
 Knowledge Graph:
 {{.Context}}`
-
 
 // SystemPromptSimplifyAgent is the system prompt for the Simplify Agent.
 // Reduces code complexity and line count while preserving behavior.
