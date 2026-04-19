@@ -226,9 +226,13 @@ func (s *Service) IngestDirectly(ctx context.Context, findings []core.Finding, r
 }
 
 func (s *Service) ingestToMemory(ctx context.Context, findings []core.Finding, relationships []core.Relationship, isQuiet bool) error {
-	memoryPath, err := config.GetMemoryBasePath()
-	if err != nil {
-		return fmt.Errorf("get memory path: %w", err)
+	memoryPath := s.storePath
+	if memoryPath == "" {
+		var err error
+		memoryPath, err = config.GetMemoryBasePath()
+		if err != nil {
+			return fmt.Errorf("get memory path: %w", err)
+		}
 	}
 
 	// Create Repo
@@ -259,7 +263,7 @@ func (s *Service) ingestToMemory(ctx context.Context, findings []core.Finding, r
 		// Log warning but don't fail bootstrap
 		fmt.Fprintf(os.Stderr, "⚠️  Failed to generate ARCHITECTURE.md: %v\n", err)
 	} else if !isQuiet {
-		fmt.Println("   ✓ Generated .taskwing/ARCHITECTURE.md")
+		fmt.Println("   ✓ Generated ARCHITECTURE.md")
 	}
 
 	return nil
@@ -306,9 +310,13 @@ func (s *Service) generateOverviewIfNeeded(ctx context.Context, repo *memory.Rep
 func (s *Service) RunDeterministicBootstrap(ctx context.Context, isQuiet bool) (*BootstrapResult, error) {
 	result := &BootstrapResult{}
 
-	memoryPath, err := config.GetMemoryBasePath()
-	if err != nil {
-		return nil, fmt.Errorf("get memory path: %w", err)
+	memoryPath := s.storePath
+	if memoryPath == "" {
+		var err error
+		memoryPath, err = config.GetMemoryBasePath()
+		if err != nil {
+			return nil, fmt.Errorf("get memory path: %w", err)
+		}
 	}
 
 	repo, err := memory.NewDefaultRepository(memoryPath)

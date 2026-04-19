@@ -220,8 +220,8 @@ func GetMemoryBasePath() (string, error) {
 	}
 
 	// Reject CWD-fallback contexts (MarkerNone) to prevent accidental writes to HOME.
-	// A project must have at least a .git or language manifest marker.
-	if ctx.MarkerType == project.MarkerNone {
+	// Exception: multi-repo workspaces are legitimately MarkerNone but have IsMonorepo=true.
+	if ctx.MarkerType == project.MarkerNone && !ctx.IsMonorepo {
 		return "", fmt.Errorf("no project marker found at %q: run 'taskwing bootstrap' in a project directory", ctx.RootPath)
 	}
 

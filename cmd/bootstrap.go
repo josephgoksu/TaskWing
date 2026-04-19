@@ -34,7 +34,7 @@ var bootstrapCmd = &cobra.Command{
 	Long: `Initialize TaskWing for your repository.
 
 Bootstrap analyzes your codebase to extract architectural knowledge:
-  • Creates .taskwing/ directory structure
+  • Creates project store in ~/.taskwing/
   • Sets up AI assistant integration (Claude, Cursor, etc.)
   • Auto-repairs managed local AI config drift
   • Indexes code symbols (functions, types, etc.)
@@ -532,7 +532,7 @@ func init() {
 	bootstrapCmd.Flags().Bool("resume", false, "Resume from last checkpoint (skip completed agents)")
 	bootstrapCmd.Flags().StringSlice("only-agents", nil, "Run only specified agents (e.g., --only-agents=code,doc)")
 	bootstrapCmd.Flags().Bool("trace", false, "Emit JSON event stream to stderr")
-	bootstrapCmd.Flags().String("trace-file", "", "Write JSON event stream to file (default: .taskwing/logs/bootstrap.trace.jsonl)")
+	bootstrapCmd.Flags().String("trace-file", "", "Write JSON event stream to file (default: ~/.taskwing/projects/<slug>/logs/bootstrap.trace.jsonl)")
 	bootstrapCmd.Flags().Bool("trace-stdout", false, "Emit JSON event stream to stderr (overrides trace file)")
 	bootstrapCmd.Flags().Bool("debug", false, "Enable debug logging (dumps project context, git paths, agent inputs)")
 	bootstrapCmd.Flags().Duration("timeout", 0, "LLM request timeout (e.g., 5m, 10m). Overrides TASKWING_LLM_TIMEOUT env var. Default: 5m")

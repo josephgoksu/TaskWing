@@ -432,7 +432,7 @@ func (s *SQLiteStore) initSchema() error {
 
 	-- === Policy-as-Code (OPA) Tables ===
 	-- These tables support enterprise policy enforcement via embedded OPA engine.
-	-- Policies are defined in .taskwing/policies/*.rego files and evaluated locally.
+	-- Policies are defined in the project store policies/*.rego files and evaluated locally.
 
 	-- Policy decisions audit trail (compliance logging)
 	CREATE TABLE IF NOT EXISTS policy_decisions (

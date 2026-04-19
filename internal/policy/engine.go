@@ -39,7 +39,7 @@ type EngineConfig struct {
 	WorkDir string
 
 	// PoliciesDir is the directory containing .rego policy files.
-	// If empty, defaults to {WorkDir}/.taskwing/policies
+	// If empty, defaults to the global project store policies directory.
 	PoliciesDir string
 
 	// PolicyPackage is the Rego package to query.
