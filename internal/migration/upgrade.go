@@ -53,6 +53,9 @@ func CheckAndMigrate(projectDir, currentVersion string) (warnings []string, err 
 
 	// --- Version mismatch: run migration ---
 
+	// 0. Auto-migrate local .taskwing/ to global store if needed
+	AutoMigrateIfNeeded(projectDir)
+
 	// 1. Silent local migration: regenerate slash commands for managed AIs
 	migrateLocalConfigs(projectDir)
 

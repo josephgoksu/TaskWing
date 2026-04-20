@@ -24,7 +24,7 @@ var doctorCmd = &cobra.Command{
 	Long: `Validate your TaskWing installation and configuration.
 
 Checks:
-  • TaskWing initialization (.taskwing/ directory)
+  • TaskWing initialization (global project store)
   • MCP server registration for AI tools
   • Hooks configuration for autonomous execution
   • Active plan and task status
