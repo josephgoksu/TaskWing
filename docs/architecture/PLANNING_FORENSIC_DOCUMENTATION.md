@@ -541,7 +541,7 @@ Task completion fails (status != in_progress) →
 
 | Assumption | Source |
 |------------|--------|
-| SQLite is single source of truth | `CLAUDE.md` |
+| SQLite is single source of truth | `AGENTS.md` |
 | Temperature=0 produces deterministic LLM output | `generator.go:43` |
 | Task dependencies are always by title | `parseTasksFromMetadata` implementation |
 | `expected_files` is LLM prediction, may be inaccurate | Schema design |

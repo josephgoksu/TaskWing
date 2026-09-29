@@ -514,7 +514,7 @@ func init() {
 	learnCmd.Flags().Bool("debug", false, "Enable debug logging (dumps project context, git paths, agent inputs)")
 	learnCmd.Flags().Duration("timeout", 0, "LLM request timeout (e.g., 5m, 10m). Overrides TASKWING_LLM_TIMEOUT env var. Default: 5m")
 
-	// Hide internal flags from main help (documented in CLAUDE.md / finetune docs)
+	// Hide internal flags from main help (documented in AGENTS.md / finetune docs)
 	_ = learnCmd.Flags().MarkHidden("skip-analyze")
 }
 
