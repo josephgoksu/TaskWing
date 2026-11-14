@@ -9,7 +9,7 @@ Every feature is built on these rules. Each rule says what breaks without it. A 
 Running hundreds of agents is easy. What runs out is conflict-free work and human review time. So TaskWing counts success in verified merges, not in agents running.
 
 ```
-goal → plan + exam (human approves) → N cards → N boxes, each running an agent
+goal → plan + exam (human approves the exam) → N cards → N boxes, each running an agent
      → commits pulled to host → combine → exam in a clean box → review → one verified PR → watch
 ```
 
@@ -35,18 +35,17 @@ TaskWing builds none of the layers above or below it. It plugs into them.
 | 5 | **Treat worker output as hostile.** Read worker repos with hooks, fsmonitor and the ext protocol off. Never follow a symlink a worker wrote. | A malicious repo or a prompt injection runs code on the host. |
 | 6 | **Record each dispatch durably before sending it. Never auto-retry an unknown outcome.** | Duplicate work and wasted credits. |
 | 7 | **Events for agents, reconcile for boxes.** Agent progress comes from ACP session updates and hooks. Box state comes from a `list()` reconcile; provider webhooks only speed it up. | Polling agents at 100 boxes is slow and burns API calls. Waiting on box webhooks breaks on 12 of 15 providers that have none. |
-| 8 | **A human approves the plan before dispatch. Split by file ownership.** | Cards that overlap, and seams between cards that nobody owns. |
+| 8 | **A human approves the exam before dispatch; the engine checks the split.** The user reads the plain-sentence checks and says yes, or adds one. Nothing starts before that. The file split is not shown for approval: the engine refuses a plan where two cards own the same path or a seam has no owner. (Decided 2026-11-14.) | Without the OK, a misread task burns a whole run before anyone sees it. Asking the user to judge a file split asks them to read code, which they will skip. Without the engine check, cards overlap and seams go unowned. |
 | 9 | **Success is verified merges, not agents running.** N agents end in one PR. Review time is the budget. | A flood of PRs that nobody can review. |
 | 10 | **Only trusted feedback reaches agents:** reviewers GitHub confirms can write, and exact bot logins. | Prompt injection through PR comments. |
 | 11 | **Engine first, app thin.** The Go engine does all the work and speaks JSON events and commands. The CLI and the desktop cockpit are both clients of it. The cockpit can do nothing the CLI can't. | Logic in the app means the CLI and the app drift apart, and runs can't be scripted or used in CI. |
-| 12 | **The exam is written before the work and hidden from the workers.** The lead agent writes the acceptance checks at plan time, each as one plain sentence the user can read. They stay on the host, outside every box. They run in a clean box on the combined work. After dispatch only the user can change a check. A failed check gets a ruling: the work was wrong, or the exam was. | Workers edit tests until they pass, so "verified" means nothing. A lead agent that can loosen the exam does the same one level up. A check nobody can overrule fails good work with no way out (`context/harness-ui-patterns-2026-11.md`). |
+| 12 | **The exam is written before the work, by a fresh session, and its tests are hidden.** At plan time a separate agent session, given only the task and the repo, writes the checks as plain sentences plus the tests behind them. The sentences are the goal: the user approves them and the lead may see them. The tests stay on the host, outside every box, and neither the lead nor any worker ever sees them. They run in a clean box on the combined work. After dispatch only the user can change a check. On a failure the exam session explains it in plain words; the lead rules whether the work or the check was wrong, and only the user can change a check. (Exam writer decided 2026-11-14.) | Workers edit tests until they pass, so "verified" means nothing. A lead agent that can loosen the exam does the same one level up. A check nobody can overrule fails good work with no way out (`context/harness-ui-patterns-2026-11.md`). |
 
 ## Open questions
 
 | Question | Options | Leaning |
 |---|---|---|
 | Can herdr over SSH be the agent runtime in any box? | Spike for one day before committing | Untested |
-| Who writes the exam? | The lead session that also steers the workers, or a fresh session that only writes the exam | Fresh session: a lead that knows the checks can leak them through its hints. Not decided |
 
 ## Non-goals
 

@@ -1958,6 +1958,32 @@
   .proof-line.ok { color: var(--accent-green); font-weight: 600; } .proof-line.bad { color: var(--accent-red); font-weight: 600; } .proof-line.mute { color: var(--text-tertiary); }
   .proof-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; border-radius: 7px; background: var(--accent-amber-soft); color: var(--text-primary); font-size: 11.5px; }
   .proof-cta { flex-shrink: 0; padding: 2px 8px; border-radius: 5px; background: var(--accent-blue); color: #FFFFFF; font-size: 10.5px; font-weight: 600; }
+
+  /* Agent squares: one square per sandbox agent */
+  .sq-strip { display:inline-flex; flex-wrap:wrap; gap:2px; align-items:center; max-width:100%; }
+  .sq { width:7px; height:7px; border-radius:2px; box-sizing:border-box; flex:0 0 auto; }
+  .sq.done { background: var(--text-tertiary); opacity:.75; }
+  .sq.working { background: var(--accent-blue); }
+  .sq.waiting { border:1px solid var(--text-tertiary); opacity:.6; }
+  .sq.needs { background: var(--accent-amber); }
+  .sq.stuck { background: var(--accent-red); }
+  .swarm-card { background: var(--surface-1, var(--bg-elevated, transparent)); border:1px solid var(--border-subtle, rgba(127,127,127,.25)); border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+  .swarm-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .swarm-title { font-weight:600; font-size:13.5px; }
+  .swarm-counts { display:flex; gap:12px; flex-wrap:wrap; font-size:11.5px; color: var(--text-secondary); }
+  .swarm-counts .k { display:inline-flex; align-items:center; gap:5px; }
+  .swarm-grid { display:grid; grid-template-columns: repeat(auto-fill, 18px); gap:5px; }
+  .swarm-grid .sq { width:18px; height:18px; border-radius:4px; cursor:pointer; padding:0; border-width:1.5px; }
+  .swarm-grid .sq:hover, .swarm-grid .sq:focus-visible { outline:2px solid var(--accent-blue); outline-offset:1px; }
+  .swarm-grid button.sq { border:0; }
+  .swarm-grid button.sq.waiting { border:1.5px solid var(--text-tertiary); background:transparent; }
+  .swarm-hint { font-size:11.5px; color: var(--text-tertiary); }
+  .box-proof { display:flex; gap:7px; align-items:flex-start; font-size:12px; line-height:1.45; color: var(--text-primary); padding:8px 10px; border-radius:8px; background: var(--accent-green-soft, rgba(18,128,74,.08)); }
+  .box-proof.pending { background: rgba(127,127,127,.08); color: var(--text-secondary); }
+  .box-proof .lbl { font-size:10px; letter-spacing:.06em; text-transform:uppercase; color: var(--text-tertiary); flex-shrink:0; padding-top:2px; }
+  .exam-approve .exam-list { margin:8px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:4px; font-size:12.5px; }
+  .exam-approve .exam-add { display:flex; gap:6px; margin-top:8px; }
+  .exam-approve .exam-add input { flex:1; min-width:0; height:28px; border-radius:7px; border:1px solid var(--border-subtle, rgba(127,127,127,.35)); background:transparent; color:inherit; padding:0 9px; font:inherit; font-size:12px; }
 </style>
 </head>
 <body>
@@ -2036,7 +2062,7 @@
       <div class="sidebar-top">
         <div class="search-wrap">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14" stroke-linecap="round"/></svg>
-          <input type="text" class="search-input" id="searchInput" placeholder="Search 23 tasks...">
+          <input type="text" class="search-input" id="searchInput" placeholder="Search tasks...">
           <button class="search-clear" id="searchClear" title="Clear">&times;</button>
         </div>
         <div class="filter-pills" id="filterPills">
@@ -2130,7 +2156,7 @@
       cost: "$0.38",
       prompt: "Don't cancel customers right away when their card fails. Retry smartly over a week, send calm heads-up emails, and show a subtle update-card banner in the app.",
       improvedPlan: "Keep full workspace access during a 7-day grace window after a failed renewal. Schedule three retries (+24h, +72h, +7d), skip stolen cards, clear queued retries the moment a customer saves a new card, send at most two calm emails, and show a dismissible banner to workspace admins.",
-      leadNote: "I split the work into 4 pieces with no shared files, and wrote 5 exam checks before any agent started.",
+      leadNote: "I split the work into 4 pieces with no shared files. You approved the 5 exam checks, so all 4 agents are working.",
       vaultPeeked: false,
       checkProgress: 0,
       healedNote: null,
@@ -2150,7 +2176,7 @@
         { time: "10:31", kind: "Decided", text: "Gemini builds the banner. It did best on interface work in your last 3 tasks.", changedText: "You changed this: Claude Code builds the banner." },
         { time: "10:24", kind: "Fixed", text: "Box 03 tried the same layout fix 3 times. I told it to rethink, and it is moving again." },
         { time: "10:12", kind: "Planned", text: "I split the work into 4 pieces, each with its own files, and started all 4." },
-        { time: "10:11", kind: "Planned", text: "I wrote 5 checks first and sealed them. The agents cannot see or change them." },
+        { time: "10:11", kind: "You", text: "You approved the 5 exam checks. A separate session wrote the tests behind them and sealed them." },
         { time: "10:10", kind: "Decided", text: "I read your request as: keep access for 7 days, retry 3 times, skip stolen cards.", changedText: "You changed this: keep access for 14 days. All 4 boxes were told." }
       ],
       proof: [
@@ -2173,6 +2199,7 @@
           vm: "sbx-ams-01",
           folder: "billing/retry/",
           thought: "Skipping retries when the bank says the card was stolen or lost",
+          proofLine: "Retries land at +24h, +72h and +7d. A stolen card gets none.",
           files: [
             { name: "schedule", desc: "Plans +24h, +72h, and +7d retry timestamps", state: "done" },
             { name: "policy", desc: "Skips non-retriable card decline reasons", state: "done" },
@@ -2194,6 +2221,7 @@
           vm: "sbx-ams-02",
           folder: "webhooks/stripe/",
           thought: "Telling the other agents the moment a customer saves a new card",
+          proofLine: "Saving a new card clears queued retries in 0.4 seconds.",
           files: [
             { name: "attached", desc: "Detects updated customer card from Stripe", state: "done" },
             { name: "dedupe", desc: "Prevents duplicate webhook deliveries", state: "done" },
@@ -2214,6 +2242,7 @@
           vm: "sbx-fra-03",
           folder: "web/banner/",
           thought: "Showing 'We will try again Thursday' using the retry date from Box 01",
+          proofLine: "The billing page shows: We will try your card again on Thursday.",
           files: [
             { name: "Banner", desc: "Calm top bar with one-click Update Card sheet", state: "done" },
             { name: "useGrace", desc: "Reads grace_ends_at and hides immediately on update", state: "active" },
@@ -2234,6 +2263,7 @@
           vm: "sbx-iad-04",
           folder: "mail/grace/",
           thought: "Capping heads-up emails to Day 1 and Day 5 per renewal cycle",
+          proofLine: "Only 2 emails go out per failed renewal: day 1 and day 5.",
           files: [
             { name: "day1", desc: "Friendly heads-up note with direct card update link", state: "done" },
             { name: "day5", desc: "Final calm reminder two days before workspace pause", state: "done" },
@@ -2509,6 +2539,60 @@
     });
   });
 
+
+  // A wide task: 36 agents, shown as squares instead of cards
+  (function addWideTask() {
+    const langs = ["German", "French", "Spanish", "Italian", "Dutch", "Polish", "Turkish", "Japanese", "Korean", "Portuguese", "Swedish", "Arabic"];
+    const parts = ["billing pages", "emails", "receipts and PDFs"];
+    const models = ["claude", "codex", "gemini"];
+    const boxes = [];
+    langs.forEach((lang, li) => parts.forEach((part, pi) => {
+      const n = boxes.length;
+      const status = n < 21 ? "done" : (n === 26 ? "stuck" : (n < 30 ? "working" : "waiting"));
+      boxes.push({
+        id: "w" + (n + 1),
+        model: models[n % 3],
+        role: lang + " · " + part,
+        vm: "sbx-fra-" + String(40 + n),
+        folder: "locales/" + lang.toLowerCase() + "/",
+        status: status,
+        thought: status === "done" ? "Finished. Every " + part + " string is in " + lang + "."
+          : status === "stuck" ? "Tried the same plural rule 3 times. I restarted it with a hint."
+          : status === "working" ? "Translating " + part + " into " + lang + "."
+          : "Waiting for a free slot.",
+        proofLine: status === "done" ? "All " + part + " in " + lang + ", nothing left in English" : null,
+        files: [{ name: "strings", desc: lang + " text for " + part, state: status === "done" ? "done" : (status === "waiting" ? "queued" : "active") }],
+        memories: ["Prices keep the customer's currency; only words are translated"],
+        chat: [{ from: "agent", text: "I own the " + lang + " " + part + "." }]
+      });
+    }));
+    INITIAL_TASKS.splice(1, 0, {
+      id: "tw-425", pr: 425, title: "Translate billing into 12 languages", group: "active", stage: 2, time: "14m",
+      cost: "$2.10",
+      prompt: "Translate every billing page, email and receipt into our 12 launch languages.",
+      improvedPlan: "Translate the billing pages, emails and receipts into 12 languages: one agent per language and part, 36 in all. Prices and dates follow each country's format; only words change.",
+      leadNote: "21 of 36 agents are done. One got stuck on Polish plurals and I restarted it. One question for you about prices in Japanese.",
+      examApproved: true, vaultPeeked: false, checkProgress: 0, healedNote: null,
+      ask: {
+        boxIdx: 24,
+        question: "In Japanese, should prices show in yen, or stay in US dollars as they are charged?",
+        leadPick: "b",
+        options: {
+          a: { label: "Show yen", check: "Japanese billing pages show prices in yen" },
+          b: { label: "Keep US dollars", check: "Japanese billing pages show the charged US dollar price" }
+        },
+        answer: null
+      },
+      blindChecks: [
+        "Every billing page, email and receipt has no English left in all 12 languages",
+        "Prices and dates follow each language's local format",
+        "Receipts in Arabic read right to left and still print on one A4 page",
+        "English pages are exactly as before"
+      ],
+      boxes: boxes,
+      notes: []
+    });
+  })();
   // App State
   const state = {
     tasks: INITIAL_TASKS,
@@ -2551,6 +2635,30 @@
       .replace(/"/g, "&quot;");
   }
 
+
+  // One square per agent. Grey = done, blue = working, outline = waiting, amber = needs you, red = stuck.
+  const SQ_LABEL = { done: "Done", working: "Working", waiting: "Waiting", needs: "Needs you", stuck: "Stuck" };
+  function boxState(t, b, idx) {
+    if (t.stage >= 3) return "done";
+    if (t.stage === 1) return "waiting";
+    if (t.ask && !t.ask.answer && t.ask.boxIdx === idx + 1) return "needs";
+    if (b.status) return b.status;
+    const files = b.files || [];
+    if (files.length && files.every(f => f.state === "done")) return "done";
+    if (files.some(f => f.state === "active")) return "working";
+    return "waiting";
+  }
+  function squaresHtml(t) {
+    return `<span class="sq-strip">${t.boxes.map((b, i) => `<span class="sq ${boxState(t, b, i)}"></span>`).join("")}</span>`;
+  }
+  function boxProof(t, b, idx) {
+    if (t.stage === 1) return { text: "Starts when you approve the exam", pending: true };
+    if (t.stage === 5) return { text: b.proofLine || "Its part passed the exam and was merged", pending: false };
+    if (b.proofLine) return { text: b.proofLine, pending: false };
+    const files = b.files || [];
+    const done = files.filter(f => t.stage >= 3 || f.state === "done").length;
+    return done ? { text: done + " of " + files.length + " parts working in its sandbox", pending: false } : { text: "Nothing to show yet", pending: true };
+  }
   function clearAutoTimers() {
     state.autoTimers.forEach(id => clearTimeout(id));
     state.autoTimers = [];
@@ -2622,7 +2730,7 @@
             <div class="row-body">
               <div class="row-title">${escapeHtml(t.title)}</div>
               <div class="row-meta">
-                <span class="agent-dots" title="${t.boxes.length} cloud sandboxes">${dots} <span style="margin-left:3px;">${t.boxes.length} boxes</span></span>
+                <span class="agent-dots" title="${t.boxes.length} agents, one square each" style="min-width:0;flex-wrap:wrap;">${squaresHtml(t)} <span style="margin-left:4px;">${t.boxes.length} agents</span></span>
                 <span>${escapeHtml(rightLabel)}</span>
               </div>
             </div>
@@ -2661,7 +2769,7 @@
     document.getElementById("segDecCount").textContent = decisionsFor(t).length;
 
     let badgeCls = "working", badgeText = "Running";
-    if (t.stage === 1) { badgeCls = "working"; badgeText = "Planning"; }
+    if (t.stage === 1) { badgeCls = "checking"; badgeText = "Waiting for your OK"; }
     else if (t.stage === 2) { badgeCls = "working"; badgeText = "Agents working"; }
     else if (t.stage === 3) { badgeCls = "checking"; badgeText = "Taking the exam"; }
     else if (t.stage === 4) { badgeCls = "ready"; badgeText = "Pull request #" + t.pr + " ready"; }
@@ -2691,7 +2799,7 @@
 
     let primaryActionHtml = "";
     if (t.stage === 1) {
-      primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Start the agents</span><span>▸</span></button>`;
+      primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Approve exam and start</span><span>▸</span></button>`;
     } else if (t.stage === 2) {
       primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Run the exam</span><span>▸</span></button>`;
     } else if (t.stage === 3) {
@@ -2788,7 +2896,7 @@
       const boxes = t.boxes || [], checks = t.blindChecks || [];
       t.decisions = [
         { time: t.time, kind: "Planned", text: "I split the work into " + boxes.length + " pieces, each with its own files." },
-        { time: t.time, kind: "Planned", text: "I wrote " + checks.length + " checks first and sealed them. The agents never saw them." },
+        { time: t.time, kind: "You", text: "You approved " + checks.length + " exam checks before any agent started. A separate session wrote the tests and sealed them." },
         { time: t.time, kind: "Decided", text: "I read your request as: " + firstSentence(t.improvedPlan || t.prompt) }
       ];
       if (t.healedNote) t.decisions.unshift({ time: t.time, kind: "Fixed", text: t.healedNote });
@@ -2814,7 +2922,7 @@
     a.answer = key;
     t.blindChecks.push(opt.check);
     const n = t.blindChecks.length;
-    t.leadNote = (key === "lead" ? "You left it to me. I chose: " : "Got your answer: ") + opt.label.toLowerCase() + ". It is now check " + n + " of the exam, and Box 0" + a.boxIdx + " was told.";
+    t.leadNote = (key === "lead" ? "You left it to me. I chose: " : "Got your answer: ") + opt.label.toLowerCase() + ". It is now check " + n + " of the exam, and Box " + String(a.boxIdx).padStart(2, "0") + " was told.";
     decisionsFor(t).unshift(key === "lead"
       ? { time: "Just now", kind: "Decided", text: "You left the last-retry question to me. I chose: " + opt.label.toLowerCase() + ".", changedText: "You changed this: " + a.options[pick === "a" ? "b" : "a"].label.toLowerCase() + "." }
       : { time: "Just now", kind: "You", text: "You chose: " + opt.label.toLowerCase() + ". I added it to the exam as check " + n + "." });
@@ -2822,13 +2930,43 @@
     showToast("Your answer is now check " + n + " of the exam");
   }
 
+  function examApprovalHtml(t) {
+    const items = t.blindChecks.map(c => `<li>${escapeHtml(c)}</li>`).join("");
+    return `
+      <div class="ask-card exam-approve" id="examApproveCard">
+        <div style="min-width:0;flex:1;">
+          <div class="ask-eyebrow">The one thing only you can decide · before ${t.boxes.length} agents start</div>
+          <div class="ask-question">Is this what "done" means? The finished work must pass these ${t.blindChecks.length} checks.</div>
+          <ol class="exam-list">${items}</ol>
+          <div class="exam-add">
+            <input id="examAddInput" type="text" placeholder="Add a check in plain words, for example: works on phones too" aria-label="Add a check">
+            <button class="btn" id="examAddBtn">Add check</button>
+          </div>
+        </div>
+        <div class="ask-actions" style="align-self:flex-start;">
+          <button class="btn btn-primary" id="examApproveBtn">Yes, start the agents</button>
+        </div>
+      </div>`;
+  }
+
+  function approveExam(t) {
+    if (t.stage !== 1) return;
+    t.examApproved = true;
+    decisionsFor(t).unshift({ time: "Just now", kind: "You", text: "You approved the " + t.blindChecks.length + " exam checks. A separate session wrote the tests behind them and sealed them. I started " + t.boxes.length + " agents." });
+    t.leadNote = t.boxes.length + " agents are working at the same time. I am reading their notes before the exam.";
+    jumpToStage(t, 2);
+    showToast("Exam approved. " + t.boxes.length + " agents started");
+    if (t.autoRun) t.autoRun();
+  }
+
   function askCardHtml(t) {
+    if (t.stage === 1 && !t.examApproved) return examApprovalHtml(t);
     if (!t.ask || t.ask.answer || t.stage > 2) return "";
     const a = t.ask;
     return `
       <div class="ask-card" id="askCard">
         <div style="min-width:0;">
-          <div class="ask-eyebrow">The one thing only you can decide · from Box 0${a.boxIdx}</div>
+          <div class="ask-eyebrow">The one thing only you can decide · from Box ${String(a.boxIdx).padStart(2, "0")}</div>
           <div class="ask-question">${escapeHtml(a.question)}</div>
         </div>
         <div class="ask-actions">
@@ -2906,6 +3044,26 @@
     }));
   }
 
+
+  function swarmGridHtml(t) {
+    const counts = { done: 0, working: 0, waiting: 0, needs: 0, stuck: 0 };
+    const cells = t.boxes.map((b, i) => {
+      const st = boxState(t, b, i);
+      counts[st]++;
+      return `<button class="sq ${st}" data-sq-box="${b.id}" title="Agent ${i + 1} · ${escapeHtml(b.role)} · ${SQ_LABEL[st]}" aria-label="Agent ${i + 1}, ${escapeHtml(b.role)}, ${SQ_LABEL[st]}"></button>`;
+    }).join("");
+    const legend = ["done", "working", "waiting", "needs", "stuck"].filter(k => counts[k]).map(k =>
+      `<span class="k"><span class="sq ${k}"></span>${counts[k]} ${SQ_LABEL[k].toLowerCase()}</span>`).join("");
+    return `
+      <div class="swarm-card" id="swarmCard">
+        <div class="swarm-head">
+          <span class="swarm-title">${t.boxes.length} agents, one square each</span>
+          <span class="swarm-counts">${legend}</span>
+        </div>
+        <div class="swarm-grid">${cells}</div>
+        <div class="swarm-hint">Click a square to see that agent. Cards show up again when a task has 8 agents or fewer.</div>
+      </div>`;
+  }
   function renderStage() {
     const container = document.getElementById("stageContainer");
     const t = currentTask();
@@ -2933,7 +3091,7 @@
         <div class="vault-sealed-veil">
           <div style="display:flex;align-items:center;gap:8px;">
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent-amber)" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.8"/><path d="M5.2 7V5a2.8 2.8 0 015.6 0v2"/></svg>
-            <span><strong>${t.blindChecks.length} checks</strong> written before any agent started. The agents never see them.</span>
+            <span><strong>${t.blindChecks.length} checks</strong> ${t.stage === 1 ? "waiting for your OK" : "you approved"}. A separate session wrote the tests behind them. No agent sees those.</span>
           </div>
           <button class="btn" id="btnPeekVault" style="height:25px;padding:0 9px;font-size:11px;">Show</button>
         </div>
@@ -2959,12 +3117,14 @@
         return `<div class="file-tile ${st}" data-file-whisper="${escapeHtml(f.name + ": " + f.desc)}" title="${escapeHtml(f.desc)}">${escapeHtml(f.name)}</div>`;
       }).join("");
 
-      const doneCount = b.files.filter(f => (t.stage >= 3 ? "done" : (t.stage === 1 ? "queued" : f.state)) === "done").length;
+      const proof = boxProof(t, b, idx);
       const firstMem = b.memories[0] || "Scanning repository conventions";
       const extraMem = b.memories.length > 1 ? `<span class="mem-more">+${b.memories.length - 1}</span>` : "";
 
       let statusDot = `<span class="pulse-dot working" title="Working in its own sandbox"></span>`;
-      if (t.stage >= 3) {
+      if (boxState(t, b, idx) === "stuck") {
+        statusDot = `<span class="pulse-dot" style="background:var(--accent-red)" title="Stuck"></span>`;
+      } else if (t.stage >= 3) {
         statusDot = `<span class="pulse-dot" title="Finished its piece"></span>`;
       } else if (t.stage === 1) {
         statusDot = `<span class="pulse-dot amber" title="Booting cloud sandbox"></span>`;
@@ -2995,12 +3155,8 @@
             
           </div>
 
-          <div class="territory-well" data-default-folder="Its own files">
-            <div class="territory-head">
-              <span class="territory-folder" style="font-family:var(--font-sans);">Its own files</span>
-              <span class="tabular" style="flex-shrink:0;">${doneCount} of ${b.files.length} done</span>
-            </div>
-            <div class="file-tiles">${tilesHtml}</div>
+          <div class="box-proof ${proof.pending ? "pending" : ""}" title="What this agent has shown so far">
+            <span class="lbl">Proof</span><span>${escapeHtml(proof.text)}</span>
           </div>
 
           <div class="box-thought">${escapeHtml(thoughtText)}</div>
@@ -3167,7 +3323,7 @@
 
         <!-- Band 2: Cloud Sandbox Mini Boxes + Inter-Agent Notes -->
         <div class="boxes-section">
-          <div class="sandbox-grid" id="sandboxGrid">${boxesHtml}</div>
+          ${t.boxes.length > 8 ? swarmGridHtml(t) : `<div class="sandbox-grid" id="sandboxGrid">${boxesHtml}</div>`}
           ${t.notes.length ? `<div class="notes-ribbon">${notesHtml}</div>` : ""}
         </div>
 
@@ -3177,6 +3333,19 @@
     `;
 
     // Bind Formation Events
+    if (document.getElementById("examApproveCard")) {
+      document.getElementById("examApproveBtn").addEventListener("click", () => approveExam(t));
+      const addCheck = () => {
+        const inp = document.getElementById("examAddInput");
+        const v = inp.value.trim();
+        if (!v) { inp.focus(); return; }
+        t.blindChecks.push(v.charAt(0).toUpperCase() + v.slice(1));
+        renderStage();
+        showToast("Added. The exam session will write a test for it");
+      };
+      document.getElementById("examAddBtn").addEventListener("click", addCheck);
+      document.getElementById("examAddInput").addEventListener("keydown", e => { if (e.key === "Enter") addCheck(); });
+    }
     if (document.getElementById("askCard")) {
       document.getElementById("askOptA").addEventListener("click", () => answerAsk(t, "a"));
       document.getElementById("askOptB").addEventListener("click", () => answerAsk(t, "b"));
@@ -3190,6 +3359,10 @@
 
     document.getElementById("btnLeadTermCard").addEventListener("click", () => openTerminal("lead"));
     document.getElementById("btnSendPulse").addEventListener("click", () => triggerLiveNotePulse(t));
+
+    container.querySelectorAll("[data-sq-box]").forEach(sq => {
+      sq.addEventListener("click", () => openAgentDrawer(sq.getAttribute("data-sq-box"), "chat"));
+    });
 
     container.querySelectorAll(".mini-box").forEach(card => {
       card.addEventListener("click", (e) => {
@@ -3551,6 +3724,7 @@
   // Stage Transitions & Walkthrough Automation
   function jumpToStage(t, stageNum) {
     clearAutoTimers();
+    if (stageNum >= 2) t.examApproved = true;
     t.stage = stageNum;
 
     if (stageNum === 2) {
@@ -3594,7 +3768,7 @@
   }
 
   function advanceTaskStage(t) {
-    if (t.stage === 1) jumpToStage(t, 2);
+    if (t.stage === 1) approveExam(t);
     else if (t.stage === 2) jumpToStage(t, 3);
     else if (t.stage === 3) jumpToStage(t, 4);
   }
@@ -3980,7 +4154,8 @@
       cost: "$0.34",
       prompt: promptText,
       improvedPlan: `The lead agent read acme/payflow, turned "${promptText}" into 3 pieces with no shared files, and wrote 4 exam checks before any agent started.`,
-      leadNote: "Reading your task, writing the exam, and starting 3 agents...",
+      leadNote: "I read your task and split it into 3 pieces. A separate session wrote 4 checks for what done means. Say yes and I start the agents.",
+      examApproved: false,
       vaultPeeked: false,
       checkProgress: 0,
       healedNote: null,
@@ -4043,17 +4218,11 @@
     closeModal();
     renderAll();
 
-    showToast(fromTerminal ? `Started task #${pr} from the terminal` : `The lead agent planned the task and wrote 4 exam checks`);
+    showToast(fromTerminal ? `Task #${pr} from the terminal is waiting for your OK on the exam` : `Planned. Check the exam, then the agents start`);
 
     // Autonomous agentic progression: Stage 1 -> Stage 2 -> Note Sync -> Stage 3 Blind Checks -> Stage 4 Verified PR!
-    const t1 = setTimeout(() => {
-      if (currentTask().id !== newTask.id || newTask.stage !== 1) return;
-      newTask.stage = 2;
-      newTask.leadNote = "3 agents are working at the same time. I am reading their notes before the exam.";
-      renderAll();
-      setTimeout(() => animatePacketBetween("b1", "b3"), 320);
-    }, 1400);
-
+    newTask.autoRun = () => {
+    setTimeout(() => animatePacketBetween("b1", "b3"), 320);
     const t2 = setTimeout(() => {
       if (currentTask().id !== newTask.id || newTask.stage !== 2) return;
       newTask.notes.unshift({
@@ -4074,7 +4243,8 @@
       jumpToStage(newTask, 3);
     }, 5200);
 
-    state.autoTimers.push(t1, t2, t3);
+    state.autoTimers.push(t2, t3);
+    };
   }
 
   function deleteTask(taskId) {
