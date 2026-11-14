@@ -117,9 +117,10 @@ type runner struct {
 	dir    string
 	start  time.Time
 
-	boxesMu sync.Mutex
-	boxes   []*box.Box
-	secrets []string
+	boxesMu    sync.Mutex
+	boxes      []*box.Box
+	secrets    []string
+	agentLogin bool // a box held the agent's Claude login (expected)
 }
 
 // Run executes one task end to end.
@@ -475,7 +476,13 @@ func (r *runner) destroy(b *box.Box) {
 	if r.o.Provider.Sandboxed() {
 		var sb strings.Builder
 		if _, err := r.o.Provider.Exec(ctx, b, secretScanScript, nil, &sb); err == nil {
-			if found := findSecrets(sb.String()); len(found) > 0 {
+			found, login := scanBox(sb.String())
+			if login {
+				r.boxesMu.Lock()
+				r.agentLogin = true
+				r.boxesMu.Unlock()
+			}
+			if len(found) > 0 {
 				r.boxesMu.Lock()
 				for _, f := range found {
 					r.secrets = append(r.secrets, f+" in "+b.Name)
@@ -508,7 +515,8 @@ func (r *runner) githubCreds(ctx context.Context, b *box.Box) []string {
 		return nil
 	}
 	var gh []string
-	for _, f := range findSecrets(sb.String()) {
+	found, _ := scanBox(sb.String())
+	for _, f := range found {
 		if strings.Contains(f, "GitHub") || strings.Contains(f, "gh ") {
 			gh = append(gh, f)
 		}
@@ -850,7 +858,11 @@ func (r *runner) summary(res *Result) {
 	}
 	if r.o.Provider.Sandboxed() {
 		if len(res.Secrets) == 0 {
-			r.ui.say("  Secret scan: nothing found in any sandbox")
+			msg := "  Secret scan: nothing found in any sandbox"
+			if r.agentLogin {
+				msg += " (only the agents' own Claude login, as expected)"
+			}
+			r.ui.say(msg)
 		} else {
 			r.ui.say("  %s Secret scan found: %s", r.ui.red("!"), strings.Join(res.Secrets, "; "))
 		}

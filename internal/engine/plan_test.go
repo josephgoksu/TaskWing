@@ -127,3 +127,14 @@ func TestFindSecrets(t *testing.T) {
 		t.Errorf("false positive: %v", f)
 	}
 }
+
+func TestScanBoxAgentLogin(t *testing.T) {
+	leaks, login := scanBox("PATH=/bin\nCLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-abcdefghijklmnopqrstuv\n")
+	if len(leaks) != 0 || !login {
+		t.Fatalf("agent login reported as a leak: %v %v", leaks, login)
+	}
+	leaks, _ = scanBox("CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-abcdefghijklmnopqrstuv\nANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnop\n")
+	if len(leaks) != 1 {
+		t.Fatalf("a real API key was missed: %v", leaks)
+	}
+}

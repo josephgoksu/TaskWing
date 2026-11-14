@@ -34,18 +34,21 @@ taskwing run "add a /health endpoint with a test" --provider local --no-pr
 
 Every agent box is a fork of this one, so it needs what the repository needs to build and test.
 
-Build it with `--no-env`. A box from boat's default environment gets your stored account secrets, including your GitHub token and gh login, and taskwing refuses to start agents in a box that holds GitHub credentials. Never give it a name that starts with "taskwing".
+Agents need your Claude login and nothing else. boat's default environment also passes your GitHub token, gh login and secret files into every box, and taskwing refuses to start agents in a box that holds GitHub credentials. So make a separate environment first:
+
+1. In boat, create an environment (for example `tw-agents`) that passes only the agent login: GitHub, secret files, boat CLI credentials and repositories all off. Keep `base` as it is.
+2. Make the base box from it, install the toolchain, stop it:
 
 ```bash
-boat new --no-env                    # note the box id, e.g. bx_abc123
+boat new --environment tw-agents     # note the box id, e.g. bx_abc123 (check boat new --help)
 boat ssh bx_abc123
 #   install the repository's toolchain (Go, Node, Docker services...)
-#   exit, then: boat ssh -t bx_abc123, run claude, type /login, exit
-#   (a --no-env box has no Claude login, and boat prompt needs one)
 #   do NOT log in to gh: boxes never get GitHub credentials
 #   exit
 boat stop bx_abc123                  # stopping takes the snapshot that forks start from
 ```
+
+Never give the base box a name that starts with "taskwing". A `--no-env` box has no secrets, but also no Claude login, so `boat prompt` fails in it with "Claude login required". The end-of-run secret scan lists any leak; the agents' own Claude login is expected and named as such.
 
 A stopped box keeps its data for 14 days. After that, `boat fork` fails; save it with `boat snapshot <id> <name>` or make a new base.
 

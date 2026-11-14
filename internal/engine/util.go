@@ -121,6 +121,20 @@ var secretPatterns = []struct {
 
 const secretScanScript = `env 2>/dev/null; cat ~/.git-credentials ~/.config/gh/hosts.yml ~/.netrc 2>/dev/null; true`
 
+// scanBox splits a box's scan into leaks and the agent's own Claude login
+// (CLAUDE_CODE_OAUTH_TOKEN), which agents need to run and is expected.
+func scanBox(text string) (leaks []string, agentLogin bool) {
+	var rest []string
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "CLAUDE_CODE_OAUTH_TOKEN=") {
+			agentLogin = agentLogin || len(line) > len("CLAUDE_CODE_OAUTH_TOKEN=")
+			continue
+		}
+		rest = append(rest, line)
+	}
+	return findSecrets(strings.Join(rest, "\n")), agentLogin
+}
+
 func findSecrets(text string) []string {
 	var found []string
 	for _, p := range secretPatterns {
