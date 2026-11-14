@@ -497,6 +497,25 @@ func (r *runner) destroy(b *box.Box) {
 	r.untrack(b)
 }
 
+// githubCreds lists the GitHub credentials a fresh box already holds. Agents
+// never start in such a box: they could push as the user.
+func (r *runner) githubCreds(ctx context.Context, b *box.Box) []string {
+	if !r.o.Provider.Sandboxed() {
+		return nil
+	}
+	var sb strings.Builder
+	if _, err := r.o.Provider.Exec(ctx, b, secretScanScript, nil, &sb); err != nil {
+		return nil
+	}
+	var gh []string
+	for _, f := range findSecrets(sb.String()) {
+		if strings.Contains(f, "GitHub") || strings.Contains(f, "gh ") {
+			gh = append(gh, f)
+		}
+	}
+	return gh
+}
+
 // cleanup deletes any box still alive, for example after Ctrl-C or an error.
 func (r *runner) cleanup() {
 	r.boxesMu.Lock()
@@ -633,7 +652,12 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 	}
 	r.track(b)
 	defer r.destroy(b)
-	cr.set(func(c *cardRun) { c.box, c.thought = b, "copying the repository" })
+	cr.set(func(c *cardRun) { c.box, c.thought = b, "checking the sandbox for GitHub credentials" })
+	if found := r.githubCreds(ctx, b); len(found) > 0 {
+		fail("this sandbox holds " + strings.Join(found, ", ") + "; make a base box without them (docs/poc.md)")
+		return
+	}
+	cr.set(func(c *cardRun) { c.thought = "copying the repository" })
 	r.ev.log("box.state", map[string]any{"card": cr.card.ID, "box": b.ID, "state": "created"})
 	if err := r.upload(ctx, b, bundle, "taskwing/"+cr.card.ID); err != nil {
 		fail(err.Error())

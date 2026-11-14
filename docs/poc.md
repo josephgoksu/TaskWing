@@ -34,11 +34,14 @@ taskwing run "add a /health endpoint with a test" --provider local --no-pr
 
 Every agent box is a fork of this one, so it needs what the repository needs to build and test.
 
+Build it with `--no-env`. A box from boat's default environment gets your stored account secrets, including your GitHub token and gh login, and taskwing refuses to start agents in a box that holds GitHub credentials. Never give it a name that starts with "taskwing".
+
 ```bash
-boat new                             # note the box id, e.g. bx_abc123
+boat new --no-env                    # note the box id, e.g. bx_abc123
 boat ssh bx_abc123
 #   install the repository's toolchain (Go, Node, Docker services...)
-#   claude          # log in to Claude Code, then exit
+#   exit, then: boat ssh -t bx_abc123, run claude, type /login, exit
+#   (a --no-env box has no Claude login, and boat prompt needs one)
 #   do NOT log in to gh: boxes never get GitHub credentials
 #   exit
 boat stop bx_abc123                  # stopping takes the snapshot that forks start from

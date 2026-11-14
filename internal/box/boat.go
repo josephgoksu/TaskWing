@@ -176,6 +176,7 @@ type boatAgent struct {
 	exited   bool
 	// sawFinished: the stream sent a "finished" status; confirm with boat conversations.
 	sawFinished bool
+	limited     bool // a usage_limit event: login missing or plan spent
 }
 
 func (a *boatAgent) setExited() {
@@ -220,6 +221,21 @@ func (a *boatAgent) read(r io.Reader) {
 			a.errText = ev.Data.Message
 			if a.errText == "" {
 				a.errText = firstLine(sc.Text())
+			}
+		}
+		if ev.Data.Type == "usage_limit" {
+			// e.g. "Claude login required" or a spent plan: the agent never ran.
+			a.limited = true
+			a.errText = "boat: " + firstLine(sc.Text())
+			var u struct {
+				Data struct {
+					Data struct {
+						Summary string `json:"summary"`
+					} `json:"data"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(sc.Bytes(), &u) == nil && u.Data.Data.Summary != "" {
+				a.errText = "boat: " + u.Data.Data.Summary
 			}
 		}
 		if ev.Status == "finished" || ev.Data.Status == "finished" {
@@ -269,7 +285,12 @@ func (a *boatAgent) watch(every time.Duration) {
 		a.mu.Lock()
 		sawFinished := a.sawFinished
 		a.mu.Unlock()
-		if resp && sawFinished {
+		if sawFinished {
+			a.mu.Lock()
+			if !resp && a.errText == "" {
+				a.errText = "the agent stopped without answering"
+			}
+			a.mu.Unlock()
 			a.finish()
 			return
 		}
@@ -327,7 +348,7 @@ func (a *boatAgent) Status() AgentStatus {
 		return AgentStatus{Running: true, Thought: a.thought}
 	}
 	st := AgentStatus{Thought: a.thought, Final: a.final}
-	if a.errText != "" && !a.response {
+	if a.limited || (a.errText != "" && !a.response) {
 		st.Failed, st.Err = true, a.errText
 	}
 	return st

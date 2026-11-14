@@ -17,6 +17,12 @@ case "$cmd" in
   prompt)
     id=$1; prompt="${@: -1}"
     echo '{"event":"start","data":{"conversationId":"cv1"}}'
+    if [ -n "${FAKE_BOAT_NO_LOGIN:-}" ]; then
+      echo '{"event":"chat","data":{"type":"usage_limit","data":{"limitType":"auth_expiry","provider":"claude","summary":"Claude login required"}}}'
+      echo '{"event":"chat","status":"finished"}'
+      echo idle > "$B/$id/.conv"
+      exec sleep 600
+    fi
     echo running > "$B/$id/.conv"
     out=$(cd "$B/$id/tw/repo" && HOME="$B/$id" bash "$FAKE_AGENT" <<<"$prompt" 2>&1)
     proof=$(grep '^PROOF:' <<<"$out" | tail -1)

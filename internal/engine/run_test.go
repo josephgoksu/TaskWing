@@ -200,3 +200,66 @@ func TestRunRefusesDirtyTree(t *testing.T) {
 		t.Fatalf("expected an uncommitted-changes error, got %v", err)
 	}
 }
+
+func TestRunRefusesBoxWithGitHubLogin(t *testing.T) {
+	quietSecrets(t)
+	repo := newRepo(t)
+	home := t.TempDir()
+	state := t.TempDir()
+	t.Setenv("PATH", testdata(t, "fakebin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKE_STATE", state)
+	t.Setenv("FAKE_AGENT", testdata(t, "agent.sh"))
+	t.Setenv("GH_TOKEN", "ghp_abcdefghijklmnopqrstuvwxyz0123")
+	var out bytes.Buffer
+	_, err := Run(context.Background(), Options{
+		Task:     "add a greeting and a farewell",
+		Dir:      repo,
+		Provider: &box.Boat{Base: "base1", Poll: 200 * time.Millisecond},
+		Home:     home,
+		LeadCmd:  "bash " + testdata(t, "lead.sh"),
+		ExamCmd:  "bash " + testdata(t, "exam.sh"),
+		Yes:      true,
+		NoPR:     true,
+		Out:      &out,
+		In:       strings.NewReader(""),
+	})
+	if err == nil || !strings.Contains(out.String(), "holds GitHub token") {
+		t.Fatalf("expected the run to refuse a box with a GitHub token, got %v\n%s", err, out.String())
+	}
+	if strings.Contains(out.String(), "ghp_") {
+		t.Error("a token value was printed")
+	}
+	if left, _ := os.ReadDir(filepath.Join(state, "boxes")); len(left) != 0 {
+		t.Errorf("%d boxes left behind", len(left))
+	}
+}
+
+func TestRunFailsFastWhenBoxHasNoClaudeLogin(t *testing.T) {
+	quietSecrets(t)
+	repo := newRepo(t)
+	state := t.TempDir()
+	t.Setenv("PATH", testdata(t, "fakebin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKE_STATE", state)
+	t.Setenv("FAKE_AGENT", testdata(t, "agent.sh"))
+	t.Setenv("FAKE_BOAT_NO_LOGIN", "1")
+	var out bytes.Buffer
+	start := time.Now()
+	_, err := Run(context.Background(), Options{
+		Task:     "add a greeting and a farewell",
+		Dir:      repo,
+		Provider: &box.Boat{Base: "base1", Poll: 200 * time.Millisecond},
+		Home:     t.TempDir(),
+		LeadCmd:  "bash " + testdata(t, "lead.sh"),
+		ExamCmd:  "bash " + testdata(t, "exam.sh"),
+		Yes:      true,
+		NoPR:     true,
+		Out:      &out,
+		In:       strings.NewReader(""),
+	})
+	if err == nil || !strings.Contains(out.String(), "Claude login required") {
+		t.Fatalf("expected the pieces to fail with the login error, got %v\n%s", err, out.String())
+	}
+	if time.Since(start) > 30*time.Second {
+		t.Errorf("took %s to notice", time.Since(start))
+	}
+}
