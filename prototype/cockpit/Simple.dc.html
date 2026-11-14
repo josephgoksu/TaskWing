@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TaskWing: one task in, one PR out</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font-family:inherit}
+@media (prefers-reduced-motion: no-preference){
+@keyframes tw-flow{from{left:8%}to{left:86%}}
+@keyframes tw-halo{0%{box-shadow:0 0 0 0 rgba(10,96,255,.35)}100%{box-shadow:0 0 0 11px rgba(10,96,255,0)}}
+}
+</style>
+</helmet>
+<div style="background: #1B1B1F; padding: 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 14px; line-height: 1.4; color: #1D1D1F; font-variant-numeric: tabular-nums">
+
+<div style="position: relative; height: 700px; background: #FFFFFF; border-radius: 12px; overflow: hidden; border: 1px solid #3A3A40; display: flex; flex-direction: column">
+
+<!-- BAR -->
+<div style="flex: 0 0 44px; display: flex; align-items: center; gap: 8px; padding: 0 14px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; display: block"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E; display: block"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28C840; display: block"></span>
+<button onClick="{{ goHome }}" style="margin-left: 14px; border: 0; background: transparent; color: #6E6E73; font-size: 13px; cursor: pointer; padding: 6px 8px; border-radius: 6px; visibility: {{backVis}}">‹ All tasks</button>
+<span style="flex: 1"></span>
+<button onClick="{{ toggleSettings }}" style="border: 0; background: transparent; color: #6E6E73; font-size: 13px; cursor: pointer; padding: 6px 8px; border-radius: 6px">Settings</button>
+</div>
+
+<!-- HOME -->
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+<div style="flex: 1; overflow-y: auto; display: flex; justify-content: center; padding: 56px 24px 24px">
+<div style="width: 100%; max-width: 620px">
+<h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.02em; text-align: center">What should get done?</h1>
+<div style="margin-top: 22px; border: 1px solid #D8D8DC; border-radius: 16px; padding: 16px 16px 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.06)">
+<div style="font-size: 17px; min-height: 52px">People should be able to export reports as CSV<span aria-hidden="true" style="display: inline-block; width: 2px; height: 20px; background: #0A60FF; vertical-align: -4px; margin-left: 2px"></span></div>
+<div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px">
+<span style="font-size: 13px; color: #6E6E73; padding: 4px 10px; border-radius: 999px; background: #F2F2F4">brief.finance</span>
+<button onClick="{{ start }}" aria-label="Start this task" style="width: 34px; height: 34px; border-radius: 50%; border: 0; background: #0A60FF; color: #FFFFFF; font-size: 17px; font-weight: 700; cursor: pointer">↑</button>
+</div>
+</div>
+<div style="margin-top: 10px; text-align: center; font-size: 13px; color: #6E6E73">Say it in your own words. Your agent plans it, runs it, checks it, and comes back with one pull request.</div>
+
+<div style="margin-top: 40px">
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+<div>
+<div style="display: {{r.gDisp}}; font-size: 12px; font-weight: 600; color: #6E6E73; padding: 14px 4px 6px">{{r.group}}</div>
+<button onClick="{{ r.open }}" style="width: 100%; text-align: left; border: 0; background: transparent; cursor: {{r.cursor}}; padding: 10px 4px; border-top: 1px solid #EDEDF0; display: flex; align-items: center; gap: 12px; color: #1D1D1F; font-size: 14px">
+<span aria-hidden="true" style="flex: 0 0 18px; height: 18px; border-radius: 50%; background: {{r.ring}}; display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 50%; background: {{r.core}}; display: block"></span></span>
+<span style="flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{r.title}}</span>
+<span style="font-size: 13px; color: {{r.fg}}; white-space: nowrap">{{r.status}}</span>
+</button>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+
+<!-- RUNNING TASK -->
+<sc-if value="{{ isTask }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; overflow-y: auto; display: flex; justify-content: center; padding: 18px 24px 24px">
+<div style="width: 100%; max-width: 820px">
+<h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em">Export reports as CSV</h1>
+<div style="margin-top: 4px; font-size: 16px; color: #3A3A40">{{headline}}</div>
+
+<sc-if value="{{ hasAsk }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: #FFF8E8; border: 1px solid #F0D9A8">
+<div style="font-size: 12px; font-weight: 600; color: #9A5B00">The one thing only you can decide</div>
+<div style="font-size: 16px; font-weight: 600; margin-top: 3px">A report with no rows: show a message, or download an empty file?</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px">
+<button onClick="{{ ansMsg }}" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #0A60FF; background: #0A60FF; color: #FFFFFF; font-size: 14px; font-weight: 500; cursor: pointer">Show a message</button>
+<button onClick="{{ ansFile }}" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #D0D0D5; background: #FFFFFF; color: #1D1D1F; font-size: 14px; font-weight: 500; cursor: pointer">Empty file</button>
+<button onClick="{{ ansYou }}" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 0; background: transparent; color: #6E6E73; font-size: 14px; cursor: pointer">You decide</button>
+</div>
+</div>
+</sc-if>
+
+<div style="margin-top: 18px; display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start">
+<!-- ring -->
+<div style="flex: 0 0 300px">
+<div style="position: relative; width: 300px; height: 300px">
+<sc-for list="{{ spokes }}" as="sp" hint-placeholder-count="9">
+<div aria-hidden="true" style="position: absolute; left: 150px; top: 150px; width: 62px; height: 0; border-top: 1.5px {{sp.line}} {{sp.col}}; transform-origin: 0 0; transform: rotate({{sp.rot}}) translateX(38px)"><span style="position: absolute; top: -4px; left: 8%; width: 6px; height: 6px; border-radius: 50%; background: #0A60FF; opacity: {{sp.dotOp}}; animation: tw-flow 1.8s linear infinite; display: block"></span></div>
+</sc-for>
+<div style="position: absolute; left: 116px; top: 116px; width: 68px; height: 68px; border-radius: 50%; background: #1D1D1F; color: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15"><span style="font-size: 18px; font-weight: 700">{{ring.count}}</span><span style="font-size: 10px; color: #C7C7CC">done</span></div>
+<sc-for list="{{ dots }}" as="d" hint-placeholder-count="9">
+<button onClick="{{ d.pick }}" aria-label="{{ d.aria }}" style="position: absolute; left: {{d.x}}; top: {{d.y}}; width: 30px; height: 30px; padding: 0; border-radius: 50%; cursor: pointer; background: {{d.bg}}; border: {{d.border}}; color: {{d.fg}}; font-size: 11px; font-weight: 700; outline: {{d.ring}}; outline-offset: 3px; animation: {{d.anim}}">{{d.mark}}</button>
+</sc-for>
+</div>
+<div style="text-align: center; font-size: 13px; color: #3A3A40; min-height: 36px">{{ring.caption}}</div>
+</div>
+<!-- story -->
+<div style="flex: 1 1 320px; min-width: 0">
+<div style="font-size: 12px; font-weight: 600; color: #6E6E73; padding-bottom: 4px">What your agent did</div>
+<sc-for list="{{ story }}" as="s" hint-placeholder-count="6">
+<div style="display: flex; gap: 12px; padding: 9px 0; border-top: 1px solid #EDEDF0">
+<span style="flex: 0 0 40px; font-size: 12px; color: #9A9AA0; padding-top: 2px">{{s.t}}</span>
+<div style="min-width: 0"><span>{{s.text}}</span> <button onClick="{{ s.act }}" style="display: {{s.linkDisp}}; border: 0; background: transparent; padding: 0; color: #0A60FF; font-size: 14px; cursor: pointer">{{s.link}}</button></div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="margin-top: 14px; border-top: 1px solid #EDEDF0; padding-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<button onClick="{{ toggleDetails }}" style="border: 0; background: transparent; padding: 4px 0; color: #6E6E73; font-size: 13px; cursor: pointer">{{detailsLabel}}</button>
+<div style="display: flex; gap: 14px; font-size: 13px; color: #6E6E73"><span>Pause</span><span>Stop</span></div>
+</div>
+<sc-if value="{{ showDetails }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top: 6px">
+<sc-for list="{{ agents }}" as="a" hint-placeholder-count="9">
+<div style="display: flex; gap: 12px; padding: 6px 0; border-top: 1px solid #F2F2F4; font-size: 13px">
+<span style="flex: 0 0 22px; color: #9A9AA0">{{a.n}}</span><span style="flex: 1; min-width: 0">{{a.title}}</span><span style="flex: 0 0 96px; color: #6E6E73">{{a.agent}}</span><span style="flex: 0 0 84px; text-align: right; color: {{a.fg}}">{{a.state}}</span>
+</div>
+</sc-for>
+<div style="padding: 10px 0 0; font-size: 13px; color: #6E6E73">Spent $11.51 of your $25 limit · sandboxes on boat · about 12 minutes of your time at the end</div>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<!-- FINISHED -->
+<sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; overflow-y: auto; display: flex; justify-content: center; padding: 22px 24px 24px">
+<div style="width: 100%; max-width: 620px">
+<div style="display: flex; align-items: center; gap: 12px">
+<span aria-hidden="true" style="flex: 0 0 40px; height: 40px; border-radius: 50%; background: #1A7F37; color: #FFFFFF; font-size: 20px; font-weight: 700; display: flex; align-items: center; justify-content: center">✓</span>
+<div><h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em">{{done.title}}</h1><div style="color: #6E6E73">Export reports as CSV · 9 agents · 2h 48m · $17.80</div></div>
+</div>
+
+<div style="margin-top: 20px; font-size: 12px; font-weight: 600; color: #6E6E73">What changed</div>
+<div style="margin-top: 4px; font-size: 15px; line-height: 1.5">People who own a report, and admins, can download it as a CSV file from the reports page. A progress bar shows while it downloads. Every export is written to the audit log.</div>
+
+<div style="margin-top: 18px; font-size: 12px; font-weight: 600; color: #6E6E73">Why you can trust it</div>
+<div style="margin-top: 4px; display: flex; flex-direction: column; gap: 4px">
+<div><span style="color: #1A7F37; font-weight: 700">✓ </span>61 of 61 tests pass</div>
+<div><span style="color: #1A7F37; font-weight: 700">✓ </span>A second model read every change and found nothing left to fix</div>
+<div><span style="color: #1A7F37; font-weight: 700">✓ </span>It works end to end: a real report was exported in a test browser</div>
+</div>
+
+<div style="margin-top: 18px; font-size: 12px; font-weight: 600; color: #6E6E73">Decided for you</div>
+<div style="margin-top: 4px; display: flex; flex-direction: column; gap: 4px">
+<div>Exports stop at 50,000 rows, like the reports page. <span style="color: #0A60FF">Change</span></div>
+<div>The file name is the report name plus the date. <span style="color: #0A60FF">Change</span></div>
+</div>
+
+<div style="margin-top: 18px; padding: 12px 14px; border-radius: 12px; background: #FFF8E8; border: 1px solid #F0D9A8; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<div><div style="font-weight: 600">One thing left out on purpose</div><div style="color: #3A3A40">The export has no rate limit. It was outside what you asked for.</div></div>
+<button style="height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #D0D0D5; background: #FFFFFF; color: #1D1D1F; font-size: 14px; cursor: pointer; white-space: nowrap">Add it now</button>
+</div>
+
+<div style="margin-top: 22px; display: flex; gap: 10px; align-items: center">
+<button onClick="{{ merge }}" style="height: 38px; padding: 0 22px; border-radius: 10px; border: 0; background: {{done.btnBg}}; color: #FFFFFF; font-size: 15px; font-weight: 600; cursor: pointer">{{done.btn}}</button>
+<button style="height: 38px; padding: 0 16px; border-radius: 10px; border: 1px solid #D0D0D5; background: #FFFFFF; color: #1D1D1F; font-size: 15px; cursor: pointer">Look closer</button>
+<span style="font-size: 13px; color: #6E6E73">{{done.note}}</span>
+</div>
+</div>
+</div>
+</sc-if>
+
+<!-- SETTINGS -->
+<sc-if value="{{ showSettings }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 44px; right: 0; bottom: 0; width: 340px; background: #FBFBFD; border-left: 1px solid #E5E5EA; box-shadow: -12px 0 32px rgba(0,0,0,0.08); padding: 18px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 18px">
+<div style="font-size: 18px; font-weight: 700">Settings</div>
+<div>
+<div style="font-size: 12px; font-weight: 600; color: #6E6E73">How much should it ask you?</div>
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px">
+<sc-for list="{{ levels }}" as="lv" hint-placeholder-count="3">
+<button onClick="{{ lv.pick }}" style="text-align: left; padding: 9px 12px; border-radius: 10px; cursor: pointer; border: 1px solid {{lv.border}}; background: {{lv.bg}}; color: #1D1D1F; font-size: 14px"><span style="font-weight: 600">{{lv.name}}</span><span style="display: block; font-size: 12px; color: #6E6E73">{{lv.what}}</span></button>
+</sc-for>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 10px">
+<span style="color: #6E6E73">Agent</span><span>Claude Code, your subscription</span>
+<span style="color: #6E6E73">Sandboxes</span><span>boat</span>
+<span style="color: #6E6E73">Limit</span><span>$25 and 12 agents per task</span>
+<span style="color: #6E6E73">Ping me</span><span>When it needs me, and when it is done</span>
+</div>
+<button onClick="{{ toggleSettings }}" style="align-self: flex-start; height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid #D0D0D5; background: #FFFFFF; color: #1D1D1F; font-size: 14px; cursor: pointer">Done</button>
+</div>
+</sc-if>
+</div>
+
+<!-- PROTOTYPE CONTROLS -->
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #A0A0A8; font-size: 13px">
+<span>Not part of the app. Jump to a screen:</span>
+<sc-for list="{{ jumps }}" as="j" hint-placeholder-count="3">
+<button onClick="{{ j.go }}" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid #55555C; background: {{j.bg}}; color: #E8EAED; font-size: 13px; cursor: pointer">{{j.name}}</button>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1040,"height":800}}'>
+class Component extends DCLogic {
+state = { view: 'home', sel: null, ask: null, changed: false, details: false, settings: false, level: 0, merged: false };
+
+renderVals() {
+const st = this.state;
+const set = (o) => () => this.setState(o);
+const BLUE = '#0A60FF', GREEN = '#1A7F37', GREY = '#6E6E73';
+
+// home list: group, title, status, kind
+const LIST = [
+['Running', 'Export reports as CSV', st.ask ? 'Building · ready around 16:50' : 'Needs one answer from you', st.ask ? 'run' : 'ask', 22],
+['', 'Speed up the watchlist page', 'Building · ready around 17:20', 'run', 55],
+['', 'Translate onboarding to Turkish', 'Checking its own work', 'run', 85],
+['Finished', 'Fix flaky earnings-calendar tests', 'Merged today', 'done', 100],
+['', 'Upgrade Go to 1.26', 'Merged today', 'done', 100],
+['', 'Add dark mode to charts', 'Merged Nov 12', 'done', 100]
+];
+const rows = LIST.map((r, i) => {
+const col = r[3] === 'ask' ? '#E08A00' : r[3] === 'done' ? GREEN : BLUE;
+return { group: r[0], gDisp: r[0] ? 'block' : 'none', title: r[1], status: r[2], fg: r[3] === 'ask' ? '#9A5B00' : GREY,
+ring: 'conic-gradient(' + col + ' ' + r[4] + '%, #E5E5EA 0)', core: r[3] === 'done' ? GREEN : '#FFFFFF',
+cursor: i === 0 ? 'pointer' : 'default', open: i === 0 ? set({ view: 'task' }) : () => {} };
+});
+
+// agents: n, title, agent, state
+const A = [
+['01', 'Export endpoint', 'Claude Code', 'done'], ['02', 'CSV writer', 'Claude Code', 'done'],
+['03', 'Row limit and paging', 'Codex', 'work'], ['04', 'Export button', 'Claude Code', 'work'],
+['05', 'Download progress', 'Gemini', 'work'], ['06', 'Permissions check', 'Claude Code', 'work'],
+['07', 'Audit log entry', 'Codex', 'work'], ['08', 'End-to-end check', 'Claude Code', 'wait'],
+['09', 'Docs', 'Claude Code', 'wait']
+];
+const WORD = { done: ['finished', GREEN], work: ['working', BLUE], wait: ['up next', '#9A9AA0'] };
+const doneN = A.filter((a) => a[3] === 'done').length;
+const pos = (i) => { const ang = (-90 + i * 40) * Math.PI / 180; return [150 + 112 * Math.cos(ang), 150 + 112 * Math.sin(ang)]; };
+const dots = A.map((a, i) => { const p = pos(i); const s = a[3];
+return { x: p[0] - 15 + 'px', y: p[1] - 15 + 'px', mark: s === 'done' ? '✓' : a[0],
+bg: s === 'done' ? GREEN : s === 'work' ? '#EAF2FF' : '#FFFFFF', fg: s === 'done' ? '#FFFFFF' : s === 'work' ? BLUE : '#9A9AA0',
+border: s === 'done' ? '0' : s === 'work' ? '1.5px solid ' + BLUE : '1.5px dashed #C7C7CC',
+anim: s === 'work' ? 'tw-halo 2s ease-out infinite' : 'none', ring: st.sel === i ? '2px solid #1D1D1F' : '0',
+aria: 'Agent ' + a[0] + ', ' + a[1] + ', ' + a[2] + ', ' + WORD[s][0], pick: set({ sel: st.sel === i ? null : i }) }; });
+const spokes = A.map((a, i) => ({ rot: (-90 + i * 40) + 'deg', line: a[3] === 'wait' ? 'dashed' : 'solid',
+col: a[3] === 'done' ? '#BFE3CB' : a[3] === 'work' ? '#C9DCFF' : '#E5E5EA', dotOp: a[3] === 'work' ? '1' : '0' }));
+const sa = st.sel === null ? null : A[st.sel];
+const ring = { count: doneN + ' of ' + A.length,
+caption: sa ? sa[0] + ' · ' + sa[1] + ' · ' + sa[2] + ' · ' + WORD[sa[3]][0] : 'Each circle is one agent in its own sandbox. Click one to see what it is.' };
+const agents = A.map((a) => ({ n: a[0], title: a[1], agent: a[2], state: WORD[a[3]][0], fg: WORD[a[3]][1] }));
+
+const ANS = { msg: 'You chose: an empty report shows a message.', file: 'You chose: an empty report downloads an empty file.', you: 'You left the empty report to me. I chose a message, like empty tables elsewhere in the app.' };
+const story = [];
+if (st.ask) story.push(['15:16', ANS[st.ask]]);
+story.push(['15:14', 'Agent 05 was going in circles. I told it to rethink, and it is moving again.']);
+story.push(st.changed
+? ['15:10', 'You changed this: exports now send every row. Agent 03 was told.', 'Undo', set({ changed: false })]
+: ['15:10', 'I decided exports stop at 50,000 rows, like the reports page.', 'Change', set({ changed: true })]);
+story.push(['14:52', 'Agent 06 went quiet. I restarted it from its last save.']);
+story.push(['14:44', 'The export endpoint is finished and passes its tests.']);
+story.push(['14:02', 'I split the work into 9 pieces, each with its own files, and started.']);
+
+const LV = [['Only what it cannot decide', 'Product choices only. It handles everything else and tells you after.'], ['Before anything risky', 'Also asks before it deletes, migrates data or changes a public API.'], ['Every decision', 'Nothing is decided without you.']];
+const levels = LV.map((l, i) => ({ name: l[0], what: l[1], border: i === st.level ? BLUE : '#E5E5EA', bg: i === st.level ? '#EEF4FF' : '#FFFFFF', pick: set({ level: i }) }));
+
+const JUMP = [['home', 'Start'], ['task', 'Running'], ['done', 'Finished']];
+const jumps = JUMP.map((j) => ({ name: j[1], bg: st.view === j[0] ? '#3A3A40' : 'transparent', go: set({ view: j[0], settings: false }) }));
+
+return { isHome: st.view === 'home', isTask: st.view === 'task', isDone: st.view === 'done', backVis: st.view === 'home' ? 'hidden' : 'visible',
+goHome: set({ view: 'home' }), start: set({ view: 'task' }), toggleSettings: set({ settings: !st.settings }), showSettings: st.settings,
+rows, headline: A.length + ' agents are building it. ' + (st.ask ? 'Nothing needs you. Ready around 16:50.' : 'One thing needs you.'),
+hasAsk: !st.ask, ansMsg: set({ ask: 'msg' }), ansFile: set({ ask: 'file' }), ansYou: set({ ask: 'you' }),
+dots, spokes, ring, agents,
+story: story.map((s) => ({ t: s[0], text: s[1], link: s[2] || '', linkDisp: s[2] ? 'inline' : 'none', act: s[3] || (() => {}) })),
+toggleDetails: set({ details: !st.details }), showDetails: st.details, detailsLabel: st.details ? 'Hide details' : 'Show details',
+done: st.merged ? { title: 'Merged.', btn: 'Merged', btnBg: '#8FD3A4', note: 'The sandboxes are cleaned up.' } : { title: 'Ready. One pull request.', btn: 'Merge', btnBg: GREEN, note: 'or press ⏎' },
+merge: set({ merged: true }), levels, jumps };
+}
+}
+</script>
+</body>
+</html>

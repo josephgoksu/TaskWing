@@ -1,0 +1,4502 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskWing Flight Deck</title>
+<style>
+  :root {
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", system-ui, sans-serif;
+    --font-mono: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+    --bg-app: #F5F4F0;
+    --bg-sidebar: rgba(235, 233, 227, 0.88);
+    --bg-titlebar: rgba(246, 245, 241, 0.86);
+    --bg-canvas: #F6F5F1;
+    --bg-card: #FFFFFF;
+    --bg-card-subtle: #FAF9F6;
+    --bg-well: #F2F1EC;
+    --bg-pill: rgba(0, 0, 0, 0.048);
+    --bg-pill-hover: rgba(0, 0, 0, 0.08);
+    --bg-vault-sealed: linear-gradient(135deg, #EEF1F6 0%, #E5EAF2 100%);
+    --bg-vault-open: linear-gradient(135deg, #FFFFFF 0%, #F6F9FE 100%);
+    --dot-grid: rgba(24, 24, 27, 0.065);
+
+    --text-primary: #18181B;
+    --text-secondary: #52525B;
+    --text-tertiary: #86868E;
+    --text-inverse: #FFFFFF;
+
+    --border-hairline: rgba(0, 0, 0, 0.085);
+    --border-strong: rgba(0, 0, 0, 0.14);
+    --border-focus: rgba(37, 99, 235, 0.35);
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 18px -6px rgba(15, 23, 42, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.05), 0 12px 26px -6px rgba(15, 23, 42, 0.11), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    --shadow-popover: 0 18px 48px -8px rgba(15, 23, 42, 0.22), 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.08);
+    --shadow-segmented: 0 1px 2.5px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+
+    --accent-blue: #2563EB;
+    --accent-blue-soft: rgba(37, 99, 235, 0.10);
+    --accent-green: #12804A;
+    --accent-green-soft: rgba(18, 128, 74, 0.11);
+    --accent-amber: #C66A0A;
+    --accent-amber-soft: rgba(198, 106, 10, 0.12);
+    --accent-purple: #6E56CF;
+    --accent-purple-soft: rgba(110, 86, 207, 0.11);
+    --accent-red: #DC2626;
+
+    /* Model Identities */
+    --claude: #D9653B;
+    --claude-soft: #FDF1EC;
+    --codex: #148060;
+    --codex-soft: #EAF8F3;
+    --gemini: #3262E6;
+    --gemini-soft: #EDF2FE;
+    --amp: #7C4DFF;
+    --amp-soft: #F3EEFF;
+
+    --wire-muted: rgba(24, 24, 27, 0.13);
+    --wire-note: rgba(37, 99, 235, 0.36);
+  }
+
+  [data-theme="dark"] {
+    --bg-app: #161618;
+    --bg-sidebar: rgba(30, 30, 34, 0.92);
+    --bg-titlebar: rgba(26, 26, 29, 0.88);
+    --bg-canvas: #141416;
+    --bg-card: #202024;
+    --bg-card-subtle: #1B1B1F;
+    --bg-well: #151518;
+    --bg-pill: rgba(255, 255, 255, 0.07);
+    --bg-pill-hover: rgba(255, 255, 255, 0.12);
+    --bg-vault-sealed: linear-gradient(135deg, #22252E 0%, #1C1F27 100%);
+    --bg-vault-open: linear-gradient(135deg, #21252F 0%, #1D222B 100%);
+    --dot-grid: rgba(255, 255, 255, 0.055);
+
+    --text-primary: #F4F4F6;
+    --text-secondary: #A1A1AA;
+    --text-tertiary: #71717A;
+    --text-inverse: #111113;
+
+    --border-hairline: rgba(255, 255, 255, 0.085);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --border-focus: rgba(96, 165, 250, 0.45);
+
+    --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.32), 0 10px 24px -8px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.42), 0 16px 32px -8px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    --shadow-popover: 0 22px 54px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.11);
+    --shadow-segmented: 0 1px 3px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+    --accent-blue: #5B9BF8;
+    --accent-blue-soft: rgba(91, 155, 248, 0.15);
+    --accent-green: #34D399;
+    --accent-green-soft: rgba(52, 211, 153, 0.14);
+    --accent-amber: #FBBF24;
+    --accent-amber-soft: rgba(251, 191, 36, 0.14);
+    --accent-purple: #A78BFA;
+    --accent-purple-soft: rgba(167, 139, 250, 0.15);
+
+    --claude-soft: rgba(217, 101, 59, 0.16);
+    --codex-soft: rgba(20, 128, 96, 0.18);
+    --gemini-soft: rgba(50, 98, 230, 0.18);
+    --amp-soft: rgba(124, 77, 255, 0.18);
+
+    --wire-muted: rgba(255, 255, 255, 0.13);
+    --wire-note: rgba(91, 155, 248, 0.45);
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--font-sans);
+    background: var(--bg-app);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.45;
+    user-select: none;
+  }
+
+  button, input, textarea, select {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* App Frame */
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Unified macOS Titlebar */
+  .titlebar {
+    height: 48px;
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 0 14px;
+    background: var(--bg-titlebar);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border-bottom: 1px solid var(--border-hairline);
+    z-index: 40;
+  }
+
+  .titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .traffic-lights {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px 0 2px;
+  }
+
+  .tl-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 0.5px solid rgba(0, 0, 0, 0.14);
+    position: relative;
+    cursor: default;
+  }
+  .tl-close { background: #FF5F57; }
+  .tl-min   { background: #FEBC2E; }
+  .tl-max   { background: #28C840; }
+
+  .icon-btn {
+    height: 28px;
+    min-width: 28px;
+    padding: 0 7px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    cursor: pointer;
+    transition: background 0.14s ease, color 0.14s ease, transform 0.1s ease;
+  }
+  .icon-btn:hover {
+    background: var(--bg-pill);
+    color: var(--text-primary);
+  }
+  .icon-btn:active {
+    transform: scale(0.96);
+  }
+  .icon-btn.active {
+    background: var(--bg-pill-hover);
+    color: var(--text-primary);
+  }
+
+  .brand-lockup {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    font-size: 13.5px;
+    padding-left: 2px;
+  }
+
+  .wing-mark {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(145deg, #2563EB, #1D4ED8);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+
+  .repo-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 9px;
+    border-radius: 7px;
+    background: var(--bg-pill);
+    border: 1px solid var(--border-hairline);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.14s ease;
+  }
+  .repo-pill:hover {
+    background: var(--bg-pill-hover);
+    color: var(--text-primary);
+  }
+
+  .lead-heartbeat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 25px;
+    padding: 0 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px dashed var(--border-hairline);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .lead-heartbeat:hover {
+    background: var(--bg-pill);
+    border-style: solid;
+    color: var(--text-primary);
+  }
+
+  .pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 0 2px var(--accent-green-soft);
+  }
+  .pulse-dot.working {
+    background: var(--accent-blue);
+    box-shadow: 0 0 0 2px var(--accent-blue-soft);
+    animation: softPulse 1.8s infinite ease-in-out;
+  }
+  .pulse-dot.amber {
+    background: var(--accent-amber);
+    box-shadow: 0 0 0 2px var(--accent-amber-soft);
+    animation: softPulse 1.4s infinite ease-in-out;
+  }
+
+  @keyframes softPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.28); opacity: 0.72; }
+  }
+
+  /* Segmented View Switcher */
+  .segmented {
+    display: inline-flex;
+    align-items: center;
+    padding: 2.5px;
+    border-radius: 9px;
+    background: var(--bg-pill);
+    border: 1px solid var(--border-hairline);
+    gap: 2px;
+  }
+
+  .seg-btn {
+    height: 25px;
+    padding: 0 12px;
+    border-radius: 6.5px;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+  }
+  .seg-btn:hover {
+    color: var(--text-primary);
+  }
+  .seg-btn.active {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-segmented);
+  }
+
+  .seg-count {
+    font-size: 10.5px;
+    padding: 0.5px 5px;
+    border-radius: 999px;
+    background: var(--bg-pill);
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .titlebar-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+  }
+
+  .btn {
+    height: 29px;
+    padding: 0 11px;
+    border-radius: 7.5px;
+    border: 1px solid var(--border-hairline);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.04);
+    transition: all 0.14s ease;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: var(--bg-card-subtle);
+    border-color: var(--border-strong);
+  }
+  .btn:active {
+    transform: scale(0.975);
+  }
+
+  .btn-primary {
+    background: var(--accent-blue);
+    border-color: rgba(0, 0, 0, 0.12);
+    color: #FFFFFF;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
+  .btn-primary:hover {
+    background: #1D4ED8;
+    border-color: rgba(0, 0, 0, 0.18);
+    color: #FFFFFF;
+  }
+
+  .btn-merge {
+    background: var(--accent-green);
+    border-color: rgba(0, 0, 0, 0.12);
+    color: #FFFFFF;
+    height: 32px;
+    padding: 0 14px;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(18, 128, 74, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  }
+  .btn-merge:hover {
+    filter: brightness(1.06);
+    background: var(--accent-green);
+    color: #FFFFFF;
+  }
+
+  .kbd {
+    font-family: var(--font-sans);
+    font-size: 10.5px;
+    padding: 1px 4.5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.18);
+    opacity: 0.85;
+  }
+
+  /* Body Layout */
+  .workspace-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    position: relative;
+  }
+
+  /* Native Vibrancy Sidebar (23+ Swarms) */
+  .sidebar {
+    width: 288px;
+    flex-shrink: 0;
+    background: var(--bg-sidebar);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-right: 1px solid var(--border-hairline);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    transition: margin-left 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .sidebar.collapsed {
+    margin-left: -288px;
+  }
+
+  .sidebar-top {
+    padding: 11px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .search-wrap svg {
+    position: absolute;
+    left: 9px;
+    color: var(--text-tertiary);
+    pointer-events: none;
+  }
+  .search-input {
+    width: 100%;
+    height: 29px;
+    padding: 0 26px 0 28px;
+    border-radius: 7px;
+    border: 1px solid var(--border-hairline);
+    background: var(--bg-card-subtle);
+    font-size: 12px;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  }
+  .search-input::placeholder {
+    color: var(--text-tertiary);
+  }
+  .search-input:focus {
+    background: var(--bg-card);
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px var(--border-focus);
+  }
+  .search-clear {
+    position: absolute;
+    right: 6px;
+    border: none;
+    background: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 13px;
+    display: none;
+  }
+
+  .filter-pills {
+    display: flex;
+    gap: 3px;
+  }
+  .filter-pill {
+    flex: 1;
+    height: 23px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.13s ease;
+    font-variant-numeric: tabular-nums;
+  }
+  .filter-pill:hover {
+    background: var(--bg-pill);
+    color: var(--text-primary);
+  }
+  .filter-pill.active {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.07);
+  }
+
+  .swarm-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 8px 14px;
+  }
+  .swarm-list::-webkit-scrollbar {
+    width: 6px;
+  }
+  .swarm-list::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 136, 0.25);
+    border-radius: 999px;
+  }
+
+  .sidebar-group-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    padding: 10px 8px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .swarm-row {
+    position: relative;
+    padding: 7.5px 9px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 1.5px;
+    transition: background 0.12s ease;
+  }
+  .swarm-row:hover {
+    background: var(--bg-pill);
+  }
+  .swarm-row.selected {
+    background: var(--bg-card);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07), 0 0 0 0.5px var(--border-hairline);
+  }
+
+  .row-status-icon {
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .orbit-ring {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 2px solid var(--accent-blue-soft);
+    border-top-color: var(--accent-blue);
+    animation: spin 1.3s linear infinite;
+  }
+  .orbit-ring.amber {
+    border-color: var(--accent-amber-soft);
+    border-top-color: var(--accent-amber);
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .row-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .row-title {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.01em;
+  }
+  .swarm-row.selected .row-title {
+    font-weight: 600;
+  }
+
+  .row-meta {
+    margin-top: 2.5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .agent-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .agent-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 2px;
+  }
+
+  .row-del-btn {
+    position: absolute;
+    right: 6px;
+    top: 7px;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    border: none;
+    background: var(--bg-card);
+    color: var(--text-tertiary);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  }
+  .swarm-row:hover .row-del-btn {
+    display: inline-flex;
+  }
+  .row-del-btn:hover {
+    color: var(--accent-red);
+    background: var(--bg-card-subtle);
+  }
+
+  .sidebar-footer {
+    padding: 10px 12px;
+    border-top: 1px solid var(--border-hairline);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.14s ease;
+  }
+  .sidebar-footer:hover {
+    background: var(--bg-pill);
+  }
+
+  /* Main Pane */
+  .main-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    position: relative;
+    background: var(--bg-canvas);
+  }
+
+  /* Task Summary Header */
+  .task-bar {
+    padding: 13px 22px 12px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-hairline);
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    z-index: 20;
+  }
+
+  .task-bar-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .task-title-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .status-badge {
+    height: 23px;
+    padding: 0 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5.5px;
+    flex-shrink: 0;
+  }
+  .status-badge.working {
+    background: var(--accent-blue-soft);
+    color: var(--accent-blue);
+  }
+  .status-badge.checking {
+    background: var(--accent-amber-soft);
+    color: var(--accent-amber);
+  }
+  .status-badge.ready {
+    background: var(--accent-green-soft);
+    color: var(--accent-green);
+  }
+  .status-badge.merged {
+    background: var(--accent-purple-soft);
+    color: var(--accent-purple);
+  }
+
+  .task-heading {
+    font-size: 17.5px;
+    font-weight: 650;
+    letter-spacing: -0.022em;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .task-actions-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  /* Interactive 4-Step Flight Bar */
+  .flight-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .stage-track {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-well);
+    border: 1px solid var(--border-hairline);
+    border-radius: 8px;
+    padding: 2.5px;
+    gap: 2px;
+  }
+
+  .stage-step {
+    height: 25px;
+    padding: 0 9px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .stage-step:hover {
+    color: var(--text-primary);
+  }
+  .stage-step.done {
+    color: var(--text-secondary);
+  }
+  .stage-step.current {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-weight: 600;
+    box-shadow: var(--shadow-segmented);
+  }
+
+  .step-num {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    font-size: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-pill);
+    font-variant-numeric: tabular-nums;
+  }
+  .stage-step.done .step-num {
+    background: var(--accent-green-soft);
+    color: var(--accent-green);
+  }
+  .stage-step.current .step-num {
+    background: var(--accent-blue);
+    color: #fff;
+  }
+
+  /* Expandable Prompt & Lead Framing Strip */
+  .prompt-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 7px 11px;
+    border-radius: 8px;
+    background: var(--bg-card-subtle);
+    border: 1px solid var(--border-hairline);
+    cursor: pointer;
+    transition: background 0.14s ease;
+  }
+  .prompt-strip:hover {
+    background: var(--bg-well);
+  }
+
+  .prompt-strip-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .prompt-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 1.5px 6px;
+    border-radius: 4px;
+    background: var(--bg-pill);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .prompt-quote {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary);
+  }
+
+  .prompt-expanded {
+    display: none;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--bg-card-subtle);
+    border: 1px solid var(--border-hairline);
+    grid-template-columns: 1fr 1.3fr;
+    gap: 16px;
+    font-size: 12.5px;
+  }
+  .prompt-expanded.open {
+    display: grid;
+  }
+  .plan-col-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .plan-col-text {
+    color: var(--text-primary);
+    line-height: 1.5;
+    user-select: text;
+  }
+
+  /* Spatial Canvas */
+  .canvas-scroll {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    background-image: radial-gradient(var(--dot-grid) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  .canvas-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .canvas-scroll::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 136, 0.25);
+    border-radius: 999px;
+  }
+
+  .formation-stage {
+    position: relative;
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 22px 28px 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 26px;
+    min-height: 100%;
+  }
+
+  .flight-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Band 1: Local Mac Lead + Blind Acceptance Vault */
+  .top-deck {
+    position: relative;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: 1fr 1.08fr;
+    gap: 18px;
+    width: 100%;
+    max-width: 850px;
+  }
+
+  .deck-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: 14px;
+    padding: 13px 15px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  }
+  .deck-card:hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  .deck-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .deck-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mac-chip {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    background: #18181B;
+    color: #F4F4F5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  [data-theme="dark"] .mac-chip {
+    background: #323238;
+  }
+
+  .deck-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .deck-sub {
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  .flat-tag {
+    font-size: 10.5px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--accent-green-soft);
+    color: var(--accent-green);
+  }
+
+  .lead-say {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+
+  /* Blind Acceptance Vault */
+  .vault-card {
+    background: var(--bg-vault-sealed);
+    position: relative;
+    overflow: hidden;
+  }
+  .vault-card.peeked,
+  .vault-card.unsealed {
+    background: var(--bg-vault-open);
+  }
+
+  .blind-pill {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 7.5px;
+    border-radius: 999px;
+    background: var(--accent-amber-soft);
+    color: var(--accent-amber);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .vault-card.unsealed .blind-pill {
+    background: var(--accent-green-soft);
+    color: var(--accent-green);
+  }
+
+  .vault-checks-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 4.5px;
+    position: relative;
+  }
+
+  .vault-sealed-veil {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    background: var(--bg-card);
+    border: 1px dashed var(--border-strong);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+
+  .vault-check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.38;
+  }
+  .vault-check-item svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* Band 2: Sandbox Mini Boxes Formation */
+  .boxes-section {
+    position: relative;
+    z-index: 5;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 0 4px;
+  }
+
+  .sandbox-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 18px;
+    width: 100%;
+  }
+
+  .mini-box {
+    width: 248px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: 15px;
+    padding: 13px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  /* Symmetrical wing stagger */
+  .mini-box:first-child,
+  .mini-box:last-child {
+    transform: translateY(6px);
+  }
+  .mini-box:only-child {
+    transform: none;
+  }
+  .mini-box:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-card-hover);
+    border-color: var(--border-strong);
+  }
+  .mini-box.selected-box {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px var(--border-focus), var(--shadow-card-hover);
+  }
+  .mini-box.peer-highlight {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 2px var(--accent-blue-soft), var(--shadow-card-hover);
+  }
+  .mini-box.note-flash {
+    animation: boxFlash 0.75s ease;
+  }
+  @keyframes boxFlash {
+    0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45), var(--shadow-card); }
+    50% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.18), var(--shadow-card-hover); }
+    100% { box-shadow: var(--shadow-card); }
+  }
+
+  .box-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .model-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px 3px 6px;
+    border-radius: 7px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .model-claude { background: var(--claude-soft); color: var(--claude); }
+  .model-codex  { background: var(--codex-soft);  color: var(--codex); }
+  .model-gemini { background: var(--gemini-soft); color: var(--gemini); }
+  .model-amp    { background: var(--amp-soft);    color: var(--amp); }
+
+  .model-glyph {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9.5px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .model-claude .model-glyph { background: var(--claude); }
+  .model-codex  .model-glyph { background: var(--codex); }
+  .model-gemini .model-glyph { background: var(--gemini); }
+  .model-amp    .model-glyph { background: var(--amp); }
+
+  .box-quick-btns {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .mini-icon-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    transition: background 0.13s ease, color 0.13s ease;
+  }
+  .mini-icon-btn:hover {
+    background: var(--bg-pill-hover);
+    color: var(--text-primary);
+  }
+
+  .box-role-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .box-role {
+    font-size: 13.5px;
+    font-weight: 620;
+    letter-spacing: -0.015em;
+    color: var(--text-primary);
+  }
+  .box-vm-id {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  /* Tactile Territory Well (Visual File Tiles, Zero Code!) */
+  .territory-well {
+    background: var(--bg-well);
+    border-radius: 9.5px;
+    padding: 8px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border: 1px solid var(--border-hairline);
+  }
+  .territory-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10.5px;
+    color: var(--text-secondary);
+  }
+  .territory-folder {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-tiles {
+    display: flex;
+    gap: 5px;
+  }
+  .file-tile {
+    flex: 1;
+    height: 22px;
+    border-radius: 5px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9.5px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    overflow: hidden;
+    transition: all 0.22s ease;
+  }
+  .file-tile.done {
+    background: var(--accent-green-soft);
+    border-color: rgba(18, 128, 74, 0.28);
+    color: var(--accent-green);
+  }
+  .file-tile.active {
+    background: var(--accent-blue-soft);
+    border-color: rgba(37, 99, 235, 0.42);
+    color: var(--accent-blue);
+    animation: tileBreathe 1.9s infinite ease-in-out;
+  }
+  @keyframes tileBreathe {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.2); }
+    50% { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14); }
+  }
+
+  .box-thought {
+    font-size: 11.8px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    min-height: 33px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Pinned Memory Strip */
+  .box-memories {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding-top: 7px;
+    border-top: 1px solid var(--border-hairline);
+  }
+  .memory-pill {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 0 7.5px;
+    border-radius: 6px;
+    background: var(--bg-card-subtle);
+    border: 1px solid var(--border-hairline);
+    font-size: 10.8px;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .memory-pill span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mem-more {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 5.5px;
+    border-radius: 5px;
+    background: var(--bg-pill);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+
+  /* Inter-Agent Live Notes Ribbon */
+  .notes-ribbon {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    max-width: 980px;
+    margin-top: 4px;
+  }
+
+  .note-chip {
+    height: 27px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    max-width: 340px;
+    transition: all 0.15s ease;
+  }
+  .note-chip:hover,
+  .note-chip.active-note {
+    border-color: var(--accent-blue);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.13);
+  }
+  .note-route {
+    font-weight: 600;
+    color: var(--text-primary);
+    flex-shrink: 0;
+  }
+  .note-preview {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Band 3: Clean-Room Blind Gate -> Verified Pull Request */
+  .gate-card {
+    position: relative;
+    z-index: 5;
+    width: 100%;
+    max-width: 780px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: 16px;
+    padding: 16px 20px;
+    box-shadow: var(--shadow-card);
+    transition: all 0.24s ease;
+  }
+  .gate-card.pr-ready {
+    border-color: rgba(18, 128, 74, 0.35);
+    box-shadow: 0 8px 28px -8px rgba(18, 128, 74, 0.18), var(--shadow-card);
+  }
+  .gate-card.pr-merged {
+    border-color: rgba(110, 86, 207, 0.35);
+  }
+
+  .gate-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .gate-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .gate-emblem {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: var(--bg-well);
+    color: var(--text-secondary);
+  }
+  .gate-card.pr-ready .gate-emblem {
+    background: var(--accent-green-soft);
+    color: var(--accent-green);
+  }
+  .gate-card.pr-merged .gate-emblem {
+    background: var(--accent-purple-soft);
+    color: var(--accent-purple);
+  }
+  .gate-card.checking .gate-emblem {
+    background: var(--accent-amber-soft);
+    color: var(--accent-amber);
+  }
+
+  .gate-headline {
+    font-size: 14.5px;
+    font-weight: 640;
+    letter-spacing: -0.015em;
+  }
+  .gate-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 1px;
+  }
+
+  .gate-checks-live {
+    margin-top: 13px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-hairline);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px 16px;
+  }
+  .clean-check-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .clean-check-row.passed {
+    color: var(--text-primary);
+  }
+
+  /* Alternate Views: Memories & Notes / Deliverable */
+  .alt-stage {
+    max-width: 1020px;
+    margin: 0 auto;
+    padding: 24px 28px 48px;
+  }
+
+  .two-col-studio {
+    display: grid;
+    grid-template-columns: 1fr 1.15fr;
+    gap: 22px;
+    align-items: start;
+  }
+
+  .studio-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-hairline);
+    border-radius: 15px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+  .panel-title {
+    font-size: 14px;
+    font-weight: 640;
+    letter-spacing: -0.015em;
+  }
+
+  .mem-card {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--bg-card-subtle);
+    border: 1px solid var(--border-hairline);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .mem-card-text {
+    font-size: 12.5px;
+    color: var(--text-primary);
+    user-select: text;
+  }
+  .mem-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  .note-stream-item {
+    padding: 11px 13px;
+    border-radius: 11px;
+    background: var(--bg-card-subtle);
+    border: 1px solid var(--border-hairline);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .note-stream-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+  }
+  .note-stream-body {
+    font-size: 12.5px;
+    color: var(--text-primary);
+    line-height: 1.45;
+    user-select: text;
+  }
+
+  /* Slide-Over Single Agent Inspector */
+  .agent-drawer {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: 368px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    box-shadow: var(--shadow-popover);
+    z-index: 30;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideInRight 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .agent-drawer.open {
+    display: flex;
+  }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(18px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .drawer-head {
+    padding: 13px 15px;
+    border-bottom: 1px solid var(--border-hairline);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .drawer-tabs {
+    display: flex;
+    padding: 6px 14px 0;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-hairline);
+    background: var(--bg-card-subtle);
+  }
+  .drawer-tab {
+    padding: 6px 11px 8px;
+    border: none;
+    background: none;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+  .drawer-tab.active {
+    color: var(--text-primary);
+    font-weight: 600;
+    border-bottom-color: var(--accent-blue);
+  }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .chat-log {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .chat-bubble {
+    max-width: 88%;
+    padding: 8.5px 11px;
+    border-radius: 11px;
+    font-size: 12.2px;
+    line-height: 1.45;
+    user-select: text;
+  }
+  .chat-bubble.agent {
+    align-self: flex-start;
+    background: var(--bg-well);
+    color: var(--text-primary);
+    border-bottom-left-radius: 4px;
+  }
+  .chat-bubble.user {
+    align-self: flex-end;
+    background: var(--accent-blue);
+    color: #FFFFFF;
+    border-bottom-right-radius: 4px;
+  }
+
+  .quick-prompts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 2px;
+  }
+  .quick-chip {
+    font-size: 11px;
+    padding: 4px 8.5px;
+    border-radius: 999px;
+    border: 1px solid var(--border-hairline);
+    background: var(--bg-card-subtle);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.13s ease;
+  }
+  .quick-chip:hover {
+    border-color: var(--accent-blue);
+    color: var(--text-primary);
+  }
+
+  .drawer-compose {
+    padding: 10px 12px;
+    border-top: 1px solid var(--border-hairline);
+    display: flex;
+    gap: 7px;
+    background: var(--bg-card-subtle);
+  }
+  .drawer-input {
+    flex: 1;
+    height: 31px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-hairline);
+    background: var(--bg-card);
+    outline: none;
+    font-size: 12px;
+  }
+  .drawer-input:focus {
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px var(--border-focus);
+  }
+
+  /* Native macOS Terminal Window (Floating Sheet) */
+  .terminal-window {
+    position: fixed;
+    right: 24px;
+    bottom: 20px;
+    width: 680px;
+    height: 390px;
+    background: rgba(19, 20, 24, 0.96);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 13px;
+    box-shadow: 0 26px 64px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.6);
+    color: #E4E4E7;
+    z-index: 60;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    animation: popUp 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .terminal-window.open {
+    display: flex;
+  }
+  @keyframes popUp {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .term-bar {
+    height: 36px;
+    background: rgba(32, 33, 39, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    flex-shrink: 0;
+  }
+
+  .term-tabs {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    overflow-x: auto;
+    padding: 4px 8px;
+    background: rgba(24, 25, 30, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
+  }
+  .term-tab {
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 5px;
+    border: none;
+    background: transparent;
+    color: #9CA3AF;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .term-tab:hover {
+    color: #F3F4F6;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .term-tab.active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #FFFFFF;
+  }
+
+  .term-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.58;
+    user-select: text;
+  }
+  .term-line {
+    margin-bottom: 3px;
+    word-break: break-word;
+  }
+  .t-muted { color: #71717A; }
+  .t-green { color: #4ADE80; }
+  .t-blue  { color: #60A5FA; }
+  .t-amber { color: #FBBF24; }
+  .t-cmd   { color: #F4F4F5; font-weight: 600; }
+
+  .term-hints {
+    padding: 5px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: #9CA3AF;
+  }
+  .term-hint-btn {
+    padding: 2px 8px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: #E5E7EB;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+  .term-hint-btn:hover {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: rgba(96, 165, 250, 0.45);
+  }
+
+  .term-prompt-row {
+    height: 36px;
+    padding: 0 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    background: rgba(14, 15, 18, 0.95);
+  }
+  .term-ps1 {
+    color: #4ADE80;
+    flex-shrink: 0;
+  }
+  .term-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #FFFFFF;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+
+  /* Modals (New Task, Edit Task, Note Detail, Settings) */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 15, 20, 0.28);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 80;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 11vh;
+  }
+  .modal-backdrop.open {
+    display: flex;
+  }
+
+  .modal-sheet {
+    width: 540px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    box-shadow: var(--shadow-popover);
+    overflow: hidden;
+    animation: popUp 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .modal-head {
+    padding: 15px 18px 12px;
+    border-bottom: 1px solid var(--border-hairline);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-title {
+    font-size: 15px;
+    font-weight: 640;
+    letter-spacing: -0.015em;
+  }
+  .modal-body {
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .task-textarea {
+    width: 100%;
+    min-height: 92px;
+    padding: 11px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-card-subtle);
+    font-size: 13.5px;
+    line-height: 1.48;
+    resize: vertical;
+    outline: none;
+  }
+  .task-textarea:focus {
+    background: var(--bg-card);
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px var(--border-focus);
+  }
+  .modal-foot {
+    padding: 12px 18px;
+    background: var(--bg-card-subtle);
+    border-top: 1px solid var(--border-hairline);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Settings Rows */
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+  .setting-row:last-child {
+    border-bottom: none;
+  }
+  .setting-label {
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .setting-desc {
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+  }
+
+  /* Native Toast */
+  .toast {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #18181B;
+    color: #F4F4F5;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 100;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+  }
+  .toast-undo {
+    border: none;
+    background: rgba(255, 255, 255, 0.16);
+    color: #93C5FD;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 11.5px;
+  }
+
+  /* Merged in: the one question, the decision log, before/after proof */
+  .ask-card { position: relative; z-index: 5; width: 100%; max-width: 850px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border-radius: 14px; background: var(--accent-amber-soft); border: 1px solid var(--accent-amber); box-shadow: var(--shadow-card); }
+  .ask-eyebrow { font-size: 11px; font-weight: 600; color: var(--accent-amber); }
+  .ask-question { font-size: 14px; font-weight: 620; letter-spacing: -0.012em; color: var(--text-primary); margin-top: 1px; }
+  .ask-actions { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+  .ask-later { border: none; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; padding: 0 6px; height: 29px; border-radius: 7px; }
+  .ask-later:hover { background: var(--bg-pill); color: var(--text-primary); }
+  .decision-row { display: grid; grid-template-columns: 62px 1fr; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border-hairline); }
+  .decision-row:first-child { border-top: none; }
+  .decision-time { font-size: 11.5px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; padding-top: 1px; }
+  .kind-tag { font-size: 11px; font-weight: 600; }
+  .kind-Decided { color: var(--accent-purple); } .kind-Fixed { color: var(--accent-amber); } .kind-Planned { color: var(--text-tertiary); } .kind-You { color: var(--accent-blue); } .kind-Done { color: var(--accent-green); }
+  .decision-text { font-size: 13px; color: var(--text-primary); line-height: 1.5; user-select: text; }
+  .link-btn { border: none; background: none; padding: 0; color: var(--accent-blue); font-size: 13px; cursor: pointer; }
+  .link-btn:hover { text-decoration: underline; }
+  .repo-pill, .lead-heartbeat { white-space: nowrap; flex-shrink: 0; }
+  .titlebar-left { overflow: hidden; }
+  .seg-btn { padding: 0 9px; }
+  .proof-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: stretch; }
+  .proof-label { align-self: center; font-size: 12.5px; font-weight: 500; color: var(--text-primary); }
+  .proof-frame { position: relative; border-radius: 10px; border: 1px solid var(--border-hairline); background: var(--bg-card-subtle); padding: 21px 12px 10px; font-size: 12px; color: var(--text-secondary); min-width: 0; display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+  .proof-frame.after { background: var(--bg-card); border-color: var(--accent-green); }
+  .proof-tag { position: absolute; top: 6px; left: 12px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; color: var(--text-tertiary); }
+  .proof-frame.after .proof-tag { color: var(--accent-green); }
+  .proof-line.ok { color: var(--accent-green); font-weight: 600; } .proof-line.bad { color: var(--accent-red); font-weight: 600; } .proof-line.mute { color: var(--text-tertiary); }
+  .proof-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; border-radius: 7px; background: var(--accent-amber-soft); color: var(--text-primary); font-size: 11.5px; }
+  .proof-cta { flex-shrink: 0; padding: 2px 8px; border-radius: 5px; background: var(--accent-blue); color: #FFFFFF; font-size: 10.5px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <!-- Unified macOS Titlebar -->
+  <header class="titlebar">
+    <div class="titlebar-left">
+      <div class="traffic-lights" aria-hidden="true">
+        <span class="tl-dot tl-close"></span>
+        <span class="tl-dot tl-min"></span>
+        <span class="tl-dot tl-max"></span>
+      </div>
+
+      <button class="icon-btn" id="btnToggleSidebar" title="Show or hide the task list">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2.5" width="12" height="11" rx="2"/><line x1="6" y1="2.5" x2="6" y2="13.5"/></svg>
+      </button>
+
+      <div class="brand-lockup">
+        <span class="wing-mark">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 11.5L13.5 3.5L9.5 13L7 9.5L2.5 11.5Z"/></svg>
+        </span>
+        <span>TaskWing</span>
+      </div>
+
+      <button class="repo-pill" id="btnRepoInfo" title="Active Repository">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 2.5h7a1.5 1.5 0 011.5 1.5v8a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 12V4a1.5 1.5 0 011.5-1.5z"/><path d="M6 6h4M6 9h2.5"/></svg>
+        <span>acme / payflow</span>
+      </button>
+
+      <button class="lead-heartbeat" id="btnLeadHeartbeat" title="Open Local Mac Lead Agent Terminal">
+        <span class="pulse-dot"></span>
+        <span>Lead agent · your Mac</span>
+      </button>
+    </div>
+
+    <!-- Center Segmented View Switcher -->
+    <div class="segmented" role="tablist">
+      <button class="seg-btn active" data-view="formation" id="segFormation">
+        <span>Overview</span>
+      </button>
+      <button class="seg-btn" data-view="memories" id="segMemories">
+        <span>Memories &amp; Notes</span>
+        <span class="seg-count" id="segMemCount">11</span>
+      </button>
+      <button class="seg-btn" data-view="decisions" id="segDecisions">
+        <span>Decisions</span>
+        <span class="seg-count" id="segDecCount">7</span>
+      </button>
+      <button class="seg-btn" data-view="deliverable" id="segDeliverable">
+        <span>Pull Request</span>
+      </button>
+    </div>
+
+    <div class="titlebar-right">
+      <button class="btn" id="btnOpenTerminal" title="Open Agent Terminal Sessions">
+        <span style="font-family:var(--font-mono);font-size:11px;font-weight:600;">&gt;_</span>
+        <span>Terminal</span>
+      </button>
+      <button class="icon-btn" id="btnTheme" title="Switch Light / Dark Appearance">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.2 9.8A5.5 5.5 0 016.2 2.8a5.5 5.5 0 107 7z"/></svg>
+      </button>
+      <button class="icon-btn" id="btnSettings" title="Settings">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M12.4 3.6l-1 1M4.6 11.4l-1 1"/></svg>
+      </button>
+      <button class="btn btn-primary" id="btnNewTask">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+        <span>New Task</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="workspace-body">
+    <!-- Left Sidebar: 23+ Swarm Histories -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="search-wrap">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14" stroke-linecap="round"/></svg>
+          <input type="text" class="search-input" id="searchInput" placeholder="Search 23 tasks...">
+          <button class="search-clear" id="searchClear" title="Clear">&times;</button>
+        </div>
+        <div class="filter-pills" id="filterPills">
+          <button class="filter-pill active" data-filter="all">All 23</button>
+          <button class="filter-pill" data-filter="active">Active</button>
+          <button class="filter-pill" data-filter="ready">Ready</button>
+          <button class="filter-pill" data-filter="merged">Merged</button>
+        </div>
+      </div>
+
+      <div class="swarm-list" id="swarmList"></div>
+
+      <div class="sidebar-footer" id="sidebarLeadFooter" title="Click to open local Mac terminal">
+        <div style="display:flex;align-items:center;gap:7px;min-width:0;">
+          <span class="pulse-dot"></span>
+          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Lead agent on your Mac</span>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--text-tertiary);">$0 flat</span>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="main-pane">
+      <!-- Compact Task Summary Bar -->
+      <section class="task-bar" id="taskBar"></section>
+
+      <!-- Spatial Studio Stage -->
+      <div class="canvas-scroll" id="canvasScroll">
+        <div id="stageContainer"></div>
+      </div>
+
+      <!-- Slide-over Single Agent Inspector (Talk, Memories, Notes, Terminal) -->
+      <aside class="agent-drawer" id="agentDrawer"></aside>
+    </main>
+  </div>
+</div>
+
+<!-- Native macOS Multi-Tab Terminal Window -->
+<section class="terminal-window" id="terminalWindow" aria-label="Agent Terminal Sessions">
+  <div class="term-bar">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="traffic-lights">
+        <span class="tl-dot tl-close" id="termCloseDot" style="cursor:pointer;" title="Close Terminal"></span>
+        <span class="tl-dot tl-min"></span>
+        <span class="tl-dot tl-max"></span>
+      </div>
+      <span style="font-size:12px;font-weight:500;color:#D4D4D8;" id="termTitleLabel">you@macbook-pro · wing session</span>
+    </div>
+    <button class="icon-btn" id="btnCloseTerminal" style="color:#9CA3AF;height:24px;">Close</button>
+  </div>
+  <div class="term-tabs" id="termTabs"></div>
+  <div class="term-output" id="termOutput"></div>
+  <div class="term-hints" id="termHints"></div>
+  <form class="term-prompt-row" id="termForm">
+    <span class="term-ps1" id="termPs1">you@macbook payflow %</span>
+    <input type="text" class="term-input" id="termInput" placeholder='Type wing "Your task..." to start a task from here' autocomplete="off">
+  </form>
+</section>
+
+<!-- Modal Backdrop (New Task / Edit Task / Note Card / Settings) -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal-sheet" id="modalSheet"></div>
+</div>
+
+<!-- Undo / Notification Toast -->
+<div class="toast" id="toast">
+  <span id="toastText"></span>
+  <button class="toast-undo" id="toastUndo" style="display:none;">Undo</button>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  const MODEL_META = {
+    claude: { label: "Claude Code", short: "C", cls: "model-claude", color: "#D9653B" },
+    codex:  { label: "Codex",       short: "X", cls: "model-codex",  color: "#148060" },
+    gemini: { label: "Gemini",      short: "G", cls: "model-gemini", color: "#3262E6" },
+    amp:    { label: "Amp",         short: "A", cls: "model-amp",    color: "#7C4DFF" }
+  };
+
+  // Rich Featured Swarms + 19 Realistic Historical Swarms = 23 Swarms in acme/payflow
+  const INITIAL_TASKS = [
+    {
+      id: "tw-424",
+      pr: 424,
+      title: "Smart retry & grace banner for failed cards",
+      group: "active",
+      stage: 2, // 1: Lead Plan, 2: Sandboxes Working, 3: Blind Check, 4: PR Ready, 5: Merged
+      time: "Now",
+      cost: "$0.38",
+      prompt: "Don't cancel customers right away when their card fails. Retry smartly over a week, send calm heads-up emails, and show a subtle update-card banner in the app.",
+      improvedPlan: "Keep full workspace access during a 7-day grace window after a failed renewal. Schedule three retries (+24h, +72h, +7d), skip stolen cards, clear queued retries the moment a customer saves a new card, send at most two calm emails, and show a dismissible banner to workspace admins.",
+      leadNote: "I split the work into 4 pieces with no shared files, and wrote 5 exam checks before any agent started.",
+      vaultPeeked: false,
+      checkProgress: 0,
+      healedNote: null,
+      ask: {
+        boxIdx: 1,
+        question: "After the last retry fails, should the workspace pause right away, or stay read-only for 3 more days?",
+        leadPick: "b",
+        options: {
+          a: { label: "Pause right away", check: "After the final failed retry the workspace pauses immediately" },
+          b: { label: "Read-only for 3 days", check: "After the final failed retry the workspace stays read-only for 3 days before pausing" }
+        },
+        answer: null
+      },
+      decisions: [
+        { time: "10:42", kind: "Fixed", text: "Box 02 stalled on a flaky test. I restarted it from its last save. Nothing was lost." },
+        { time: "10:38", kind: "Decided", text: "Emails stop at two per failed renewal. A third felt like nagging.", changedText: "You changed this: up to three emails. Box 04 was told." },
+        { time: "10:31", kind: "Decided", text: "Gemini builds the banner. It did best on interface work in your last 3 tasks.", changedText: "You changed this: Claude Code builds the banner." },
+        { time: "10:24", kind: "Fixed", text: "Box 03 tried the same layout fix 3 times. I told it to rethink, and it is moving again." },
+        { time: "10:12", kind: "Planned", text: "I split the work into 4 pieces, each with its own files, and started all 4." },
+        { time: "10:11", kind: "Planned", text: "I wrote 5 checks first and sealed them. The agents cannot see or change them." },
+        { time: "10:10", kind: "Decided", text: "I read your request as: keep access for 7 days, retry 3 times, skip stolen cards.", changedText: "You changed this: keep access for 14 days. All 4 boxes were told." }
+      ],
+      proof: [
+        { label: "Billing page", before: [{ t: "Payment failed. Your workspace was cancelled.", tone: "bad" }], after: [{ banner: "We will try your card again on Thursday.", cta: "Update card" }] },
+        { label: "Retries", before: [{ t: "1 attempt, then cancel", tone: "mute" }], after: [{ t: "+24h, +72h, +7d. Stolen cards are skipped.", tone: "ok" }] },
+        { label: "Emails", before: [{ t: "Nothing was sent", tone: "mute" }], after: [{ t: "Day 1: a calm heads-up" }, { t: "Day 5: one last reminder", tone: "ok" }] }
+      ],
+      blindChecks: [
+        "Declined renewal keeps workspace active for 7 full days before pausing access",
+        "Retries run after 1, 3 and 7 days, and never on a stolen card",
+        "Saving a new payment method cancels pending retries within 2 seconds and clears the banner",
+        "Customer receives at most 2 reminder emails during one grace window (no duplicate sends)",
+        "Annual invoices and free-tier workspaces show zero billing banner regressions"
+      ],
+      boxes: [
+        {
+          id: "b1",
+          model: "claude",
+          role: "Retry Scheduler",
+          vm: "sbx-ams-01",
+          folder: "billing/retry/",
+          thought: "Skipping retries when the bank says the card was stolen or lost",
+          files: [
+            { name: "schedule", desc: "Plans +24h, +72h, and +7d retry timestamps", state: "done" },
+            { name: "policy", desc: "Skips non-retriable card decline reasons", state: "done" },
+            { name: "worker", desc: "Runs queued retry charge and updates grace state", state: "active" },
+            { name: "events", desc: "Listens for card recovery to cancel pending jobs", state: "queued" }
+          ],
+          memories: [
+            "Stripe tells us why a card was declined",
+            "All scheduled jobs in Payflow use UTC timestamps"
+          ],
+          chat: [
+            { from: "agent", text: "I own billing/retry/. I've wired the +24h, +72h, and +7d schedule and excluded stolen cards so we don't trigger fraud flags." }
+          ]
+        },
+        {
+          id: "b2",
+          model: "codex",
+          role: "Card Recovery Hook",
+          vm: "sbx-ams-02",
+          folder: "webhooks/stripe/",
+          thought: "Telling the other agents the moment a customer saves a new card",
+          files: [
+            { name: "attached", desc: "Detects updated customer card from Stripe", state: "done" },
+            { name: "dedupe", desc: "Prevents duplicate webhook deliveries", state: "done" },
+            { name: "recover", desc: "Clears grace flag and notifies retry scheduler", state: "active" }
+          ],
+          memories: [
+            "The same Stripe message can arrive twice, so each one is handled once",
+            "Customer row lock avoids race when user double-clicks Save Card"
+          ],
+          chat: [
+            { from: "agent", text: "Working in webhooks/stripe/. Whenever a customer updates their card, I broadcast card.recovered so retries and emails stop right away." }
+          ]
+        },
+        {
+          id: "b3",
+          model: "gemini",
+          role: "Grace Period Banner",
+          vm: "sbx-fra-03",
+          folder: "web/banner/",
+          thought: "Showing 'We will try again Thursday' using the retry date from Box 01",
+          files: [
+            { name: "Banner", desc: "Calm top bar with one-click Update Card sheet", state: "done" },
+            { name: "useGrace", desc: "Reads grace_ends_at and hides immediately on update", state: "active" },
+            { name: "roles", desc: "Limits banner visibility to owners and billing admins", state: "queued" }
+          ],
+          memories: [
+            "Only workspace owners and billing admins see payment banners",
+            "Banner dismiss state resets if a later retry also fails"
+          ],
+          chat: [
+            { from: "agent", text: "Building the in-app grace banner in web/banner/. Regular team members won't be distracted, only owners and billing admins see it." }
+          ]
+        },
+        {
+          id: "b4",
+          model: "claude",
+          role: "Calm Reminder Mail",
+          vm: "sbx-iad-04",
+          folder: "mail/grace/",
+          thought: "Capping heads-up emails to Day 1 and Day 5 per renewal cycle",
+          files: [
+            { name: "day1", desc: "Friendly heads-up note with direct card update link", state: "done" },
+            { name: "day5", desc: "Final calm reminder two days before workspace pause", state: "done" },
+            { name: "guard", desc: "Ensures max 2 emails per invoice and sends 'All set' on recovery", state: "active" }
+          ],
+          memories: [
+            "Postmark sender automatically generates plain-text fallback",
+            "Transactional billing alerts bypass marketing unsubscribe filter"
+          ],
+          chat: [
+            { from: "agent", text: "Handling Day 1 and Day 5 reminder emails in mail/grace/. Capped strictly at two messages per invoice cycle." }
+          ]
+        }
+      ],
+      notes: [
+        { id: "n1", from: "b1", to: "b3", time: "2m ago", summary: "Shared the next retry date and when the grace period ends", body: "Added grace_ends_at and next_retry_at to the workspace billing summary so your banner can show the exact retry day without extra requests." },
+        { id: "n2", from: "b2", to: "b1", time: "1m ago", summary: "I announce when a customer saves a new card", body: "Whenever a new card is saved, I emit card.recovered with workspace_id. Hook into that to drop any queued retry jobs." },
+        { id: "n3", from: "b4", to: "b2", time: "Just now", summary: "I stop the day 5 email when a new card is saved", body: "Hooked into your card.recovered event too, cancels the Day 5 reminder and sends a brief confirmation receipt." }
+      ]
+    },
+    {
+      id: "tw-423",
+      pr: 423,
+      title: "Pause subscription for 30 or 60 days",
+      group: "active",
+      stage: 3,
+      time: "6m",
+      cost: "$0.31",
+      prompt: "Let customers pause their plan for 1 or 2 months from billing settings instead of cancelling outright.",
+      improvedPlan: "Add a self-serve Pause Plan option (30 or 60 days) inside cancellation flow and billing settings. Freeze recurring charges while preserving saved data in read-only mode, and resume billing automatically on the wake date.",
+      leadNote: "All 3 agents finished. Their joined work is now taking the 4 exam checks in a clean sandbox.",
+      vaultPeeked: true,
+      checkProgress: 3,
+      healedNote: null,
+      blindChecks: [
+        "Paused workspace blocks new API writes while keeping historical exports readable",
+        "Zero renewal invoices are generated while subscription is inside pause window",
+        "Resuming early prorates remaining days accurately without double-charging",
+        "Scheduled auto-resume sends a 3-day advance reminder email before charging"
+      ],
+      boxes: [
+        {
+          id: "b1", model: "claude", role: "Pause Lifecycle", vm: "sbx-ams-11", folder: "billing/pause/",
+          thought: "Completed 30d/60d pause state machine and early resume proration",
+          files: [
+            { name: "pause", desc: "Freezes Stripe subscription collection", state: "done" },
+            { name: "resume", desc: "Handles scheduled and early manual resume", state: "done" },
+            { name: "prorate", desc: "Computes fair credit for unused days", state: "done" }
+          ],
+          memories: ["Stripe pause_collection behavior=void keeps subscription ID intact"],
+          chat: [{ from: "agent", text: "Pause and early-resume lifecycle finished cleanly." }]
+        },
+        {
+          id: "b2", model: "gemini", role: "Pause Sheet UI", vm: "sbx-fra-12", folder: "web/settings/pause/",
+          thought: "Finished 30/60 day selector with clear wake-up date preview",
+          files: [
+            { name: "PauseModal", desc: "Offers 30 or 60 day pause before cancel", state: "done" },
+            { name: "ReadOnlyBar", desc: "Shows one-click Resume button while paused", state: "done" }
+          ],
+          memories: ["Cancel flow intercepts with Pause option before final confirmation"],
+          chat: [{ from: "agent", text: "UI sheet shows the exact calendar date billing resumes." }]
+        },
+        {
+          id: "b3", model: "codex", role: "Read-Only Guard", vm: "sbx-iad-14", folder: "api/middleware/",
+          thought: "Verified read-only access guard allows GET/exports while paused",
+          files: [
+            { name: "pauseGuard", desc: "Blocks mutating POST/DELETE calls during pause", state: "done" },
+            { name: "wakeNotice", desc: "Queues 3-day wake-up notice", state: "done" }
+          ],
+          memories: ["Billing & account endpoints stay writable so paused users can resume"],
+          chat: [{ from: "agent", text: "Read-only guard keeps billing endpoints open so users never lock themselves out." }]
+        }
+      ],
+      notes: [
+        { id: "p1", from: "b1", to: "b2", time: "8m ago", summary: "Exposing resumes_at ISO date", body: "Returned resumes_at in workspace state so the read-only bar can display the exact wake date." },
+        { id: "p2", from: "b3", to: "b1", time: "5m ago", summary: "Whitelisted /billing/resume route", body: "Whitelisted your resume endpoint in the read-only guard so paused accounts can unpause in one click." }
+      ]
+    },
+    {
+      id: "tw-422",
+      pr: 422,
+      title: "Instant VAT ID check on EU checkout",
+      group: "ready",
+      stage: 4,
+      time: "19m",
+      cost: "$0.29",
+      prompt: "Validate European VAT numbers live on checkout and zero-rate tax automatically when valid, without blocking checkout if VIES is down.",
+      improvedPlan: "Validate EU VAT IDs against VIES with country prefix normalization, apply reverse-charge 0% VAT on valid business numbers, and fall back gracefully to async verification if the EU government endpoint times out.",
+      leadNote: "5 of 5 exam checks passed in a clean sandbox. Everything is joined into pull request #422.",
+      vaultPeeked: true,
+      checkProgress: 5,
+      healedNote: "The exam failed once: it simulated an outage of the EU VAT service and checkout hung. I told Box 01 to give up after 1.8 seconds, and then it passed.",
+      blindChecks: [
+        "Valid German, French, and Dutch VAT IDs apply 0% reverse-charge with legal invoice note",
+        "Spaces, dots, and lowercase country prefixes normalize automatically without error",
+        "Domestic sales in seller's home country still charge standard local VAT",
+        "When EU VIES service times out, checkout completes under 2 seconds and queues re-check",
+        "Invalid checksum VAT number shows calm inline guidance without clearing card fields"
+      ],
+      boxes: [
+        {
+          id: "b1", model: "codex", role: "VIES Client & Fallback", vm: "sbx-fra-01", folder: "tax/vies/",
+          thought: "1.8s timeout fallback and async retry queue verified",
+          files: [
+            { name: "viesClient", desc: "Queries EU VIES SOAP/REST with 1.8s budget", state: "done" },
+            { name: "normalize", desc: "Strips spaces, hyphens, and uppercases prefix", state: "done" },
+            { name: "fallback", desc: "Queues background verification if VIES is offline", state: "done" }
+          ],
+          memories: ["Member state VIES backends frequently go down on Sunday nights"],
+          chat: [{ from: "agent", text: "Capped VIES lookup at 1.8s with graceful fallback." }]
+        },
+        {
+          id: "b2", model: "claude", role: "Reverse-Charge Tax", vm: "sbx-fra-02", folder: "billing/tax/",
+          thought: "Applied reverse-charge memo on PDF & Stripe invoice lines",
+          files: [
+            { name: "reverseCharge", desc: "Sets 0% cross-border EU B2B tax rate", state: "done" },
+            { name: "domesticRule", desc: "Keeps standard VAT for domestic seller country", state: "done" }
+          ],
+          memories: ["Seller entity is registered in Ireland (IE), IE buyers still pay IE VAT"],
+          chat: [{ from: "agent", text: "Cross-border EU B2B gets 0% reverse charge; Irish domestic buyers keep standard VAT." }]
+        },
+        {
+          id: "b3", model: "gemini", role: "Checkout VAT Field", vm: "sbx-ams-05", folder: "web/checkout/",
+          thought: "Live company name badge & non-blocking validation complete",
+          files: [
+            { name: "VatInput", desc: "Auto-reveals when EU billing country is selected", state: "done" },
+            { name: "TaxBreakdown", desc: "Updates total live with Reverse Charge badge", state: "done" }
+          ],
+          memories: ["Preserving mounted card element prevents re-typing card digits on tax update"],
+          chat: [{ from: "agent", text: "VAT input only appears for EU countries and never resets the card form." }]
+        }
+      ],
+      notes: [
+        { id: "v1", from: "b1", to: "b3", time: "24m ago", summary: "Returning pending_verification state", body: "If VIES is down, status returns pending_verification so checkout can show 'VAT queued, won't slow your order'." },
+        { id: "v2", from: "b2", to: "b1", time: "21m ago", summary: "Irish seller domestic exception", body: "Reminder from repo config: Payflow EU entity is in Ireland, so IE VAT IDs verify business status but still charge 23% VAT." }
+      ]
+    },
+    {
+      id: "tw-421",
+      pr: 421,
+      title: "CSV & PDF payout statement for finance teams",
+      group: "ready",
+      stage: 4,
+      time: "48m",
+      cost: "$0.42",
+      prompt: "Give finance admins a clean monthly payout statement in both CSV and PDF with gross charges, fees, refunds, and net bank transfer.",
+      improvedPlan: "Generate reconciled monthly payout statements matching bank deposits to the cent, downloadable as UTF-8 CSV (Excel-safe) and printable A4 PDF from the Payouts tab.",
+      leadNote: "4 of 4 exam checks passed in a clean sandbox. Ready to merge.",
+      vaultPeeked: false,
+      checkProgress: 4,
+      healedNote: null,
+      blindChecks: [
+        "Gross minus Stripe fees and refunds equals exact net bank payout across month boundaries",
+        "CSV escapes formula characters (=, +, -) to prevent spreadsheet injection",
+        "Multi-thousand transaction months stream under 3 seconds without memory spikes",
+        "Finance viewer role can download statements without seeing API secret keys"
+      ],
+      boxes: [
+        {
+          id: "b1", model: "claude", role: "Ledger Reconciler", vm: "sbx-iad-21", folder: "payouts/reconcile/",
+          thought: "Reconciled payout batches to exact bank settlement cents",
+          files: [{ name: "monthly", desc: "Groups settled balance transactions", state: "done" }, { name: "totals", desc: "Verifies cent-exact net deposit sum", state: "done" }],
+          memories: ["Payout arrival_date uses bank settlement timezone, not charge creation"],
+          chat: [{ from: "agent", text: "Cent-exact reconciliation across month boundaries complete." }]
+        },
+        {
+          id: "b2", model: "codex", role: "Streaming CSV Writer", vm: "sbx-iad-22", folder: "payouts/csv/",
+          thought: "Added UTF-8 BOM for Excel and spreadsheet formula sanitization",
+          files: [{ name: "streamCsv", desc: "Streams rows in chunks of 500", state: "done" }, { name: "sanitize", desc: "Neutralizes leading =, +, -, @ in customer memos", state: "done" }],
+          memories: ["UTF-8 BOM ensures Euro and Pound symbols open cleanly in Excel on Mac/Windows"],
+          chat: [{ from: "agent", text: "Streaming CSV writer handles 50k rows smoothly." }]
+        },
+        {
+          id: "b3", model: "amp", role: "Printable Statement PDF", vm: "sbx-fra-23", folder: "payouts/pdf/",
+          thought: "Clean A4 summary table with company tax header",
+          files: [{ name: "template", desc: "Crisp monochrome finance summary layout", state: "done" }],
+          memories: ["Finance teams print statements in grayscale, avoided low-contrast grays"],
+          chat: [{ from: "agent", text: "Designed high-contrast PDF summary for accounting binders." }]
+        },
+        {
+          id: "b4", model: "gemini", role: "Payouts Export Bar", vm: "sbx-ams-24", folder: "web/payouts/",
+          thought: "Month picker + CSV/PDF download buttons wired",
+          files: [{ name: "ExportMenu", desc: "Month selector with instant download", state: "done" }],
+          memories: ["Finance viewer role already has payouts:read scope"],
+          chat: [{ from: "agent", text: "Added month selector and format picker to Payouts page." }]
+        }
+      ],
+      notes: [
+        { id: "f1", from: "b1", to: "b2", time: "54m ago", summary: "Shared minor-unit integer amounts", body: "Passing all currency values in integer cents plus currency code so CSV and PDF formatters match to the cent." }
+      ]
+    }
+  ];
+
+  // 19 Merged Historical Swarms -> Total 23 Swarms in one project!
+  const ARCHIVE_SPECS = [
+    [420, "Prorated seat upgrades mid-month", "3h ago", "recent", ["claude", "codex", "gemini", "claude"], "Charge fair prorated difference immediately when teams add seats mid-cycle, and credit unused time on downgrades."],
+    [419, "Apple Pay express button on invoices", "Yesterday", "recent", ["gemini", "claude", "codex"], "Let customers pay hosted open invoices in one tap with Apple Pay on Safari and iOS."],
+    [418, "Webhook secret rotation with overlap", "Yesterday", "recent", ["codex", "claude", "amp"], "Allow rotating webhook signing secrets with a 24-hour dual-signature overlap window so integrations don't break."],
+    [417, "Usage spending cap & Slack alert", "Nov 12", "recent", ["claude", "gemini", "codex", "claude"], "Let teams set a monthly metered usage cap with soft alerts at 80% and optional hard stop at 100%."],
+    [416, "Magic link login for guest billing portal", "Nov 12", "recent", ["claude", "gemini", "codex"], "Let external accounting contacts open the billing portal via 15-minute email magic link without needing a product seat."],
+    [415, "Multi-currency display in GBP, EUR, JPY", "Nov 11", "recent", ["claude", "codex", "gemini", "amp", "claude"], "Present localized pricing in GBP, EUR, and JPY including zero-decimal yen formatting."],
+    [414, "Refund reason picker & ledger memo", "Nov 10", "older", ["claude", "gemini"], "Record structured refund reasons and internal notes whenever support issues a partial or full refund."],
+    [413, "Annual switch discount preview card", "Nov 9", "older", ["gemini", "claude", "codex"], "Show monthly subscribers exact yearly savings and one-click switch to annual billing with instant credit."],
+    [412, "SOC2 audit trail export for admins", "Nov 8", "older", ["codex", "claude", "gemini", "amp"], "Record every billing setting, role, and key change into an immutable audit log with JSON/CSV export."],
+    [411, "Duplicate charge guard on slow networks", "Nov 7", "older", ["codex", "claude", "gemini"], "Prevent double-charges when mobile users tap Pay twice on high-latency connections."],
+    [410, "Custom PO number on enterprise PDFs", "Nov 6", "older", ["claude", "gemini"], "Allow enterprise buyers to set a Purchase Order number that appears on every future PDF invoice."],
+    [409, "Trial ending 3-day digest for founders", "Nov 5", "older", ["claude", "codex", "gemini"], "Send founders a clean morning summary of high-activity trials expiring in the next 72 hours."],
+    [408, "ACH bank transfer settlement tracker", "Nov 4", "older", ["codex", "claude", "gemini", "claude"], "Show live settlement progress for US ACH transfers so customers know why invoices say Processing for 4 days."],
+    [407, "Team role permissions for billing viewer", "Nov 3", "older", ["claude", "codex", "gemini"], "Add a Billing Viewer role that can download invoices and statements without editing cards or plans."],
+    [406, "Coupon stacking rules on checkout", "Nov 2", "older", ["codex", "claude", "gemini"], "Prevent referral credits from stacking on top of Black Friday promo codes unless explicitly marked stackable."],
+    [405, "Chargeback evidence packet assembler", "Nov 1", "older", ["claude", "codex", "amp", "gemini"], "Auto-compile login receipts, usage history, and refund policy acceptance into a dispute PDF when a chargeback arrives."],
+    [404, "Sandbox test-clock jumper for QA", "Oct 30", "older", ["codex", "claude", "gemini"], "Give developers a button in test mode to advance subscription clocks by +7 days or +1 month."],
+    [403, "Tax-exempt nonprofit certificate upload", "Oct 29", "older", ["gemini", "claude", "codex"], "Let verified 501(c)(3) nonprofits upload exemption certificates and remove sales tax automatically once approved."],
+    [402, "Stale unpaid draft invoice cleanup", "Oct 28", "older", ["codex", "claude"], "Automatically archive abandoned draft checkout invoices older than 30 days without emailing customers."]
+  ];
+
+  ARCHIVE_SPECS.forEach((spec) => {
+    const [pr, title, time, subgroup, models, prompt] = spec;
+    const roleNames = ["Core Domain", "Webhook & Sync", "Interface & Flow", "Notifications", "Edge Guards"];
+    const folders = ["billing/core/", "events/sync/", "web/billing/", "mail/alerts/", "api/guards/"];
+    const boxes = models.map((m, idx) => ({
+      id: "b" + (idx + 1),
+      model: m,
+      role: roleNames[idx % roleNames.length],
+      vm: "sbx-arc-0" + (idx + 1),
+      folder: folders[idx % folders.length],
+      thought: "Finished its piece and handed it over.",
+      files: [
+        { name: "handler", desc: "Primary domain behavior for " + title.toLowerCase(), state: "done" },
+        { name: "types", desc: "Shared contract aligned via peer notes", state: "done" },
+        { name: "check", desc: "Local smoke verification before clean gate", state: "done" }
+      ],
+      memories: [
+        "Reused Payflow workspace timezone & minor-unit currency conventions",
+        "Preserved backward compatibility for existing active subscriptions"
+      ],
+      chat: [
+        { from: "agent", text: "I finished my piece for pull request #" + pr + ". My sandbox is shut down." }
+      ]
+    }));
+
+    INITIAL_TASKS.push({
+      id: "tw-" + pr,
+      pr: pr,
+      title: title,
+      group: subgroup,
+      stage: 5, // Merged
+      time: time,
+      cost: "$0." + (22 + (pr % 24)),
+      prompt: prompt,
+      improvedPlan: "The lead agent split the request into " + models.length + " pieces with no shared files, wrote 4 exam checks first, and made sure nothing else broke before opening pull request #" + pr + ".",
+      leadNote: "Merged cleanly into main. All " + models.length + " cloud sandboxes spun down ($0/hr).",
+      vaultPeeked: false,
+      checkProgress: 4,
+      healedNote: null,
+      blindChecks: [
+        "Primary customer flow succeeds end-to-end with accurate ledger entries",
+        "Concurrent requests remain idempotent without duplicate side effects",
+        "Role permissions restrict sensitive billing mutations to authorized admins",
+        "Existing monthly and annual plans behave exactly as before"
+      ],
+      boxes: boxes,
+      notes: boxes.length > 1 ? [
+        {
+          id: "an-" + pr,
+          from: "b1",
+          to: "b2",
+          time: time,
+          summary: "Aligned payload contract across sandboxes",
+          body: "Shared updated field names and UTC timestamp expectations so both pieces fit together on the first exam run."
+        }
+      ] : []
+    });
+  });
+
+  // App State
+  const state = {
+    tasks: INITIAL_TASKS,
+    selectedTaskId: "tw-424",
+    viewMode: "formation", // formation | memories | deliverable
+    filter: "all",
+    search: "",
+    promptExpanded: false,
+    selectedBoxId: null,
+    drawerTab: "chat", // chat | memories | notes
+    highlightedNoteId: null,
+    terminalOpen: false,
+    activeTermTab: "lead",
+    deletedBackup: null,
+    nextPrNumber: 425,
+    autoTimers: [],
+    termLogs: {
+      lead: [
+        { cls: "t-muted", text: "TaskWing v0.9.4 · Connected to local Claude Code (Max flat subscription)" },
+        { cls: "t-muted", text: "Repository: ~/dev/payflow (branch: main · clean working tree)" },
+        { cls: "t-cmd",   text: "$ wing \"Smart retry & grace banner for failed cards\"" },
+        { cls: "t-blue",  text: "▸ Reading the task and deciding which files each agent owns..." },
+        { cls: "t-amber", text: "🔒 Wrote 5 exam checks and sealed them (the agents cannot see them)" },
+        { cls: "t-green", text: "✓ Started 4 agents, each in its own sandbox: Claude (x2), Codex (x1), Gemini (x1)" },
+        { cls: "t-muted", text: "  Reading the notes between agents. You do not need to watch." }
+      ]
+    }
+  };
+
+  // Helpers
+  function currentTask() {
+    return state.tasks.find(t => t.id === state.selectedTaskId) || state.tasks[0];
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function clearAutoTimers() {
+    state.autoTimers.forEach(id => clearTimeout(id));
+    state.autoTimers = [];
+  }
+
+  let toastTimer = null;
+  function showToast(message, withUndo) {
+    const el = document.getElementById("toast");
+    const txt = document.getElementById("toastText");
+    const undoBtn = document.getElementById("toastUndo");
+    txt.textContent = message;
+    undoBtn.style.display = withUndo ? "inline-block" : "none";
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 4600);
+  }
+
+  // Render Sidebar (23+ Swarms)
+  function renderSidebar() {
+    const listEl = document.getElementById("swarmList");
+    const pills = document.querySelectorAll(".filter-pill");
+    const allCount = state.tasks.length;
+    pills[0].textContent = "All " + allCount;
+
+    const q = state.search.trim().toLowerCase();
+    const filtered = state.tasks.filter(t => {
+      if (state.filter === "active" && t.stage >= 4) return false;
+      if (state.filter === "ready" && t.stage !== 4) return false;
+      if (state.filter === "merged" && t.stage !== 5) return false;
+      if (q && !t.title.toLowerCase().includes(q) && !t.prompt.toLowerCase().includes(q) && !("pr #" + t.pr).includes(q)) {
+        return false;
+      }
+      return true;
+    });
+
+    const groups = [
+      { key: "live", label: "Running and ready", items: filtered.filter(t => t.stage < 5) },
+      { key: "recent", label: "Earlier this week", items: filtered.filter(t => t.stage === 5 && t.group === "recent") },
+      { key: "older", label: "Older", items: filtered.filter(t => t.stage === 5 && t.group !== "recent") }
+    ];
+
+    let html = "";
+    groups.forEach(g => {
+      if (!g.items.length) return;
+      html += `<div class="sidebar-group-label"><span>${g.label}</span><span class="tabular">${g.items.length}</span></div>`;
+      g.items.forEach(t => {
+        const sel = t.id === state.selectedTaskId ? "selected" : "";
+        let iconHtml = "";
+        if (t.stage === 1 || t.stage === 2) {
+          iconHtml = `<span class="orbit-ring" title="Sandboxes working"></span>`;
+        } else if (t.stage === 3) {
+          iconHtml = `<span class="orbit-ring amber" title="Taking the exam"></span>`;
+        } else if (t.stage === 4) {
+          iconHtml = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--accent-green)" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="4.5" r="2"/><circle cx="5" cy="11.5" r="2"/><circle cx="11.5" cy="11.5" r="2"/><path d="M5 6.5v3M7.5 4.5h2a2 2 0 012 2v3"/></svg>`;
+        } else {
+          iconHtml = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--accent-purple)" stroke-width="1.7" stroke-linecap="round"><circle cx="5" cy="4" r="1.8"/><circle cx="5" cy="12" r="1.8"/><circle cx="11.5" cy="8" r="1.8"/><path d="M5 5.8v4.4M6.7 4.6C8.8 5.2 9.2 7.5 9.7 7.8"/></svg>`;
+        }
+
+        const dots = t.boxes.map(b => {
+          const c = (MODEL_META[b.model] || MODEL_META.claude).color;
+          return `<span class="agent-dot" style="background:${c}"></span>`;
+        }).join("");
+
+        const rightLabel = t.stage === 4 ? `PR #${t.pr} · Ready` : (t.stage === 5 ? `#${t.pr} · ${t.time}` : t.time);
+
+        html += `
+          <div class="swarm-row ${sel}" data-task-id="${t.id}">
+            <div class="row-status-icon">${iconHtml}</div>
+            <div class="row-body">
+              <div class="row-title">${escapeHtml(t.title)}</div>
+              <div class="row-meta">
+                <span class="agent-dots" title="${t.boxes.length} cloud sandboxes">${dots} <span style="margin-left:3px;">${t.boxes.length} boxes</span></span>
+                <span>${escapeHtml(rightLabel)}</span>
+              </div>
+            </div>
+            <button class="row-del-btn" data-del-id="${t.id}" title="Delete task">&times;</button>
+          </div>
+        `;
+      });
+    });
+
+    if (!html) {
+      html = `<div style="padding:28px 14px;text-align:center;color:var(--text-tertiary);font-size:12px;">No matching tasks.</div>`;
+    }
+
+    listEl.innerHTML = html;
+
+    listEl.querySelectorAll(".swarm-row").forEach(row => {
+      row.addEventListener("click", (e) => {
+        const delBtn = e.target.closest("[data-del-id]");
+        if (delBtn) {
+          e.stopPropagation();
+          deleteTask(delBtn.getAttribute("data-del-id"));
+          return;
+        }
+        selectTask(row.getAttribute("data-task-id"));
+      });
+    });
+  }
+
+  // Render Task Header Bar
+  function renderTaskBar() {
+    const t = currentTask();
+    const bar = document.getElementById("taskBar");
+
+    const memTotal = t.boxes.reduce((acc, b) => acc + b.memories.length, 0) + t.notes.length;
+    document.getElementById("segMemCount").textContent = memTotal;
+    document.getElementById("segDecCount").textContent = decisionsFor(t).length;
+
+    let badgeCls = "working", badgeText = "Running";
+    if (t.stage === 1) { badgeCls = "working"; badgeText = "Planning"; }
+    else if (t.stage === 2) { badgeCls = "working"; badgeText = "Agents working"; }
+    else if (t.stage === 3) { badgeCls = "checking"; badgeText = "Taking the exam"; }
+    else if (t.stage === 4) { badgeCls = "ready"; badgeText = "Pull request #" + t.pr + " ready"; }
+    else if (t.stage === 5) { badgeCls = "merged"; badgeText = "Merged · #" + t.pr; }
+
+    const steps = [
+      { n: 1, label: "Plan" },
+      { n: 2, label: "Build" },
+      { n: 3, label: "Exam" },
+      { n: 4, label: "Pull request" }
+    ];
+
+    const stepsHtml = steps.map(s => {
+      let cls = "";
+      let icon = s.n;
+      if (t.stage > s.n || t.stage === 5) {
+        cls = "done";
+        icon = "✓";
+      } else if (t.stage === s.n) {
+        cls = "current";
+      }
+      return `<button class="stage-step ${cls}" data-jump-stage="${s.n}" title="View or jump to ${s.label}">
+        <span class="step-num">${icon}</span>
+        <span>${s.label}</span>
+      </button>`;
+    }).join("");
+
+    let primaryActionHtml = "";
+    if (t.stage === 1) {
+      primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Start the agents</span><span>▸</span></button>`;
+    } else if (t.stage === 2) {
+      primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Run the exam</span><span>▸</span></button>`;
+    } else if (t.stage === 3) {
+      primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Complete Verification</span><span>▸</span></button>`;
+    } else if (t.stage === 4) {
+      primaryActionHtml = `<button class="btn btn-merge" id="btnMergePr">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 8.5L6.5 11.5L12.5 4.5"/></svg>
+        <span>Merge PR #${t.pr}</span>
+      </button>`;
+    } else {
+      primaryActionHtml = `<button class="btn" id="btnReplayTask" title="Play this task again from the build step"><span>Replay</span></button>`;
+    }
+
+    bar.innerHTML = `
+      <div class="task-bar-top">
+        <div class="task-title-group">
+          <span class="status-badge ${badgeCls}">${badgeText}</span>
+          <h1 class="task-heading" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</h1>
+          <div class="task-actions-inline">
+            <button class="icon-btn" id="btnEditTask" title="Edit task (Lead agent will re-plan)">
+              <svg width="13.5" height="13.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z"/></svg>
+              <span style="font-size:11.5px;">Edit</span>
+            </button>
+            <button class="icon-btn" id="btnDeleteCurrent" title="Delete task">
+              <svg width="13.5" height="13.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M6.5 2.5h3M4.5 4.5l.6 8.5a1 1 0 001 .9h3.8a1 1 0 001-.9l.6-8.5"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="flight-controls">
+          <div class="stage-track">${stepsHtml}</div>
+          ${primaryActionHtml}
+        </div>
+      </div>
+
+      <div class="prompt-strip" id="promptStrip" title="Click to compare your raw task with the Lead Agent's improved plan">
+        <div class="prompt-strip-left">
+          <span class="prompt-label">Your Ask</span>
+          <span class="prompt-quote">“${escapeHtml(t.prompt)}”</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;font-size:11.5px;color:var(--text-tertiary);">
+          <span class="tabular">Sandboxes: ${t.cost}</span>
+          <span>${state.promptExpanded ? "Hide the plan ▴" : "See the plan ▾"}</span>
+        </div>
+      </div>
+
+      <div class="prompt-expanded ${state.promptExpanded ? "open" : ""}" id="promptExpanded">
+        <div>
+          <div class="plan-col-label">What you typed</div>
+          <div class="plan-col-text">“${escapeHtml(t.prompt)}”</div>
+        </div>
+        <div>
+          <div class="plan-col-label">How your lead agent understood and split it</div>
+          <div class="plan-col-text">${escapeHtml(t.improvedPlan)}</div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById("promptStrip").addEventListener("click", () => {
+      state.promptExpanded = !state.promptExpanded;
+      renderTaskBar();
+      requestAnimationFrame(drawFlightLines);
+    });
+
+    document.getElementById("btnEditTask").addEventListener("click", () => openEditTaskModal());
+    document.getElementById("btnDeleteCurrent").addEventListener("click", () => deleteTask(t.id));
+
+    bar.querySelectorAll("[data-jump-stage]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = parseInt(btn.getAttribute("data-jump-stage"), 10);
+        jumpToStage(t, target);
+      });
+    });
+
+    const adv = document.getElementById("btnAdvanceStage");
+    if (adv) adv.addEventListener("click", () => advanceTaskStage(t));
+
+    const mrg = document.getElementById("btnMergePr");
+    if (mrg) mrg.addEventListener("click", () => mergePullRequest(t));
+
+    const rpl = document.getElementById("btnReplayTask");
+    if (rpl) rpl.addEventListener("click", () => jumpToStage(t, 2));
+  }
+
+  // Render Main Stage (Formation / Memories & Notes / Pull Request)
+  // ---- Merged in: the one question, the decision log, before/after proof ----
+  function firstSentence(text) {
+    const m = String(text || "").match(/^.*?[.!?](\s|$)/);
+    return (m ? m[0] : String(text || "")).trim();
+  }
+
+  function decisionsFor(t) {
+    if (!t.decisions) {
+      const boxes = t.boxes || [], checks = t.blindChecks || [];
+      t.decisions = [
+        { time: t.time, kind: "Planned", text: "I split the work into " + boxes.length + " pieces, each with its own files." },
+        { time: t.time, kind: "Planned", text: "I wrote " + checks.length + " checks first and sealed them. The agents never saw them." },
+        { time: t.time, kind: "Decided", text: "I read your request as: " + firstSentence(t.improvedPlan || t.prompt) }
+      ];
+      if (t.healedNote) t.decisions.unshift({ time: t.time, kind: "Fixed", text: t.healedNote });
+    }
+    return t.decisions;
+  }
+
+  function proofFor(t) {
+    if (!t.proof) {
+      t.proof = (t.boxes || []).slice(0, 3).map(b => ({
+        label: b.role,
+        before: [{ t: "Did not exist before", tone: "mute" }],
+        after: [{ t: (b.files[0] && b.files[0].desc) || b.thought, tone: "ok" }]
+      }));
+    }
+    return t.proof;
+  }
+
+  function answerAsk(t, key) {
+    const a = t.ask;
+    const pick = key === "lead" ? a.leadPick : key;
+    const opt = a.options[pick];
+    a.answer = key;
+    t.blindChecks.push(opt.check);
+    const n = t.blindChecks.length;
+    t.leadNote = (key === "lead" ? "You left it to me. I chose: " : "Got your answer: ") + opt.label.toLowerCase() + ". It is now check " + n + " of the exam, and Box 0" + a.boxIdx + " was told.";
+    decisionsFor(t).unshift(key === "lead"
+      ? { time: "Just now", kind: "Decided", text: "You left the last-retry question to me. I chose: " + opt.label.toLowerCase() + ".", changedText: "You changed this: " + a.options[pick === "a" ? "b" : "a"].label.toLowerCase() + "." }
+      : { time: "Just now", kind: "You", text: "You chose: " + opt.label.toLowerCase() + ". I added it to the exam as check " + n + "." });
+    renderAll();
+    showToast("Your answer is now check " + n + " of the exam");
+  }
+
+  function askCardHtml(t) {
+    if (!t.ask || t.ask.answer || t.stage > 2) return "";
+    const a = t.ask;
+    return `
+      <div class="ask-card" id="askCard">
+        <div style="min-width:0;">
+          <div class="ask-eyebrow">The one thing only you can decide · from Box 0${a.boxIdx}</div>
+          <div class="ask-question">${escapeHtml(a.question)}</div>
+        </div>
+        <div class="ask-actions">
+          <button class="btn btn-primary" id="askOptA">${escapeHtml(a.options.a.label)}</button>
+          <button class="btn" id="askOptB">${escapeHtml(a.options.b.label)}</button>
+          <button class="ask-later" id="askOptLead">You decide</button>
+        </div>
+      </div>`;
+  }
+
+  function proofSideHtml(items) {
+    return items.map(it => it.banner
+      ? `<div class="proof-banner"><span>${escapeHtml(it.banner)}</span><span class="proof-cta">${escapeHtml(it.cta)}</span></div>`
+      : `<div class="proof-line ${it.tone || ""}">${escapeHtml(it.t)}</div>`).join("");
+  }
+
+  function proofGalleryHtml(t) {
+    const rows = proofFor(t);
+    if (!rows.length) return "";
+    const soFar = t.stage <= 2;
+    return `
+      <div class="studio-panel" style="margin-bottom:20px;" id="proofGallery">
+        <div class="panel-header">
+          <div class="panel-title">See what changed</div>
+          <span style="font-size:11.5px;color:var(--text-tertiary);">${soFar ? "Still being built. These fill in as each piece finishes." : "These pictures open the pull request. No code to read."}</span>
+        </div>
+        ${rows.map(r => `
+          <div class="proof-row">
+            <div class="proof-label">${escapeHtml(r.label)}</div>
+            <div class="proof-frame"><span class="proof-tag">BEFORE</span>${proofSideHtml(r.before)}</div>
+            <div class="proof-frame after"><span class="proof-tag">${soFar ? "SO FAR" : "AFTER"}</span>${proofSideHtml(r.after)}</div>
+          </div>`).join("")}
+      </div>`;
+  }
+
+  function renderDecisionsView(container, t) {
+    const all = decisionsFor(t);
+    const f = state.decisionFilter || "All";
+    const count = k => all.filter(d => d.kind === k).length;
+    const shown = all.filter(d => f === "All" || d.kind === f);
+    const canChange = t.stage < 5;
+    const rowsHtml = shown.map(d => {
+      const idx = all.indexOf(d);
+      const link = d.changedText && canChange ? ` <button class="link-btn" data-change="${idx}">${d.changed ? "Undo" : "Change"}</button>` : "";
+      return `
+        <div class="decision-row">
+          <div class="decision-time">${escapeHtml(d.time)}</div>
+          <div>
+            <div class="kind-tag kind-${d.kind}">${d.kind}</div>
+            <div class="decision-text">${escapeHtml(d.changed ? d.changedText : d.text)}${link}</div>
+          </div>
+        </div>`;
+    }).join("");
+    container.innerHTML = `
+      <div class="alt-stage" style="max-width:760px;">
+        <div class="studio-panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Your lead agent handled ${all.length} things without you</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">It decides and tells you after. Change any decision and the agents are told.</div>
+            </div>
+            <div class="filter-pills" style="width:250px;" id="decisionFilters">
+              ${["All", "Decided", "Fixed"].map(k => `<button class="filter-pill ${f === k ? "active" : ""}" data-dfilter="${k}">${k === "All" ? "All " + all.length : k + " " + count(k)}</button>`).join("")}
+            </div>
+          </div>
+          <div>${rowsHtml || `<div style="padding:14px 0;color:var(--text-tertiary);">Nothing of this kind yet.</div>`}</div>
+        </div>
+      </div>`;
+    container.querySelectorAll("[data-dfilter]").forEach(b => b.addEventListener("click", () => { state.decisionFilter = b.getAttribute("data-dfilter"); renderStage(); }));
+    container.querySelectorAll("[data-change]").forEach(b => b.addEventListener("click", () => {
+      const d = all[parseInt(b.getAttribute("data-change"), 10)];
+      d.changed = !d.changed;
+      renderStage();
+      showToast(d.changed ? "Changed. The agents were told." : "Back to your lead agent's decision.");
+    }));
+  }
+
+  function renderStage() {
+    const container = document.getElementById("stageContainer");
+    const t = currentTask();
+
+    if (state.viewMode === "decisions") {
+      renderDecisionsView(container, t);
+      return;
+    }
+
+    if (state.viewMode === "memories") {
+      renderMemoriesView(container, t);
+      return;
+    }
+    if (state.viewMode === "deliverable") {
+      renderDeliverableView(container, t);
+      return;
+    }
+
+    const vaultOpen = t.vaultPeeked || t.stage >= 3;
+    const vaultCardCls = (t.stage >= 3 ? "unsealed" : (t.vaultPeeked ? "peeked" : ""));
+
+    let vaultContentHtml = "";
+    if (!vaultOpen) {
+      vaultContentHtml = `
+        <div class="vault-sealed-veil">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent-amber)" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.8"/><path d="M5.2 7V5a2.8 2.8 0 015.6 0v2"/></svg>
+            <span><strong>${t.blindChecks.length} checks</strong> written before any agent started. The agents never see them.</span>
+          </div>
+          <button class="btn" id="btnPeekVault" style="height:25px;padding:0 9px;font-size:11px;">Show</button>
+        </div>
+      `;
+    } else {
+      const checkItems = t.blindChecks.slice(0, 4).map((c, idx) => {
+        const passed = t.stage >= 4 || (t.stage === 3 && idx < t.checkProgress);
+        const icon = passed
+          ? `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--accent-green)" stroke-width="2" stroke-linecap="round"><path d="M3.5 8.5l3 3 6-6.5"/></svg>`
+          : `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><circle cx="8" cy="8" r="5"/></svg>`;
+        return `<div class="vault-check-item">${icon}<span>${escapeHtml(c)}</span></div>`;
+      }).join("");
+      const extra = t.blindChecks.length > 4 ? `<div style="font-size:11px;color:var(--text-tertiary);padding-left:20px;">+ ${t.blindChecks.length - 4} more</div>` : "";
+      vaultContentHtml = `<div class="vault-checks-preview">${checkItems}${extra}</div>`;
+    }
+
+    // Mini Boxes
+    const boxesHtml = t.boxes.map((b, idx) => {
+      const m = MODEL_META[b.model] || MODEL_META.claude;
+      const isSelected = state.selectedBoxId === b.id ? "selected-box" : "";
+      const tilesHtml = b.files.map(f => {
+        const st = t.stage >= 3 ? "done" : (t.stage === 1 ? "queued" : f.state);
+        return `<div class="file-tile ${st}" data-file-whisper="${escapeHtml(f.name + ": " + f.desc)}" title="${escapeHtml(f.desc)}">${escapeHtml(f.name)}</div>`;
+      }).join("");
+
+      const doneCount = b.files.filter(f => (t.stage >= 3 ? "done" : (t.stage === 1 ? "queued" : f.state)) === "done").length;
+      const firstMem = b.memories[0] || "Scanning repository conventions";
+      const extraMem = b.memories.length > 1 ? `<span class="mem-more">+${b.memories.length - 1}</span>` : "";
+
+      let statusDot = `<span class="pulse-dot working" title="Working in its own sandbox"></span>`;
+      if (t.stage >= 3) {
+        statusDot = `<span class="pulse-dot" title="Finished its piece"></span>`;
+      } else if (t.stage === 1) {
+        statusDot = `<span class="pulse-dot amber" title="Booting cloud sandbox"></span>`;
+      }
+
+      const thoughtText = t.stage === 5
+        ? "Shut down after pull request #" + t.pr + " was merged."
+        : (t.stage >= 3 ? "Finished its piece. Waiting for the exam." : b.thought);
+
+      return `
+        <article class="mini-box ${isSelected}" data-box-id="${b.id}" id="dom-box-${b.id}">
+          <div class="box-top">
+            <span class="model-badge ${m.cls}">
+              <span class="model-glyph">${m.short}</span>
+              <span>${m.label}</span>
+            </span>
+            <div class="box-quick-btns">
+              ${statusDot}
+              <button class="mini-icon-btn" data-chat-box="${b.id}" title="Talk to this agent">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 3.5h11v7.5H6l-3.5 2.5V3.5z"/></svg>
+              </button>
+              <button class="mini-icon-btn" data-term-box="${b.id}" title="Open this sandbox's terminal">&gt;_</button>
+            </div>
+          </div>
+
+          <div class="box-role-row">
+            <span class="box-role">Box 0${idx + 1} · ${escapeHtml(b.role)}</span>
+            
+          </div>
+
+          <div class="territory-well" data-default-folder="Its own files">
+            <div class="territory-head">
+              <span class="territory-folder" style="font-family:var(--font-sans);">Its own files</span>
+              <span class="tabular" style="flex-shrink:0;">${doneCount} of ${b.files.length} done</span>
+            </div>
+            <div class="file-tiles">${tilesHtml}</div>
+          </div>
+
+          <div class="box-thought">${escapeHtml(thoughtText)}</div>
+
+          <div class="box-memories" title="What this agent remembers. Click the box to see all of it.">
+            <div class="memory-pill">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2.2 1.3"/></svg>
+              <span>${escapeHtml(firstMem)}</span>
+            </div>
+            ${extraMem}
+          </div>
+        </article>
+      `;
+    }).join("");
+
+    // Inter-Agent Notes Ribbon
+    const notesHtml = t.notes.map(n => {
+      const senderIdx = t.boxes.findIndex(b => b.id === n.from) + 1;
+      const recvIdx = t.boxes.findIndex(b => b.id === n.to) + 1;
+      return `
+        <button class="note-chip" data-note-id="${n.id}" data-from="${n.from}" data-to="${n.to}">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--accent-blue)" stroke-width="1.6"><path d="M2 4l6 4.5L14 4"/><rect x="2" y="3" width="12" height="10" rx="2"/></svg>
+          <span class="note-route">Box 0${senderIdx} → 0${recvIdx}:</span>
+          <span class="note-preview">${escapeHtml(n.summary)}</span>
+        </button>
+      `;
+    }).join("");
+
+    // Bottom Clean-Room Gate / Verified PR Card
+    let gateHtml = "";
+    if (t.stage <= 2) {
+      gateHtml = `
+        <div class="gate-card" id="cleanGateCard">
+          <div class="gate-top">
+            <div class="gate-info">
+              <div class="gate-emblem">
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l5 2.2v3.8c0 3.2-2.1 5.3-5 6.3-2.9-1-5-3.1-5-6.3V4.2L8 2z"/></svg>
+              </div>
+              <div>
+                <div class="gate-headline">The exam · waiting</div>
+                <div class="gate-sub">When all ${t.boxes.length} agents finish, their work is joined and takes the ${t.blindChecks.length} checks in a clean sandbox.</div>
+              </div>
+            </div>
+            <button class="btn" id="btnGateRunNow">Run the exam ▸</button>
+          </div>
+        </div>
+      `;
+    } else if (t.stage === 3) {
+      const rows = t.blindChecks.map((c, idx) => {
+        const ok = idx < t.checkProgress;
+        return `<div class="clean-check-row ${ok ? "passed" : ""}">
+          ${ok
+            ? `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--accent-green)" stroke-width="2" stroke-linecap="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>`
+            : `<span class="orbit-ring amber" style="width:12px;height:12px;"></span>`}
+          <span>${escapeHtml(c)}</span>
+        </div>`;
+      }).join("");
+
+      gateHtml = `
+        <div class="gate-card checking" id="cleanGateCard">
+          <div class="gate-top">
+            <div class="gate-info">
+              <div class="gate-emblem">
+                <span class="orbit-ring amber" style="width:18px;height:18px;"></span>
+              </div>
+              <div>
+                <div class="gate-headline">Taking the exam · <span class="tabular">${t.checkProgress} of ${t.blindChecks.length}</span> checks passed</div>
+                <div class="gate-sub">Running in a fresh sandbox with nothing left over from the agents.</div>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="btnFinishGate">Finish Check ▸</button>
+          </div>
+          <div class="gate-checks-live">${rows}</div>
+        </div>
+      `;
+    } else if (t.stage === 4) {
+      const healedBanner = t.healedNote
+        ? `<div style="margin-top:10px;padding:7px 11px;border-radius:8px;background:var(--accent-amber-soft);color:var(--accent-amber);font-size:11.5px;"><strong>Fixed before the pull request:</strong> ${escapeHtml(t.healedNote)}</div>`
+        : "";
+      gateHtml = `
+        <div class="gate-card pr-ready" id="cleanGateCard">
+          <div class="gate-top">
+            <div class="gate-info">
+              <div class="gate-emblem">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>
+              </div>
+              <div>
+                <div class="gate-headline">Verified Pull Request #${t.pr} · Ready to Merge</div>
+                <div class="gate-sub">Passed <strong>${t.blindChecks.length} of ${t.blindChecks.length} exam checks</strong> in a clean sandbox · ${t.boxes.length} pieces joined into <span style="font-family:var(--font-mono)">wing/${t.id} → main</span></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+              <button class="btn" id="btnInspectPrSummary">Summary</button>
+              <button class="btn btn-merge" id="btnGateMerge">Merge Pull Request</button>
+            </div>
+          </div>
+          ${healedBanner}
+        </div>
+      `;
+    } else {
+      gateHtml = `
+        <div class="gate-card pr-merged" id="cleanGateCard">
+          <div class="gate-top">
+            <div class="gate-info">
+              <div class="gate-emblem">
+                <svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="4" r="1.8"/><circle cx="5" cy="12" r="1.8"/><circle cx="11.5" cy="8" r="1.8"/><path d="M5 5.8v4.4M6.7 4.6C8.8 5.2 9.2 7.5 9.7 7.8"/></svg>
+              </div>
+              <div>
+                <div class="gate-headline">Pull Request #${t.pr} Merged into main</div>
+                <div class="gate-sub">${t.blindChecks.length} of ${t.blindChecks.length} exam checks passed · All ${t.boxes.length} sandboxes are shut down</div>
+              </div>
+            </div>
+            <button class="btn" id="btnViewDeliverable">View Outcome</button>
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      <div class="formation-stage" id="formationStage">
+        <svg class="flight-svg" id="flightSvg"></svg>
+
+        ${askCardHtml(t)}
+        <!-- Band 1: Local Mac Lead + Blind Acceptance Vault -->
+        <div class="top-deck">
+          <div class="deck-card" id="leadDeckCard">
+            <div class="deck-head">
+              <div class="deck-title-wrap">
+                <span class="mac-chip">&gt;_</span>
+                <div>
+                  <div class="deck-title">Lead Agent · Your Mac</div>
+                  <div class="deck-sub">Claude Code in a terminal on your Mac</div>
+                </div>
+              </div>
+              <span class="flat-tag">On your flat plan</span>
+            </div>
+            <div class="lead-say">${escapeHtml(t.leadNote)}</div>
+            <div style="display:flex;gap:7px;margin-top:auto;">
+              <button class="btn" id="btnLeadTermCard" style="height:25px;font-size:11px;padding:0 9px;">Open its terminal</button>
+              <button class="btn" id="btnSendPulse" style="height:25px;font-size:11px;padding:0 9px;">Demo: pass a note</button>
+              <button class="btn" id="btnLeadDecisions" style="height:25px;font-size:11px;padding:0 9px;">Decisions ${decisionsFor(t).length}</button>
+            </div>
+          </div>
+
+          <div class="deck-card vault-card ${vaultCardCls}" id="vaultDeckCard">
+            <div class="deck-head">
+              <div class="deck-title-wrap">
+                <div style="width:26px;height:26px;border-radius:7px;background:var(--accent-amber-soft);color:var(--accent-amber);display:flex;align-items:center;justify-content:center;">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="7" width="10" height="7" rx="1.8"/><path d="M5.2 7V5a2.8 2.8 0 015.6 0v2"/></svg>
+                </div>
+                <div>
+                  <div class="deck-title">The exam</div>
+                  <div class="deck-sub">${t.stage >= 3 ? "Running in a clean sandbox" : "The agents cannot see it"}</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="blind-pill">${t.stage >= 3 ? "Opened" : "Sealed"}</span>
+                ${t.stage < 3 && vaultOpen ? `<button class="icon-btn" id="btnHideVault" style="font-size:11px;height:22px;">Hide</button>` : ""}
+              </div>
+            </div>
+            ${vaultContentHtml}
+          </div>
+        </div>
+
+        <!-- Band 2: Cloud Sandbox Mini Boxes + Inter-Agent Notes -->
+        <div class="boxes-section">
+          <div class="sandbox-grid" id="sandboxGrid">${boxesHtml}</div>
+          ${t.notes.length ? `<div class="notes-ribbon">${notesHtml}</div>` : ""}
+        </div>
+
+        <!-- Band 3: Clean-Room Blind Gate & Verified PR -->
+        ${gateHtml}
+      </div>
+    `;
+
+    // Bind Formation Events
+    if (document.getElementById("askCard")) {
+      document.getElementById("askOptA").addEventListener("click", () => answerAsk(t, "a"));
+      document.getElementById("askOptB").addEventListener("click", () => answerAsk(t, "b"));
+      document.getElementById("askOptLead").addEventListener("click", () => answerAsk(t, "lead"));
+    }
+    document.getElementById("btnLeadDecisions").addEventListener("click", () => switchViewMode("decisions"));
+    const peekBtn = document.getElementById("btnPeekVault");
+    if (peekBtn) peekBtn.addEventListener("click", () => { t.vaultPeeked = true; renderStage(); });
+    const hideBtn = document.getElementById("btnHideVault");
+    if (hideBtn) hideBtn.addEventListener("click", () => { t.vaultPeeked = false; renderStage(); });
+
+    document.getElementById("btnLeadTermCard").addEventListener("click", () => openTerminal("lead"));
+    document.getElementById("btnSendPulse").addEventListener("click", () => triggerLiveNotePulse(t));
+
+    container.querySelectorAll(".mini-box").forEach(card => {
+      card.addEventListener("click", (e) => {
+        const termBtn = e.target.closest("[data-term-box]");
+        if (termBtn) {
+          e.stopPropagation();
+          openTerminal(termBtn.getAttribute("data-term-box"));
+          return;
+        }
+        const chatBtn = e.target.closest("[data-chat-box]");
+        if (chatBtn) {
+          e.stopPropagation();
+          openAgentDrawer(chatBtn.getAttribute("data-chat-box"), "chat");
+          return;
+        }
+        openAgentDrawer(card.getAttribute("data-box-id"), "chat");
+      });
+    });
+
+    container.querySelectorAll(".note-chip").forEach(chip => {
+      const fromId = chip.getAttribute("data-from");
+      const toId = chip.getAttribute("data-to");
+      chip.addEventListener("mouseenter", () => {
+        state.highlightedNoteId = chip.getAttribute("data-note-id");
+        const b1 = document.getElementById("dom-box-" + fromId);
+        const b2 = document.getElementById("dom-box-" + toId);
+        if (b1) b1.classList.add("peer-highlight");
+        if (b2) b2.classList.add("peer-highlight");
+        drawFlightLines();
+      });
+      chip.addEventListener("mouseleave", () => {
+        state.highlightedNoteId = null;
+        container.querySelectorAll(".mini-box").forEach(el => el.classList.remove("peer-highlight"));
+        drawFlightLines();
+      });
+      chip.addEventListener("click", () => {
+        openNoteModal(t, chip.getAttribute("data-note-id"));
+      });
+    });
+
+    container.querySelectorAll(".file-tile").forEach(tile => {
+      const well = tile.closest(".territory-well");
+      const label = well ? well.querySelector(".territory-folder") : null;
+      if (!well || !label) return;
+      tile.addEventListener("mouseenter", () => {
+        label.textContent = tile.getAttribute("data-file-whisper");
+        label.style.fontFamily = "var(--font-sans)";
+        label.style.color = "var(--text-primary)";
+      });
+      tile.addEventListener("mouseleave", () => {
+        label.textContent = well.getAttribute("data-default-folder");
+        label.style.fontFamily = "var(--font-sans)";
+        label.style.color = "var(--text-secondary)";
+      });
+    });
+
+    const gateRun = document.getElementById("btnGateRunNow");
+    if (gateRun) gateRun.addEventListener("click", () => jumpToStage(t, 3));
+    const finGate = document.getElementById("btnFinishGate");
+    if (finGate) finGate.addEventListener("click", () => jumpToStage(t, 4));
+    const gateMerge = document.getElementById("btnGateMerge");
+    if (gateMerge) gateMerge.addEventListener("click", () => mergePullRequest(t));
+    const inspPr = document.getElementById("btnInspectPrSummary");
+    if (inspPr) inspPr.addEventListener("click", () => switchViewMode("deliverable"));
+    const viewDel = document.getElementById("btnViewDeliverable");
+    if (viewDel) viewDel.addEventListener("click", () => switchViewMode("deliverable"));
+
+    requestAnimationFrame(drawFlightLines);
+  }
+
+  // Draw Dynamic SVG Flight & Note Arcs
+  function drawFlightLines() {
+    const svg = document.getElementById("flightSvg");
+    const stage = document.getElementById("formationStage");
+    if (!svg || !stage) return;
+
+    const stageRect = stage.getBoundingClientRect();
+    const leadEl = document.getElementById("leadDeckCard");
+    const vaultEl = document.getElementById("vaultDeckCard");
+    const gateEl = document.getElementById("cleanGateCard");
+    const boxEls = Array.from(stage.querySelectorAll(".mini-box"));
+
+    if (!leadEl || !gateEl || !boxEls.length) return;
+
+    function relBox(el) {
+      const r = el.getBoundingClientRect();
+      return {
+        cx: r.left - stageRect.left + r.width / 2,
+        top: r.top - stageRect.top,
+        bottom: r.bottom - stageRect.top,
+        left: r.left - stageRect.left,
+        right: r.right - stageRect.left
+      };
+    }
+
+    const leadB = relBox(leadEl);
+    const vaultB = vaultEl ? relBox(vaultEl) : leadB;
+    const gateB = relBox(gateEl);
+    const t = currentTask();
+
+    let paths = "";
+
+    // Lead -> Mini Boxes
+    boxEls.forEach(el => {
+      const b = relBox(el);
+      const midY = (leadB.bottom + b.top) / 2;
+      paths += `<path d="M ${leadB.cx} ${leadB.bottom} C ${leadB.cx} ${midY}, ${b.cx} ${midY}, ${b.cx} ${b.top}" fill="none" stroke="var(--wire-muted)" stroke-width="1.3" stroke-dasharray="4 4"/>`;
+    });
+
+    // Mini Boxes -> Clean Gate
+    boxEls.forEach(el => {
+      const b = relBox(el);
+      const midY = (b.bottom + gateB.top) / 2;
+      const stroke = t.stage >= 3 ? "rgba(18, 128, 74, 0.34)" : "var(--wire-muted)";
+      paths += `<path d="M ${b.cx} ${b.bottom} C ${b.cx} ${midY}, ${gateB.cx} ${midY}, ${gateB.cx} ${gateB.top}" fill="none" stroke="${stroke}" stroke-width="1.4"/>`;
+    });
+
+    // Blind Vault -> Clean Gate (when unsealing in stage 3/4)
+    if (t.stage >= 3 && vaultEl) {
+      paths += `<path d="M ${vaultB.right - 24} ${vaultB.bottom} C ${vaultB.right + 40} ${(vaultB.bottom + gateB.top)/2}, ${gateB.right - 20} ${gateB.top - 40}, ${gateB.cx + 90} ${gateB.top}" fill="none" stroke="rgba(198, 106, 10, 0.35)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+    }
+
+    // Inter-Sandbox Note Arcs
+    t.notes.forEach(n => {
+      const fromEl = document.getElementById("dom-box-" + n.from);
+      const toEl = document.getElementById("dom-box-" + n.to);
+      if (!fromEl || !toEl) return;
+      const fb = relBox(fromEl);
+      const tb = relBox(toEl);
+      const active = state.highlightedNoteId === n.id;
+      const dist = Math.abs(fb.cx - tb.cx);
+      const lift = Math.min(34, 16 + dist * 0.04);
+      const d = `M ${fb.cx} ${fb.top + 8} Q ${(fb.cx + tb.cx) / 2} ${Math.min(fb.top, tb.top) - lift} ${tb.cx} ${tb.top + 8}`;
+      paths += `<path id="note-arc-${n.id}" d="${d}" fill="none" stroke="${active ? "var(--accent-blue)" : "var(--wire-note)"}" stroke-width="${active ? "2.3" : "1.5"}"/>`;
+    });
+
+    svg.setAttribute("viewBox", `0 0 ${stage.offsetWidth} ${stage.offsetHeight}`);
+    svg.innerHTML = paths;
+  }
+
+  // Animate a live gliding note packet along an SVG arc between two sandboxes
+  function animatePacketBetween(fromId, toId) {
+    const svg = document.getElementById("flightSvg");
+    const stage = document.getElementById("formationStage");
+    const fromEl = document.getElementById("dom-box-" + fromId);
+    const toEl = document.getElementById("dom-box-" + toId);
+    if (!svg || !stage || !fromEl || !toEl) return;
+
+    const stageRect = stage.getBoundingClientRect();
+    const fr = fromEl.getBoundingClientRect();
+    const tr = toEl.getBoundingClientRect();
+    const x1 = fr.left - stageRect.left + fr.width / 2;
+    const y1 = fr.top - stageRect.top + 10;
+    const x2 = tr.left - stageRect.left + tr.width / 2;
+    const y2 = tr.top - stageRect.top + 10;
+    const d = `M ${x1} ${y1} Q ${(x1 + x2) / 2} ${Math.min(y1, y2) - 30} ${x2} ${y2}`;
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "var(--accent-blue)");
+    path.setAttribute("stroke-width", "2");
+    svg.appendChild(path);
+
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("r", "5");
+    dot.setAttribute("fill", "var(--accent-blue)");
+    svg.appendChild(dot);
+
+    const len = path.getTotalLength();
+    const start = performance.now();
+    const dur = 680;
+
+    function tick(now) {
+      const p = Math.min(1, (now - start) / dur);
+      const ease = 1 - Math.pow(1 - p, 3);
+      const pt = path.getPointAtLength(ease * len);
+      dot.setAttribute("cx", pt.x);
+      dot.setAttribute("cy", pt.y);
+      if (p < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        path.remove();
+        dot.remove();
+        toEl.classList.remove("note-flash");
+        void toEl.offsetWidth;
+        toEl.classList.add("note-flash");
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function triggerLiveNotePulse(t) {
+    if (t.boxes.length < 2) return;
+    const bFrom = t.boxes[0];
+    const bTo = t.boxes[1];
+    const samples = [
+      ["Confirmed UTC timestamp alignment", "Confirmed all timestamps use UTC so the exam gives the same result every time."],
+      ["Shared customer role check helper", "Reusing workspace admin role check so UI banner and API permissions stay identical."],
+      ["Synced error copy for calm UX", "Aligned user-facing status wording so banner and email notifications use the same plain phrasing."]
+    ];
+    const pick = samples[t.notes.length % samples.length];
+    const newNote = {
+      id: "n-" + Date.now(),
+      from: bFrom.id,
+      to: bTo.id,
+      time: "Just now",
+      summary: pick[0],
+      body: pick[1]
+    };
+    t.notes.unshift(newNote);
+    renderTaskBar();
+    renderStage();
+    requestAnimationFrame(() => animatePacketBetween(bFrom.id, bTo.id));
+    showToast(`Box 01 passed a note to Box 02`);
+  }
+
+  // Alternate View 2: Memories & Notes Studio
+  function renderMemoriesView(container, t) {
+    const allMems = [];
+    t.boxes.forEach((b, idx) => {
+      b.memories.forEach(m => allMems.push({ box: b, idx: idx + 1, text: m }));
+    });
+
+    const memCards = allMems.map(item => {
+      const meta = MODEL_META[item.box.model] || MODEL_META.claude;
+      return `
+        <div class="mem-card">
+          <div class="mem-card-text">${escapeHtml(item.text)}</div>
+          <div class="mem-card-meta">
+            <span>Learned by <strong>Box 0${item.idx} · ${escapeHtml(item.box.role)}</strong> (${meta.label})</span>
+            <span style="font-family:var(--font-mono)">${escapeHtml(item.box.folder)}</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    const noteCards = t.notes.length ? t.notes.map(n => {
+      const sIdx = t.boxes.findIndex(b => b.id === n.from) + 1;
+      const rIdx = t.boxes.findIndex(b => b.id === n.to) + 1;
+      const sBox = t.boxes[sIdx - 1];
+      const rBox = t.boxes[rIdx - 1];
+      return `
+        <div class="note-stream-item">
+          <div class="note-stream-head">
+            <span style="font-weight:600;color:var(--accent-blue);">Box 0${sIdx} (${sBox ? escapeHtml(sBox.role) : ""}) → Box 0${rIdx} (${rBox ? escapeHtml(rBox.role) : ""})</span>
+            <span style="color:var(--text-tertiary);">${escapeHtml(n.time)}</span>
+          </div>
+          <div class="note-stream-body">${escapeHtml(n.body)}</div>
+        </div>
+      `;
+    }).join("") : `<div style="color:var(--text-tertiary);font-size:12px;">No inter-sandbox notes needed for this task.</div>`;
+
+    container.innerHTML = `
+      <div class="alt-stage">
+        <div class="two-col-studio">
+          <div class="studio-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">What the agents remember (${allMems.length})</div>
+                <div style="font-size:11.5px;color:var(--text-tertiary);">Facts about the repo that each agent learned</div>
+              </div>
+            </div>
+            ${memCards}
+          </div>
+
+          <div class="studio-panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Notes Passed Between Sandboxes (${t.notes.length})</div>
+                <div style="font-size:11.5px;color:var(--text-tertiary);">Notes the agents passed to each other</div>
+              </div>
+              <button class="btn" id="btnTriggerNoteAlt" style="height:26px;font-size:11.5px;">Demo: pass a note</button>
+            </div>
+            ${noteCards}
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById("btnTriggerNoteAlt").addEventListener("click", () => triggerLiveNotePulse(t));
+  }
+
+  // Alternate View 3: Human-Readable Pull Request Deliverable (Zero Code Changes!)
+  function renderDeliverableView(container, t) {
+    const checksHtml = t.blindChecks.map((c, idx) => {
+      const ok = t.stage >= 4 || (t.stage === 3 && idx < t.checkProgress);
+      return `
+        <div class="mem-card" style="flex-direction:row;align-items:center;gap:10px;">
+          ${ok
+            ? `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--accent-green)" stroke-width="2.1" stroke-linecap="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>`
+            : `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/></svg>`}
+          <div style="flex:1;font-size:12.5px;">${escapeHtml(c)}</div>
+          <span style="font-size:11px;color:${ok ? "var(--accent-green)" : "var(--text-tertiary)"};font-weight:600;">${ok ? "Passed" : "Sealed"}</span>
+        </div>
+      `;
+    }).join("");
+
+    const slicesHtml = t.boxes.map((b, i) => {
+      const meta = MODEL_META[b.model] || MODEL_META.claude;
+      return `
+        <div class="mem-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-weight:600;font-size:12.5px;">Box 0${i + 1} · ${escapeHtml(b.role)}</span>
+            <span class="model-badge ${meta.cls}">${meta.label}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);">${b.files.map(f => f.desc).join(" · ")}</div>
+          <div style="font-family:var(--font-mono);font-size:10.5px;color:var(--text-tertiary);">Its own files: ${b.files.length} · no overlap with other agents</div>
+        </div>
+      `;
+    }).join("");
+
+    const actionCta = t.stage === 4
+      ? `<button class="btn btn-merge" id="btnDelivMerge">Merge Pull Request #${t.pr}</button>`
+      : (t.stage === 5
+          ? `<span class="status-badge merged">Merged into main</span>`
+          : `<button class="btn btn-primary" id="btnDelivAdvance">Run the exam ▸</button>`);
+
+    container.innerHTML = `
+      <div class="alt-stage">
+        <div class="studio-panel" style="margin-bottom:20px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+            <div>
+              <div style="font-size:11.5px;color:var(--text-tertiary);font-family:var(--font-mono);">Pull request #${t.pr} · a plain summary, no code to read</div>
+              <h2 style="font-size:18px;font-weight:650;letter-spacing:-0.02em;margin-top:3px;">${escapeHtml(t.title)}</h2>
+            </div>
+            ${actionCta}
+          </div>
+          <p style="font-size:13px;color:var(--text-secondary);line-height:1.55;">${escapeHtml(t.improvedPlan)}</p>
+        </div>
+
+        ${proofGalleryHtml(t)}
+
+        <div class="two-col-studio">
+          <div class="studio-panel">
+            <div class="panel-header">
+              <div class="panel-title">The exam (${t.blindChecks.length} checks)</div>
+              <span class="blind-pill">The agents never saw these</span>
+            </div>
+            ${checksHtml}
+          </div>
+          <div class="studio-panel">
+            <div class="panel-header">
+              <div class="panel-title">What each agent built (${t.boxes.length})</div>
+              <span style="font-size:11.5px;color:var(--text-tertiary);">${t.cost} for sandboxes</span>
+            </div>
+            ${slicesHtml}
+          </div>
+        </div>
+      </div>
+    `;
+
+    const dm = document.getElementById("btnDelivMerge");
+    if (dm) dm.addEventListener("click", () => mergePullRequest(t));
+    const da = document.getElementById("btnDelivAdvance");
+    if (da) da.addEventListener("click", () => jumpToStage(t, 3));
+  }
+
+  // Stage Transitions & Walkthrough Automation
+  function jumpToStage(t, stageNum) {
+    clearAutoTimers();
+    t.stage = stageNum;
+
+    if (stageNum === 2) {
+      t.boxes.forEach((b, i) => {
+        b.files.forEach((f, fi) => {
+          f.state = fi === 0 ? "done" : (fi === 1 ? "active" : "queued");
+        });
+      });
+      t.checkProgress = 0;
+    } else if (stageNum === 3) {
+      t.boxes.forEach(b => b.files.forEach(f => f.state = "done"));
+      t.checkProgress = 0;
+      renderAll();
+      // Animate checks ticking 1..N cleanly!
+      t.blindChecks.forEach((_, idx) => {
+        const timer = setTimeout(() => {
+          if (currentTask().id !== t.id || t.stage !== 3) return;
+          t.checkProgress = idx + 1;
+          renderStage();
+          if (t.checkProgress === t.blindChecks.length) {
+            const finishTimer = setTimeout(() => {
+              if (currentTask().id === t.id && t.stage === 3) {
+                t.stage = 4;
+                t.leadNote = `All ${t.blindChecks.length} of ${t.blindChecks.length} exam checks passed in a clean sandbox. Pull request #${t.pr} is ready to merge.`;
+                renderAll();
+                showToast(`Pull request #${t.pr} passed the exam`);
+              }
+            }, 650);
+            state.autoTimers.push(finishTimer);
+          }
+        }, (idx + 1) * 440);
+        state.autoTimers.push(timer);
+      });
+      return;
+    } else if (stageNum === 4) {
+      t.boxes.forEach(b => b.files.forEach(f => f.state = "done"));
+      t.checkProgress = t.blindChecks.length;
+    }
+
+    renderAll();
+  }
+
+  function advanceTaskStage(t) {
+    if (t.stage === 1) jumpToStage(t, 2);
+    else if (t.stage === 2) jumpToStage(t, 3);
+    else if (t.stage === 3) jumpToStage(t, 4);
+  }
+
+  function mergePullRequest(t) {
+    clearAutoTimers();
+    t.stage = 5;
+    t.group = "recent";
+    t.time = "Just now";
+    t.leadNote = `Merged pull request #${t.pr}. All ${t.boxes.length} sandboxes are shut down.`;
+    state.termLogs.lead.push({ cls: "t-green", text: `✓ Merged PR #${t.pr} (${t.title}) into main · shut down ${t.boxes.length} sandboxes` });
+    renderAll();
+    if (state.terminalOpen) renderTerminal();
+    showToast(`Merged pull request #${t.pr} · ${t.boxes.length} sandboxes shut down`);
+  }
+
+  // Single-Agent Slide-Over Inspector (Talk to 1 Agent, Memories, Notes)
+  function openAgentDrawer(boxId, tab) {
+    state.selectedBoxId = boxId;
+    if (tab) state.drawerTab = tab;
+    renderStage();
+    renderAgentDrawer();
+  }
+
+  function closeAgentDrawer() {
+    state.selectedBoxId = null;
+    document.getElementById("agentDrawer").classList.remove("open");
+    renderStage();
+  }
+
+  function renderAgentDrawer() {
+    const drawer = document.getElementById("agentDrawer");
+    const t = currentTask();
+    const box = t.boxes.find(b => b.id === state.selectedBoxId);
+    if (!box) {
+      drawer.classList.remove("open");
+      return;
+    }
+    drawer.classList.add("open");
+
+    const boxIndex = t.boxes.indexOf(box) + 1;
+    const meta = MODEL_META[box.model] || MODEL_META.claude;
+    const peerNotes = t.notes.filter(n => n.from === box.id || n.to === box.id);
+
+    let bodyHtml = "";
+    let composeHtml = "";
+
+    if (state.drawerTab === "chat") {
+      const bubbles = box.chat.map(c =>
+        `<div class="chat-bubble ${c.from === "user" ? "user" : "agent"}">${escapeHtml(c.text)}</div>`
+      ).join("");
+
+      bodyHtml = `
+        <div style="font-size:11.5px;color:var(--text-tertiary);">Works only in <span style="font-family:var(--font-mono);color:var(--text-secondary);">${escapeHtml(box.folder)}</span> · it cannot see the exam</div>
+        <div class="chat-log" id="drawerChatLog">${bubbles}</div>
+        <div class="quick-prompts">
+          <button class="quick-chip" data-nudge="Keep user-facing wording calm and concise">Keep wording calm</button>
+          <button class="quick-chip" data-nudge="Skip weekend retries and notify neighbor boxes">Skip weekends</button>
+          <button class="quick-chip" data-nudge="What edge cases are you handling right now?">Ask status</button>
+        </div>
+      `;
+      composeHtml = `
+        <form class="drawer-compose" id="drawerChatForm">
+          <input type="text" class="drawer-input" id="drawerChatInput" placeholder="Talk directly to Box 0${boxIndex} (${meta.label})..." autocomplete="off">
+          <button type="submit" class="btn btn-primary" style="height:31px;">Send</button>
+        </form>
+      `;
+    } else if (state.drawerTab === "memories") {
+      const memItems = box.memories.map(m => `
+        <div class="mem-card">
+          <div class="mem-card-text">${escapeHtml(m)}</div>
+        </div>
+      `).join("");
+      const filesList = box.files.map(f => `
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:5px 0;border-bottom:1px solid var(--border-hairline);">
+          <span style="font-family:var(--font-mono);color:var(--text-primary);">${escapeHtml(box.folder + f.name)}</span>
+          <span style="color:var(--text-secondary);text-align:right;">${escapeHtml(f.desc)}</span>
+        </div>
+      `).join("");
+
+      bodyHtml = `
+        <div style="font-size:11.5px;font-weight:600;color:var(--text-secondary);">Agent Memories (${box.memories.length})</div>
+        ${memItems}
+        <div style="font-size:11.5px;font-weight:600;color:var(--text-secondary);margin-top:6px;">Its own files, in plain words</div>
+        <div>${filesList}</div>
+      `;
+      composeHtml = `
+        <form class="drawer-compose" id="drawerMemForm">
+          <input type="text" class="drawer-input" id="drawerMemInput" placeholder="Pin a memory rule for this agent..." autocomplete="off">
+          <button type="submit" class="btn" style="height:31px;">Pin</button>
+        </form>
+      `;
+    } else {
+      bodyHtml = peerNotes.length ? peerNotes.map(n => {
+        const sIdx = t.boxes.findIndex(b => b.id === n.from) + 1;
+        const rIdx = t.boxes.findIndex(b => b.id === n.to) + 1;
+        return `
+          <div class="note-stream-item">
+            <div class="note-stream-head">
+              <span style="font-weight:600;color:var(--accent-blue);">Box 0${sIdx} → Box 0${rIdx}</span>
+              <span style="color:var(--text-tertiary);">${escapeHtml(n.time)}</span>
+            </div>
+            <div class="note-stream-body">${escapeHtml(n.body)}</div>
+          </div>
+        `;
+      }).join("") : `<div style="color:var(--text-tertiary);font-size:12px;">No peer notes exchanged yet.</div>`;
+    }
+
+    const prevActiveId = document.activeElement ? document.activeElement.id : null;
+    const prevDraft = (prevActiveId === "drawerChatInput" || prevActiveId === "drawerMemInput")
+      ? document.activeElement.value
+      : null;
+
+    drawer.innerHTML = `
+      <div class="drawer-head">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+          <span class="model-badge ${meta.cls}"><span class="model-glyph">${meta.short}</span>${meta.label}</span>
+          <div style="min-width:0;">
+            <div style="font-weight:640;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Box 0${boxIndex} · ${escapeHtml(box.role)}</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary);">${escapeHtml(box.vm)} · its own cloud sandbox</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="btn" id="btnDrawerTerm" style="height:25px;padding:0 8px;font-size:11px;font-family:var(--font-mono);">&gt;_ Term</button>
+          <button class="icon-btn" id="btnCloseDrawer" title="Close">&times;</button>
+        </div>
+      </div>
+
+      <div class="drawer-tabs">
+        <button class="drawer-tab ${state.drawerTab === "chat" ? "active" : ""}" data-dtab="chat">Chat</button>
+        <button class="drawer-tab ${state.drawerTab === "memories" ? "active" : ""}" data-dtab="memories">Memories (${box.memories.length})</button>
+        <button class="drawer-tab ${state.drawerTab === "notes" ? "active" : ""}" data-dtab="notes">Notes (${peerNotes.length})</button>
+      </div>
+
+      <div class="drawer-body" id="drawerBodyScroll">${bodyHtml}</div>
+      ${composeHtml}
+    `;
+
+    const bodyScroll = document.getElementById("drawerBodyScroll");
+    if (bodyScroll && state.drawerTab === "chat") {
+      bodyScroll.scrollTop = bodyScroll.scrollHeight;
+    }
+    if (prevActiveId && prevDraft !== null) {
+      const restored = document.getElementById(prevActiveId);
+      if (restored) {
+        restored.value = prevDraft;
+        restored.focus();
+      }
+    }
+
+    document.getElementById("btnCloseDrawer").addEventListener("click", closeAgentDrawer);
+    document.getElementById("btnDrawerTerm").addEventListener("click", () => openTerminal(box.id));
+
+    drawer.querySelectorAll("[data-dtab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.drawerTab = btn.getAttribute("data-dtab");
+        renderAgentDrawer();
+      });
+    });
+
+    drawer.querySelectorAll("[data-nudge]").forEach(chip => {
+      chip.addEventListener("click", () => sendMessageToBox(t, box, chip.getAttribute("data-nudge")));
+    });
+
+    const chatForm = document.getElementById("drawerChatForm");
+    if (chatForm) {
+      chatForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const inp = document.getElementById("drawerChatInput");
+        const val = inp.value.trim();
+        if (!val) return;
+        inp.value = "";
+        sendMessageToBox(t, box, val);
+      });
+    }
+
+    const memForm = document.getElementById("drawerMemForm");
+    if (memForm) {
+      memForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const inp = document.getElementById("drawerMemInput");
+        const val = inp.value.trim();
+        if (!val) return;
+        box.memories.unshift(val);
+        renderStage();
+        renderTaskBar();
+        renderAgentDrawer();
+        showToast("Pinned memory to " + box.role);
+      });
+    }
+  }
+
+  function sendMessageToBox(t, box, text) {
+    box.chat.push({ from: "user", text: text });
+    renderAgentDrawer();
+
+    setTimeout(() => {
+      const shortRule = text.length > 54 ? text.slice(0, 52) + "…" : text;
+      let reply = `Got it, updating ${box.folder} to account for "${shortRule}". I'll also pass a quick note so neighboring sandboxes stay aligned.`;
+      if (text.toLowerCase().includes("status") || text.toLowerCase().includes("edge")) {
+        reply = `I'm focused on ${box.folder} (${box.files.length} files). Right now: ${box.thought.toLowerCase()}. No conflicts with other sandboxes.`;
+      } else {
+        box.thought = "Incorporating your nudge: " + shortRule;
+        box.memories.unshift("User guidance: " + shortRule);
+        // Pass a coordination note to a neighbor box
+        const peer = t.boxes.find(b => b.id !== box.id);
+        if (peer) {
+          t.notes.unshift({
+            id: "un-" + Date.now(),
+            from: box.id,
+            to: peer.id,
+            time: "Just now",
+            summary: "Synced user guidance: " + shortRule,
+            body: `User asked me (${box.role}) to "${text}", sharing so ${peer.role} stays consistent.`
+          });
+          requestAnimationFrame(() => animatePacketBetween(box.id, peer.id));
+        }
+      }
+      box.chat.push({ from: "agent", text: reply });
+      renderTaskBar();
+      renderStage();
+      if (state.selectedBoxId === box.id) renderAgentDrawer();
+    }, 420);
+  }
+
+  // Native macOS Terminal Window (Lead + Cloud Sandboxes + Start Task from Terminal!)
+  function openTerminal(tabId) {
+    state.terminalOpen = true;
+    if (tabId) state.activeTermTab = tabId;
+    document.getElementById("terminalWindow").classList.add("open");
+    renderTerminal();
+    setTimeout(() => document.getElementById("termInput").focus(), 60);
+  }
+
+  function renderTerminal() {
+    if (!state.terminalOpen) return;
+    const t = currentTask();
+    const tabsEl = document.getElementById("termTabs");
+    const outEl = document.getElementById("termOutput");
+    const hintsEl = document.getElementById("termHints");
+    const ps1El = document.getElementById("termPs1");
+    const titleEl = document.getElementById("termTitleLabel");
+
+    // Ensure valid tab
+    if (state.activeTermTab !== "lead" && state.activeTermTab !== "clean" && !t.boxes.some(b => b.id === state.activeTermTab)) {
+      state.activeTermTab = "lead";
+    }
+
+    let tabsHtml = `<button class="term-tab ${state.activeTermTab === "lead" ? "active" : ""}" data-ttab="lead"><span class="pulse-dot" style="width:6px;height:6px;"></span>Mac · Lead (local)</button>`;
+    t.boxes.forEach((b, idx) => {
+      const meta = MODEL_META[b.model] || MODEL_META.claude;
+      tabsHtml += `<button class="term-tab ${state.activeTermTab === b.id ? "active" : ""}" data-ttab="${b.id}">Box 0${idx + 1} · ${meta.label} (${escapeHtml(b.vm)})</button>`;
+    });
+    tabsHtml += `<button class="term-tab ${state.activeTermTab === "clean" ? "active" : ""}" data-ttab="clean">Exam sandbox</button>`;
+    tabsEl.innerHTML = tabsHtml;
+
+    tabsEl.querySelectorAll("[data-ttab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.activeTermTab = btn.getAttribute("data-ttab");
+        renderTerminal();
+      });
+    });
+
+    let lines = [];
+    if (state.activeTermTab === "lead") {
+      titleEl.textContent = "you@macbook-pro · ~/dev/payflow (on your flat plan)";
+      ps1El.textContent = "you@macbook payflow %";
+      lines = state.termLogs.lead;
+      hintsEl.innerHTML = `
+        <span>Run in terminal:</span>
+        <button class="term-hint-btn" data-tcmd='wing "Add Slack alert when enterprise invoice goes overdue"'>wing "Add Slack alert..."</button>
+        <button class="term-hint-btn" data-tcmd="wing status">wing status</button>
+        <button class="term-hint-btn" data-tcmd="wing exam">wing exam</button>
+      `;
+    } else if (state.activeTermTab === "clean") {
+      titleEl.textContent = "Exam sandbox: fresh, with nothing from the agents";
+      ps1El.textContent = "exam@clean-sandbox %";
+      lines = [
+        { cls: "t-muted", text: "Fresh sandbox started from a clean copy of main. Nothing from the agents is here." },
+        { cls: "t-amber", text: `Loaded the ${t.blindChecks.length} exam checks the lead agent wrote` },
+        ...(t.stage >= 4
+          ? t.blindChecks.map(c => ({ cls: "t-green", text: "✓ PASS: " + c }))
+          : [{ cls: "t-blue", text: "Waiting for all agents to finish their pieces." }])
+      ];
+      hintsEl.innerHTML = `<span>Exam:</span><button class="term-hint-btn" data-tcmd="run-checks">run-checks</button>`;
+    } else {
+      const box = t.boxes.find(b => b.id === state.activeTermTab);
+      const meta = MODEL_META[box.model] || MODEL_META.claude;
+      titleEl.textContent = `${box.vm} · ${meta.label} (${box.folder})`;
+      ps1El.textContent = `agent@${box.vm} %`;
+      const key = t.id + ":" + box.id;
+      if (!state.termLogs[key]) {
+        state.termLogs[key] = [
+          { cls: "t-muted", text: `Sandbox ${box.vm} · works only in ${box.folder} · cannot see the exam` },
+          { cls: "t-blue",  text: `▸ Agent (${meta.label}): ${box.thought}` },
+          ...box.memories.map(m => ({ cls: "t-amber", text: `  memory saved: "${m}"` })),
+          { cls: "t-green", text: `✓ Scoped unit checks green inside ${box.folder}` }
+        ];
+      }
+      lines = state.termLogs[key];
+      hintsEl.innerHTML = `
+        <span>Sandbox commands:</span>
+        <button class="term-hint-btn" data-tcmd="wing notes">wing notes</button>
+        <button class="term-hint-btn" data-tcmd="wing memory">wing memory</button>
+        <button class="term-hint-btn" data-tcmd="Also handle weekend holidays">Nudge agent</button>
+      `;
+    }
+
+    outEl.innerHTML = lines.map(l => `<div class="term-line ${l.cls}">${escapeHtml(l.text)}</div>`).join("");
+    outEl.scrollTop = outEl.scrollHeight;
+
+    hintsEl.querySelectorAll("[data-tcmd]").forEach(btn => {
+      btn.addEventListener("click", () => runTerminalCommand(btn.getAttribute("data-tcmd")));
+    });
+  }
+
+  function runTerminalCommand(raw) {
+    const cmd = raw.trim();
+    if (!cmd) return;
+    const t = currentTask();
+
+    if (state.activeTermTab === "lead") {
+      state.termLogs.lead.push({ cls: "t-cmd", text: "$ " + cmd });
+      const wingMatch = cmd.match(/^wing\s+["']?(.+?)["']?$/i);
+      if (cmd === "wing status") {
+        state.termLogs.lead.push({ cls: "t-green", text: `Active: "${t.title}" · step ${t.stage} of 4 · ${t.boxes.length} agents · ${state.tasks.length} tasks in this repo` });
+      } else if (cmd === "wing exam") {
+        state.termLogs.lead.push({ cls: "t-amber", text: `The exam (${t.blindChecks.length} checks the agents cannot see):` });
+        t.blindChecks.forEach((c, i) => state.termLogs.lead.push({ cls: "t-muted", text: `  ${i + 1}. ${c}` }));
+      } else if (wingMatch && !["status", "exam", "list"].includes(wingMatch[1].toLowerCase())) {
+        const promptText = wingMatch[1];
+        state.termLogs.lead.push({ cls: "t-blue", text: `▸ Lead Agent understood task: "${promptText}"` });
+        state.termLogs.lead.push({ cls: "t-amber", text: "🔒 Writing the exam and starting the agents..." });
+        createNewTaskFromPrompt(promptText, true);
+      } else {
+        // Treat direct sentence in lead terminal as a task too if user asks
+        state.termLogs.lead.push({ cls: "t-muted", text: `Tip: Run wing "Your task description" to start a new task from this terminal.` });
+      }
+    } else if (state.activeTermTab === "clean") {
+      if (cmd === "run-checks") {
+        jumpToStage(t, 3);
+      }
+    } else {
+      const box = t.boxes.find(b => b.id === state.activeTermTab);
+      if (box) {
+        const key = t.id + ":" + box.id;
+        if (!state.termLogs[key]) state.termLogs[key] = [];
+        state.termLogs[key].push({ cls: "t-cmd", text: "% " + cmd });
+        if (cmd === "wing notes") {
+          t.notes.forEach(n => state.termLogs[key].push({ cls: "t-blue", text: `note: ${n.summary}, ${n.body}` }));
+        } else if (cmd === "wing memory") {
+          box.memories.forEach(m => state.termLogs[key].push({ cls: "t-amber", text: `memory: ${m}` }));
+        } else {
+          state.termLogs[key].push({ cls: "t-green", text: `▸ Agent acknowledged: "${cmd}", updated memory & notified neighbor sandbox.` });
+          sendMessageToBox(t, box, cmd);
+        }
+      }
+    }
+    renderTerminal();
+  }
+
+  // Create, Edit & Delete Tasks (Agentic Planning, Zero Forms!)
+  function synthesizeTitle(prompt) {
+    const clean = prompt.replace(/[.!?]+$/, "").trim();
+    const words = clean.split(/\s+/);
+    if (words.length <= 6) return clean.charAt(0).toUpperCase() + clean.slice(1);
+    return words.slice(0, 6).join(" ").replace(/[,;:]$/, "") + "";
+  }
+
+  function createNewTaskFromPrompt(promptText, fromTerminal) {
+    clearAutoTimers();
+    const pr = state.nextPrNumber++;
+    const id = "tw-" + pr;
+    const title = synthesizeTitle(promptText);
+
+    const newTask = {
+      id: id,
+      pr: pr,
+      title: title,
+      group: "active",
+      stage: 1,
+      time: "Just now",
+      cost: "$0.34",
+      prompt: promptText,
+      improvedPlan: `The lead agent read acme/payflow, turned "${promptText}" into 3 pieces with no shared files, and wrote 4 exam checks before any agent started.`,
+      leadNote: "Reading your task, writing the exam, and starting 3 agents...",
+      vaultPeeked: false,
+      checkProgress: 0,
+      healedNote: null,
+      blindChecks: [
+        `End-to-end flow for "${title.toLowerCase()}" completes accurately with clean audit records`,
+        "Idempotency guard prevents duplicate actions on retries or double clicks",
+        "Workspace permissions restrict billing-sensitive actions to authorized admins",
+        "Existing checkout, webhooks, and active plans pass with zero regressions"
+      ],
+      boxes: [
+        {
+          id: "b1", model: "claude", role: "Domain & Rules", vm: "sbx-ams-31", folder: "billing/domain/",
+          thought: "Shaping core domain logic and edge-case rules for " + title.toLowerCase(),
+          files: [
+            { name: "service", desc: "Core workflow orchestration", state: "done" },
+            { name: "rules", desc: "Validation and safety invariants", state: "active" },
+            { name: "events", desc: "Emits clean domain events to peers", state: "queued" }
+          ],
+          memories: ["Payflow stores amounts in integer minor units", "Workspace events publish inside the DB transaction"],
+          chat: [{ from: "agent", text: `Started my piece in billing/domain/ for "${title}".` }]
+        },
+        {
+          id: "b2", model: "codex", role: "Events & Delivery", vm: "sbx-iad-32", folder: "integrations/dispatch/",
+          thought: "Wiring reliable background delivery with retry backoff",
+          files: [
+            { name: "dispatcher", desc: "Async worker with deduplication", state: "done" },
+            { name: "payload", desc: "Formats clean summary payload", state: "active" }
+          ],
+          memories: ["Outbound hooks sign payloads with workspace HMAC secret"],
+          chat: [{ from: "agent", text: "Handling async delivery and idempotency in integrations/dispatch/." }]
+        },
+        {
+          id: "b3", model: "gemini", role: "Settings & Surface", vm: "sbx-fra-33", folder: "web/dashboard/",
+          thought: "Building calm native controls and status feedback in dashboard",
+          files: [
+            { name: "Panel", desc: "Clean configuration & status surface", state: "active" },
+            { name: "permissions", desc: "Admin-only visibility guard", state: "queued" }
+          ],
+          memories: ["Settings panels auto-save with subtle inline confirmation"],
+          chat: [{ from: "agent", text: "Building the user-facing controls in web/dashboard/." }]
+        }
+      ],
+      notes: [
+        {
+          id: "nn-" + pr,
+          from: "b1",
+          to: "b3",
+          time: "Just now",
+          summary: "Shared response fields & status enum",
+          body: "Published clean status fields from billing/domain/ so your dashboard panel can render live state immediately."
+        }
+      ]
+    };
+
+    state.tasks.unshift(newTask);
+    state.selectedTaskId = newTask.id;
+    state.viewMode = "formation";
+    state.filter = "all";
+    state.selectedBoxId = null;
+    closeModal();
+    renderAll();
+
+    showToast(fromTerminal ? `Started task #${pr} from the terminal` : `The lead agent planned the task and wrote 4 exam checks`);
+
+    // Autonomous agentic progression: Stage 1 -> Stage 2 -> Note Sync -> Stage 3 Blind Checks -> Stage 4 Verified PR!
+    const t1 = setTimeout(() => {
+      if (currentTask().id !== newTask.id || newTask.stage !== 1) return;
+      newTask.stage = 2;
+      newTask.leadNote = "3 agents are working at the same time. I am reading their notes before the exam.";
+      renderAll();
+      setTimeout(() => animatePacketBetween("b1", "b3"), 320);
+    }, 1400);
+
+    const t2 = setTimeout(() => {
+      if (currentTask().id !== newTask.id || newTask.stage !== 2) return;
+      newTask.notes.unshift({
+        id: "nn2-" + pr,
+        from: "b2",
+        to: "b1",
+        time: "Just now",
+        summary: "Confirmed idempotency & event signature",
+        body: "Verified outbound event signature and retry deduplication, ready for the exam."
+      });
+      newTask.boxes.forEach(b => b.files.forEach(f => f.state = "done"));
+      renderAll();
+      setTimeout(() => animatePacketBetween("b2", "b1"), 180);
+    }, 3400);
+
+    const t3 = setTimeout(() => {
+      if (currentTask().id !== newTask.id || newTask.stage !== 2) return;
+      jumpToStage(newTask, 3);
+    }, 5200);
+
+    state.autoTimers.push(t1, t2, t3);
+  }
+
+  function deleteTask(taskId) {
+    const idx = state.tasks.findIndex(t => t.id === taskId);
+    if (idx === -1) return;
+    const removed = state.tasks.splice(idx, 1)[0];
+    state.deletedBackup = { item: removed, index: idx };
+
+    if (state.selectedTaskId === taskId && state.tasks.length) {
+      state.selectedTaskId = state.tasks[Math.min(idx, state.tasks.length - 1)].id;
+      state.selectedBoxId = null;
+    }
+    renderAll();
+    showToast(`Deleted "${removed.title}"`, true);
+  }
+
+  document.getElementById("toastUndo").addEventListener("click", () => {
+    if (!state.deletedBackup) return;
+    state.tasks.splice(state.deletedBackup.index, 0, state.deletedBackup.item);
+    state.selectedTaskId = state.deletedBackup.item.id;
+    state.deletedBackup = null;
+    document.getElementById("toast").classList.remove("show");
+    renderAll();
+  });
+
+  function selectTask(taskId) {
+    clearAutoTimers();
+    state.selectedTaskId = taskId;
+    state.selectedBoxId = null;
+    document.getElementById("agentDrawer").classList.remove("open");
+    renderAll();
+    if (state.terminalOpen) renderTerminal();
+  }
+
+  function switchViewMode(mode) {
+    state.viewMode = mode;
+    document.querySelectorAll(".seg-btn").forEach(b => {
+      b.classList.toggle("active", b.getAttribute("data-view") === mode);
+    });
+    renderStage();
+  }
+
+  // Modals: New Task, Edit Task, Note Card, Settings
+  function openModal(html) {
+    const bd = document.getElementById("modalBackdrop");
+    const sh = document.getElementById("modalSheet");
+    sh.innerHTML = html;
+    bd.classList.add("open");
+  }
+
+  function closeModal() {
+    document.getElementById("modalBackdrop").classList.remove("open");
+  }
+
+  function openNewTaskModal() {
+    openModal(`
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Give TaskWing One Task</div>
+          <div style="font-size:11.5px;color:var(--text-tertiary);">Your lead agent plans the work, writes the exam, and runs the agents.</div>
+        </div>
+        <button class="icon-btn" id="modalCloseBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <textarea class="task-textarea" id="newTaskTextarea" placeholder="Describe what you want in plain words, e.g. Let enterprise customers pay invoices by wire transfer with automatic bank matching..."></textarea>
+        <div style="font-size:11px;color:var(--text-tertiary);">Or try a one-click sample task:</div>
+        <div class="quick-prompts">
+          <button class="quick-chip" data-sample="Send a friendly Slack alert to #deals whenever an annual plan upgrades">Slack alert on annual upgrades</button>
+          <button class="quick-chip" data-sample="Let customers download all past year receipts as a single ZIP archive">One-click yearly receipts ZIP</button>
+          <button class="quick-chip" data-sample="Allow finance admins to split one enterprise invoice across two payment cards">Split enterprise invoice across two cards</button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span style="font-size:11.5px;color:var(--text-tertiary);">Repo: <strong>acme/payflow</strong> · Planning by Lead Agent (no forms)</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" id="modalCancelBtn">Cancel</button>
+          <button class="btn btn-primary" id="modalLaunchBtn">Start the task</button>
+        </div>
+      </div>
+    `);
+
+    const ta = document.getElementById("newTaskTextarea");
+    setTimeout(() => ta.focus(), 40);
+
+    document.getElementById("modalCloseBtn").addEventListener("click", closeModal);
+    document.getElementById("modalCancelBtn").addEventListener("click", closeModal);
+    document.querySelectorAll("[data-sample]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        ta.value = btn.getAttribute("data-sample");
+        ta.focus();
+      });
+    });
+
+    document.getElementById("modalLaunchBtn").addEventListener("click", () => {
+      const val = ta.value.trim();
+      if (!val) {
+        ta.focus();
+        return;
+      }
+      state.termLogs.lead.push({ cls: "t-cmd", text: `$ wing "${val}"` });
+      state.termLogs.lead.push({ cls: "t-blue", text: "▸ Lead agent is planning the pieces and writing the exam..." });
+      createNewTaskFromPrompt(val, false);
+    });
+  }
+
+  function openEditTaskModal() {
+    const t = currentTask();
+    openModal(`
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">Change Task</div>
+          <div style="font-size:11.5px;color:var(--text-tertiary);">Edit your instructions in plain words, the Lead Agent will re-plan and notify the sandboxes.</div>
+        </div>
+        <button class="icon-btn" id="modalCloseBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <textarea class="task-textarea" id="editTaskTextarea">${escapeHtml(t.prompt)}</textarea>
+      </div>
+      <div class="modal-foot">
+        <span style="font-size:11.5px;color:var(--text-tertiary);">Updates the exam and tells the agents what changed</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" id="modalCancelBtn">Cancel</button>
+          <button class="btn btn-primary" id="modalSaveEditBtn">Update &amp; Re-plan</button>
+        </div>
+      </div>
+    `);
+
+    const ta = document.getElementById("editTaskTextarea");
+    setTimeout(() => ta.focus(), 40);
+    document.getElementById("modalCloseBtn").addEventListener("click", closeModal);
+    document.getElementById("modalCancelBtn").addEventListener("click", closeModal);
+    document.getElementById("modalSaveEditBtn").addEventListener("click", () => {
+      const val = ta.value.trim();
+      if (!val) return;
+      t.prompt = val;
+      t.title = synthesizeTitle(val);
+      t.improvedPlan = `Updated by the lead agent: "${val}". The pieces and the exam checks were updated to match.`;
+      t.leadNote = "Re-planned after your edit; sent updated guidance notes to active sandboxes.";
+      t.blindChecks.unshift("The updated request works from start to finish");
+      if (t.stage >= 4) t.stage = 2;
+      if (t.boxes.length >= 2) {
+        t.notes.unshift({
+          id: "ed-" + Date.now(),
+          from: t.boxes[0].id,
+          to: t.boxes[1].id,
+          time: "Just now",
+          summary: "Synced updated task instructions",
+          body: "Lead Agent updated our task scope, aligned shared event fields accordingly."
+        });
+      }
+      closeModal();
+      renderAll();
+      showToast("The lead agent updated the plan and the exam");
+    });
+  }
+
+  function openNoteModal(t, noteId) {
+    const n = t.notes.find(x => x.id === noteId);
+    if (!n) return;
+    const sIdx = t.boxes.findIndex(b => b.id === n.from) + 1;
+    const rIdx = t.boxes.findIndex(b => b.id === n.to) + 1;
+    const sender = t.boxes[sIdx - 1];
+    const receiver = t.boxes[rIdx - 1];
+
+    openModal(`
+      <div class="modal-head">
+        <div class="modal-title">Note between agents</div>
+        <button class="icon-btn" id="modalCloseBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--text-secondary);">
+          <span><strong>Box 0${sIdx} · ${escapeHtml(sender.role)}</strong> → <strong>Box 0${rIdx} · ${escapeHtml(receiver.role)}</strong></span>
+          <span>${escapeHtml(n.time)}</span>
+        </div>
+        <div style="padding:13px;border-radius:10px;background:var(--bg-card-subtle);border:1px solid var(--border-hairline);font-size:13px;line-height:1.5;">
+          ${escapeHtml(n.body)}
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span style="font-size:11.5px;color:var(--text-tertiary);">Agents coordinate contracts via notes instead of touching each other's files</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" id="btnTalkSender">Talk to Box 0${sIdx}</button>
+          <button class="btn btn-primary" id="modalDoneBtn">Done</button>
+        </div>
+      </div>
+    `);
+
+    document.getElementById("modalCloseBtn").addEventListener("click", closeModal);
+    document.getElementById("modalDoneBtn").addEventListener("click", closeModal);
+    document.getElementById("btnTalkSender").addEventListener("click", () => {
+      closeModal();
+      openAgentDrawer(sender.id, "chat");
+    });
+  }
+
+  function openSettingsModal() {
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    openModal(`
+      <div class="modal-head">
+        <div class="modal-title">TaskWing Settings</div>
+        <button class="icon-btn" id="modalCloseBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Lead agent on your Mac</div>
+            <div class="setting-desc">Runs in your local terminal on your existing flat subscription</div>
+          </div>
+          <select class="btn" style="height:28px;">
+            <option>Claude Code CLI (Connected)</option>
+            <option>Codex CLI (Local)</option>
+            <option>Gemini CLI (Local)</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Which agents to use</div>
+            <div class="setting-desc">The lead agent picks the best agent for each piece</div>
+          </div>
+          <span style="font-size:12px;font-weight:500;color:var(--accent-blue);">Claude · Codex · Gemini · Amp</span>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Where sandboxes run</div>
+            <div class="setting-desc">Sandboxes shut down as soon as the pull request is ready</div>
+          </div>
+          <select class="btn" style="height:28px;">
+            <option>Fly.io Machines (ams / fra / iad)</option>
+            <option>E2B Cloud Sandboxes</option>
+            <option>Daytona Workspaces</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Keep the exam hidden</div>
+            <div class="setting-desc">Agents never see the exam checks. The exam runs in a fresh sandbox.</div>
+          </div>
+          <span class="flat-tag">Always On</span>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Appearance</div>
+            <div class="setting-desc">Native macOS Light or Dark window finish</div>
+          </div>
+          <button class="btn" id="modalToggleTheme">${isDark ? "Switch to Light" : "Switch to Dark"}</button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span style="font-size:11.5px;color:var(--text-tertiary);">TaskWing Open Source · MIT License</span>
+        <button class="btn btn-primary" id="modalDoneBtn">Done</button>
+      </div>
+    `);
+
+    document.getElementById("modalCloseBtn").addEventListener("click", closeModal);
+    document.getElementById("modalDoneBtn").addEventListener("click", closeModal);
+    document.getElementById("modalToggleTheme").addEventListener("click", () => {
+      toggleTheme();
+      closeModal();
+    });
+  }
+
+  function toggleTheme() {
+    const html = document.documentElement;
+    const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+    requestAnimationFrame(drawFlightLines);
+  }
+
+  function renderAll() {
+    renderSidebar();
+    renderTaskBar();
+    renderStage();
+    if (state.selectedBoxId) renderAgentDrawer();
+  }
+
+  // Global Chrome Listeners
+  document.getElementById("btnToggleSidebar").addEventListener("click", () => {
+    document.getElementById("sidebar").classList.toggle("collapsed");
+    setTimeout(drawFlightLines, 240);
+  });
+
+  document.querySelectorAll(".seg-btn").forEach(btn => {
+    btn.addEventListener("click", () => switchViewMode(btn.getAttribute("data-view")));
+  });
+
+  document.getElementById("btnNewTask").addEventListener("click", openNewTaskModal);
+  document.getElementById("btnSettings").addEventListener("click", openSettingsModal);
+  document.getElementById("btnTheme").addEventListener("click", toggleTheme);
+  document.getElementById("btnRepoInfo").addEventListener("click", () => {
+    showToast(`acme/payflow · ${state.tasks.length} tasks so far`);
+  });
+
+  document.getElementById("btnOpenTerminal").addEventListener("click", () => {
+    if (state.terminalOpen) {
+      state.terminalOpen = false;
+      document.getElementById("terminalWindow").classList.remove("open");
+    } else {
+      openTerminal("lead");
+    }
+  });
+  document.getElementById("btnLeadHeartbeat").addEventListener("click", () => openTerminal("lead"));
+  document.getElementById("sidebarLeadFooter").addEventListener("click", () => openTerminal("lead"));
+  document.getElementById("btnCloseTerminal").addEventListener("click", () => {
+    state.terminalOpen = false;
+    document.getElementById("terminalWindow").classList.remove("open");
+  });
+  document.getElementById("termCloseDot").addEventListener("click", () => {
+    state.terminalOpen = false;
+    document.getElementById("terminalWindow").classList.remove("open");
+  });
+
+  document.getElementById("termForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const inp = document.getElementById("termInput");
+    const val = inp.value;
+    inp.value = "";
+    runTerminalCommand(val);
+  });
+
+  // Search & Filter in 23-Swarm Sidebar
+  const searchInput = document.getElementById("searchInput");
+  const searchClear = document.getElementById("searchClear");
+  searchInput.addEventListener("input", () => {
+    state.search = searchInput.value;
+    searchClear.style.display = state.search ? "block" : "none";
+    renderSidebar();
+  });
+  searchClear.addEventListener("click", () => {
+    searchInput.value = "";
+    state.search = "";
+    searchClear.style.display = "none";
+    renderSidebar();
+  });
+
+  document.querySelectorAll(".filter-pill").forEach(pill => {
+    pill.addEventListener("click", () => {
+      state.filter = pill.getAttribute("data-filter");
+      document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("active"));
+      pill.classList.add("active");
+      renderSidebar();
+    });
+  });
+
+  document.getElementById("modalBackdrop").addEventListener("click", (e) => {
+    if (e.target.id === "modalBackdrop") closeModal();
+  });
+
+  window.addEventListener("resize", () => requestAnimationFrame(drawFlightLines));
+  document.getElementById("canvasScroll").addEventListener("scroll", () => requestAnimationFrame(drawFlightLines));
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeModal();
+      if (state.selectedBoxId) closeAgentDrawer();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      searchInput.focus();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+      e.preventDefault();
+      openNewTaskModal();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
+      e.preventDefault();
+      document.getElementById("btnOpenTerminal").click();
+    }
+  });
+
+  // Draggable macOS Terminal Sheet
+  (function initDraggableTerminal() {
+    const win = document.getElementById("terminalWindow");
+    const bar = win.querySelector(".term-bar");
+    let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
+    bar.style.cursor = "grab";
+    bar.addEventListener("mousedown", (e) => {
+      if (e.target.closest("button") || e.target.classList.contains("tl-dot")) return;
+      const r = win.getBoundingClientRect();
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      origLeft = r.left;
+      origTop = r.top;
+      win.style.right = "auto";
+      win.style.bottom = "auto";
+      win.style.left = origLeft + "px";
+      win.style.top = origTop + "px";
+      bar.style.cursor = "grabbing";
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      const nx = Math.max(8, Math.min(window.innerWidth - 180, origLeft + (e.clientX - startX)));
+      const ny = Math.max(48, Math.min(window.innerHeight - 80, origTop + (e.clientY - startY)));
+      win.style.left = nx + "px";
+      win.style.top = ny + "px";
+    });
+    window.addEventListener("mouseup", () => {
+      if (!dragging) return;
+      dragging = false;
+      bar.style.cursor = "grab";
+    });
+  })();
+
+  // Initial Render + Gentle Ambient Note Flight on Active Swarms
+  renderAll();
+  setTimeout(() => {
+    const t = currentTask();
+    if (t && t.stage === 2 && t.boxes.length >= 3) {
+      animatePacketBetween("b1", "b3");
+    }
+  }, 900);
+
+  let ambientIdx = 0;
+  setInterval(() => {
+    if (state.viewMode !== "formation") return;
+    const t = currentTask();
+    if (!t || t.stage !== 2 || !t.notes.length) return;
+    const n = t.notes[ambientIdx % t.notes.length];
+    ambientIdx++;
+    animatePacketBetween(n.from, n.to);
+  }, 5600);
+})();
+</script>
+</body>
+</html>

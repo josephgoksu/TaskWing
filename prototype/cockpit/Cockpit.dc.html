@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TaskWing: agentic cockpit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font-family:inherit}
+@media (prefers-reduced-motion: no-preference){
+@keyframes tw-flow{from{left:22%}to{left:78%}}
+@keyframes tw-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+}
+</style>
+</helmet>
+<div style="background: #1B1B1F; padding: 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 13px; line-height: 1.35; font-variant-numeric: tabular-nums">
+<div style="display: flex; height: 800px; background: #FFFFFF; color: #1D1D1F; border-radius: 12px; overflow: hidden; border: 1px solid #3A3A40">
+
+<!-- SIDEBAR -->
+<nav aria-label="Tasks" style="flex: 0 0 256px; background: #ECECEE; border-right: 1px solid #D6D6DA; display: flex; flex-direction: column; overflow-y: auto; padding: 0 8px 10px; box-sizing: border-box">
+<div aria-hidden="true" style="display: flex; gap: 8px; height: 44px; align-items: center; padding-left: 6px; flex: 0 0 44px">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; display: block"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E; display: block"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840; display: block"></span>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #D0D0D5; border-radius: 12px; padding: 10px 10px 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05)">
+<div style="font-size: 14px; color: {{newTask.fg}}; min-height: 38px">{{newTask.text}}</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0">
+<span style="font-size: 11px; color: #6E6E73; padding: 2px 8px; border-radius: 999px; background: #F2F2F4">brief.finance</span>
+<button onClick="{{ repeat.next }}" aria-label="How often to run this task" style="margin-left: 5px; font-size: 11px; color: #6E6E73; padding: 2px 8px; border-radius: 999px; background: #F2F2F4; border: 0; cursor: pointer">{{repeat.name}}</button>
+<button onClick="{{ from.next }}" aria-label="What to start the task from" style="margin-left: 5px; font-size: 11px; color: #6E6E73; padding: 2px 8px; border-radius: 999px; background: #F2F2F4; border: 0; cursor: pointer">{{from.name}}</button>
+<span style="flex: 1"></span>
+<button onClick="{{ newTask.go }}" aria-label="Start a new task" style="width: 26px; height: 26px; border-radius: 50%; border: 0; background: #0A60FF; color: #FFFFFF; font-size: 14px; font-weight: 700; cursor: pointer">↑</button>
+</div>
+</div>
+<div style="padding: 6px 8px 0; font-size: 11px; color: #7A7A80">or type <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace">/swarm</span> in your own terminal</div>
+<div style="padding: 12px 8px 2px; display: flex; align-items: baseline; gap: 6px; font-weight: 600">brief.finance<span style="font-weight: 400; color: #7A7A80">· 23 tasks</span></div>
+<sc-for list="{{ swarms }}" as="s" hint-placeholder-count="12">
+<div>
+<div style="display: {{s.gDisp}}; font-size: 11px; font-weight: 600; color: #7A7A80; padding: 8px 8px 3px">{{s.group}}</div>
+<div style="padding: 5px 8px; border-radius: 6px; background: {{s.bg}}; display: flex; flex-direction: column; gap: 3px">
+<span style="max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: {{s.w}}">{{s.title}}</span>
+<span style="display: flex; align-items: center; gap: 7px; max-width: 100%"><span aria-hidden="true" style="flex: 0 0 auto; display: block; height: 6px; width: {{s.fw}}; background: {{s.fp}}"></span><span style="font-size: 11px; color: {{s.rFg}}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{s.result}}</span></span>
+</div>
+</div>
+</sc-for>
+</nav>
+
+<!-- MAIN -->
+<main style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid #E2E2E6">
+<section aria-label="Task" style="padding: 14px 18px 12px; border-bottom: 1px solid #E2E2E6">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px">
+<h1 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em">Export reports as CSV</h1>
+<div style="display: flex; gap: 6px; font-size: 11px; white-space: nowrap">
+<sc-for list="{{ steps }}" as="sp" hint-placeholder-count="5">
+<span style="color: {{sp.fg}}; font-weight: {{sp.w}}">{{sp.name}}</span>
+</sc-for>
+</div>
+</div>
+<div style="margin-top: 3px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px"><span style="font-size: 14px; color: #3A3A40">{{headline}}</span><span style="font-size: 12px; color: #7A7A80; white-space: nowrap">{{meta}}</span></div>
+</section>
+
+<sc-if value="{{ isRun }}" hint-placeholder-val="{{ true }}">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column">
+<sc-if value="{{ hasAsk }}" hint-placeholder-val="{{ true }}">
+<div style="margin: 12px 18px 0; padding: 11px 14px; border-radius: 12px; background: #FFF8E8; border: 1px solid #F0D9A8; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px">
+<div style="min-width: 0"><div style="font-size: 11px; font-weight: 600; color: #9A5B00">The one thing only you can decide · from agent 04</div><div style="font-size: 14px; font-weight: 600; margin-top: 2px">A report with no rows: show a message, or download an empty file?</div></div>
+<div style="display: flex; gap: 6px">
+<button onClick="{{ ansMsg }}" style="height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid #0A60FF; background: #0A60FF; color: #FFFFFF; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap">Show a message</button>
+<button onClick="{{ ansFile }}" style="height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid #CFCFD4; background: #FFFFFF; color: #1D1D1F; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap">Empty file</button>
+<button onClick="{{ ansYou }}" style="height: 30px; padding: 0 8px; border-radius: 7px; border: 0; background: transparent; color: #6E6E73; font-size: 13px; cursor: pointer; white-space: nowrap">You decide</button>
+</div>
+</div>
+</sc-if>
+<section aria-label="Agents and sandboxes" style="padding: 12px 12px 14px">
+<div style="display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: #7A7A80; margin: 0 auto 10px; max-width: 640px"><span style="font-weight: 600; white-space: nowrap">{{fleetLabel}}</span><span style="white-space: nowrap"><b style="color: #B5532F">C</b> Claude Code · <b style="color: #1D1D1F">X</b> Codex · <b style="color: #1A5FD0">G</b> Gemini · dashed line = waiting</span></div>
+<div style="position: relative; width: 640px; height: 378px; margin: 0 auto">
+<sc-for list="{{ stages }}" as="sg" hint-placeholder-count="4">
+<div style="position: absolute; top: 0; left: {{sg.x}}; width: 142px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: #9A9AA0">{{sg.name}}</div>
+</sc-for>
+<sc-for list="{{ links }}" as="l" hint-placeholder-count="8">
+<div aria-hidden="true" style="position: absolute; left: {{l.x}}; top: {{l.y}}; width: {{l.len}}; height: 0; border-top: 2px {{l.line}} {{l.col}}; transform-origin: 0 50%; transform: rotate({{l.rot}})"><span style="position: absolute; top: -5px; left: 22%; width: 8px; height: 8px; border-radius: 50%; background: {{l.col}}; opacity: {{l.dotOp}}; animation: tw-flow 1.6s linear infinite; display: block"></span></div>
+</sc-for>
+<sc-for list="{{ fleet }}" as="f" hint-placeholder-count="9">
+<button onClick="{{ f.pick }}" aria-label="{{ f.aria }}" style="position: absolute; z-index: 1; left: {{f.x}}; top: {{f.y}}; width: 142px; height: 112px; box-sizing: border-box; padding: 6px 7px 6px 9px; text-align: left; border-radius: 8px; cursor: pointer; background: {{f.bg}}; border: {{f.border}}; box-shadow: inset 3px 0 0 {{f.bar}}; outline: {{f.ring}}; outline-offset: 2px; color: #1D1D1F; display: flex; flex-direction: column; gap: 4px; overflow: hidden">
+<span style="display: flex; align-items: center; gap: 5px; width: 100%"><span aria-hidden="true" style="flex: 0 0 16px; height: 16px; border-radius: 4px; background: {{f.agBg}}; color: #FFFFFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{f.ag}}</span><span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; color: #7A7A80">{{f.n}}</span><span style="flex: 1"></span><span style="font-size: 10.5px; font-weight: 600; color: {{f.fg}}; white-space: nowrap; animation: {{f.anim}}">{{f.word}}</span></span>
+<span style="width: 100%; font-size: 11.5px; font-weight: 600; line-height: 1.25; color: {{f.titleFg}}; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">{{f.title}}</span>
+<span aria-hidden="true" style="flex: 1; min-height: 0; width: 100%; box-sizing: border-box; border-radius: 5px; border: {{f.wBorder}}; background: {{f.wBg}}; padding: 3px 6px; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 3px">
+<span style="display: {{f.dLines}}; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 9.5px; line-height: 1.3; color: #7A7A80; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.m1}}</span>
+<span style="display: {{f.dLines}}; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 9.5px; line-height: 1.3; font-weight: 600; color: {{f.m2Fg}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.m2}}</span>
+<span style="display: {{f.dUi}}; align-items: center; gap: 4px"><span style="flex: 1; height: 5px; border-radius: 2px; background: #D4D4D8; display: block"></span><span style="width: 16px; height: 9px; border-radius: 3px; border: 1px solid #CFCFD4; box-sizing: border-box; display: block"></span><span style="display: {{f.dBtn}}; height: 9px; line-height: 9px; padding: 0 4px; border-radius: 3px; background: #0A60FF; color: #FFFFFF; font-size: 7px; font-weight: 700; white-space: nowrap">Export CSV</span></span>
+<span style="display: {{f.dSkel}}; height: 10px; background: repeating-linear-gradient(180deg, #ECECEE 0 3px, transparent 3px 7px)"></span>
+<span style="display: {{f.dBar}}; align-items: center; gap: 4px"><span style="flex: 1; height: 5px; border-radius: 999px; background: #E6E6EA; overflow: hidden; display: block"><span style="display: block; width: 62%; height: 5px; background: #0A60FF; animation: tw-pulse 1.6s ease-in-out infinite"></span></span><span style="font-size: 8px; color: #5A5A60">62%</span></span>
+<span style="display: {{f.dEmpty}}; font-size: 9.5px; color: #A0A0A6; text-align: center">nothing to show yet</span>
+</span>
+<span style="display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%"><span aria-hidden="true" style="display: flex; height: 6px"><span style="display: block; height: 6px; width: {{f.w1}}; background: {{f.g1}}"></span><span style="display: block; height: 6px; width: {{f.w2}}; background: repeating-linear-gradient(90deg, #0A84FF 0 6px, transparent 6px 8px)"></span><span style="display: block; height: 6px; width: {{f.w3}}; background: repeating-linear-gradient(90deg, #D4D4D8 0 6px, transparent 6px 8px)"></span></span><span style="font-size: 10.5px; color: #9A9AA0; white-space: nowrap">{{f.beat}}</span></span>
+</button>
+</sc-for>
+<button onClick="{{ exam.open }}" aria-label="{{ exam.aria }}" style="position: absolute; z-index: 1; left: 0; top: 266px; width: 308px; height: 112px; box-sizing: border-box; padding: 9px 11px; text-align: left; border-radius: 8px; border: 0; cursor: pointer; background: #2A2A2E; color: #FFFFFF; display: flex; flex-direction: column; gap: 4px; overflow: hidden">
+<span style="display: flex; align-items: center; gap: 7px; width: 100%"><span aria-hidden="true" style="position: relative; flex: 0 0 11px; height: 13px; display: block"><span style="position: absolute; left: 1.5px; top: 0; width: 5px; height: 6px; border: 1.5px solid #C9C9CF; border-bottom: 0; border-radius: 4px 4px 0 0; display: block"></span><span style="position: absolute; left: 0; bottom: 0; width: 11px; height: 7px; border-radius: 2px; background: #C9C9CF; display: block"></span></span><span style="font-size: 12px; font-weight: 700">The exam</span><span style="flex: 1"></span><span style="font-size: 10.5px; font-weight: 600; color: #C9C9CF; white-space: nowrap">{{exam.state}}</span></span>
+<span style="flex: 1; font-size: 11.5px; line-height: 1.35; color: #D4D4D8">{{exam.card}}</span>
+<span style="display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%"><span aria-hidden="true" style="display: flex; height: 6px"><span style="display: block; height: 6px; width: {{exam.pipW}}; background: repeating-linear-gradient(90deg, #7A7A80 0 6px, transparent 6px 8px)"></span><span style="display: block; height: 6px; width: {{exam.waitW}}; background: repeating-linear-gradient(90deg, #E08A00 0 6px, transparent 6px 8px)"></span></span><span style="font-size: 10.5px; color: #A0A0A6; white-space: nowrap">{{exam.foot}}</span></span>
+</button>
+</div>
+</section>
+<div style="flex: 1; min-height: 0; display: flex; border-top: 1px solid #E2E2E6">
+<section aria-label="Talk between agents" style="flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 10px 18px; border-right: 1px solid #ECECEE">
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80">{{talkTitle}}</div>
+<sc-if value="{{ noTalk }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top: 6px; color: #7A7A80">It has not talked to another agent yet.</div>
+</sc-if>
+<sc-for list="{{ talk }}" as="tk" hint-placeholder-count="2">
+<div style="margin-top: 7px"><div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px"><span style="font-weight: 600; color: {{tk.fg}}">{{tk.dir}}</span><span style="color: #9A9AA0">{{tk.time}}</span></div><div>{{tk.text}}</div></div>
+</sc-for>
+</section>
+<section aria-label="Agent memory" style="flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 10px 18px">
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80">{{memTitle}}</div>
+<sc-if value="{{ noMem }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top: 6px; color: #7A7A80">Nothing remembered yet.</div>
+</sc-if>
+<sc-for list="{{ mem }}" as="m" hint-placeholder-count="2">
+<div style="margin-top: 7px; padding-left: 9px; border-left: 3px solid {{m.bar}}"><div>{{m.text}}</div><div style="font-size: 12px; color: #7A7A80">{{m.meta}}</div></div>
+</sc-for>
+</section>
+</div>
+<div style="border-top: 1px solid #E2E2E6; background: #F5F5F7; padding: 9px 18px; color: #8A8A90; display: flex; justify-content: space-between"><span>{{tellHint}}</span><span>Pause · Stop</span></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; overflow-y: auto; padding: 20px 18px; display: flex; justify-content: center">
+<div style="width: 100%; max-width: 560px; font-size: 14px">
+<div style="font-size: 11px; font-weight: 600; color: #6E6E73">What changed</div>
+<div style="margin-top: 4px; font-size: 15px; line-height: 1.5">People who own a report, and admins, can download it as a CSV file from the reports page. A progress bar shows while it downloads. Every export is written to the audit log.</div>
+<div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px"><span style="font-size: 11px; font-weight: 600; color: #6E6E73">See what changed</span><span style="font-size: 12px; color: #7A7A80">These pictures open the pull request</span></div>
+<div style="display: grid; grid-template-columns: 104px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 8px"><span style="align-self: center; font-size: 12px; color: #3A3A40">Reports page</span><div style="position: relative; border: 1px solid #E3E3E8; border-radius: 7px; padding: 17px 9px 8px; background: #FAFAFB; font-size: 11px; min-width: 0"><span style="position: absolute; top: 4px; left: 9px; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: #9A9AA0">BEFORE</span><div style="display: flex; align-items: center; gap: 6px"><span style="flex: 1; font-weight: 700; white-space: nowrap">Q3 revenue</span><span style="padding: 0 6px; border-radius: 4px; border: 1px solid #CFCFD4; font-size: 10px">Share</span></div></div><div style="position: relative; border: 1px solid #9BD3AC; border-radius: 7px; padding: 17px 9px 8px; background: #FFFFFF; font-size: 11px; min-width: 0"><span style="position: absolute; top: 4px; left: 9px; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: #1A7F37">AFTER</span><div style="display: flex; align-items: center; gap: 6px"><span style="flex: 1; font-weight: 700; white-space: nowrap">Q3 revenue</span><span style="padding: 0 6px; border-radius: 4px; border: 1px solid #CFCFD4; font-size: 10px">Share</span><span style="padding: 1px 6px; border-radius: 4px; background: #0A60FF; color: #FFFFFF; font-size: 10px; font-weight: 600; white-space: nowrap">Export CSV</span></div></div></div>
+<div style="display: grid; grid-template-columns: 104px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 8px"><span style="align-self: center; font-size: 12px; color: #3A3A40">While it downloads</span><div style="position: relative; border: 1px solid #E3E3E8; border-radius: 7px; padding: 17px 9px 8px; background: #FAFAFB; font-size: 11px; min-width: 0"><span style="position: absolute; top: 4px; left: 9px; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: #9A9AA0">BEFORE</span><span style="color: #8A8A90">Nothing showed on the page</span></div><div style="position: relative; border: 1px solid #9BD3AC; border-radius: 7px; padding: 17px 9px 8px; background: #FFFFFF; font-size: 11px; min-width: 0"><span style="position: absolute; top: 4px; left: 9px; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: #1A7F37">AFTER</span><div style="display: flex; align-items: center; gap: 6px; color: #5A5A60"><span style="white-space: nowrap">Downloading</span><span style="flex: 1; height: 5px; border-radius: 999px; background: #E6E6EA; overflow: hidden; display: block"><span style="display: block; width: 62%; height: 5px; background: #0A60FF"></span></span><span>62%</span></div></div></div>
+<div style="display: grid; grid-template-columns: 104px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 8px"><span style="align-self: center; font-size: 12px; color: #3A3A40">Audit log</span><div style="position: relative; border: 1px solid #E3E3E8; border-radius: 7px; padding: 17px 9px 8px; background: #FAFAFB; font-size: 11px; min-width: 0"><span style="position: absolute; top: 4px; left: 9px; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: #9A9AA0">BEFORE</span><div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; color: #5A5A60; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">14:02 sam viewed Q3</div></div><div style="position: relative; border: 1px solid #9BD3AC; border-radius: 7px; padding: 17px 9px 8px; background: #FFFFFF; font-size: 11px; min-width: 0"><span style="position: absolute; top: 4px; left: 9px; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: #1A7F37">AFTER</span><div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; color: #5A5A60; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">14:02 sam viewed Q3</div><div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; font-weight: 600; color: #1A7F37; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">15:14 sam exported Q3</div></div></div>
+<div style="margin-top: 16px; font-size: 11px; font-weight: 600; color: #6E6E73">Why you can trust it</div>
+<div style="margin-top: 4px; display: flex; flex-direction: column; gap: 4px">
+<div><span style="color: #1A7F37; font-weight: 700">✓ </span>{{exam.trust}}</div>
+<div><span style="color: #1A7F37; font-weight: 700">✓ </span>61 of 61 of the agents' own tests pass</div>
+<div><span style="color: #1A7F37; font-weight: 700">✓ </span>A second model read every change and found nothing left to fix</div>
+<div><span style="color: #1A7F37; font-weight: 700">✓ </span>No agent touched a file outside its own piece</div>
+</div>
+<div style="margin-top: 16px; padding: 12px 14px; border-radius: 12px; background: #FFF8E8; border: 1px solid #F0D9A8; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<div><div style="font-weight: 600">One thing left out on purpose</div><div style="color: #3A3A40">The export has no rate limit. It was outside what you asked for.</div></div>
+<button style="height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid #CFCFD4; background: #FFFFFF; color: #1D1D1F; font-size: 13px; cursor: pointer; white-space: nowrap">Add it now</button>
+</div>
+<div style="margin-top: 20px; display: flex; gap: 10px; align-items: center">
+<button onClick="{{ merge }}" style="height: 36px; padding: 0 22px; border-radius: 9px; border: 0; background: {{done.btnBg}}; color: #FFFFFF; font-size: 15px; font-weight: 600; cursor: pointer">{{done.btn}}</button>
+<button style="height: 36px; padding: 0 14px; border-radius: 9px; border: 1px solid #CFCFD4; background: #FFFFFF; color: #1D1D1F; font-size: 14px; cursor: pointer">Read the changes</button>
+<span style="font-size: 13px; color: #6E6E73">{{done.note}}</span>
+</div>
+</div>
+</div>
+</sc-if>
+</main>
+
+<!-- RIGHT -->
+<aside style="position: relative; flex: 0 0 380px; min-width: 0; display: flex; flex-direction: column">
+<div style="flex: 0 0 44px; display: flex; align-items: center; gap: 4px; padding: 0 10px; border-bottom: 1px solid #E2E2E6">
+<sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="3">
+<button onClick="{{ tb.pick }}" style="height: 26px; padding: 0 8px; white-space: nowrap; border: 0; border-radius: 7px; cursor: pointer; font-size: 13px; background: {{tb.bg}}; color: #1D1D1F; font-weight: {{tb.w}}">{{tb.name}}</button>
+</sc-for>
+<span style="flex: 1"></span>
+<button onClick="{{ toggleSettings }}" style="border: 0; background: {{setBg}}; color: #5A5A60; font-size: 12px; cursor: pointer; padding: 5px 8px; border-radius: 6px">Settings</button>
+</div>
+
+<sc-if value="{{ tabStory }}" hint-placeholder-val="{{ true }}">
+<div style="flex: 1; overflow-y: auto; padding: 12px 14px">
+<div style="color: #5A5A60">Your agent handled {{handledN}} things without you. These are the ones worth knowing.</div>
+<div style="display: flex; gap: 6px; margin-top: 10px">
+<sc-for list="{{ filters }}" as="fl" hint-placeholder-count="3">
+<button onClick="{{ fl.pick }}" style="height: 24px; padding: 0 10px; border-radius: 999px; cursor: pointer; font-size: 12px; border: 1px solid {{fl.border}}; background: {{fl.bg}}; color: #1D1D1F">{{fl.name}}</button>
+</sc-for>
+</div>
+<sc-for list="{{ story }}" as="s" hint-placeholder-count="8">
+<div style="display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid #ECECEE; margin-top: 9px">
+<span style="flex: 0 0 36px; font-size: 12px; color: #9A9AA0; padding-top: 1px">{{s.t}}</span>
+<div style="min-width: 0"><span style="font-size: 10.5px; font-weight: 700; color: {{s.kFg}}; display: {{s.kDisp}}; margin-bottom: 1px">{{s.kind}}</span><span>{{s.text}}</span> <button onClick="{{ s.act }}" style="display: {{s.linkDisp}}; border: 0; background: transparent; padding: 0; color: #0A60FF; font-size: 13px; cursor: pointer">{{s.link}}</button></div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ tabAgent }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; overflow-y: auto; padding: 14px">
+<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="flex: 0 0 22px; height: 22px; border-radius: 5px; background: {{ag.bg}}; color: #FFFFFF; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{ag.letter}}</span><div><div style="font-weight: 700; font-size: 14px">{{ag.title}}</div><div style="font-size: 12px; color: #7A7A80">{{ag.sub}}</div></div></div>
+<div style="margin-top: 10px; font-size: 14px">{{ag.note}}</div>
+<div style="margin-top: 6px; font-size: 12px; color: #7A7A80">{{ag.box}}</div>
+<div style="margin-top: 12px; border: 1px solid #DCDCE0; border-radius: 9px; overflow: hidden; background: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 9px; background: #F4F4F6; border-bottom: 1px solid #E6E6EA">
+<span aria-hidden="true" style="flex: 0 0 26px; height: 6px; background: repeating-linear-gradient(90deg, #CFCFD4 0 6px, transparent 6px 10px); display: block"></span>
+<span style="flex: 1; min-width: 0; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; color: #5A5A60; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{win.watch}}</span>
+<span style="display: flex; padding: 2px; border-radius: 6px; background: #E6E6EA"><button onClick="{{ win.showBefore }}" style="height: 20px; padding: 0 8px; border: 0; border-radius: 4px; background: {{win.befBg}}; color: #1D1D1F; font-size: 11px; cursor: pointer">Before</button><button onClick="{{ win.showNow }}" style="height: 20px; padding: 0 8px; border: 0; border-radius: 4px; background: {{win.nowBg}}; color: #1D1D1F; font-size: 11px; cursor: pointer">Now</button></span>
+</div>
+<div style="height: 128px; box-sizing: border-box; padding: 12px; display: flex; flex-direction: column; justify-content: center; gap: 6px; background: {{win.bg}}">
+<div style="display: {{win.dLines}}; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; color: {{win.c1}}">{{win.l1}}</div>
+<div style="display: {{win.dLines}}; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; font-weight: 600; color: {{win.c2}}">{{win.l2}}</div>
+<div style="display: {{win.dLines}}; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; font-weight: 600; color: {{win.c3}}">{{win.l3}}</div>
+<div style="display: {{win.dUi}}">
+<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-weight: 700; font-size: 13px">Q3 revenue report</span><span style="height: 20px; line-height: 18px; box-sizing: border-box; padding: 0 8px; border-radius: 5px; border: 1px solid #CFCFD4; font-size: 11px">Share</span><span style="display: {{win.dBtn}}; height: 20px; line-height: 20px; padding: 0 8px; border-radius: 5px; background: #0A60FF; color: #FFFFFF; font-size: 11px; font-weight: 600">Export CSV</span></div>
+<div aria-hidden="true" style="margin-top: 10px; height: 38px; background: repeating-linear-gradient(180deg, #ECECEE 0 6px, transparent 6px 16px)"></div>
+<div style="display: {{win.dBar}}; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; color: #5A5A60"><span style="white-space: nowrap">Downloading report</span><span style="flex: 1; height: 6px; border-radius: 999px; background: #E6E6EA; overflow: hidden; display: block"><span style="display: block; width: 62%; height: 6px; background: #0A60FF; animation: tw-pulse 1.6s ease-in-out infinite"></span></span><span>62%</span></div>
+</div>
+<div style="display: {{win.dEmpty}}; text-align: center; color: #8A8A90">{{win.empty}}</div>
+</div>
+<div style="padding: 6px 10px; border-top: 1px solid #ECECEE; font-size: 12px; color: #7A7A80">{{win.cap}}</div>
+</div>
+<sc-if value="{{ ag.some }}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80; margin-top: 16px">What it did</div>
+<sc-for list="{{ ag.points }}" as="pt2" hint-placeholder-count="2">
+<div style="display: flex; gap: 8px; margin-top: 6px"><span aria-hidden="true" style="color: #9A9AA0">•</span><span>{{pt2.text}}</span></div>
+</sc-for>
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80; margin-top: 16px">Claims and proof</div>
+<sc-for list="{{ ag.checks }}" as="ck" hint-placeholder-count="2">
+<div style="display: flex; gap: 8px; margin-top: 8px"><span aria-hidden="true" style="flex: 0 0 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: {{ck.dot}}; display: block"></span><div><div style="font-weight: 600">{{ck.claim}}</div><div style="font-size: 12px; color: #5A5A60">{{ck.text}}</div></div></div>
+</sc-for>
+</div>
+</sc-if>
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80; margin-top: 18px">Ask it</div>
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px">
+<sc-for list="{{ chat }}" as="cm" hint-placeholder-count="2">
+<div style="align-self: {{cm.side}}; max-width: 88%; padding: 6px 10px; border-radius: 10px; background: {{cm.bg}}; color: {{cm.fg}}">{{cm.text}}</div>
+</sc-for>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px">
+<sc-for list="{{ asks }}" as="aq" hint-placeholder-count="2">
+<button onClick="{{ aq.send }}" style="height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid #CFCFD4; background: #FFFFFF; color: #1D1D1F; font-size: 12px; cursor: pointer">{{aq.label}}</button>
+</sc-for>
+</div>
+<div style="margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 12px; color: #0A60FF"><button onClick="{{ openTerm }}" style="border: 0; background: transparent; padding: 0; color: #0A60FF; font-size: 12px; cursor: pointer">Open its terminal</button><span>Restart it</span><span>Swap its agent</span><span>Stop it</span></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ tabPr }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; overflow-y: auto; padding: 14px">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px"><span style="font-weight: 700; font-size: 14px">The exam</span><span style="font-size: 12px; font-weight: 600; color: {{exam.stateFg}}; white-space: nowrap">{{exam.state}}</span></div>
+<div style="color: #5A5A60; margin-top: 2px">{{exam.about}}</div>
+<div style="margin-top: 8px">
+<sc-for list="{{ examRows }}" as="ex" hint-placeholder-count="9">
+<div style="display: flex; gap: 8px; padding: 5px 0; border-top: 1px solid #ECECEE"><span aria-hidden="true" style="flex: 0 0 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: {{ex.dot}}; display: block"></span><span style="flex: 1; min-width: 0">{{ex.text}}</span><span style="white-space: nowrap; font-size: 12px; color: {{ex.fg}}">{{ex.state}}</span></div>
+</sc-for>
+</div>
+<button onClick="{{ exam.add }}" style="margin-top: 8px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid #CFCFD4; background: #FFFFFF; color: #1D1D1F; font-size: 12px; cursor: pointer">{{exam.addLabel}}</button>
+<div style="margin-top: 8px; font-size: 12px; color: #7A7A80">The agents cannot see these. Once work starts, changing a check needs your OK, so your agent cannot loosen the exam to pass it.</div>
+<div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #E2E2E6; font-weight: 700; font-size: 14px">One pull request</div>
+<div style="color: #5A5A60; margin-top: 2px">{{pr.text}}</div>
+<div style="display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: #E6E6EA; margin: 10px 0 4px">
+<div style="width: {{pr.rv}}; background: #1A7F37"></div><div style="width: {{pr.te}}; background: #8FD3A4"></div><div style="width: {{pr.wr}}; background: #9CC2FF"></div>
+</div>
+<div style="font-size: 12px; color: #7A7A80; margin-bottom: 10px">dark green checked by your agent · light green tests pass · blue written</div>
+<sc-for list="{{ prRows }}" as="p" hint-placeholder-count="9">
+<div style="display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid #ECECEE"><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{p.title}}</span><span style="white-space: nowrap; color: {{p.fg}}">{{p.state}}</span></div>
+</sc-for>
+<div style="margin-top: 12px; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 5px 10px">
+<span style="color: #7A7A80">Your time</span><span>About 12 min, once, at the end</span>
+<span style="color: #7A7A80">Spend</span><span>$11.51 of your $25 limit</span>
+<span style="color: #7A7A80">Pictures</span><span>3 before and after pairs open the pull request</span>
+<span style="color: #7A7A80">Known gap</span><span>The export has no rate limit</span>
+</div>
+<div style="margin-top: 14px; color: #7A7A80">{{pr.lock}}</div>
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80; margin-top: 16px">After the pull request opens</div>
+<div style="margin-top: 4px; color: #3A3A40">Your agent keeps watching it. Failed checks, review comments and merge conflicts go back to the agents to fix. It never merges or pushes to main without you.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ tabTerm }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column">
+<div style="padding: 10px 14px; color: #5A5A60">{{term.about}}</div>
+<div style="flex: 1; min-height: 0; margin: 0 14px; border-radius: 8px 8px 0 0; background: #1C1C20; color: #E6E6EA; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 1.55; padding: 10px 12px; overflow-y: auto">
+<div style="color: #D97757">{{term.banner}}</div>
+<sc-for list="{{ term.lines }}" as="tl" hint-placeholder-count="6">
+<div style="color: {{tl.fg}}; white-space: pre-wrap; overflow-wrap: anywhere">{{tl.text}}</div>
+</sc-for>
+<div><span style="color: #8A8A90">› </span><span aria-hidden="true" style="display: inline-block; width: 7px; height: 14px; background: #E6E6EA; vertical-align: -2px"></span></div>
+</div>
+<div style="margin: 0 14px; display: flex; align-items: center; gap: 2px; padding: 0 6px; height: 24px; background: #2E7D4F; border-radius: 0 0 8px 8px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; color: #0E2A19; overflow: hidden">
+<span style="font-weight: 700; margin-right: 6px">[taskwing]</span>
+<sc-for list="{{ term.wins }}" as="w" hint-placeholder-count="10">
+<button onClick="{{ w.pick }}" aria-label="{{ w.aria }}" style="height: 20px; padding: 0 5px; border: 0; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 11px; background: {{w.bg}}; color: {{w.fg}}; font-weight: {{w.wt}}">{{w.name}}</button>
+</sc-for>
+</div>
+<div style="padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80">Open the same session in your own terminal</div>
+<div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; background: #F2F2F4; border-radius: 6px; padding: 6px 9px">{{term.cmd}}</div>
+<div style="font-size: 12px; color: #7A7A80">{{term.foot}}</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ showSettings }}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 44px; left: 0; right: 0; bottom: 0; background: #FBFBFD; border-top: 1px solid #E2E2E6; padding: 16px; box-sizing: border-box; overflow-y: auto; display: flex; flex-direction: column; gap: 16px">
+<div>
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80">How much should your agent ask you?</div>
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px">
+<sc-for list="{{ levels }}" as="lv" hint-placeholder-count="3">
+<button onClick="{{ lv.pick }}" style="text-align: left; padding: 8px 11px; border-radius: 9px; cursor: pointer; border: 1px solid {{lv.border}}; background: {{lv.bg}}; color: #1D1D1F; font-size: 13px"><span style="font-weight: 600">{{lv.name}}</span><span style="display: block; font-size: 12px; color: #6E6E73">{{lv.what}}</span></button>
+</sc-for>
+</div>
+</div>
+<div>
+<div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #7A7A80"><span>Agents</span><span>star = lead agent</span></div>
+<div style="margin-top: 6px; border: 1px solid #E5E5EA; border-radius: 9px; background: #FFFFFF; overflow: hidden">
+<sc-for list="{{ agentRows }}" as="ar" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: {{ar.top}}">
+<span aria-hidden="true" style="flex: 0 0 8px; height: 8px; border-radius: 50%; background: {{ar.dot}}; display: block"></span>
+<span style="font-weight: 600; white-space: nowrap">{{ar.name}}</span>
+<span style="flex: 1; min-width: 0; font-size: 12px; color: #6E6E73; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ar.how}}</span>
+<button onClick="{{ ar.pick }}" aria-label="{{ ar.aria }}" style="border: 0; background: transparent; cursor: pointer; font-size: 15px; padding: 0 2px; color: {{ar.starFg}}">{{ar.star}}</button>
+</div>
+</sc-for>
+</div>
+<div style="font-size: 12px; color: #7A7A80; margin-top: 5px">Logins live in boat. TaskWing never holds them.</div>
+</div>
+<div>
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80">Sandboxes run on</div>
+<div style="margin-top: 6px; border: 1px solid #E5E5EA; border-radius: 9px; background: #FFFFFF; overflow: hidden">
+<sc-for list="{{ provRows }}" as="pv" hint-placeholder-count="2">
+<button onClick="{{ pv.pick }}" style="width: 100%; text-align: left; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-top: {{pv.top}}; background: {{pv.bg}}; cursor: pointer; color: #1D1D1F; font-size: 13px">
+<span aria-hidden="true" style="flex: 0 0 8px; height: 8px; border-radius: 50%; background: {{pv.dot}}; display: block"></span>
+<span style="font-weight: 600; white-space: nowrap">{{pv.name}}</span>
+<span style="flex: 1; min-width: 0; font-size: 12px; color: #6E6E73; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{pv.how}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 7px 10px">
+<span style="color: #7A7A80">Limits</span><span>$25 and 12 agents per task. Each sandbox stops itself after 45 quiet minutes.</span>
+<span style="color: #7A7A80">Ping me</span><span>When it needs me, and when it is done</span>
+</div>
+<button onClick="{{ toggleSettings }}" style="align-self: flex-start; height: 28px; padding: 0 12px; border-radius: 7px; border: 1px solid #CFCFD4; background: #FFFFFF; color: #1D1D1F; font-size: 13px; cursor: pointer">Done</button>
+</div>
+</sc-if>
+</aside>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #A0A0A8; font-size: 13px">
+<span>Not part of the app. Jump to:</span>
+<sc-for list="{{ jumps }}" as="j" hint-placeholder-count="2">
+<button onClick="{{ j.go }}" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid #55555C; background: {{j.bg}}; color: #E8EAED; font-size: 13px; cursor: pointer">{{j.name}}</button>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":900}}'>
+class Component extends DCLogic {
+state = { view: 'run', sel: 2, tab: 'story', ask: null, changed: {}, started: false, merged: false, filter: 'All', settings: false, level: 0, chat: {}, term: 'lead', leadAgent: 0, prov: 0, repeat: 0, from: 0, flip: false, examAdd: false };
+
+renderVals() {
+const st = this.state;
+const set = (o) => () => this.setState(o);
+const BLUE = '#0A60FF', GREEN = '#1A7F37';
+const done = st.view === 'done';
+// n, title, state, files, written, tested, agent, last sign of life, note
+const BASE = [
+['01', 'Export API endpoint', 'checking', 8, 8, 8, 'C', '14:44', 'Finished. Your agent is checking it before it reaches you.'],
+['02', 'CSV writer', 'checked', 6, 6, 6, 'C', '14:31', 'Finished and checked.'],
+['03', 'Row limit and paging', 'working', 5, 4, 2, 'X', '40s ago', 'Building the 50,000 row cap your agent decided on.'],
+['04', 'Export button', 'asks', 6, 4, 2, 'C', '3s ago', 'Still working. It has one question for you.'],
+['05', 'Download progress', 'working', 7, 5, 3, 'G', '6s ago', 'Trying a new approach after a hint from your agent.'],
+['06', 'Permissions check', 'working', 4, 2, 0, 'C', '1m ago', 'Restarted at 14:52. Back to work.'],
+['07', 'Audit log entry', 'working', 3, 1, 0, 'X', '2s ago', 'Writing the audit entry.'],
+['08', 'Seam: API meets UI', 'queued', 3, 0, 0, 'C', '', 'Starts when 01 and 04 finish.'],
+['09', 'Docs and changelog', 'queued', 2, 0, 0, 'C', '', 'Starts when 01 is checked.']
+];
+const CARDS = BASE.map((c, i) => {
+if (done) return [c[0], c[1], 'checked', c[3], c[3], c[3], c[6], '16:48', 'Finished and checked.'];
+if (i === 3 && st.ask) return [c[0], c[1], 'working', c[3], c[4], c[5], c[6], 'just now', 'Got the answer. Back to work.'];
+return c;
+});
+const AG = { C: ['#D97757', 'Claude Code'], X: ['#1D1D1F', 'Codex'], G: ['#1A73E8', 'Gemini'] };
+const TILE = {
+working: ['● working', BLUE, '#FFFFFF', '1px solid #D4D4D8', '#0A84FF', 'working'],
+asks: ['? asks you', '#9A5B00', '#FFF4DC', '1px solid #E08A00', '#E08A00', 'has a question'],
+checking: ['◐ in check', '#5B3FC4', '#FFFFFF', '1px solid #D4D4D8', '#7C5CE0', 'being checked'],
+checked: ['✓ checked', GREEN, '#F0FAF3', '1px solid #9BD3AC', GREEN, 'checked'],
+queued: ['○ queued', '#8A8A90', '#F7F7F9', '1px dashed #C4C4CA', 'transparent', 'queued'] };
+const POS = [[1, 0], [0, 0], [1, 1], [2, 0], [3, 0], [0, 1], [2, 1], [3, 1], [2, 2]];
+const pip = (col) => 'repeating-linear-gradient(90deg, ' + col + ' 0 6px, transparent 6px 8px)';
+const sel = st.sel;
+const TONE = { mute: '#5A5A60', ok: GREEN, wait: '#9A5B00', bad: '#C0392B' };
+// the proof window of each agent: kind, what it watches, card lines, now, before
+const WIN = [
+['lines', 'GET /reports/42/export', ['GET …/42/export', '200 · 1,204 rows', 'ok'], [['GET /reports/42/export', 'mute'], ['200 OK · text/csv', 'ok'], ['1,204 rows in 0.4s', 'ok']], [['GET /reports/42/export', 'mute'], ['404 Not Found', 'bad']]],
+['lines', 'export_q3.csv', ['id,report,total', '1,204 rows match', 'ok'], [['id,report,total', 'mute'], ['1,Q3 revenue,48210.00', 'mute'], ['1,204 rows, same as the report', 'ok']], null],
+['lines', 'go test ./export -run Limit', ['row 50,000 → stop', '2 of 5 tests pass', 'wait'], [['row 50,000 → written, then it stops', 'ok'], ['next page → not built yet', 'wait'], ['2 of 5 tests pass', 'wait']], null],
+['btn', 'localhost:3004/reports/42', null, null, null],
+['bar', 'localhost:3005/reports/42', null, null, null],
+['lines', 'go test ./auth -run Export', ['owner ✓ admin ✓', 'viewer: 1 failing', 'wait'], [['owner → allowed', 'ok'], ['admin → allowed', 'ok'], ['viewer → not blocked yet, 1 test failing', 'wait']], null],
+['lines', 'audit_log, newest row', ['expects 1 entry', 'found 0, as planned', 'wait'], [['export a report, then read the audit log', 'mute'], ['expected 1 entry, found 0', 'wait'], ['fails for now, as planned', 'wait']], null],
+['empty', 'the whole export, in a test browser', null, null, null],
+['empty', 'the rendered docs page', null, null, null] ];
+const DONE_WIN = { 2: [['row 50,000 → written, then it stops', 'ok'], ['next page → offered', 'ok'], ['5 of 5 tests pass', 'ok']], 5: [['owner → allowed', 'ok'], ['admin → allowed', 'ok'], ['viewer → blocked', 'ok']],
+6: [['export a report, then read the audit log', 'mute'], ['expected 1 entry, found 1', 'ok']], 7: [['Exported a real report in a test browser', 'ok'], ['The file opened with 1,204 rows', 'ok']], 8: [['docs/export.md renders', 'ok'], ['The changelog has one new line', 'ok']] };
+const mini = (i, q) => { const w = WIN[i]; const k = w[0]; const ui = k === 'btn' || k === 'bar';
+return { wBorder: q ? '1px dashed #D4D4D8' : '1px solid #E3E3E8', wBg: q ? 'transparent' : '#FFFFFF', dLines: k === 'lines' ? 'block' : 'none', m1: w[2] ? w[2][0] : '', m2: w[2] ? w[2][1] : '', m2Fg: w[2] ? TONE[w[2][2]] : GREEN,
+dUi: ui ? 'flex' : 'none', dSkel: ui ? 'block' : 'none', dBtn: ui ? 'block' : 'none', dBar: k === 'bar' ? 'flex' : 'none', dEmpty: k === 'empty' ? 'block' : 'none' }; };
+const fleet = CARDS.map((c, i) => { const t = TILE[c[2]]; const q = c[2] === 'queued';
+return { ...mini(i, q), n: c[0], title: c[1], titleFg: q ? '#7A7A80' : '#1D1D1F', word: t[0], fg: t[1], bg: t[2], border: t[3], bar: t[4], ag: c[6], agBg: q ? '#B0B0B6' : AG[c[6]][0],
+anim: c[2] === 'working' ? 'tw-pulse 1.6s ease-in-out infinite' : 'none', w1: c[5] * 8 + 'px', g1: pip(c[2] === 'checked' ? GREEN : '#8FD3A4'), w2: (c[4] - c[5]) * 8 + 'px', w3: (c[3] - c[4]) * 8 + 'px', beat: c[7],
+x: POS[i][0] * 166 + 'px', y: 18 + POS[i][1] * 124 + 'px', ring: i === sel ? '2px solid #1D1D1F' : '0',
+aria: 'Agent ' + c[0] + ', ' + c[1] + ', ' + AG[c[6]][1] + ', ' + t[5], pick: set({ sel: i, tab: 'agent', flip: false }) }; });
+const stages = ['STARTS FIRST', 'NEXT', 'AFTER THAT', 'LAST'].map((n, i) => ({ name: n, x: i * 166 + 'px' }));
+const LINKS = [
+[1, 0, 'told', 'Handed over the CSV writer, ready to use.', '14:31'], [5, 0, 'told', 'Shared the rule for who may export.', '14:20'],
+[0, 3, 'told', 'Told it the address of the export endpoint.', '14:44'], [0, 6, 'told', 'Told it where to hook in the audit entry.', '14:45'],
+[3, 4, 'told', 'Shared the button the progress bar attaches to.', '14:58'], [2, 7, 'waits', 'The seam test waits for the row limit.', 'waiting'],
+[3, 7, 'waits', 'The seam test waits for the button.', 'waiting'], [0, 8, 'waits', 'The docs wait for agent 01 to be checked.', 'waiting'] ];
+const edge = (i, right) => [POS[i][0] * 166 + (right ? 142 : 0), 18 + POS[i][1] * 124 + 56];
+const links = LINKS.map((l) => { const a = edge(l[0], true), b = edge(l[1], false); const dx = b[0] - a[0], dy = b[1] - a[1]; const on = l[0] === sel || l[1] === sel;
+return { x: a[0] + 'px', y: a[1] + 'px', len: Math.hypot(dx, dy) + 'px', rot: Math.atan2(dy, dx) + 'rad', line: l[2] === 'waits' && !done ? 'dashed' : 'solid', col: on ? BLUE : '#C9C9CF', dotOp: l[2] === 'told' && !done ? '1' : '0' }; });
+const num = (i) => CARDS[i][0];
+const talk = LINKS.filter((l) => l[0] === sel || l[1] === sel).map((l) => ({ dir: l[0] === sel ? 'To agent ' + num(l[1]) : 'From agent ' + num(l[0]), fg: l[2] === 'waits' ? '#9A5B00' : BLUE, text: l[3], time: l[4] }));
+const NOTES = [[2, 'The reports page stops at 50,000 rows.', [7]], [0, 'Exports live at /reports/:id/export.', [3, 4, 7]], [1, 'CSV values are quoted the standard way.', [0]], [4, 'Tests need the shared timer mock.', [3]], [5, 'Only report owners and admins may export.', [0]]];
+const mem = NOTES.filter((n) => n[0] === sel || n[2].includes(sel)).map((n) => ({ text: n[1], bar: n[0] === sel ? BLUE : '#C9C9CF', meta: (n[0] === sel ? 'it wrote this' : 'written by agent ' + num(n[0])) + ' · ' + (n[2].length ? 'read by ' + n[2].map(num).join(', ') : 'not read yet') }));
+if ([2, 7].includes(sel)) mem.unshift({ text: st.changed.cap ? 'Exports send every row, no cap.' : 'Exports stop at 50,000 rows.', bar: '#7C5CE0', meta: (st.changed.cap ? 'your change' : 'decided by your agent') + ' · told to agents 03 and 08' });
+
+// story: time, kind, text, change key, changed text
+const ANS = { msg: 'You chose: an empty report shows a message.', file: 'You chose: an empty report downloads an empty file.', you: 'You left the empty report to me. I chose a message, like empty tables elsewhere in the app.' };
+const RAW = [
+['15:14', 'Fixed', 'Agent 05 tried the same fix 3 times. I told it to rethink, and it is moving again.'],
+['15:10', 'Decided', 'Exports stop at 50,000 rows, like the reports page.', 'cap', 'You changed this: exports send every row. Agents 03 and 08 were told.'],
+['15:02', 'Decided', 'Gemini builds the progress bar. It did best on UI work in your last 3 tasks.', 'gem', 'You changed this: Claude Code builds the progress bar.'],
+['14:52', 'Fixed', 'Agent 06 went quiet. I restarted it from its last save. Nothing was lost.'],
+['14:46', 'Checking', 'I am checking the export endpoint myself before it reaches you.'],
+['14:31', 'Done', 'The CSV writer is finished and checked.'],
+['14:02', 'Planned', 'I split the work into 9 pieces, each with its own files, and started 7 of them.'],
+['14:02', 'Planned', 'I wrote the exam first: 9 checks the finished work must pass. The agents cannot see or change them.'],
+['14:01', 'Decided', 'I read your request as: people who own a report, and admins, can download it as a CSV file.', 'goal', 'You changed this: anyone who can view a report can download it.']
+];
+if (st.ask) RAW.unshift(['15:16', 'You', ANS[st.ask]]);
+if (done) RAW.unshift(['16:50', 'Done', 'All 9 pieces are checked and joined into one pull request.'], ['16:41', 'Fixed', 'The exam failed one check: a page skipped its last row. The work was wrong, not the exam. Agent 03 fixed it, and every check passed.']);
+const count = (k) => RAW.filter((r) => r[1] === k).length;
+const filters = ['All', 'Decided', 'Fixed'].map((f) => ({ name: f === 'All' ? 'All' : f + ' ' + count(f), border: st.filter === f ? BLUE : '#D4D4D8', bg: st.filter === f ? '#EEF4FF' : '#FFFFFF', pick: set({ filter: f }) }));
+const KFG = { Decided: '#5B3FC4', Fixed: '#9A5B00', Done: GREEN, Planned: '#6E6E73', Checking: '#5B3FC4', You: BLUE };
+const story = RAW.filter((r) => st.filter === 'All' || r[1] === st.filter).map((s) => { const ch = s[3] && st.changed[s[3]];
+return { t: s[0], kind: s[1], kFg: KFG[s[1]], kDisp: 'block', text: ch ? s[4] : s[2], link: s[3] ? (ch ? 'Undo' : 'Change') : '', linkDisp: s[3] && !done ? 'inline' : 'none',
+act: s[3] ? set({ changed: { ...st.changed, [s[3]]: !ch } }) : () => {} }; });
+
+// agent tab
+const P = [
+[['Adds an endpoint that downloads a report as a CSV file.', 'Checks that the person is allowed to export first.'], [['ok', 'It works', '22 of 22 tests pass'], ['flag', 'It is safe to expose', 'Second model: the endpoint has no rate limit'], ['ok', 'It stayed in its lane', 'Changed only the 8 files it owns']]],
+[['Adds the code that writes CSV rows.', 'Puts quotes around values with commas, quotes or line breaks.'], [['ok', 'It works', '18 of 18 tests pass'], ['ok', 'It is correct', 'Second model read it and found nothing']]],
+[['Adds paging so an export reads the report in chunks.', 'Stops at 50,000 rows, as your agent decided.'], [['flag', 'It works', '2 of 5 tests pass so far']]],
+[['Adds an Export CSV button to the reports page.', 'The button is disabled while an export is running.'], [['ok', 'It works so far', '2 of 2 tests pass']]],
+[['Adds a progress indicator for a running download.'], [['flag', 'It works', '9 of 14 tests pass'], ['ok', 'It is making progress', 'New approach since 15:14']]],
+[['Adds the rule that decides who may export a report.'], [['flag', 'It works', '1 test still failing'], ['ok', 'It is alive', 'Restarted 14:52, active 1 minute ago']]],
+[['Adds a test that expects an audit entry for every export.'], [['wait', 'It works', 'The test fails for now, as planned']]],
+null, null ];
+const AGR = [['Claude Code', 'your Claude subscription, through boat', true], ['Codex', 'your ChatGPT subscription, through boat', true], ['Gemini', 'API key, through the proxy', true], ['OpenCode', 'no login yet · connect it in boat', false]];
+const agentRows = AGR.map((a, i) => ({ name: a[0], how: a[1], dot: a[2] ? GREEN : '#C7C7CC', top: i ? '1px solid #F0F0F2' : '0', star: i === st.leadAgent ? '★' : '☆', starFg: i === st.leadAgent ? '#E08A00' : '#B0B0B6',
+aria: 'Make ' + a[0] + ' the lead agent', pick: a[2] ? set({ leadAgent: i }) : () => {} }));
+const PRV = [['boat', 'cloud sandboxes · connected'], ['This Mac', 'a locked-down user account, no containers']];
+const provRows = PRV.map((p, i) => ({ name: p[0], how: p[1], dot: i === st.prov ? GREEN : '#C7C7CC', top: i ? '1px solid #F0F0F2' : '0', bg: i === st.prov ? '#F4F8FF' : '#FFFFFF', pick: set({ prov: i }) }));
+const REP = ['once', 'every day', 'every week', 'every month'];
+const repeat = { name: REP[st.repeat], next: set({ repeat: (st.repeat + 1) % REP.length }) };
+const FROM = ['from a prompt', 'from an issue', 'from a PR'];
+const from = { name: FROM[st.from], next: set({ from: (st.from + 1) % FROM.length }) };
+const COST = ['$2.10', '$1.40', '$1.20', '$1.90', '$1.75', '$1.36', '$0.80', '$0', '$0'];
+const CK = { ok: GREEN, flag: '#E08A00', bad: '#E0392B', wait: '#B0B0B6' };
+const sc = CARDS[sel]; const sp = P[sel];
+const QA = [['doing', 'What are you doing right now?'], ['unsure', 'What are you unsure about?']];
+const reply = (k) => k === 'doing' ? sc[8] : sel === 3 && !st.ask && !done ? 'Whether an empty report should show a message or a file. I asked you.' : sc[2] === 'queued' ? 'Nothing yet. I have not started.' : 'Nothing I cannot settle from the plan. If that changes I will tell your lead agent.';
+const said = st.chat[sel] || [];
+const chat = [];
+said.forEach((k) => { chat.push({ side: 'flex-end', bg: BLUE, fg: '#FFFFFF', text: QA.find((q) => q[0] === k)[1] }); chat.push({ side: 'flex-start', bg: '#F0F0F2', fg: '#1D1D1F', text: reply(k) }); });
+const asks = QA.filter((q) => !said.includes(q[0])).map((q) => ({ label: q[1], send: set({ chat: { ...st.chat, [sel]: said.concat([q[0]]) } }) }));
+const LV = [['Only what it cannot decide', 'Product choices only. It handles the rest and tells you after.'], ['Before anything risky', 'Also asks before it deletes, migrates data or changes a public API.'], ['Every decision', 'Nothing is decided without you.']];
+const levels = LV.map((l, i) => ({ name: l[0], what: l[1], border: i === st.level ? BLUE : '#E5E5EA', bg: i === st.level ? '#EEF4FF' : '#FFFFFF', pick: set({ level: i }) }));
+const ag = { bg: sc[2] === 'queued' ? '#B0B0B6' : AG[sc[6]][0], letter: sc[6], title: sc[0] + ' · ' + sc[1], sub: AG[sc[6]][1] + ' in its own sandbox · ' + TILE[sc[2]][5], note: sc[8], box: sc[2] === 'queued' ? 'No sandbox yet. One is created when it starts.' : 'Sandbox box-' + sc[0] + ' on ' + PRV[st.prov][0] + ' · ' + COST[sel] + ' so far' + (done || sc[2] === 'checked' ? ' · stopped' : ' · stops itself after 45 quiet minutes'),
+some: !!sp, points: sp ? sp[0].map((t) => ({ text: t })) : [], checks: sp ? sp[1].map((c) => ({ dot: done ? GREEN : CK[c[0]], claim: c[1], text: c[2] })) : [] };
+
+const ww = WIN[sel]; const flip = st.flip; const dw = done ? DONE_WIN[sel] : null; const wk = dw ? 'lines' : ww[0]; const wui = wk === 'btn' || wk === 'bar';
+const wl = wk !== 'lines' ? [] : flip ? (ww[4] || [['This did not exist before.', 'mute']]) : (dw || ww[3]);
+const wline = (n) => wl[n] ? wl[n][0] : ''; const wcol = (n) => wl[n] ? TONE[wl[n][1]] : GREEN;
+const win = { watch: ww[1], dLines: wk === 'lines' ? 'block' : 'none', l1: wline(0), c1: wcol(0), l2: wline(1), c2: wcol(1), l3: wline(2), c3: wcol(2),
+dUi: wui ? 'block' : 'none', dBtn: wui && !flip ? 'block' : 'none', dBar: wk === 'bar' && !flip ? 'flex' : 'none', dEmpty: wk === 'empty' ? 'block' : 'none',
+empty: flip ? 'This did not exist before.' : 'Nothing to show yet. It starts when the agent starts.', bg: flip ? '#FAFAFB' : '#FFFFFF',
+cap: flip ? 'Main today, before this task.' : wk === 'empty' ? 'Your lead agent chose what this agent is watched by.' : done || sc[2] === 'checked' ? 'Last frame from its sandbox.' : 'Live from its sandbox. Your lead agent chose what to watch.',
+nowBg: flip ? 'transparent' : '#FFFFFF', befBg: flip ? '#FFFFFF' : 'transparent', showNow: set({ flip: false }), showBefore: set({ flip: true }) };
+// the hidden exam: written before work starts, never shown to the agents
+const EMPTY = { msg: 'A report with no rows shows a message', file: 'A report with no rows downloads an empty file', you: 'A report with no rows shows a message' };
+const EXAM = ['An owner downloads a report and the file has every row', 'An admin can export any report', 'A viewer cannot export', 'Values with commas and quotes open correctly in a spreadsheet',
+st.changed.cap ? 'A report over 50,000 rows downloads in full' : 'A report over 50,000 rows stops there and offers the next page', st.ask ? EMPTY[st.ask] : done ? EMPTY.msg : 'A report with no rows: your answer decides',
+'Progress shows while a file downloads', 'Every export writes one audit entry', 'Everything that worked before still works'];
+const waitsYou = !st.ask && !done;
+const examRows = EXAM.map((t, i) => { const w = i === 5 && waitsYou; return { text: t, state: done ? (i === 4 ? 'passed, 2nd try' : 'passed') : w ? 'waits for you' : 'sealed', fg: done ? GREEN : w ? '#9A5B00' : '#8A8A90', dot: done ? GREEN : w ? '#E08A00' : '#C7C7CC' }; });
+if (st.examAdd) examRows.push({ text: 'Dates in the file use the time zone of the report', state: done ? 'passed' : 'added by you', fg: done ? GREEN : BLUE, dot: done ? GREEN : BLUE });
+const exN = examRows.length;
+const exam = { n: exN, state: done ? exN + ' of ' + exN + ' passed' : 'sealed until Join', stateFg: done ? GREEN : '#6E6E73', aria: 'The exam, ' + exN + ' checks, sealed. Open the list.',
+card: exN + ' checks your lead agent wrote before any work started. The agents cannot see or change them.', pipW: (exN - (waitsYou ? 1 : 0)) * 8 + 'px', waitW: waitsYou ? '8px' : '0px',
+foot: waitsYou ? '1 waits for your answer' : 'runs in a clean sandbox', about: done ? 'Ran at 16:41 in a clean sandbox, on the joined work.' : 'Written at 14:02, before any agent started. It runs in a clean sandbox after Join.',
+addLabel: st.examAdd ? 'Remove my check' : '+ Add a check in plain words', add: set({ examAdd: !st.examAdd }), open: set({ tab: 'pr' }),
+trust: 'Passed the exam: ' + exN + ' of ' + exN + ' checks the agents never saw, run in a clean sandbox' };
+let total = 0, rv = 0, te = 0, wr = 0;
+CARDS.forEach((c) => { total += c[3]; wr += c[4] - c[5]; if (c[2] === 'checked') rv += c[5]; else te += c[5]; });
+const pc = (n) => (n / total) * 100 + '%';
+const pr = { rv: pc(rv), te: pc(te), wr: pc(wr), text: (rv + te + wr) + ' of ' + total + ' files written · ' + (rv + te) + ' pass tests · ' + rv + ' checked',
+lock: done ? 'Everything is checked. Merge is on the left.' : 'Merge unlocks when all 9 pieces are checked. Your agent does the checking.' };
+const prRows = CARDS.map((c) => ({ title: c[0] + '  ' + c[1], state: TILE[c[2]][5], fg: TILE[c[2]][1] }));
+const doneN = CARDS.filter((c) => c[2] === 'checked').length;
+const liveN = CARDS.filter((c) => ['working', 'asks', 'checking'].includes(c[2])).length;
+
+const at = done ? 5 : 1;
+const steps = ['Plan', 'Build', 'Join', 'Exam', 'PR'].map((n, i) => ({ name: (i < at ? '✓ ' : '') + n + (i < 4 ? '  ›' : ''), fg: i < at ? GREEN : i === at ? BLUE : '#9A9AA0', w: i === at ? '700' : '400' }));
+const headline = done ? (st.merged ? 'Merged. The sandboxes are cleaned up.' : 'Ready. One pull request, checked by your agent.')
+: CARDS.length + ' agents are building it. ' + doneN + ' checked. ' + (st.ask ? 'Nothing needs you. Ready around 16:50.' : 'One thing needs you.');
+
+const HIST = [
+['Speed up the watchlist page', 'run', 'Running', 'ffbbbw', '1 yours · started 14:40', 'Six sandboxes are cutting the watchlist load time. The query work is finished; caching is in progress.'],
+['Translate onboarding to Turkish', 'run', '', 'bbbb', 'on track · started 15:02', 'Four sandboxes are translating the onboarding screens and emails. Nothing needs you yet.'],
+['Fix flaky earnings-calendar tests', 'done', 'Done today', 'ggggg', 'PR #418 merged · 38 min · $4.10', 'Five sandboxes found and fixed three timing bugs in the earnings calendar tests.'],
+['Upgrade Go to 1.26', 'done', '', 'ggggggggx', 'PR #417 merged · 1 box dropped', 'Nine sandboxes upgraded Go one package at a time. One box was dropped; its package was already compatible.'],
+['Add dark mode to charts', 'done', 'Earlier', 'gggggg', 'PR #415 merged · Nov 12', ''],
+['Remove dead API handlers', 'done', '', 'gggggggggggg', 'PR #414 merged · Nov 12', ''],
+['Rate limit the public API', 'done', '', 'gggg', 'PR #412 merged · Nov 11', ''],
+['Rewrite the pricing page copy', 'done', '', 'ggg', 'PR #411 merged · Nov 11', ''],
+['Audit log for admin actions', 'done', '', 'ggggggg', 'PR #409 merged · Nov 10', ''],
+['Stripe webhook retries', 'done', '', 'ggggg', 'PR #408 merged · Nov 10', ''],
+['Split the reports package', 'stop', '', 'ggxxxxxx', 'Stopped by you · Nov 9', 'You stopped this one at the plan: the pieces overlapped too much to split between sandboxes.'],
+['Portfolio import from CSV', 'done', '', 'gggggggg', 'PR #405 merged · Nov 8', ''],
+['Fix timezone bugs in alerts', 'done', '', 'gggg', 'PR #404 merged · Nov 8', ''],
+['Accessibility pass on forms', 'done', '', 'gggggggggg', 'PR #402 merged · Nov 7', ''],
+['Cache ticker lookups', 'done', '', 'ggg', 'PR #401 merged · Nov 6', ''],
+['Email digest redesign', 'done', '', 'gggggg', 'PR #399 merged · Nov 5', ''],
+['Migrate cron jobs to the queue', 'done', '', 'gggggggx', 'PR #398 merged · Nov 5', ''],
+['Search: typo tolerance', 'done', '', 'gggg', 'PR #396 merged · Nov 4', ''],
+['Onboarding checklist', 'done', '', 'ggggg', 'PR #395 merged · Nov 3', ''],
+['Bump frontend dependencies', 'done', '', 'ggggggggggggggg', 'PR #394 merged · Nov 3', ''],
+['Earnings summary prompts v2', 'stop', '', 'gggxx', 'Closed without merging · Nov 2', 'The result did not beat the old prompts in your comparison, so the PR was closed.'],
+['Add health checks', 'done', '', 'ggg', 'PR #391 merged · Nov 1', '']
+];
+const FP = { g: '#1A7F37', f: '#8FD3A4', b: '#0A84FF', a: '#E08A00', r: '#E0392B', w: '#C4C4CA', x: '#8A8A90', p: '#7C5CE0' };
+const fpOf = (str) => 'linear-gradient(90deg, ' + str.split('').map((ch, i) => FP[ch] + ' ' + i * 8 + 'px ' + (i * 8 + 6) + 'px, transparent ' + (i * 8 + 6) + 'px ' + (i * 8 + 8) + 'px').join(', ') + ')';
+const CH = { working: 'b', asks: 'a', checking: 'p', checked: 'g', queued: 'w' };
+const liveRow = ['Export reports as CSV', 'live', done ? 'Ready for you' : st.ask ? 'Running' : 'Needs you', CARDS.map((c) => CH[c[2]]).join(''), done ? 'ready to merge' : st.ask ? 'on track · ready around 16:50' : '1 question · ready around 16:50', ''];
+let ALL = [liveRow].concat(HIST);
+if (st.started) ALL = [['New task', 'run', 'Starting', 'w', 'your agent is reading the repo and planning', '']].concat(ALL);
+const swarms = ALL.map((h) => ({ title: h[0], group: h[2], gDisp: h[2] ? 'block' : 'none', fp: fpOf(h[3]), fw: h[3].length * 8 + 'px', result: h[4],
+rFg: h[4].indexOf('question') >= 0 || h[4].indexOf('yours') >= 0 ? '#9A5B00' : '#7A7A80', w: h[1] === 'live' ? '600' : '400', bg: h[1] === 'live' ? '#D5E4FF' : 'transparent' }));
+
+const tsel = st.term;
+const lead = tsel === 'lead';
+const tc = lead ? null : CARDS[tsel];
+const tp = lead ? null : P[tsel];
+const tlines = lead
+? [{ fg: '#E6E6EA', text: '› /swarm people should be able to export reports as csv' }].concat(RAW.slice().reverse().map((r) => ({ fg: r[1] === 'You' ? '#9CC2FF' : '#C7C7CC', text: '● ' + r[0] + '  ' + r[1].toLowerCase() + ': ' + (r[3] && st.changed[r[3]] ? r[4] : r[2]) })))
+: tp ? tp[0].map((t) => ({ fg: '#C7C7CC', text: '● ' + t })).concat([{ fg: '#E6E6EA', text: '● ' + tc[8] }]) : [{ fg: '#8A8A90', text: '(not started yet)' }];
+const term = { about: lead ? 'Your lead agent is the real Claude Code, running in a tmux session on this Mac. This is that session, live.' : 'Agent ' + tc[0] + ' is ' + AG[tc[6]][1] + ' in a tmux session inside its sandbox. This is that session, live.',
+banner: lead ? 'Claude Code · signed in with your subscription · brief.finance' : AG[tc[6]][1] + ' · sandbox box-' + tc[0] + ' · ' + tc[1],
+lines: tlines, cmd: lead ? 'tmux attach -t taskwing' : 'taskwing attach ' + tc[0],
+foot: lead ? 'Anything you type there reaches the same agent. A task you start there with /swarm shows up here. The session keeps running if you quit this app.' : 'Typing there talks to this agent directly. Your lead agent is told what you said.',
+wins: [{ name: 'lead', key: 'lead' }].concat(CARDS.map((c, i) => ({ name: c[0], key: i }))).map((w) => ({ name: w.name + (w.key === tsel ? '*' : ''), aria: 'Show the terminal of ' + (w.key === 'lead' ? 'the lead agent' : 'agent ' + w.name),
+bg: w.key === tsel ? '#0E2A19' : 'transparent', fg: w.key === tsel ? '#BFF0D0' : '#0E2A19', wt: w.key === tsel ? '700' : '400', pick: set({ term: w.key }) })) };
+const TABS = [['story', 'Story'], ['agent', 'Agent ' + sc[0]], ['pr', 'Exam · PR'], ['term', 'Terminal']];
+const tabs = TABS.map((t) => ({ name: t[1], bg: st.tab === t[0] ? '#DCE8FF' : 'transparent', w: st.tab === t[0] ? '600' : '400', pick: set({ tab: t[0] }) }));
+const jumps = [['run', 'Running'], ['done', 'Finished']].map((j) => ({ name: j[1], bg: st.view === j[0] ? '#3A3A40' : 'transparent', go: set({ view: j[0] }) }));
+
+return { swarms, newTask: st.started ? { text: 'Started. Type the next one any time.', fg: '#1A7F37', go: set({ started: false }) } : { text: 'What should get done?', fg: '#8A8A90', go: set({ started: true }) },
+steps, headline, isRun: !done, isDone: done, hasAsk: !st.ask && !done, ansMsg: set({ ask: 'msg' }), ansFile: set({ ask: 'file' }), ansYou: set({ ask: 'you' }),
+fleet, win, exam, examRows, fleetLabel: CARDS.length + ' agents · ' + liveN + ' running · each card shows its live proof', stages, links,
+talk, noTalk: talk.length === 0, talkTitle: 'Agent ' + sc[0] + ' talks with', mem, noMem: mem.length === 0, memTitle: 'Agent ' + sc[0] + ' remembers',
+tellHint: '› Tell agent ' + sc[0] + ' something, or tell your lead agent to change course',
+filters, chat, asks, levels, agentRows, provRows, repeat, from, showSettings: st.settings, toggleSettings: set({ settings: !st.settings }), setBg: st.settings ? '#E6E6EA' : 'transparent',
+meta: done ? '9 agents · 2h 48m · $17.80' : 'ready around 16:50 · $11.51 of $25',
+tabs, tabStory: st.tab === 'story', tabAgent: st.tab === 'agent', tabPr: st.tab === 'pr', tabTerm: st.tab === 'term', term, openTerm: set({ tab: 'term', term: sel }), story, handledN: done ? '31' : '14', ag, pr, prRows,
+done: st.merged ? { btn: 'Merged', btnBg: '#8FD3A4', note: '' } : { btn: 'Merge', btnBg: GREEN, note: 'or press ⏎' }, merge: set({ merged: true }), jumps };
+}
+}
+</script>
+</body>
+</html>

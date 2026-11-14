@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TaskWing: the change</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="font-family: Inter, -apple-system, system-ui, sans-serif; color: #E8EAED; background: #08090B; padding: 24px; box-sizing: border-box; font-size: 13px; line-height: 1.4; display: flex; flex-direction: column; gap: 20px; font-variant-numeric: tabular-nums">
+
+<div style="background: #0F1114; border-radius: 12px; border: 1px solid #2A2F37; overflow: hidden; display: flex; flex-direction: column">
+
+<!-- TITLE BAR -->
+<div style="display: flex; align-items: center; gap: 12px; padding: 0 14px; height: 38px; background: #16191E; border-bottom: 1px solid #262B33">
+<div aria-hidden="true" style="display: flex; gap: 8px">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; display: block"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E; display: block"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840; display: block"></span>
+</div>
+<div style="display: flex; gap: 6px; margin-left: 12px; font-size: 12px">
+<span style="padding: 3px 10px; border-radius: 999px; background: #262B33; color: #E8EAED; font-weight: 600">brief.finance · {{runBadge}}</span>
+<span style="padding: 3px 10px; border-radius: 999px; color: #9AA3AF">motif · 1 yours</span>
+<span style="padding: 3px 10px; border-radius: 999px; color: #9AA3AF">markwise-app · moving</span>
+</div>
+<div style="flex: 1"></div>
+<div style="font-size: 12px; color: #9AA3AF">Sample data</div>
+</div>
+
+<!-- HEADLINE -->
+<header style="padding: 20px 24px 14px; opacity: {{v.head.op}}">
+<div style="font-size: 12px; color: #9AA3AF">Add CSV export to reports · 9 boxes · started 14:00</div>
+<h1 style="margin: 4px 0 0; font-family: 'Space Grotesk', Inter, sans-serif; font-size: 30px; font-weight: 700; line-height: 1.15; color: {{head.color}}">{{head.line}}</h1>
+<div style="font-size: 14px; color: #C3C9D1; margin-top: 6px">{{head.sub}}</div>
+</header>
+
+<!-- SINCE YOU LOOKED -->
+<sc-if value="{{ showDigest }}" hint-placeholder-val="{{ true }}">
+<div style="margin: 0 24px 14px; padding: 10px 14px; border-radius: 10px; background: #15181D; border: 1px solid #2A2F37; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; opacity: {{v.digest.op}}">
+<div style="flex: 1 1 400px; min-width: 0">
+<span style="font-weight: 600">Since you last looked, 41 minutes ago: </span>
+<span style="color: #C3C9D1">2 areas finished and passed their tests. Box 06 went quiet. 2 questions came in. Nothing was merged or pushed.</span>
+</div>
+<button onClick="{{ seen }}" style="min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #3A414C; background: transparent; color: #E8EAED; font-size: 13px; cursor: pointer">Got it</button>
+</div>
+</sc-if>
+
+<div style="display: flex; flex-wrap: wrap; align-items: stretch; border-top: 1px solid #262B33">
+
+<!-- THE CHANGE -->
+<section aria-label="The change" style="flex: 999 1 560px; min-width: 0; padding: 16px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+
+<div style="opacity: {{v.map.op}}">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">THE CHANGE, AREA BY AREA</h2>
+<span style="font-size: 12px; color: #9AA3AF">One square is one file. One block is one box.</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{ cards }}" as="c" hint-placeholder-count="9">
+<button onClick="{{ c.pick }}" aria-label="{{ c.aria }}" style="grid-column: span {{c.span}}; text-align: left; min-height: 112px; padding: 10px 12px; border-radius: 10px; cursor: pointer; color: #E8EAED; background: {{c.bg}}; border: {{c.border}}; outline: {{c.ring}}; outline-offset: 2px; display: flex; flex-direction: column; gap: 6px; overflow: hidden">
+<span style="display: flex; justify-content: space-between; gap: 8px; align-items: baseline">
+<span style="font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap"><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9AA3AF; font-weight: 400">{{c.n}} </span>{{c.title}}</span>
+</span>
+<span style="display: flex; height: 14px">
+<span style="display: block; height: 14px; width: {{c.w1}}; background: {{c.g1}}"></span>
+<span style="display: block; height: 14px; width: {{c.w2}}; background: repeating-linear-gradient(90deg, #4C8DF6 0 14px, transparent 14px 18px)"></span>
+<span style="display: block; height: 14px; width: {{c.w3}}; background: repeating-linear-gradient(90deg, #2A2F37 0 14px, transparent 14px 18px)"></span>
+</span>
+<span style="font-size: 12px; font-weight: 600; color: {{c.fg}}">{{c.label}}</span>
+<span style="font-size: 12px; color: #9AA3AF; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%">{{c.note}}</span>
+</button>
+</sc-for>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12px; color: #9AA3AF">
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 12px; height: 12px; background: #2A2F37; display: block"></span>planned</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 12px; height: 12px; background: #4C8DF6; display: block"></span>written</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 12px; height: 12px; background: #3D8F63; display: block"></span>tests pass</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 12px; height: 12px; background: #C9F7DC; display: block"></span>approved by you</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 12px; height: 12px; border: 2px solid #F5B041; box-sizing: border-box; display: block"></span>waiting on you</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 12px; height: 12px; border: 2px solid #FF6B5E; box-sizing: border-box; display: block"></span>gone quiet</span>
+</div>
+</div>
+
+<!-- PR BAR -->
+<div style="opacity: {{v.pr.op}}">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 6px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">THE ONE PR</h2>
+<span style="font-size: 12px; color: #C3C9D1">{{pr.text}}</span>
+</div>
+<div style="display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: #22262D">
+<div style="width: {{pr.rv}}; background: #C9F7DC"></div>
+<div style="width: {{pr.te}}; background: #3D8F63"></div>
+<div style="width: {{pr.wr}}; background: #4C8DF6"></div>
+</div>
+<div style="font-size: 12px; color: #9AA3AF; margin-top: 6px">It opens when the whole bar is light green. Nothing reaches GitHub before that.</div>
+</div>
+
+<!-- RULINGS -->
+<div style="opacity: {{v.rules.op}}">
+<h2 style="margin: 0 0 6px; font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">YOUR RULINGS</h2>
+<sc-if value="{{ noRules }}" hint-placeholder-val="{{ false }}">
+<div style="font-size: 12px; color: #9AA3AF">None yet. Each answer you give is kept here and told to every box it affects, so no box asks twice and nothing waits for the final review.</div>
+</sc-if>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<sc-for list="{{ rules }}" as="r" hint-placeholder-count="2">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 7px 10px; border-radius: 8px; background: #15181D; border: 1px solid #262B33">
+<span style="font-weight: 600">{{r.text}}</span>
+<span style="font-size: 12px; color: #9AA3AF">told to {{r.told}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</section>
+
+<!-- YOUR TURN -->
+<aside style="flex: 1 1 340px; min-width: 0; border-left: 1px solid #262B33; display: flex; flex-direction: column">
+<section aria-label="Your turn" style="padding: 16px 20px; border-bottom: 1px solid #262B33; opacity: {{v.turn.op}}">
+<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; color: #F5B041; letter-spacing: 0.06em">YOUR TURN</h2>
+<span style="font-size: 12px; color: #9AA3AF">{{turnCount}}</span>
+</div>
+<sc-if value="{{ noTurn }}" hint-placeholder-val="{{ false }}">
+<div>
+<div style="font-size: 16px; font-weight: 600">Nothing is yours.</div>
+<div style="color: #9AA3AF; margin-top: 4px">Close the window. The menu bar icon turns amber when something is.</div>
+</div>
+</sc-if>
+<sc-if value="{{ hasTurn }}" hint-placeholder-val="{{ true }}">
+<div style="background: {{focus.bg}}; border: 1px solid {{focus.border}}; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; color: {{focus.fg}}"><span>{{focus.kind}}</span><span>{{focus.mins}}</span></div>
+<div style="font-size: 12px; color: #C3C9D1">{{focus.from}}</div>
+<div style="font-size: 16px; font-weight: 600; line-height: 1.3">{{focus.q}}</div>
+<div style="font-size: 12px; color: #C3C9D1">{{focus.why}}</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{ focus.opts }}" as="o" hint-placeholder-count="2">
+<button onClick="{{ o.act }}" style="min-height: 44px; padding: 0 14px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 1px solid {{o.border}}; background: {{o.bg}}; color: {{o.fg}}">
+<span>{{o.label}}</span><span style="font-size: 11px; font-weight: 500">{{o.tag}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<div style="display: flex; flex-direction: column; margin-top: 8px">
+<sc-for list="{{ upNext }}" as="u" hint-placeholder-count="3">
+<button onClick="{{ u.pick }}" style="text-align: left; min-height: 44px; padding: 6px 2px; border: 0; border-top: 1px solid #262B33; background: transparent; color: #C3C9D1; cursor: pointer; font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px">
+<span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap"><span style="font-weight: 600; color: {{u.fg}}">{{u.kind}} </span>{{u.from}}</span>
+<span style="color: #9AA3AF; white-space: nowrap">{{u.mins}}</span>
+</button>
+</sc-for>
+</div>
+</section>
+
+<!-- SELECTED AREA -->
+<section aria-label="Selected area" style="padding: 16px 20px; flex: 1; opacity: {{v.detail.op}}">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600"><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3AF; font-weight: 400">box {{sel.n}} </span>{{sel.title}}</h2>
+<span style="font-size: 12px; font-weight: 600; white-space: nowrap; color: {{sel.fg}}">{{sel.label}}</span>
+</div>
+<div style="margin-top: 8px; font-size: 14px">{{sel.note}}</div>
+<dl style="margin: 12px 0; display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 5px 10px; font-size: 12px">
+<dt style="color: #9AA3AF">Owns</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; overflow-wrap: anywhere">{{sel.owns}}</dd>
+<dt style="color: #9AA3AF">Files</dt><dd style="margin: 0">{{sel.files}}</dd>
+<dt style="color: #9AA3AF">Review</dt><dd style="margin: 0">{{sel.review}}</dd>
+</dl>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<button style="min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #3A414C; background: transparent; color: #E8EAED; font-size: 13px; cursor: pointer">Watch it work</button>
+<button style="min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #3A414C; background: transparent; color: #E8EAED; font-size: 13px; cursor: pointer">See the diff</button>
+<button style="min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #3A414C; background: transparent; color: #E8EAED; font-size: 13px; cursor: pointer">Tell it something</button>
+</div>
+</section>
+</aside>
+</div>
+
+<!-- BUDGETS -->
+<footer style="display: flex; flex-wrap: wrap; border-top: 1px solid #262B33; background: #13161A; opacity: {{v.budget.op}}">
+<div style="flex: 2 1 320px; min-width: 0; padding: 12px 24px">
+<div style="font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">YOUR REVIEW TIME</div>
+<div style="display: flex; align-items: center; gap: 10px; margin-top: 4px">
+<span style="font-size: 15px; font-weight: 600; white-space: nowrap">{{bud.left}}</span>
+<div style="flex: 1; height: 6px; border-radius: 999px; background: #262B33; overflow: hidden"><div style="height: 6px; background: #C9F7DC; width: {{bud.pct}}"></div></div>
+<span style="font-size: 12px; color: #9AA3AF; white-space: nowrap">{{bud.done}}</span>
+</div>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; padding: 12px 24px; border-left: 1px solid #262B33">
+<div style="font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">SPEND</div>
+<div style="margin-top: 4px"><span style="font-size: 15px; font-weight: 600">$11.51</span><span style="font-size: 12px; color: #9AA3AF"> of a $25 limit you set</span></div>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; padding: 12px 24px; border-left: 1px solid #262B33">
+<div style="font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">WORTH IT?</div>
+<div style="margin-top: 4px"><span style="font-size: 15px; font-weight: 600">1h 12m in</span><span style="font-size: 12px; color: #9AA3AF"> · one agent would be about a third done</span></div>
+</div>
+</footer>
+</div>
+
+<!-- PICKS -->
+<section style="background: #16191E; border: 1px solid #2A2F37; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+<div>
+<h2 style="margin: 0; font-size: 15px; font-weight: 700">Your picks</h2>
+<div style="font-size: 12px; color: #9AA3AF">Not part of the app. Mark each part Keep or Cut; a cut part fades above. {{picks.open}}</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 8px">
+<sc-for list="{{ parts }}" as="pt" hint-placeholder-count="8">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #0F1114; border: 1px solid #262B33; border-radius: 8px; padding: 6px 6px 6px 12px">
+<div style="min-width: 0">
+<div style="font-size: 13px; font-weight: 600">{{pt.name}}</div>
+<div style="font-size: 11px; color: #9AA3AF">{{pt.where}}</div>
+</div>
+<div style="display: flex; gap: 6px">
+<button onClick="{{ pt.keep }}" style="min-height: 44px; min-width: 56px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A414C; font-size: 13px; font-weight: 600; cursor: pointer; background: {{pt.kBg}}; color: {{pt.kFg}}">Keep</button>
+<button onClick="{{ pt.cut }}" style="min-height: 44px; min-width: 56px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A414C; font-size: 13px; font-weight: 600; cursor: pointer; background: {{pt.cBg}}; color: {{pt.cFg}}">Cut</button>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="font-size: 13px"><span style="color: #7FD6A4; font-weight: 600">Keep:</span> {{picks.keep}}</div>
+<div style="font-size: 13px"><span style="color: #FFB59A; font-weight: 600">Cut:</span> {{picks.cut}}</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":1240}}'>
+class Component extends DCLogic {
+state = { sel: null, focus: null, done: {}, seen: false, votes: {} };
+
+renderVals() {
+const st = this.state;
+// label, text colour, block background, border colour
+const S = {
+working: ['Working', '#8AB8FF', '#141A24', '#2B4A7A'],
+asking: ['Waiting on you', '#F5B041', '#1C1A14', '#F5B041'],
+stalled: ['Gone quiet', '#FF8A80', '#211513', '#FF6B5E'],
+ready: ['Ready for you', '#7FD6A4', '#13201A', '#3D8F63'],
+approved: ['Approved', '#C9F7DC', '#13201A', '#2F6B4D'],
+waiting: ['Not started', '#9AA3AF', '#13161A', '#2A2F37'],
+restarting: ['Restarting', '#C4B1FF', '#1B1730', '#9C84F5']
+};
+// n, title, status, files, written, tested, note, owns, lines, review minutes, column span
+const CARDS = [
+['01', 'Export API endpoint', 'ready', 8, 8, 8, '4 commits. Tests pass, 22 of 22.', 'internal/api/export.go', 212, 8, 2],
+['02', 'CSV writer', 'ready', 6, 6, 6, 'Tests pass, 18 of 18.', 'internal/csv/', 164, 6, 1],
+['03', 'Row limit and paging', 'asking', 5, 3, 1, 'Paused 4 min ago on a question.', 'internal/report/paging.go', 88, 4, 1],
+['04', 'Export button', 'working', 6, 4, 2, 'Editing ExportButton.tsx.', 'web/src/reports/ExportButton.tsx', 141, 6, 1],
+['05', 'Download progress', 'working', 7, 5, 3, 'Running tests, 9 of 14 pass.', 'web/src/reports/progress/', 120, 5, 2],
+['06', 'Permissions check', 'stalled', 4, 2, 0, 'No activity for 14 min.', 'internal/authz/export.go', 73, 3, 1],
+['07', 'Audit log entry', 'working', 3, 1, 0, 'Writing the failing test first.', 'internal/audit/', 40, 2, 1],
+['08', 'Seam: API meets UI', 'waiting', 3, 0, 0, 'Starts when 01 and 04 finish.', 'e2e/export.spec.ts', 0, 4, 1],
+['09', 'Docs and changelog', 'waiting', 2, 0, 0, 'Starts when 01 is approved.', 'docs/export.md', 0, 2, 1]
+];
+const K = {
+decide: ['DECIDE', '#F5B041', '#1C1A14', '#5A4212'],
+rescue: ['RESCUE', '#FF8A80', '#211513', '#6B2A24'],
+review: ['REVIEW', '#7FD6A4', '#13201A', '#2F6B4D']
+};
+const QUEUE = [
+{ id: 'q1', kind: 'decide', card: 2, mins: 1, from: 'Box 03 · Row limit and paging', q: 'Cap an export at 50,000 rows, or stream everything?', why: 'The agent suggests the cap: the reports page already stops at 50,000 rows. Box 03 is paused until you answer, and the seam test waits behind it.', opts: [['Cap at 50k', 1], ['Stream all', 0]], rules: { 'Cap at 50k': 'Exports stop at 50,000 rows.', 'Stream all': 'Exports stream every row, no cap.' }, told: 'boxes 03 and 08' },
+{ id: 'q2', kind: 'rescue', card: 5, mins: 1, from: 'Box 06 · Permissions check', q: 'This box has done nothing for 14 minutes.', why: 'It hit its time limit. Its 73 lines are committed, so a restart loses nothing.', opts: [['Restart from its last commit', 1], ['Stop this box', 0]] },
+{ id: 'q3', kind: 'review', card: 1, mins: 6, from: 'Box 02 · CSV writer', q: 'The CSV writer is finished. Review it now, while the rest keeps going?', why: '6 files, 164 lines. 18 of 18 tests pass. A second model checked it and found nothing.', opts: [['Read the diff and approve', 1], ['Send it back with a note', 0]] },
+{ id: 'q4', kind: 'review', card: 0, mins: 8, from: 'Box 01 · Export API endpoint', q: 'The export endpoint is finished. Review it now?', why: '8 files, 212 lines. 22 of 22 tests pass. A second model flagged one thing: no rate limit on the endpoint.', opts: [['Read the diff and approve', 1], ['Send it back with a note', 0]] },
+{ id: 'q5', kind: 'decide', card: 3, mins: 1, from: 'Box 04 · Export button', q: 'A report with no rows: show a message, or download an empty file?', why: 'The agent has no preference and keeps working on the rest meanwhile.', opts: [['Show a message', 0], ['Empty file', 0]], rules: { 'Show a message': 'An empty report shows a message, no download.', 'Empty file': 'An empty report downloads a file with headers only.' }, told: 'boxes 04 and 08' }
+];
+
+const open = QUEUE.filter((q) => !st.done[q.id]);
+const ans = (card, kind) => { const q = QUEUE.find((x) => x.card === card && x.kind === kind); return q ? st.done[q.id] : undefined; };
+const statusOf = (c, i) => {
+if (c[2] === 'asking') return ans(i, 'decide') ? 'working' : 'asking';
+if (c[2] === 'stalled') { const a = ans(i, 'rescue'); return !a ? 'stalled' : a === 'Stop this box' ? 'waiting' : 'restarting'; }
+if (c[2] === 'ready') { const a = ans(i, 'review'); return !a ? 'ready' : a === 'Read the diff and approve' ? 'approved' : 'working'; }
+return c[2];
+};
+const noteOf = (c, i, s) => {
+if (s === 'restarting') return 'Starting again from its last commit.';
+if (s === 'waiting' && c[2] === 'stalled') return 'Stopped by you. Its commits are kept.';
+if (s === 'working' && c[2] === 'asking') return 'Got your answer. Back to work.';
+if (s === 'working' && c[2] === 'ready') return 'Reworking after your note.';
+if (s === 'approved') return 'Approved by you. Waiting for the rest.';
+return c[6];
+};
+
+const focusQ = open.find((q) => q.id === st.focus) || open[0];
+let selIdx = st.sel;
+if (selIdx === null) selIdx = focusQ ? focusQ.card : 0;
+
+const px = (n) => n * 18 + 'px';
+const strip = (col) => 'repeating-linear-gradient(90deg, ' + col + ' 0 14px, transparent 14px 18px)';
+const cards = CARDS.map((c, i) => {
+const s = statusOf(c, i);
+const k = S[s];
+const loud = s === 'asking' || s === 'stalled';
+const mine = open.find((q) => q.card === i);
+return { n: c[0], title: c[1], span: String(c[10]), label: k[0], fg: k[1], bg: k[2],
+border: (loud ? '2px' : '1px') + ' solid ' + k[3], ring: i === selIdx ? '2px solid #E8EAED' : '0',
+note: noteOf(c, i, s), aria: 'Box ' + c[0] + ', ' + c[1] + ', ' + k[0],
+w1: px(c[5]), g1: strip(s === 'approved' ? '#C9F7DC' : '#3D8F63'), w2: px(c[4] - c[5]), w3: px(c[3] - c[4]),
+pick: () => this.setState({ sel: i, focus: mine ? mine.id : st.focus }) };
+});
+
+let total = 0, rv = 0, te = 0, wr = 0, revDone = 0, revAll = 0;
+CARDS.forEach((c, i) => {
+const ok = statusOf(c, i) === 'approved';
+total += c[3]; wr += c[4] - c[5]; revAll += c[9];
+if (ok) { rv += c[5]; revDone += c[9]; } else te += c[5];
+});
+const pc = (n) => (n / total) * 100 + '%';
+const pr = { rv: pc(rv), te: pc(te), wr: pc(wr),
+text: (rv + te + wr) + ' of ' + total + ' files written · ' + (rv + te) + ' pass tests · ' + rv + ' approved by you' };
+
+const rules = QUEUE.filter((q) => q.rules && st.done[q.id]).map((q) => ({ text: q.rules[st.done[q.id]], told: q.told }));
+
+const minsOpen = open.reduce((a, q) => a + q.mins, 0);
+const n = open.length;
+const head = n > 0
+? { line: (n === 1 ? '1 thing is yours.' : n + ' things are yours.') + ' About ' + minsOpen + ' min.', color: '#F5B041', sub: 'Everything else is moving without you. The PR lands near 16:50.' }
+: { line: 'Nothing is yours. Walk away.', color: '#E8EAED', sub: 'You get a ping when a box asks, goes quiet or finishes. The PR lands near 16:50.' };
+
+const mkFocus = (q) => {
+const k = K[q.kind];
+return { kind: k[0], fg: k[1], bg: k[2], border: k[3], mins: 'about ' + q.mins + ' min', from: q.from, q: q.q, why: q.why,
+opts: q.opts.map((o) => ({ label: o[0], tag: o[1] ? 'Suggested' : '',
+bg: o[1] ? k[1] : 'transparent', fg: o[1] ? '#10130F' : '#E8EAED', border: o[1] ? k[1] : k[3],
+act: () => this.setState({ done: { ...st.done, [q.id]: o[0] }, focus: null, sel: null }) })) };
+};
+const focus = focusQ ? mkFocus(focusQ) : { kind: '', fg: '#E8EAED', bg: 'transparent', border: 'transparent', mins: '', from: '', q: '', why: '', opts: [] };
+const upNext = open.filter((q) => q !== focusQ).map((q) => ({ kind: K[q.kind][0], fg: K[q.kind][1], from: q.from, mins: q.mins + ' min',
+pick: () => this.setState({ focus: q.id, sel: q.card }) }));
+
+const sc = CARDS[selIdx];
+const ss = statusOf(sc, selIdx);
+const sel = { n: sc[0], title: sc[1], label: S[ss][0], fg: S[ss][1], note: noteOf(sc, selIdx, ss), owns: sc[7],
+files: sc[4] + ' of ' + sc[3] + ' written, ' + sc[5] + ' pass tests',
+review: ss === 'approved' ? 'Done' : sc[8] ? sc[8] + ' lines so far, about ' + sc[9] + ' min of your time' : 'About ' + sc[9] + ' min, once it has something' };
+
+const bud = { left: (revAll - revDone) + ' min left for the end', pct: (revDone / revAll) * 100 + '%',
+done: revDone ? revDone + ' of ' + revAll + ' min already done' : 'of ' + revAll + ' min, none done yet' };
+
+const PARTS = [
+['head', 'What is yours, in minutes', 'Top: one sentence, and how long it will take you'],
+['digest', 'Since you last looked', 'Strip under the headline: what changed while you were away'],
+['map', 'The change as a map', 'Centre: one block per box, one square per file'],
+['pr', 'The one PR bar', 'Under the map: written, tested, approved'],
+['rules', 'Your rulings', 'Under the PR bar: answers kept and told to the boxes'],
+['turn', 'Your turn queue', 'Right: decide, rescue and review in one list'],
+['detail', 'Selected area', 'Right: what one box is doing'],
+['budget', 'Budgets', 'Bottom: review minutes left, spend limit, worth it?']
+];
+const v = {};
+const parts = PARTS.map((p) => {
+const id = p[0];
+const cur = st.votes[id];
+const set = (val) => () => this.setState({ votes: { ...st.votes, [id]: cur === val ? undefined : val } });
+v[id] = { op: cur === 'cut' ? '0.3' : '1' };
+return { name: p[1], where: p[2], keep: set('keep'), cut: set('cut'),
+kBg: cur === 'keep' ? '#2F6B4D' : 'transparent', kFg: '#E8EAED',
+cBg: cur === 'cut' ? '#E8EAED' : 'transparent', cFg: cur === 'cut' ? '#0F1114' : '#E8EAED' };
+});
+const list = (val) => PARTS.filter((p) => st.votes[p[0]] === val).map((p) => p[1]).join(', ') || 'none yet';
+const openN = PARTS.filter((p) => !st.votes[p[0]]).length;
+const picks = { keep: list('keep'), cut: list('cut'), open: openN ? openN + ' not decided yet.' : 'All decided.' };
+
+return { head, runBadge: n ? n + ' yours' : 'moving', showDigest: !st.seen, seen: () => this.setState({ seen: true }),
+cards, pr, rules, noRules: rules.length === 0, focus, upNext, hasTurn: n > 0, noTurn: n === 0,
+turnCount: n ? n + ' open, about ' + minsOpen + ' min' : '', sel, bud, v, parts, picks };
+}
+}
+</script>
+</body>
+</html>

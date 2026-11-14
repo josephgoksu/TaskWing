@@ -1,0 +1,89 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Native.dc.html": {
+      "expand": "fill",
+      "h": 1180,
+      "is_interactive": true,
+      "title": "Native style: three panes",
+      "w": 1360,
+      "x": 0,
+      "y": 0
+    },
+    "NewSwarm.dc.html": {
+      "expand": "fill",
+      "h": 756,
+      "is_interactive": true,
+      "title": "New swarm: goal, plan, approve",
+      "w": 1040,
+      "x": 1440,
+      "y": 0
+    },
+    "Talk.dc.html": {
+      "expand": "fill",
+      "h": 756,
+      "is_interactive": true,
+      "title": "Talk to an agent",
+      "w": 1040,
+      "x": 2560,
+      "y": 0
+    },
+    "Manage.dc.html": {
+      "expand": "fill",
+      "h": 756,
+      "is_interactive": true,
+      "title": "Edit, pause, stop or delete a swarm",
+      "w": 600,
+      "x": 3680,
+      "y": 0
+    },
+    "Simple.dc.html": {
+      "expand": "fill",
+      "h": 800,
+      "is_interactive": true,
+      "title": "Simple: give a task, get a pull request",
+      "w": 1040,
+      "x": 1440,
+      "y": -1020
+    },
+    "Cockpit.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "Agentic cockpit: it decides, you see everything",
+      "w": 1360,
+      "x": 0,
+      "y": -1020
+    },
+    "Setup.dc.html": {
+      "expand": "fill",
+      "h": 696,
+      "is_interactive": true,
+      "title": "First run: setup checks",
+      "w": 720,
+      "x": 2560,
+      "y": -1020
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-13T10:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {},
+  "order": [
+    "Cockpit.dc.html",
+    "Simple.dc.html",
+    "Setup.dc.html",
+    "Native.dc.html",
+    "NewSwarm.dc.html",
+    "Talk.dc.html",
+    "Manage.dc.html"
+  ],
+  "pages": [],
+  "title": "TaskWing Cockpit Prototype"
+}

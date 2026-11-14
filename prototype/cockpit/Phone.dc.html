@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TaskWing phone pings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1F5FBF}a:hover{color:#174A96}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 24px 16px; background: #F6F7F9; color: #14171C; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.4; display: flex; flex-direction: column; gap: 12px">
+<div>
+<h1 style="margin: 0; font-size: 22px; font-weight: 700">TaskWing</h1>
+<div style="font-size: 13px; color: #4A5260">3 runs · 3 things need you</div>
+</div>
+
+<div style="background: #FFFAF2; border: 1px solid #F0D9B5; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; font-weight: 600; color: #8A4B00">brief.finance · box 03 asks · 15:10</div>
+<div style="font-size: 15px; font-weight: 600">Cap an export at 50,000 rows, or stream everything?</div>
+<div style="display: flex; gap: 8px">
+<button style="flex: 1; min-height: 44px; border-radius: 8px; border: 1px solid #14171C; background: #FFFFFF; color: #14171C; font-size: 14px; font-weight: 600">Cap at 50k</button>
+<button style="flex: 1; min-height: 44px; border-radius: 8px; border: 1px solid #14171C; background: #FFFFFF; color: #14171C; font-size: 14px; font-weight: 600">Stream all</button>
+</div>
+</div>
+
+<div style="background: #FFFFFF; border: 1px solid #DDE1E7; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; font-weight: 600; color: #B3261E">brief.finance · box 06 stalled · 14:48</div>
+<div style="font-size: 15px; font-weight: 600">Box stopped on its time limit. Silent for 14 minutes.</div>
+<div style="display: flex; gap: 8px">
+<button style="flex: 1; min-height: 44px; border-radius: 8px; border: 1px solid #B3261E; background: #B3261E; color: #FFFFFF; font-size: 14px; font-weight: 600">Restart</button>
+<button style="flex: 1; min-height: 44px; border-radius: 8px; border: 1px solid #C9CED6; background: #FFFFFF; color: #14171C; font-size: 14px">Always auto-restart</button>
+</div>
+</div>
+
+<div style="background: #FFFAF2; border: 1px solid #F0D9B5; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; font-weight: 600; color: #8A4B00">motif · review · 13:25</div>
+<div style="font-size: 15px; font-weight: 600">Review found 1 High: a stale row after a re-crawl.</div>
+<div style="display: flex; gap: 8px">
+<button style="flex: 1; min-height: 44px; border-radius: 8px; border: 1px solid #14171C; background: #FFFFFF; color: #14171C; font-size: 14px; font-weight: 600">Fix now</button>
+<button style="flex: 1; min-height: 44px; border-radius: 8px; border: 1px solid #14171C; background: #FFFFFF; color: #14171C; font-size: 14px; font-weight: 600">Follow up</button>
+</div>
+</div>
+
+<h2 style="margin: 8px 0 0; font-size: 13px; font-weight: 600; color: #4A5260; text-transform: uppercase; letter-spacing: 0.04em">Phase changes</h2>
+<div style="background: #FFFFFF; border: 1px solid #DDE1E7; border-radius: 12px; padding: 4px 12px; display: flex; flex-direction: column">
+<div style="display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #EEF0F3">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #4A5260; flex: 0 0 40px">15:09</span>
+<span>markwise-app moved to <strong>Dispatch</strong>. 3 of 6 boxes started.</span>
+</div>
+<div style="display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid #EEF0F3">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #4A5260; flex: 0 0 40px">14:05</span>
+<span>brief.finance moved to <strong>Build</strong>. 9 boxes running.</span>
+</div>
+<div style="display: flex; gap: 10px; padding: 10px 0">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #4A5260; flex: 0 0 40px">13:10</span>
+<span>motif moved to <strong>Review</strong>. 339 lines for you.</span>
+</div>
+</div>
+<div style="margin-top: auto; font-size: 12px; color: #4A5260">Sample data. A ping is sent only for a phase change, a stall, or a question.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

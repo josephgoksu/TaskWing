@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TaskWing: native three panes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font-family:inherit}
+@media (prefers-reduced-motion: no-preference){
+@keyframes tw-flow{from{left:22%}to{left:78%}}
+@keyframes tw-pulse{0%,100%{opacity:1}50%{opacity:.25}}
+}
+</style>
+</helmet>
+<div style="background: #1B1B1F; padding: 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 13px; line-height: 1.35; font-variant-numeric: tabular-nums">
+
+<!-- WINDOW -->
+<div style="display: flex; height: 840px; background: #FFFFFF; color: #1D1D1F; border-radius: 12px; overflow: hidden; border: 1px solid #3A3A40">
+
+<!-- SIDEBAR -->
+<nav aria-label="Runs and boxes" style="flex: 0 0 272px; background: #ECECEE; border-right: 1px solid #D6D6DA; display: flex; flex-direction: column; overflow-y: auto; padding: 0 8px 10px; box-sizing: border-box">
+<div aria-hidden="true" style="display: flex; gap: 8px; height: 44px; align-items: center; padding-left: 6px; flex: 0 0 44px">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; display: block"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E; display: block"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840; display: block"></span>
+</div>
+
+<div style="opacity: {{v.turn.op}}">
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80; padding: 2px 8px 4px">Your turn {{turnCount}}</div>
+<sc-if value="{{ noTurn }}" hint-placeholder-val="{{ false }}">
+<div style="padding: 2px 8px 6px; color: #7A7A80">Nothing is yours. Walk away.</div>
+</sc-if>
+<sc-for list="{{ turn }}" as="t" hint-placeholder-count="5">
+<button onClick="{{ t.pick }}" style="width: 100%; text-align: left; border: 0; cursor: pointer; padding: 4px 8px; border-radius: 6px; color: #1D1D1F; display: flex; align-items: center; gap: 8px; font-size: 13px; background: {{t.bg}}">
+<span style="flex: 0 0 48px; font-size: 11px; font-weight: 700; color: {{t.dot}}">{{t.verb}}</span>
+<span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{t.text}}</span>
+<span style="color: #7A7A80; font-size: 12px; white-space: nowrap">{{t.mins}}</span>
+</button>
+</sc-for>
+<div style="padding: 5px 8px 0; font-size: 11px; color: #7A7A80">{{handled}}</div>
+</div>
+
+<div style="opacity: {{v.tree.op}}; margin-top: 10px">
+<div style="padding: 2px 8px 2px; display: flex; align-items: baseline; gap: 6px; font-weight: 600"><span aria-hidden="true" style="color: #7A7A80; font-size: 10px">▼</span>brief.finance<span style="font-weight: 400; color: #7A7A80">· 23 swarms</span></div>
+<sc-for list="{{ swarms }}" as="s" hint-placeholder-count="12">
+<div>
+<div style="display: {{s.gDisp}}; font-size: 11px; font-weight: 600; color: #7A7A80; padding: 8px 8px 3px">{{s.group}}</div>
+<button onClick="{{ s.pick }}" aria-label="{{ s.aria }}" style="width: 100%; text-align: left; border: 0; cursor: pointer; padding: 5px 8px; border-radius: 6px; background: {{s.bg}}; color: #1D1D1F; display: flex; flex-direction: column; gap: 3px; font-size: 13px">
+<span style="max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: {{s.w}}">{{s.title}}</span>
+<span style="display: flex; align-items: center; gap: 7px; max-width: 100%"><span aria-hidden="true" style="flex: 0 0 auto; display: block; height: 6px; width: {{s.fw}}; background: {{s.fp}}"></span><span style="font-size: 11px; color: {{s.rFg}}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{s.result}}</span></span>
+</button>
+</div>
+</sc-for>
+<div style="padding: 10px 8px 4px; display: flex; align-items: center; gap: 6px; font-weight: 600"><span aria-hidden="true" style="color: #7A7A80; font-size: 10px">▶</span>motif<span style="font-weight: 400; color: #7A7A80; white-space: nowrap">· 7 swarms · 1 yours</span></div>
+<div style="padding: 4px 8px; display: flex; align-items: center; gap: 6px; font-weight: 600"><span aria-hidden="true" style="color: #7A7A80; font-size: 10px">▶</span>markwise-app<span style="font-weight: 400; color: #7A7A80; white-space: nowrap">· 12 swarms</span></div>
+<div style="padding: 8px 8px 0; color: #7A7A80">+ New swarm</div>
+</div>
+</nav>
+
+<!-- TRANSCRIPT -->
+<main style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid #E2E2E6">
+<div style="flex: 0 0 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border-bottom: 1px solid #E2E2E6; padding: 0 12px">
+<span aria-hidden="true" style="width: 9px; height: 9px; border-radius: 50%; background: {{sel.dot}}; display: block"></span>
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{sel.path}}</span>
+</div>
+<section aria-label="Task summary" style="padding: 12px 16px; border-bottom: 1px solid #E2E2E6; opacity: {{v.brief.op}}">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px">
+<div style="font-size: 16px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{brief.title}}</div>
+<div style="display: flex; gap: 6px; font-size: 11px; white-space: nowrap">
+<sc-for list="{{ steps }}" as="sp" hint-placeholder-count="5">
+<span style="color: {{sp.fg}}; font-weight: {{sp.w}}">{{sp.name}}</span>
+</sc-for>
+</div>
+</div>
+<div style="margin-top: 3px; color: #3A3A40">{{brief.goal}}</div>
+<div style="margin-top: 6px; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 2px 8px">
+<span style="color: #7A7A80">So far</span><span>{{brief.sofar}}</span>
+<span style="color: #7A7A80">{{brief.nextLabel}}</span><span style="color: {{brief.nextFg}}; font-weight: 600">{{brief.next}}</span>
+</div>
+</section>
+<sc-if value="{{ isPast }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: #7A7A80">
+<div style="max-width: 340px">This swarm is not on screen right now. Its sandboxes, what they told each other and what they remembered are kept, so you can open it again or reuse its rulings in a new swarm.</div>
+</div>
+</sc-if>
+<sc-if value="{{ isLive }}" hint-placeholder-val="{{ true }}">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column">
+<section aria-label="Sandbox floor" style="padding: 12px 12px 14px; border-bottom: 1px solid #E2E2E6; background: #FAFAFB; opacity: {{v.fleet.op}}">
+<div style="display: flex; justify-content: space-between; gap: 10px; font-size: 11px; color: #7A7A80; margin-bottom: 10px"><span style="font-weight: 600; white-space: nowrap">{{fleetLabel}}</span><span style="white-space: nowrap"><b style="color: #B5532F">C</b> Claude Code · <b style="color: #1D1D1F">X</b> Codex · <b style="color: #1A5FD0">G</b> Gemini · dashed line = waiting</span></div>
+<div style="position: relative; width: 560px; height: 318px; margin: 0 auto">
+<sc-for list="{{ stages }}" as="sg" hint-placeholder-count="4">
+<div style="position: absolute; top: 0; left: {{sg.x}}; width: 119px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: #9A9AA0">{{sg.name}}</div>
+</sc-for>
+<sc-for list="{{ links }}" as="l" hint-placeholder-count="8">
+<div aria-hidden="true" style="position: absolute; left: {{l.x}}; top: {{l.y}}; width: {{l.len}}; height: 0; border-top: 2px {{l.line}} {{l.col}}; transform-origin: 0 50%; transform: rotate({{l.rot}})"><span style="position: absolute; top: -5px; left: 22%; width: 8px; height: 8px; border-radius: 50%; background: {{l.col}}; opacity: {{l.dotOp}}; animation: tw-flow 1.6s linear infinite; display: block"></span></div>
+</sc-for>
+<sc-for list="{{ fleet }}" as="f" hint-placeholder-count="9">
+<button onClick="{{ f.pick }}" aria-label="{{ f.aria }}" style="position: absolute; z-index: 1; left: {{f.x}}; top: {{f.y}}; width: 119px; height: 92px; box-sizing: border-box; padding: 6px 7px 6px 9px; text-align: left; border-radius: 8px; cursor: pointer; background: {{f.bg}}; border: {{f.border}}; box-shadow: inset 3px 0 0 {{f.bar}}; outline: {{f.ring}}; outline-offset: 2px; color: #1D1D1F; display: flex; flex-direction: column; gap: 3px; overflow: hidden">
+<span style="display: flex; align-items: center; gap: 5px; width: 100%"><span aria-hidden="true" style="flex: 0 0 16px; height: 16px; border-radius: 4px; background: {{f.agBg}}; color: #FFFFFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{f.ag}}</span><span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; color: #7A7A80">{{f.n}}</span><span style="flex: 1"></span><span style="font-size: 10.5px; font-weight: 600; color: {{f.fg}}; white-space: nowrap; animation: {{f.anim}}">{{f.word}}</span></span>
+<span style="flex: 1; font-size: 12px; font-weight: 600; line-height: 1.25; color: {{f.titleFg}}; overflow: hidden">{{f.title}}</span>
+<span style="display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%"><span aria-hidden="true" style="display: flex; height: 6px"><span style="display: block; height: 6px; width: {{f.w1}}; background: {{f.g1}}"></span><span style="display: block; height: 6px; width: {{f.w2}}; background: repeating-linear-gradient(90deg, #0A84FF 0 6px, transparent 6px 8px)"></span><span style="display: block; height: 6px; width: {{f.w3}}; background: repeating-linear-gradient(90deg, #D4D4D8 0 6px, transparent 6px 8px)"></span></span><span style="font-size: 10.5px; color: {{f.beatFg}}; white-space: nowrap">{{f.beat}}</span></span>
+</button>
+</sc-for>
+</div>
+</section>
+<div style="flex: 1; min-height: 0; display: flex">
+<section aria-label="Talk between boxes" style="flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 12px 16px; border-right: 1px solid #ECECEE; opacity: {{v.talk.op}}">
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80">{{talkTitle}}</div>
+<sc-if value="{{ noTalk }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top: 8px; color: #7A7A80">It has not talked to another box yet.</div>
+</sc-if>
+<sc-for list="{{ talk }}" as="tk" hint-placeholder-count="3">
+<div style="margin-top: 9px">
+<div style="display: flex; justify-content: space-between; gap: 8px; font-size: 12px"><span style="font-weight: 600; color: {{tk.fg}}">{{tk.dir}}</span><span style="color: #9A9AA0">{{tk.time}}</span></div>
+<div>{{tk.text}}</div>
+</div>
+</sc-for>
+</section>
+<section aria-label="Agent memory" style="flex: 1 1 0; min-width: 0; overflow-y: auto; padding: 12px 16px; opacity: {{v.mem.op}}">
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80">{{memTitle}}</div>
+<sc-if value="{{ noMem }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top: 8px; color: #7A7A80">Nothing remembered yet.</div>
+</sc-if>
+<sc-for list="{{ mem }}" as="m" hint-placeholder-count="3">
+<div style="margin-top: 9px; padding-left: 9px; border-left: 3px solid {{m.bar}}">
+<div>{{m.text}}</div>
+<div style="font-size: 12px; color: #7A7A80">{{m.meta}}</div>
+</div>
+</sc-for>
+</section>
+</div>
+<sc-if value="{{ hasAsk }}" hint-placeholder-val="{{ true }}">
+<div style="border-top: 1px solid #E2E2E6; padding: 12px 16px; background: {{ask.bg}}; opacity: {{v.ask.op}}">
+<div style="font-weight: 600; font-size: 14px">{{ask.q}}</div>
+<div style="color: #5A5A60; margin-top: 2px">{{ask.why}}</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px">
+<sc-for list="{{ ask.opts }}" as="o" hint-placeholder-count="2">
+<button onClick="{{ o.act }}" style="height: 30px; padding: 0 14px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; border: 1px solid {{o.border}}; background: {{o.bg}}; color: {{o.fg}}">{{o.label}}</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<div style="border-top: 1px solid #E2E2E6; background: #F5F5F7; padding: 9px 16px; color: #8A8A90">› Tell this box something</div>
+</div>
+</sc-if>
+</main>
+
+<!-- RIGHT PANE -->
+<aside style="flex: 0 0 440px; min-width: 0; display: flex; flex-direction: column">
+<div style="flex: 0 0 44px; display: flex; align-items: center; gap: 4px; padding: 0 10px; border-bottom: 1px solid #E2E2E6">
+<sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="3">
+<button onClick="{{ tb.pick }}" style="height: 26px; padding: 0 11px; border: 0; border-radius: 7px; cursor: pointer; font-size: 13px; background: {{tb.bg}}; color: #1D1D1F; font-weight: {{tb.w}}">{{tb.name}}</button>
+</sc-for>
+<span style="flex: 1"></span>
+<span style="font-size: 12px; color: #7A7A80">Sample data</span>
+</div>
+
+<sc-if value="{{ tabReview }}" hint-placeholder-val="{{ true }}">
+<div style="flex: 1; display: flex; flex-direction: column; min-height: 0; opacity: {{v.review.op}}">
+<div style="flex: 1; overflow: auto; padding: 14px">
+<sc-if value="{{ sum.none }}" hint-placeholder-val="{{ false }}">
+<div style="color: #7A7A80">Nothing to review yet. This box has not started.</div>
+</sc-if>
+<sc-if value="{{ sum.some }}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="font-weight: 700; font-size: 14px">{{sum.title}}</div>
+<div style="color: #7A7A80; font-size: 12px; margin-top: 2px">{{sum.size}}</div>
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80; margin-top: 16px">What it did</div>
+<sc-for list="{{ sum.points }}" as="pt2" hint-placeholder-count="3">
+<div style="display: flex; gap: 8px; margin-top: 6px; font-size: 14px; line-height: 1.4"><span aria-hidden="true" style="color: #9A9AA0">•</span><span>{{pt2.text}}</span></div>
+</sc-for>
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80; margin-top: 18px">Claims and proof</div>
+<sc-for list="{{ sum.checks }}" as="ck" hint-placeholder-count="3">
+<div style="display: flex; gap: 8px; margin-top: 8px"><span aria-hidden="true" style="flex: 0 0 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: {{ck.dot}}; display: block"></span><div><div style="font-weight: 600">{{ck.claim}}</div><div style="font-size: 12px; color: #5A5A60">{{ck.text}}</div></div></div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+<div style="border-top: 1px solid #E2E2E6; padding: 12px 14px">
+<div style="color: #5A5A60">{{rev.line}}</div>
+<sc-if value="{{ rev.can }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 8px; margin-top: 10px">
+<button onClick="{{ rev.approve }}" style="height: 30px; padding: 0 14px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; border: 1px solid #0A60FF; background: #0A60FF; color: #FFFFFF">Approve this box</button>
+<button onClick="{{ rev.back }}" style="height: 30px; padding: 0 14px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; border: 1px solid #CFCFD4; background: #FFFFFF; color: #1D1D1F">Send back with a note</button>
+</div>
+</sc-if>
+<div style="margin-top: 10px; font-size: 12px; color: #0A60FF">{{sum.link}}</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ tabPr }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; overflow: auto; padding: 14px; opacity: {{v.pr.op}}">
+<div style="font-weight: 700; font-size: 14px">One PR: Add CSV export to reports</div>
+<div style="color: #5A5A60; margin-top: 2px">{{pr.text}}</div>
+<div style="display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: #E6E6EA; margin: 10px 0 4px">
+<div style="width: {{pr.rv}}; background: #1A7F37"></div>
+<div style="width: {{pr.te}}; background: #8FD3A4"></div>
+<div style="width: {{pr.wr}}; background: #9CC2FF"></div>
+</div>
+<div style="font-size: 12px; color: #7A7A80; margin-bottom: 10px">dark green approved by you · light green tests pass · blue written</div>
+<sc-for list="{{ prRows }}" as="p" hint-placeholder-count="9">
+<div style="display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid #ECECEE">
+<span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{p.title}}</span>
+<span style="white-space: nowrap; color: {{p.fg}}">{{p.state}}</span>
+</div>
+</sc-for>
+<div style="margin-top: 10px; color: #5A5A60">{{pr.left}} Spend so far $11.51 of your $25 limit.</div>
+<div style="font-size: 11px; font-weight: 600; color: #7A7A80; margin-top: 16px">Known gaps going into the PR</div>
+<div style="display: flex; gap: 8px; margin-top: 6px"><span aria-hidden="true" style="flex: 0 0 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: #E08A00; display: block"></span><div><div>The export endpoint has no rate limit.</div><div style="font-size: 12px; color: #7A7A80">from box 01 · written into the PR description so it is not lost</div></div></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ tabRules }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; overflow: auto; padding: 14px; opacity: {{v.rules.op}}">
+<div style="font-weight: 700; font-size: 14px">Your rulings</div>
+<div style="color: #5A5A60; margin-top: 2px">Each answer you give is kept here and told to every box it affects.</div>
+<sc-if value="{{ noRules }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top: 12px; color: #7A7A80">None yet.</div>
+</sc-if>
+<sc-for list="{{ rules }}" as="r" hint-placeholder-count="2">
+<div style="padding: 8px 0; border-top: 1px solid #ECECEE; margin-top: 10px">
+<div style="font-weight: 600">{{r.text}}</div>
+<div style="font-size: 12px; color: #7A7A80">told to {{r.told}}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ isPast }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; overflow: auto; padding: 14px">
+<div style="font-weight: 700; font-size: 14px">Outcome</div>
+<div style="margin-top: 4px; font-size: 14px">{{past.result}}</div>
+<dl style="margin: 14px 0 0; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 10px">
+<dt style="color: #7A7A80">Sandboxes</dt><dd style="margin: 0">{{past.boxes}}</dd>
+<dt style="color: #7A7A80">State</dt><dd style="margin: 0">{{past.when}}</dd>
+<dt style="color: #7A7A80">Your rulings</dt><dd style="margin: 0">{{past.rules}}</dd>
+<dt style="color: #7A7A80">Your review</dt><dd style="margin: 0">{{past.review}}</dd>
+</dl>
+<div style="margin-top: 16px; font-size: 12px; color: #0A60FF">Start a new swarm from this one</div>
+</div>
+</sc-if>
+</aside>
+</div>
+
+<!-- PICKS -->
+<section style="background: #26262B; border: 1px solid #3A3A40; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; color: #E8EAED">
+<div>
+<h2 style="margin: 0; font-size: 15px; font-weight: 700">Your picks</h2>
+<div style="font-size: 12px; color: #A0A0A8">Not part of the app. Mark each part Keep or Cut; a cut part fades above. {{picks.open}}</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 8px">
+<sc-for list="{{ parts }}" as="pt" hint-placeholder-count="10">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #1B1B1F; border: 1px solid #3A3A40; border-radius: 8px; padding: 6px 6px 6px 12px">
+<div style="min-width: 0">
+<div style="font-size: 13px; font-weight: 600">{{pt.name}}</div>
+<div style="font-size: 11px; color: #A0A0A8">{{pt.where}}</div>
+</div>
+<div style="display: flex; gap: 6px">
+<button onClick="{{ pt.keep }}" style="height: 32px; min-width: 52px; padding: 0 10px; border-radius: 7px; border: 1px solid #55555C; font-size: 13px; font-weight: 600; cursor: pointer; background: {{pt.kBg}}; color: #E8EAED">Keep</button>
+<button onClick="{{ pt.cut }}" style="height: 32px; min-width: 52px; padding: 0 10px; border-radius: 7px; border: 1px solid #55555C; font-size: 13px; font-weight: 600; cursor: pointer; background: {{pt.cBg}}; color: {{pt.cFg}}">Cut</button>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="font-size: 13px"><span style="color: #7FD6A4; font-weight: 600">Keep:</span> {{picks.keep}}</div>
+<div style="font-size: 13px"><span style="color: #FFB59A; font-weight: 600">Cut:</span> {{picks.cut}}</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":1180}}'>
+class Component extends DCLogic {
+state = { sel: null, swarm: 0, tab: 'review', done: {}, votes: {} };
+
+renderVals() {
+const st = this.state;
+// label, dot colour
+const S = {
+working: ['working', '#0A84FF'],
+asking: ['waiting on you', '#E08A00'],
+looping: ['may be going in circles', '#E08A00'],
+stalled: ['quiet for 14 min', '#E0392B'],
+ready: ['ready for review', '#1A7F37'],
+approved: ['approved', '#1A7F37'],
+waiting: ['not started', '#B0B0B6'],
+restarting: ['restarting', '#7C5CE0']
+};
+// n, title, status, files, written, tested, note, owns, lines, review minutes
+const CARDS = [
+['01', 'Export API endpoint', 'ready', 8, 8, 8, 'Finished. Tests pass, 22 of 22.', 'internal/api/export.go', 212, 8],
+['02', 'CSV writer', 'ready', 6, 6, 6, 'Finished. Tests pass, 18 of 18.', 'internal/csv/', 164, 6],
+['03', 'Row limit and paging', 'asking', 5, 3, 1, 'Paused on a question.', 'internal/report/paging.go', 88, 4],
+['04', 'Export button', 'working', 6, 4, 2, 'Editing ExportButton.tsx.', 'web/src/reports/ExportButton.tsx', 141, 6],
+['05', 'Download progress', 'looping', 7, 5, 3, 'Tried the same fix 3 times.', 'web/src/reports/progress/', 120, 5],
+['06', 'Permissions check', 'stalled', 4, 2, 0, 'Hit its time limit at 14:48.', 'internal/authz/export.go', 73, 3],
+['07', 'Audit log entry', 'working', 3, 1, 0, 'Writing the audit entry.', 'internal/audit/', 40, 2],
+['08', 'Seam: API meets UI', 'waiting', 3, 0, 0, 'Starts when boxes 01 and 04 finish.', 'e2e/export.spec.ts', 0, 4],
+['09', 'Docs and changelog', 'waiting', 2, 0, 0, 'Starts when box 01 is approved.', 'docs/export.md', 0, 2]
+];
+// grid place [col, row] of each box on the floor
+const POS = [[1, 0], [0, 0], [1, 1], [2, 0], [3, 0], [0, 1], [2, 1], [3, 1], [2, 2]];
+// which agent runs in each box, and its last sign of life
+const AGENT = ['C', 'C', 'X', 'C', 'G', 'C', 'X', 'C', 'C'];
+const AG = { C: ['#D97757', 'Claude Code'], X: ['#1D1D1F', 'Codex'], G: ['#1A73E8', 'Gemini'] };
+const BEAT = ['14:44', '14:31', '4m ago', '3s ago', '6s ago', '14m ago', '2s ago', '', ''];
+// from, to, kind, what was said, when
+const LINKS = [
+[1, 0, 'told', 'Handed over the CSV writer, ready to use.', '14:31'],
+[5, 0, 'told', 'Shared the rule for who may export.', '14:20'],
+[0, 3, 'told', 'Told it the address of the export endpoint.', '14:44'],
+[0, 6, 'told', 'Told it where to hook in the audit entry.', '14:45'],
+[3, 4, 'told', 'Shared the button the progress bar attaches to.', '14:58'],
+[2, 7, 'waits', 'The seam test waits for the row limit.', 'waiting'],
+[3, 7, 'waits', 'The seam test waits for the button.', 'waiting'],
+[0, 8, 'waits', 'The docs wait for your approval of box 01.', 'waiting']
+];
+// written by, the fact, read by
+const NOTES = [
+[2, 'The reports page stops at 50,000 rows.', [7]],
+[0, 'Exports live at /reports/:id/export.', [3, 4, 7]],
+[1, 'CSV values are quoted the standard way.', [0]],
+[4, 'Tests need the shared timer mock.', [3]],
+[5, 'Only report owners and admins may export.', [0]]
+];
+// plain-English points, then checks [state, text]
+const SUMS = [
+[['Adds an endpoint that downloads a report as a CSV file.', 'Checks that the person is allowed to export before sending anything.', 'Sends rows as they are read, so a large report does not fill memory.'], [['ok', 'It works', '22 of 22 tests pass'], ['flag', 'It is safe to expose', 'Second model: the endpoint has no rate limit'], ['ok', 'It stayed in its lane', 'Changed only the 8 files it owns']]],
+[['Adds the code that writes CSV rows.', 'Puts quotes around values that contain commas, quotes or line breaks.'], [['ok', 'It works', '18 of 18 tests pass'], ['ok', 'It is correct', 'Second model read it and found nothing'], ['ok', 'It stayed in its lane', 'Changed only the 6 files it owns']]],
+[['Adds paging so an export reads the report in chunks.', 'A 50,000 row cap is written but switched off. It waits for your answer.'], [['flag', 'It works', '1 test passes, 2 are skipped until you answer'], ['wait', 'It is correct', 'Second model reads it when the box finishes']]],
+[['Adds an Export CSV button to the reports page.', 'The button is disabled while an export is running.'], [['ok', 'It works so far', '2 of 2 tests pass'], ['wait', 'It is correct', 'Second model reads it when the box finishes']]],
+[['Adds a progress indicator for a running download.'], [['flag', 'It works', '9 of 14 tests pass'], ['flag', 'It is making progress', 'Same fix tried 3 times. This is a guess from its activity.']]],
+[['Adds the rule that decides who may export a report.'], [['bad', 'It works', '1 test is failing'], ['bad', 'It is alive', 'No output since 14:48, when it hit its time limit']]],
+[['Adds a test that expects an audit entry for every export.', 'The entry itself is not written yet.'], [['wait', 'It works', 'The test fails for now, as planned'], ['wait', 'It is correct', 'Second model reads it when the box finishes']]],
+null,
+null
+];
+// title, state, group, box states (g approved, f finished, b working, a asking, r quiet, w not started, x dropped), result, one-line summary
+const HIST = [
+['Speed up the watchlist page', 'run', 'Running', 'ffbbbw', '1 yours · started 14:40', 'Six sandboxes are cutting the watchlist load time. The query work is finished; caching is in progress.'],
+['Translate onboarding to Turkish', 'run', '', 'bbbb', 'on track · started 15:02', 'Four sandboxes are translating the onboarding screens and emails. Nothing needs you yet.'],
+['Fix flaky earnings-calendar tests', 'done', 'Done today', 'ggggg', 'PR #418 merged · 38 min · $4.10', 'Five sandboxes found and fixed three timing bugs in the earnings calendar tests.'],
+['Upgrade Go to 1.26', 'done', '', 'ggggggggx', 'PR #417 merged · 1 box dropped', 'Nine sandboxes upgraded Go one package at a time. One box was dropped; its package was already compatible.'],
+['Add dark mode to charts', 'done', 'Earlier', 'gggggg', 'PR #415 merged · Nov 12', ''],
+['Remove dead API handlers', 'done', '', 'gggggggggggg', 'PR #414 merged · Nov 12', ''],
+['Rate limit the public API', 'done', '', 'gggg', 'PR #412 merged · Nov 11', ''],
+['Rewrite the pricing page copy', 'done', '', 'ggg', 'PR #411 merged · Nov 11', ''],
+['Audit log for admin actions', 'done', '', 'ggggggg', 'PR #409 merged · Nov 10', ''],
+['Stripe webhook retries', 'done', '', 'ggggg', 'PR #408 merged · Nov 10', ''],
+['Split the reports package', 'stop', '', 'ggxxxxxx', 'Stopped by you · Nov 9', 'You stopped this one at the plan: the pieces overlapped too much to split between sandboxes.'],
+['Portfolio import from CSV', 'done', '', 'gggggggg', 'PR #405 merged · Nov 8', ''],
+['Fix timezone bugs in alerts', 'done', '', 'gggg', 'PR #404 merged · Nov 8', ''],
+['Accessibility pass on forms', 'done', '', 'gggggggggg', 'PR #402 merged · Nov 7', ''],
+['Cache ticker lookups', 'done', '', 'ggg', 'PR #401 merged · Nov 6', ''],
+['Email digest redesign', 'done', '', 'gggggg', 'PR #399 merged · Nov 5', ''],
+['Migrate cron jobs to the queue', 'done', '', 'gggggggx', 'PR #398 merged · Nov 5', ''],
+['Search: typo tolerance', 'done', '', 'gggg', 'PR #396 merged · Nov 4', ''],
+['Onboarding checklist', 'done', '', 'ggggg', 'PR #395 merged · Nov 3', ''],
+['Bump frontend dependencies', 'done', '', 'ggggggggggggggg', 'PR #394 merged · Nov 3', ''],
+['Earnings summary prompts v2', 'stop', '', 'gggxx', 'Closed without merging · Nov 2', 'The result did not beat the old prompts in your comparison, so the PR was closed.'],
+['Add health checks', 'done', '', 'ggg', 'PR #391 merged · Nov 1', '']
+];
+const KD = { decide: '#9A5B00', rescue: '#B3261E', review: '#1A7F37' };
+const QUEUE = [
+{ id: 'q1', kind: 'decide', card: 2, mins: 1, short: 'Cap exports or stream all?', q: 'Cap an export at 50,000 rows, or stream everything?', why: 'The agent suggests the cap. Box 03 is paused until you answer, and the seam test waits behind it.', opts: [['Cap at 50k', 1], ['Stream all', 0]], rules: { 'Cap at 50k': 'Exports stop at 50,000 rows.', 'Stream all': 'Exports stream every row, no cap.' }, told: 'boxes 03 and 08', toldIdx: [2, 7] },
+{ id: 'q2', kind: 'rescue', card: 5, mins: 1, short: 'Box 06 went quiet', q: 'This box has done nothing for 14 minutes.', why: 'It hit its time limit. Its 73 lines are committed, so a restart loses nothing.', opts: [['Restart from its last commit', 1], ['Stop this box', 0]] },
+{ id: 'q3', kind: 'review', card: 1, mins: 6, short: 'Review the CSV writer', why: '6 files, 164 lines. 18 of 18 tests pass. A second model checked it and found nothing.' },
+{ id: 'q4', kind: 'review', card: 0, mins: 8, short: 'Review the export endpoint', why: '8 files, 212 lines. 22 of 22 tests pass. A second model flagged one thing: no rate limit.' },
+{ id: 'q5', kind: 'decide', card: 3, mins: 1, short: 'Empty report: message or file?', q: 'A report with no rows: show a message, or download an empty file?', why: 'The agent has no preference and keeps working on the rest meanwhile.', opts: [['Show a message', 0], ['Empty file', 0]], rules: { 'Show a message': 'An empty report shows a message, no download.', 'Empty file': 'An empty report downloads a file with headers only.' }, told: 'boxes 04 and 08', toldIdx: [3, 7] },
+{ id: 'q6', kind: 'rescue', card: 4, mins: 1, short: 'Box 05 may be looping', q: 'This box has tried the same fix 3 times.', why: 'This is a guess from its activity, not a certainty. Its 5 failing tests all share one timer mock.', opts: [['Tell it to stop and rethink', 1], ['Let it continue', 0]] }
+];
+
+const open = QUEUE.filter((q) => !st.done[q.id]);
+const itemFor = (card, kind) => QUEUE.find((x) => x.card === card && x.kind === kind);
+const ans = (card, kind) => { const q = itemFor(card, kind); return q ? st.done[q.id] : undefined; };
+const statusOf = (c, i) => {
+if (c[2] === 'asking') return ans(i, 'decide') ? 'working' : 'asking';
+if (c[2] === 'looping') return ans(i, 'rescue') ? 'working' : 'looping';
+if (c[2] === 'stalled') { const a = ans(i, 'rescue'); return !a ? 'stalled' : a === 'Stop this box' ? 'waiting' : 'restarting'; }
+if (c[2] === 'ready') { const a = ans(i, 'review'); return !a ? 'ready' : a === 'Approve' ? 'approved' : 'working'; }
+return c[2];
+};
+const noteOf = (c, i, s) => {
+if (s === 'restarting') return 'Restarted from commit 77b01de.';
+if (s === 'waiting' && c[2] === 'stalled') return 'Stopped by you. Its commits are kept.';
+if (s === 'working' && c[2] === 'asking') return 'Got it. Continuing with your answer.';
+if (s === 'working' && c[2] === 'ready') return 'Reworking after your note.';
+if (s === 'working' && c[2] === 'looping') return ans(i, 'rescue') === 'Let it continue' ? 'Carrying on, as you said.' : 'Got your hint. Trying a different approach.';
+if (s === 'approved') return 'Approved by you. Waiting for the other boxes.';
+return c[6];
+};
+
+let selIdx = st.sel;
+if (selIdx === null) selIdx = open.length ? open[0].card : 0;
+const go = (i) => () => this.setState({ sel: i, swarm: 0 });
+const answer = (q, val) => () => this.setState({ done: { ...st.done, [q.id]: val }, sel: q.card, swarm: 0 });
+
+const VERB = { decide: 'Answer', rescue: 'Unblock', review: 'Review' };
+const turn = open.map((q) => ({ dot: KD[q.kind], verb: VERB[q.kind], text: q.short, mins: q.mins + ' min', bg: q.card === selIdx ? '#DCDCE0' : 'transparent', pick: go(q.card) }));
+const minsOpen = open.reduce((a, q) => a + q.mins, 0);
+
+
+// status word, text colour, card background, border, left bar
+const TILE = { working: ['● working', '#0A60FF', '#FFFFFF', '1px solid #D4D4D8', '#0A84FF'], asking: ['? asks you', '#9A5B00', '#FFF4DC', '1px solid #E08A00', '#E08A00'], looping: ['↺ looping?', '#9A5B00', '#FFFFFF', '1px dashed #E08A00', '#E08A00'], stalled: ['! quiet', '#B3261E', '#FDE9E6', '1px solid #E0392B', '#E0392B'],
+ready: ['✓ finished', '#1A7F37', '#FFFFFF', '1px solid #D4D4D8', '#8FD3A4'], approved: ['✓ approved', '#1A7F37', '#F0FAF3', '1px solid #9BD3AC', '#1A7F37'], waiting: ['○ queued', '#8A8A90', '#F7F7F9', '1px dashed #C4C4CA', 'transparent'], restarting: ['↻ restarting', '#5B3FC4', '#FFFFFF', '1px solid #D4D4D8', '#7C5CE0'] };
+const pip = (col) => 'repeating-linear-gradient(90deg, ' + col + ' 0 6px, transparent 6px 8px)';
+const fleet = CARDS.map((c, i) => { const s = statusOf(c, i); const t = TILE[s]; const moving = s === 'working' || s === 'restarting'; const changed = s !== c[2];
+return { n: c[0], title: c[1], titleFg: s === 'waiting' ? '#7A7A80' : '#1D1D1F', word: t[0], fg: t[1], bg: t[2], border: t[3], bar: t[4], ag: AGENT[i], agBg: s === 'waiting' ? '#B0B0B6' : AG[AGENT[i]][0],
+anim: moving ? 'tw-pulse 1.6s ease-in-out infinite' : 'none', w1: c[5] * 8 + 'px', g1: pip(s === 'approved' ? '#1A7F37' : '#8FD3A4'), w2: (c[4] - c[5]) * 8 + 'px', w3: (c[3] - c[4]) * 8 + 'px',
+beat: changed ? 'just now' : BEAT[i], beatFg: s === 'stalled' ? '#B3261E' : '#9A9AA0',
+x: POS[i][0] * 147 + 'px', y: 18 + POS[i][1] * 104 + 'px', ring: i === selIdx ? '2px solid #1D1D1F' : '0',
+aria: 'Box ' + c[0] + ', ' + c[1] + ', ' + AG[AGENT[i]][1] + ', ' + S[s][0] + ', ' + c[5] + ' of ' + c[3] + ' files pass tests', pick: go(i) }; });
+const stages = ['STARTS FIRST', 'THEN', 'THEN', 'LAST'].map((n, i) => ({ name: n, x: i * 147 + 'px' }));
+const live = CARDS.filter((c, i) => ['working', 'asking', 'looping', 'stalled', 'restarting'].includes(statusOf(c, i))).length;
+const fleetLabel = CARDS.length + ' sandboxes · ' + live + ' running';
+const edge = (i, right) => [POS[i][0] * 147 + (right ? 119 : 0), 18 + POS[i][1] * 104 + 46];
+const links = LINKS.map((l) => { const a = edge(l[0], true), b = edge(l[1], false); const dx = b[0] - a[0], dy = b[1] - a[1]; const on = l[0] === selIdx || l[1] === selIdx;
+return { x: a[0] + 'px', y: a[1] + 'px', len: Math.hypot(dx, dy) + 'px', rot: Math.atan2(dy, dx) + 'rad', line: l[2] === 'waits' ? 'dashed' : 'solid',
+col: on ? '#0A60FF' : '#C9C9CF', dotOp: l[2] === 'told' ? '1' : '0' }; });
+const num = (i) => CARDS[i][0];
+const talk = LINKS.filter((l) => l[0] === selIdx || l[1] === selIdx).map((l) => { const out = l[0] === selIdx;
+return { dir: out ? 'To box ' + num(l[1]) : 'From box ' + num(l[0]), fg: l[2] === 'waits' ? '#9A5B00' : '#0A60FF', text: l[3], time: l[4] }; });
+const readers = (a) => a.length ? 'read by ' + a.map(num).join(', ') : 'not read yet';
+const mem = NOTES.filter((n) => n[0] === selIdx || n[2].includes(selIdx)).map((n) => ({ text: n[1], bar: n[0] === selIdx ? '#0A60FF' : '#C9C9CF',
+meta: (n[0] === selIdx ? 'it wrote this' : 'written by box ' + num(n[0])) + ' · ' + readers(n[2]) }));
+QUEUE.filter((q) => q.rules && st.done[q.id] && q.toldIdx.includes(selIdx)).forEach((q) => mem.unshift({ text: q.rules[st.done[q.id]], bar: '#E08A00', meta: 'your ruling · told to ' + q.told }));
+const sc = CARDS[selIdx];
+const ss = statusOf(sc, selIdx);
+let sel = { dot: S[ss][1], path: 'brief.finance · box ' + sc[0] + ' · ' + sc[1] + ' · ' + S[ss][0] };
+
+const askQ = open.find((q) => q.card === selIdx && q.kind !== 'review');
+const ask = askQ ? { q: askQ.q, why: askQ.why, bg: askQ.kind === 'rescue' ? '#FFF4F2' : '#FFF9EC',
+opts: askQ.opts.map((o) => ({ label: o[0] + (o[1] ? '  ⏎' : ''), act: answer(askQ, o[0]),
+bg: o[1] ? '#0A60FF' : '#FFFFFF', fg: o[1] ? '#FFFFFF' : '#1D1D1F', border: o[1] ? '#0A60FF' : '#CFCFD4' })) }
+: { q: '', why: '', bg: 'transparent', opts: [] };
+
+const sm = SUMS[selIdx];
+const CK = { ok: '#1A7F37', flag: '#E08A00', bad: '#E0392B', wait: '#B0B0B6' };
+const sum = sm ? { some: true, none: false, title: sc[1], size: sc[4] + ' of ' + sc[3] + ' files · ' + sc[8] + ' lines added',
+points: sm[0].map((t) => ({ text: t })), checks: sm[1].map((c) => ({ dot: CK[c[0]], claim: c[1], text: c[2] })), link: 'Open the code changes in your editor' }
+: { some: false, none: true, title: '', size: '', points: [], checks: [], link: '' };
+
+const revQ = open.find((q) => q.card === selIdx && q.kind === 'review');
+const rev = { can: !!revQ,
+line: revQ ? 'Finished and ready for your approval.' : ss === 'approved' ? 'Approved by you.' : sm ? 'Still being written. You can approve it once its checks are green.' : '',
+approve: revQ ? answer(revQ, 'Approve') : () => {}, back: revQ ? answer(revQ, 'Send back') : () => {} };
+
+let total = 0, rv = 0, te = 0, wr = 0, revDone = 0, revAll = 0;
+CARDS.forEach((c, i) => {
+const ok = statusOf(c, i) === 'approved';
+total += c[3]; wr += c[4] - c[5]; revAll += c[9];
+if (ok) { rv += c[5]; revDone += c[9]; } else te += c[5];
+});
+const pc = (n) => (n / total) * 100 + '%';
+const pr = { rv: pc(rv), te: pc(te), wr: pc(wr),
+text: (rv + te + wr) + ' of ' + total + ' files written · ' + (rv + te) + ' pass tests · ' + rv + ' approved by you',
+left: 'About ' + (revAll - revDone) + ' min of review left for you.' };
+const prRows = CARDS.map((c, i) => { const s = statusOf(c, i); return { title: c[0] + '  ' + c[1], state: S[s][0], fg: s === 'waiting' ? '#7A7A80' : S[s][1] }; });
+
+const rules = QUEUE.filter((q) => q.rules && st.done[q.id]).map((q) => ({ text: q.rules[st.done[q.id]], told: q.told }));
+
+const isLive = st.swarm === 0;
+const FP = { g: '#1A7F37', f: '#8FD3A4', b: '#0A84FF', a: '#E08A00', r: '#E0392B', w: '#C4C4CA', x: '#8A8A90', p: '#7C5CE0' };
+const fpOf = (str) => 'linear-gradient(90deg, ' + str.split('').map((ch, i) => FP[ch] + ' ' + i * 8 + 'px ' + (i * 8 + 6) + 'px, transparent ' + (i * 8 + 6) + 'px ' + (i * 8 + 8) + 'px').join(', ') + ')';
+const CH = { working: 'b', looping: 'a', asking: 'a', stalled: 'r', ready: 'f', approved: 'g', waiting: 'w', restarting: 'p' };
+const liveFp = CARDS.map((c, i) => CH[statusOf(c, i)]).join('');
+const doneN = CARDS.filter((c, i) => ['ready', 'approved'].includes(statusOf(c, i))).length;
+const ALL = [['Add CSV export to reports', 'live', open.length ? 'Needs you' : 'Running', liveFp, open.length ? open.length + ' yours · PR near 16:50' : 'on track · PR near 16:50', '']].concat(HIST);
+const swarms = ALL.map((h, i) => ({ title: h[0], group: h[2], gDisp: h[2] ? 'block' : 'none', fp: fpOf(h[3]), fw: h[3].length * 8 + 'px', result: h[4],
+rFg: h[4].indexOf('yours') >= 0 ? '#9A5B00' : '#7A7A80', w: i === st.swarm ? '600' : '400', bg: i === st.swarm ? '#D5E4FF' : 'transparent',
+aria: h[0] + ', ' + h[3].length + ' sandboxes, ' + h[4], pick: () => this.setState({ swarm: i }) }));
+const cur = ALL[st.swarm];
+if (!isLive) sel = { dot: '#B0B0B6', path: 'brief.finance · ' + cur[0] };
+const brief = isLive
+? { title: cur[0], goal: 'People can download any report as a CSV file from the reports page.',
+sofar: doneN + ' of ' + CARDS.length + ' sandboxes finished. ' + (rv + te) + ' of ' + total + ' files pass tests.', nextLabel: 'Next',
+next: open.length ? (open.length === 1 ? '1 thing needs you' : open.length + ' things need you') + ', about ' + minsOpen + ' min.' : 'Nothing needs you. One PR lands near 16:50.', nextFg: open.length ? '#9A5B00' : '#1A7F37' }
+: { title: cur[0], goal: cur[5] || cur[3].length + ' sandboxes did this task and it ended in one PR.', sofar: cur[3].length + ' sandboxes · ' + (cur[1] === 'run' ? 'still running' : 'finished'),
+nextLabel: cur[1] === 'run' ? 'Next' : 'Result', next: cur[4], nextFg: cur[1] === 'stop' ? '#B3261E' : cur[1] === 'run' ? '#0A60FF' : '#1A7F37' };
+const STEP = ['Plan', 'Build', 'Combine', 'Review', 'PR'];
+const at = isLive ? 1 : cur[1] === 'run' ? 1 : cur[1] === 'stop' ? 0 : 5;
+const steps = STEP.map((n, i) => ({ name: (i < at ? '✓ ' : '') + n + (i < 4 ? '  ›' : ''), fg: i < at ? '#1A7F37' : i === at ? '#0A60FF' : '#9A9AA0', w: i === at ? '700' : '400' }));
+const dropped = cur[3].split('x').length - 1;
+const past = { result: cur[4], boxes: cur[3].length + (dropped ? ', ' + dropped + ' dropped' : ''), when: cur[1] === 'run' ? 'Still running' : cur[1] === 'stop' ? 'Stopped' : 'Finished',
+rules: cur[1] === 'run' ? 'none yet' : (cur[3].length % 3) + 1 + ' kept, reusable', review: cur[1] === 'done' ? 'about ' + cur[3].length * 3 + ' min in total' : 'none' };
+const TABS = [['review', 'Review'], ['pr', 'Whole PR'], ['rules', 'Rulings' + (rules.length ? ' ' + rules.length : '')]];
+const tabs = (isLive ? TABS : []).map((t) => ({ name: t[1], bg: st.tab === t[0] ? '#DCE8FF' : 'transparent', w: st.tab === t[0] ? '600' : '400', pick: () => this.setState({ tab: t[0] }) }));
+
+const PARTS = [
+['turn', 'Your turn list', 'Top of the sidebar: everything that needs you, with minutes'],
+['tree', 'Swarm history', 'Sidebar: every swarm as one line, a coloured strip of its sandboxes'],
+['brief', 'Task summary', 'Middle, top: the task, how far it is, what is next'],
+['fleet', 'Sandbox floor', 'Middle: a card per sandbox with its agent, state, files and last sign of life'],
+['talk', 'Talk between boxes', 'Middle, bottom left: what the boxes told each other'],
+['mem', 'Agent memory', 'Middle, bottom right: what a box wrote down and who read it'],
+['ask', 'Question in place', 'Middle, bottom: answer where the agent asked'],
+['review', 'Review pane', 'Right: what a box did in plain words, its checks, approve'],
+['pr', 'Whole PR tab', 'Right: every box, how much review is left, spend'],
+['rules', 'Rulings tab', 'Right: your answers, told to the boxes']
+];
+const v = {};
+const parts = PARTS.map((p) => {
+const id = p[0];
+const cur = st.votes[id];
+const set = (val) => () => this.setState({ votes: { ...st.votes, [id]: cur === val ? undefined : val } });
+v[id] = { op: cur === 'cut' ? '0.3' : '1' };
+return { name: p[1], where: p[2], keep: set('keep'), cut: set('cut'),
+kBg: cur === 'keep' ? '#2F6B4D' : 'transparent',
+cBg: cur === 'cut' ? '#E8EAED' : 'transparent', cFg: cur === 'cut' ? '#1B1B1F' : '#E8EAED' };
+});
+const list = (val) => PARTS.filter((p) => st.votes[p[0]] === val).map((p) => p[1]).join(', ') || 'none yet';
+const openN = PARTS.filter((p) => !st.votes[p[0]]).length;
+const picks = { keep: list('keep'), cut: list('cut'), open: openN ? openN + ' not decided yet.' : 'All decided.' };
+
+return { turn, noTurn: open.length === 0, turnCount: open.length ? '· ' + open.length + ' · about ' + minsOpen + ' min' : '',
+fleet, fleetLabel, stages, links, talk, noTalk: talk.length === 0, talkTitle: 'Box ' + sc[0] + ' talks with', mem, noMem: mem.length === 0, memTitle: 'Box ' + sc[0] + ' remembers', sel, hasAsk: !!askQ, ask, tabs, tabReview: isLive && st.tab === 'review', tabPr: isLive && st.tab === 'pr', tabRules: isLive && st.tab === 'rules', isLive, isPast: !isLive, swarms, brief, past,
+sum, rev, pr, prRows, steps, handled: '14 small things were handled without you', rules, noRules: rules.length === 0, v, parts, picks };
+}
+}
+</script>
+</body>
+</html>

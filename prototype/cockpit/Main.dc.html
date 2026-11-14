@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TaskWing desktop app</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#8AB8FF}a:hover{color:#B4D2FF}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="font-family: Inter, -apple-system, system-ui, sans-serif; color: #E8EAED; background: #08090B; padding: 24px; box-sizing: border-box; font-size: 13px; line-height: 1.4; display: flex; flex-direction: column; gap: 20px; font-variant-numeric: tabular-nums">
+
+<!-- APP WINDOW -->
+<div style="background: #0F1114; border-radius: 12px; border: 1px solid #2A2F37; overflow: hidden; display: flex; flex-direction: column">
+
+<div style="display: flex; align-items: center; gap: 12px; padding: 0 14px; height: 38px; background: #16191E; border-bottom: 1px solid #262B33">
+<div aria-hidden="true" style="display: flex; gap: 8px">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; display: block"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E; display: block"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840; display: block"></span>
+</div>
+<div style="flex: 1; text-align: center; font-weight: 600; color: #C3C9D1">TaskWing</div>
+<div style="font-size: 12px; color: #9AA3AF">Sample data</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: stretch">
+
+<!-- SIDEBAR -->
+<nav aria-label="Runs" style="flex: 1 1 200px; min-width: 0; background: #13161A; border-right: 1px solid #262B33; padding: 14px 10px; box-sizing: border-box; opacity: {{v.runs.op}}">
+<div style="font-size: 11px; font-weight: 600; color: #9AA3AF; padding: 0 8px 8px; letter-spacing: 0.06em">RUNS</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<sc-for list="{{ runs }}" as="r" hint-placeholder-count="3">
+<button onClick="{{ r.pick }}" style="text-align: left; padding: 9px 10px; min-height: 56px; border-radius: 8px; border: 1px solid {{r.border}}; cursor: pointer; background: {{r.bg}}; color: #E8EAED; display: flex; flex-direction: column; gap: 3px">
+<span style="display: flex; justify-content: space-between; gap: 8px; align-items: center">
+<span style="display: flex; align-items: center; gap: 7px; font-weight: 600"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: {{r.dot}}; display: block"></span>{{r.repo}}</span>
+<sc-if value="{{ r.hasNeeds }}" hint-placeholder-val="{{ true }}">
+<span style="font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #F5B041; color: #1A1300">{{r.needsN}}</span>
+</sc-if>
+</span>
+<span style="font-size: 12px; color: #9AA3AF">{{r.goal}}</span>
+</button>
+</sc-for>
+</div>
+<button style="margin-top: 12px; width: 100%; min-height: 44px; border-radius: 8px; border: 1px dashed #3A414C; background: transparent; color: #C3C9D1; font-size: 13px; cursor: pointer">New run</button>
+</nav>
+
+<!-- MAIN -->
+<div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+
+<!-- HEADLINE -->
+<header style="padding: 20px 24px 16px; opacity: {{v.head.op}}">
+<div style="font-size: 12px; color: #9AA3AF">{{run.repo}} · {{run.goal}}</div>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 4px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', Inter, sans-serif; font-size: 30px; font-weight: 700; line-height: 1.15; color: {{head.color}}">{{head.line}}</h1>
+<div style="display: flex; gap: 8px">
+<button style="min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #3A414C; background: transparent; color: #E8EAED; font-size: 13px; cursor: pointer">Pause</button>
+<button style="min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #3A414C; background: transparent; color: #FF8A80; font-size: 13px; cursor: pointer">Stop</button>
+</div>
+</div>
+<div style="font-size: 14px; color: #C3C9D1; margin-top: 6px">{{run.sub}}</div>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0; border-top: 1px solid #262B33; flex: 1">
+
+<!-- TIMELINE -->
+<section aria-label="Run timeline" style="flex: 999 1 480px; min-width: 0; padding: 16px 0 16px 24px; box-sizing: border-box; opacity: {{v.time.op}}">
+<div style="overflow-x: auto; padding-right: 24px">
+<div style="display: flex; min-width: 620px">
+<!-- labels -->
+<div style="flex: 0 0 210px; display: flex; flex-direction: column">
+<div style="height: 54px; display: flex; align-items: flex-end; padding-bottom: 6px; font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">{{boxSummary}}</div>
+<sc-for list="{{ lanes }}" as="l" hint-placeholder-count="9">
+<button onClick="{{ l.pick }}" style="height: 44px; text-align: left; border: 0; border-radius: 8px 0 0 8px; padding: 0 10px; cursor: pointer; background: {{l.rowBg}}; color: #E8EAED; display: flex; align-items: center; gap: 8px; font-size: 13px">
+<span aria-hidden="true" style="flex: 0 0 8px; height: 8px; border-radius: 50%; background: {{l.dot}}; display: block"></span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3AF">{{l.n}}</span>
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{l.title}}</span>
+</button>
+</sc-for>
+</div>
+<!-- tracks -->
+<div style="flex: 1; min-width: 0; position: relative">
+<div style="position: relative; height: 26px">
+<sc-for list="{{ band }}" as="p" hint-placeholder-count="5">
+<div style="position: absolute; top: 0; height: 24px; box-sizing: border-box; left: {{p.left}}; width: {{p.width}}; padding: 0 8px; display: flex; align-items: center; font-size: 11px; font-weight: 600; border-radius: 6px; overflow: hidden; white-space: nowrap; background: {{p.bg}}; color: {{p.fg}}; border: 1px solid #0F1114">{{p.name}}</div>
+</sc-for>
+</div>
+<div style="position: relative; height: 28px">
+<sc-for list="{{ ticks }}" as="t" hint-placeholder-count="6">
+<span style="position: absolute; top: 8px; left: {{t.left}}; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9AA3AF; padding-left: 4px; border-left: 1px solid #2F353F; height: 14px; line-height: 14px">{{t.t}}</span>
+</sc-for>
+</div>
+<sc-for list="{{ lanes }}" as="l" hint-placeholder-count="9">
+<button onClick="{{ l.pick }}" aria-label="{{ l.aria }}" style="position: relative; display: block; width: 100%; height: 44px; border: 0; padding: 0; cursor: pointer; border-radius: 0 8px 8px 0; background: {{l.rowBg}}">
+<span style="position: absolute; top: 15px; height: 14px; border-radius: 4px; box-sizing: border-box; left: {{l.aL}}; width: {{l.aW}}; background: {{l.aBg}}; border: {{l.aBorder}}"></span>
+<span style="position: absolute; top: 15px; height: 14px; border-radius: 0 4px 4px 0; left: {{l.gL}}; width: {{l.gW}}; background: {{l.gBg}}"></span>
+<span style="position: absolute; top: 13px; left: {{l.tL}}; padding-left: 8px; font-size: 12px; white-space: nowrap; color: {{l.tC}}">{{l.tail}}</span>
+</button>
+</sc-for>
+<div aria-hidden="true" style="position: absolute; top: 26px; bottom: 0; left: {{now.left}}; width: 1px; background: #E8EAED"></div>
+<div style="position: absolute; top: 28px; left: {{now.left}}; transform: translateX(-50%); font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; background: #E8EAED; color: #0F1114; padding: 1px 6px; border-radius: 4px; white-space: nowrap">now {{now.t}}</div>
+</div>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 12px 24px 0 0; font-size: 12px; color: #9AA3AF">
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 8px; border-radius: 3px; background: #4C8DF6; display: block"></span>working</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 8px; border-radius: 3px; background: #2F6B4D; display: block"></span>done</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 8px; border-radius: 3px; background: repeating-linear-gradient(135deg, #F5B041 0 4px, #5A4212 4px 8px); display: block"></span>waiting on you</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 8px; border-radius: 3px; background: repeating-linear-gradient(135deg, #FF6B5E 0 4px, #5A1F1A 4px 8px); display: block"></span>stalled</span>
+<span style="display: flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 8px; border-radius: 3px; border: 1px dashed #6B7480; box-sizing: border-box; display: block"></span>not started</span>
+</div>
+</section>
+
+<!-- RIGHT RAIL -->
+<aside style="flex: 1 1 320px; min-width: 0; border-left: 1px solid #262B33; display: flex; flex-direction: column; align-self: stretch">
+
+<!-- NEEDS YOU -->
+<section aria-label="Needs you" style="padding: 16px 20px; border-bottom: 1px solid #262B33; opacity: {{v.needs.op}}">
+<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px">
+<h2 style="margin: 0; font-size: 11px; font-weight: 600; color: #F5B041; letter-spacing: 0.06em">NEEDS YOU</h2>
+<span style="font-size: 12px; color: #9AA3AF">{{queueCount}}</span>
+</div>
+<sc-if value="{{ noNeeds }}" hint-placeholder-val="{{ false }}">
+<div>
+<div style="font-size: 16px; font-weight: 600">Nothing right now.</div>
+<div style="color: #9AA3AF; margin-top: 4px">You can walk away. You get a ping the moment a box asks or stalls.</div>
+</div>
+</sc-if>
+<sc-if value="{{ hasNeeds }}" hint-placeholder-val="{{ true }}">
+<div style="background: #1C1A14; border: 1px solid #5A4212; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div style="font-size: 12px; color: #F5B041; font-weight: 600">{{focus.from}}</div>
+<div style="font-size: 16px; font-weight: 600; line-height: 1.3">{{focus.q}}</div>
+<div style="font-size: 12px; color: #C3C9D1">{{focus.why}}</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{ focus.opts }}" as="o" hint-placeholder-count="2">
+<button onClick="{{ o.act }}" style="min-height: 44px; padding: 0 14px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 1px solid {{o.border}}; background: {{o.bg}}; color: {{o.fg}}">
+<span>{{o.label}}</span><span style="font-size: 11px; font-weight: 500">{{o.tag}}</span>
+</button>
+</sc-for>
+</div>
+<div style="font-size: 12px; color: #9AA3AF">{{focus.blocks}}</div>
+</div>
+</sc-if>
+<div style="display: flex; flex-direction: column; margin-top: 8px">
+<sc-for list="{{ upNext }}" as="u" hint-placeholder-count="2">
+<div style="padding: 8px 2px; border-top: 1px solid #262B33; font-size: 12px">
+<div style="color: #9AA3AF">Next · {{u.from}}</div>
+<div style="color: #C3C9D1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{u.q}}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<!-- INSPECTOR -->
+<section aria-label="Box inspector" style="padding: 16px 20px; flex: 1; opacity: {{v.detail.op}}">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600"><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA3AF; font-weight: 400">box {{sel.n}} </span>{{sel.title}}</h2>
+<span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; background: {{sel.sBg}}; color: {{sel.sFg}}">{{sel.sLabel}}</span>
+</div>
+<div style="margin-top: 8px; font-size: 14px">{{sel.last}}</div>
+<dl style="margin: 12px 0; display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 5px 10px; font-size: 12px">
+<dt style="color: #9AA3AF">Heartbeat</dt><dd style="margin: 0">{{sel.beat}}</dd>
+<dt style="color: #9AA3AF">Owns</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; overflow-wrap: anywhere">{{sel.files}}</dd>
+<dt style="color: #9AA3AF">Tokens</dt><dd style="margin: 0">{{sel.tokens}}</dd>
+<dt style="color: #9AA3AF">Diff</dt><dd style="margin: 0">{{sel.lines}}</dd>
+</dl>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<button style="min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #3A414C; background: transparent; color: #E8EAED; font-size: 13px; cursor: pointer">Send a note</button>
+<button style="min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #3A414C; background: transparent; color: #E8EAED; font-size: 13px; cursor: pointer">Open shell</button>
+<button style="min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #3A414C; background: transparent; color: #E8EAED; font-size: 13px; cursor: pointer">View diff</button>
+</div>
+</section>
+</aside>
+</div>
+
+<!-- METERS -->
+<footer style="display: flex; flex-wrap: wrap; gap: 0; border-top: 1px solid #262B33; background: #13161A">
+<div style="flex: 1 1 260px; min-width: 0; padding: 12px 24px; opacity: {{v.review.op}}">
+<div style="font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">YOUR REVIEW</div>
+<div style="display: flex; align-items: center; gap: 10px; margin-top: 4px">
+<span style="font-size: 15px; font-weight: 600; white-space: nowrap">{{rev.mins}}</span>
+<div style="flex: 1; height: 6px; border-radius: 999px; background: #262B33; overflow: hidden"><div style="height: 6px; border-radius: 999px; background: {{rev.color}}; width: {{rev.pct}}"></div></div>
+<span style="font-size: 12px; color: #9AA3AF; white-space: nowrap">{{rev.now}} of {{rev.cap}} lines</span>
+</div>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; padding: 12px 24px; border-left: 1px solid #262B33; opacity: {{v.cost.op}}">
+<div style="font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">SPEND</div>
+<div style="margin-top: 4px"><span style="font-size: 15px; font-weight: 600">{{cost.total}}</span><span style="font-size: 12px; color: #9AA3AF"> · {{cost.split}}</span></div>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; padding: 12px 24px; border-left: 1px solid #262B33; opacity: {{v.cost.op}}">
+<div style="font-size: 11px; font-weight: 600; color: #9AA3AF; letter-spacing: 0.06em">PACE</div>
+<div style="margin-top: 4px"><span style="font-size: 15px; font-weight: 600">{{cost.elapsed}}</span><span style="font-size: 12px; color: #9AA3AF"> in · one agent would need {{cost.single}}</span></div>
+</div>
+</footer>
+</div>
+</div>
+</div>
+
+<!-- PICKS -->
+<section style="background: #16191E; border: 1px solid #2A2F37; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+<div>
+<h2 style="margin: 0; font-size: 15px; font-weight: 700">Your picks</h2>
+<div style="font-size: 12px; color: #9AA3AF">Not part of the app. Mark each part Keep or Cut; a cut part fades above. {{picks.open}}</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 8px">
+<sc-for list="{{ parts }}" as="pt" hint-placeholder-count="9">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #0F1114; border: 1px solid #262B33; border-radius: 8px; padding: 6px 6px 6px 12px">
+<div style="min-width: 0">
+<div style="font-size: 13px; font-weight: 600">{{pt.name}}</div>
+<div style="font-size: 11px; color: #9AA3AF">{{pt.where}}</div>
+</div>
+<div style="display: flex; gap: 6px">
+<button onClick="{{ pt.keep }}" style="min-height: 44px; min-width: 56px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A414C; font-size: 13px; font-weight: 600; cursor: pointer; background: {{pt.kBg}}; color: {{pt.kFg}}">Keep</button>
+<button onClick="{{ pt.cut }}" style="min-height: 44px; min-width: 56px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A414C; font-size: 13px; font-weight: 600; cursor: pointer; background: {{pt.cBg}}; color: {{pt.cFg}}">Cut</button>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="font-size: 13px"><span style="color: #7FD6A4; font-weight: 600">Keep:</span> {{picks.keep}}</div>
+<div style="font-size: 13px"><span style="color: #FFB59A; font-weight: 600">Cut:</span> {{picks.cut}}</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1360,"height":1240}}'>
+class Component extends DCLogic {
+state = { run: 0, box: null, answered: {}, votes: {} };
+
+renderVals() {
+const st = this.state;
+const S = {
+working: ['Working', '#8AB8FF', '#17263F', '#4C8DF6'],
+stalled: ['Stalled', '#FF8A80', '#3A1916', '#FF6B5E'],
+asking: ['Asking you', '#F5B041', '#3A2E14', '#F5B041'],
+done: ['Done', '#7FD6A4', '#15301F', '#3D8F63'],
+waiting: ['Not started', '#C3C9D1', '#22262D', '#6B7480'],
+restarting: ['Restarting', '#C4B1FF', '#2A2145', '#9C84F5']
+};
+// lane: n, title, status, start%, end%, tail, now-line, heartbeat, owns, tokens, diff
+const RUNS = [
+{ repo: 'brief.finance', goal: 'Add CSV export to reports', cur: 1, now: 41, nowT: '15:14',
+sub: 'About 1h 35m left. One checked PR lands near 16:50.',
+band: [['Plan', 0, 3], ['Build', 3, 68], ['Combine', 68, 80], ['Review', 80, 93], ['PR', 93, 100]],
+ticks: [['14:00', 0], ['14:30', 16.7], ['15:00', 33.3], ['15:30', 50], ['16:00', 66.7], ['16:30', 83.3]],
+lanes: [
+['01', 'Export API endpoint', 'done', 3, 25, 'done 14:44', 'Pushed 4 commits. Tests green.', 'Finished 14:44', 'internal/api/export.go', '410k', '212 lines'],
+['02', 'CSV writer and escaping', 'done', 3, 17, 'done 14:31', 'Tests green, 18 of 18.', 'Finished 14:31', 'internal/csv/', '380k', '164 lines'],
+['03', 'Row limit and paging', 'asking', 3, 38, 'asking you · 4m', 'Paused until you answer the row-limit question.', 'Paused 4m ago', 'internal/report/paging.go', '220k', '88 lines'],
+['04', 'Export button', 'working', 3, 41, 'editing ExportButton.tsx', 'Editing ExportButton.tsx.', '3s ago', 'web/src/reports/ExportButton.tsx', '510k', '141 lines'],
+['05', 'Download progress', 'working', 3, 41, 'tests 9 of 14', 'Running tests: 9 of 14 pass.', '6s ago', 'web/src/reports/progress/', '470k', '120 lines'],
+['06', 'Permissions check', 'stalled', 3, 26, 'silent 14m', 'Stopped on its time limit at 14:48.', 'Silent for 14m', 'internal/authz/export.go', '300k', '73 lines'],
+['07', 'Audit log entry', 'working', 3, 41, 'writing the failing test', 'Writing the failing test first.', '2s ago', 'internal/audit/', '190k', '40 lines'],
+['08', 'Seam test: API and UI', 'waiting', 45, 58, 'after 01 and 04', 'Starts when boxes 01 and 04 are done.', 'Not started', 'e2e/export.spec.ts', '0', 'nothing yet'],
+['09', 'Docs and changelog', 'waiting', 45, 54, 'after 01', 'Starts when box 01 is combined.', 'Not started', 'docs/export.md', '0', 'nothing yet']
+],
+queue: [
+{ box: 2, from: 'Box 03 · Row limit and paging', q: 'Cap an export at 50,000 rows, or stream everything?', why: 'The agent suggests the cap: the reports page already stops at 50,000 rows.', blocks: 'Holding up box 03, then the seam test.', opts: [['Cap at 50k', 1], ['Stream all', 0]] },
+{ box: 5, from: 'Box 06 · Permissions check', q: 'This box stopped on its time limit and has been silent for 14 minutes.', why: 'Its 73 changed lines are committed, so a restart loses nothing.', blocks: 'Holding up box 06 only.', opts: [['Restart', 1], ['Restart, and always auto-restart', 0]] },
+{ box: 3, from: 'Box 04 · Export button', q: 'A report with no rows: show a message, or download an empty file?', why: 'The agent has no preference and keeps working on the rest meanwhile.', blocks: 'Holding up nothing yet.', opts: [['Show a message', 0], ['Empty file', 0]] }
+],
+rev: [838, 1500], cost: ['$11.51', 'tokens $11.20, sandboxes $0.31', '1h 12m', '3h 30m'] },
+{ repo: 'motif', goal: 'Fix AI-crawler attribution bugs', cur: 3, now: 69, nowT: '13:25',
+sub: 'All 4 boxes are done and combined. Review found one issue.',
+band: [['Plan', 0, 3], ['Build', 3, 45], ['Combine', 45, 55], ['Review', 55, 82], ['PR', 82, 100]],
+ticks: [['11:20', 0], ['11:50', 16.7], ['12:20', 33.3], ['12:50', 50], ['13:20', 66.7], ['13:50', 83.3]],
+lanes: [
+['01', 'Crawler user-agent parser', 'done', 3, 23, 'done 12:02', 'Tests green, 31 of 31.', 'Finished 12:02', 'internal/crawl/ua.go', '350k', '96 lines'],
+['02', 'Attribution join', 'done', 3, 30, 'done 12:15', 'Tests green against Postgres.', 'Finished 12:15', 'internal/attrib/join.go', '420k', '134 lines'],
+['03', 'Dedup across replicas', 'done', 3, 33, 'done 12:20', 'Tests green.', 'Finished 12:20', 'internal/attrib/dedup.go', '280k', '61 lines'],
+['04', 'Seam test: crawl to report', 'done', 34, 45, 'done 12:41', 'End-to-end test passes.', 'Finished 12:41', 'e2e/crawl.spec.ts', '160k', '48 lines']
+],
+queue: [{ box: null, from: 'Review · second model', q: 'Review found 1 High: a stale row after a re-crawl. Fix it now, or ship and follow up?', why: 'A fix is about 20 lines in box 03 and adds roughly 15 minutes.', blocks: 'Holding up the PR.', opts: [['Fix now', 1], ['Ship and follow up', 0]] }],
+rev: [339, 1500], cost: ['$5.52', 'tokens $5.40, sandboxes $0.12', '2h 05m', '2h 40m'] },
+{ repo: 'markwise-app', goal: 'Sweep: remove dead API handlers', cur: 1, now: 5, nowT: '15:14',
+sub: 'Just started. 3 of 6 boxes are up, the rest are booting.',
+band: [['Plan', 0, 3], ['Build', 3, 60], ['Combine', 60, 75], ['Review', 75, 92], ['PR', 92, 100]],
+ticks: [['15:08', 0], ['15:38', 25], ['16:08', 50], ['16:38', 75]],
+lanes: [
+['01', 'Bookmarks handlers', 'working', 3, 5, 'listing unused routes', 'Listing unused routes.', '1s ago', 'api/bookmarks/', '40k', 'nothing yet'],
+['02', 'Spaces handlers', 'working', 3, 5, 'listing unused routes', 'Listing unused routes.', '4s ago', 'api/spaces/', '35k', 'nothing yet'],
+['03', 'Notes handlers', 'working', 3, 5, 'reading the call graph', 'Reading the call graph.', '2s ago', 'api/notes/', '30k', 'nothing yet'],
+['04', 'Auth handlers', 'waiting', 6, 12, 'booting', 'Box is booting.', 'Not started', 'api/auth/', '0', 'nothing yet'],
+['05', 'Import handlers', 'waiting', 6, 12, 'booting', 'Box is booting.', 'Not started', 'api/import/', '0', 'nothing yet'],
+['06', 'Extension handlers', 'waiting', 6, 12, 'booting', 'Box is booting.', 'Not started', 'api/ext/', '0', 'nothing yet']
+],
+queue: [], rev: [0, 1500], cost: ['$0.46', 'tokens $0.45, sandboxes $0.01', '6m', '1h 30m'] }
+];
+
+const run = RUNS[st.run];
+const key = (ri, i) => ri + '-' + i;
+const openOf = (r, ri) => r.queue.map((q, i) => ({ ...q, i })).filter((q) => !st.answered[key(ri, q.i)]);
+const open = openOf(run, st.run);
+
+const runs = RUNS.map((r, i) => {
+const n = openOf(r, i).length;
+const on = i === st.run;
+return { repo: r.repo, goal: r.goal, hasNeeds: n > 0, needsN: String(n),
+dot: n > 0 ? '#F5B041' : '#4C8DF6',
+bg: on ? '#1E232B' : 'transparent', border: on ? '#3A414C' : 'transparent',
+pick: () => this.setState({ run: i, box: null }) };
+});
+
+const statusOf = (l, i) => {
+const q = run.queue.findIndex((x) => x.box === i);
+const answered = q >= 0 && st.answered[key(st.run, q)];
+if (l[2] === 'stalled') return answered ? 'restarting' : 'stalled';
+if (l[2] === 'asking') return answered ? 'working' : 'asking';
+return l[2];
+};
+
+let selIdx = st.box;
+if (selIdx === null || selIdx >= run.lanes.length) {
+selIdx = open.length && open[0].box !== null ? open[0].box : 0;
+}
+
+const pct = (n) => n + '%';
+const lanes = run.lanes.map((l, i) => {
+const s = statusOf(l, i);
+const c = S[s];
+const base = { n: l[0], title: l[1], dot: c[3], pick: () => this.setState({ box: i }),
+rowBg: i === selIdx ? '#1A1E25' : 'transparent', aria: 'Box ' + l[0] + ', ' + l[1] + ', ' + c[0],
+aL: pct(l[3]), aBorder: '0', gL: '0%', gW: '0%', gBg: 'transparent', tC: '#9AA3AF', tail: l[5] };
+if (s === 'done') return { ...base, aW: pct(l[4] - l[3]), aBg: '#2F6B4D', tL: pct(l[4]) };
+if (s === 'waiting') return { ...base, aW: pct(l[4] - l[3]), aBg: 'transparent', aBorder: '1px dashed #6B7480', tL: pct(l[4]) };
+if (s === 'asking') return { ...base, aW: pct(l[4] - l[3]), aBg: '#4C8DF6', gL: pct(l[4]), gW: pct(run.now - l[4]),
+gBg: 'repeating-linear-gradient(135deg, #F5B041 0 4px, #5A4212 4px 8px)', tL: pct(run.now), tC: '#F5B041' };
+if (s === 'stalled') return { ...base, aW: pct(l[4] - l[3]), aBg: '#4C8DF6', gL: pct(l[4]), gW: pct(run.now - l[4]),
+gBg: 'repeating-linear-gradient(135deg, #FF6B5E 0 4px, #5A1F1A 4px 8px)', tL: pct(run.now), tC: '#FF8A80' };
+if (s === 'restarting') return { ...base, aW: pct(l[4] - l[3]), aBg: '#4C8DF6', gL: pct(l[4]), gW: pct(run.now - l[4]), gBg: '#3B3360', tL: pct(run.now), tC: '#C4B1FF', tail: 'restarting from its last commit' };
+return { ...base, aW: pct(run.now - l[3]), aBg: '#4C8DF6', tL: pct(run.now), tC: '#C3C9D1', tail: l[2] === 'asking' ? 'back to work' : l[5] };
+});
+
+const counts = {};
+run.lanes.forEach((l, i) => { const k = S[statusOf(l, i)][0].toUpperCase(); counts[k] = (counts[k] || 0) + 1; });
+const boxSummary = run.lanes.length + ' BOXES';
+
+const band = run.band.map((p, i) => ({ name: p[0], left: pct(p[1]), width: pct(p[2] - p[1]),
+bg: i < run.cur ? '#15301F' : i === run.cur ? '#E8EAED' : '#1C2027',
+fg: i < run.cur ? '#7FD6A4' : i === run.cur ? '#0F1114' : '#9AA3AF' }));
+const ticks = run.ticks.map((t) => ({ t: t[0], left: pct(t[1]) }));
+
+const mk = (q) => ({ from: q.from, q: q.q, why: q.why, blocks: q.blocks,
+opts: q.opts.map((o) => ({ label: o[0], tag: o[1] ? 'Suggested' : '',
+bg: o[1] ? '#F5B041' : 'transparent', fg: o[1] ? '#1A1300' : '#E8EAED', border: o[1] ? '#F5B041' : '#5A4212',
+act: () => this.setState({ answered: { ...st.answered, [key(st.run, q.i)]: o[0] }, box: null }) })) });
+const focus = open.length ? mk(open[0]) : { from: '', q: '', why: '', blocks: '', opts: [] };
+const upNext = open.slice(1).map((q) => ({ from: q.from, q: q.q }));
+
+const n = open.length;
+const head = n > 0
+? { line: n === 1 ? '1 thing needs you.' : n + ' things need you.', color: '#F5B041' }
+: { line: 'On track. Nothing needs you.', color: '#E8EAED' };
+
+const sl = run.lanes[selIdx];
+const sc = S[statusOf(sl, selIdx)];
+const sStat = statusOf(sl, selIdx);
+const sel = { n: sl[0], title: sl[1], sLabel: sc[0], sFg: sc[1], sBg: sc[2],
+last: sStat === 'restarting' ? 'Starting again from its last commit.' : (sStat === 'working' && sl[2] === 'asking') ? 'Answer received. Back to work.' : sl[6],
+beat: sStat === 'restarting' ? 'Restart requested just now' : sl[7], files: sl[8], tokens: sl[9], lines: sl[10] };
+
+const pctNum = Math.min(100, Math.round((run.rev[0] / run.rev[1]) * 100));
+const mins = Math.round(run.rev[0] / 25);
+const rev = { now: run.rev[0].toLocaleString('en-US'), cap: run.rev[1].toLocaleString('en-US'),
+mins: mins ? 'About ' + mins + ' min' : 'Nothing yet', pct: pctNum + '%', color: pctNum > 85 ? '#FF6B5E' : '#8AB8FF' };
+const cost = { total: run.cost[0], split: run.cost[1], elapsed: run.cost[2], single: run.cost[3] };
+
+const PARTS = [
+['runs', 'Runs sidebar', 'Left: every run, amber badge when one needs you'],
+['head', 'One-line status', 'Top: the answer to "where are we?" in a sentence'],
+['time', 'Timeline', 'Centre: one lane per box, phases on top, the now line'],
+['needs', 'Needs you', 'Right: one question at a time, with a suggestion'],
+['detail', 'Box inspector', 'Right: what the selected box is doing'],
+['review', 'Review meter', 'Bottom: minutes of review waiting for you'],
+['cost', 'Spend and pace', 'Bottom: dollars so far, swarm vs one agent'],
+['tray', 'Menu bar popover', 'Second artboard: status without opening the app']
+];
+const v = {};
+const parts = PARTS.map((p) => {
+const id = p[0];
+const cur = st.votes[id];
+const set = (val) => () => this.setState({ votes: { ...st.votes, [id]: cur === val ? undefined : val } });
+v[id] = { op: cur === 'cut' ? '0.3' : '1' };
+return { name: p[1], where: p[2], keep: set('keep'), cut: set('cut'),
+kBg: cur === 'keep' ? '#2F6B4D' : 'transparent', kFg: '#E8EAED',
+cBg: cur === 'cut' ? '#E8EAED' : 'transparent', cFg: cur === 'cut' ? '#0F1114' : '#E8EAED' };
+});
+const list = (val) => PARTS.filter((p) => st.votes[p[0]] === val).map((p) => p[1]).join(', ') || 'none yet';
+const openN = PARTS.filter((p) => !st.votes[p[0]]).length;
+const picks = { keep: list('keep'), cut: list('cut'), open: openN ? openN + ' not decided yet.' : 'All decided.' };
+
+return { runs, run: { repo: run.repo, goal: run.goal, sub: run.sub }, head, lanes, boxSummary, band, ticks,
+now: { left: pct(run.now), t: run.nowT }, focus, upNext, hasNeeds: n > 0, noNeeds: n === 0,
+queueCount: n > 1 ? '1 of ' + n : '', sel, rev, cost, v, parts, picks };
+}
+}
+</script>
+</body>
+</html>

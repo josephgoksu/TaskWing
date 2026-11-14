@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TaskWing: first-run setup</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="background: #1B1B1F; padding: 28px; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 13px; line-height: 1.35; color: #1D1D1F">
+<div style="background: #FFFFFF; border-radius: 12px; overflow: hidden; border: 1px solid #3A3A40; display: flex; flex-direction: column; height: 640px">
+<div style="flex: 0 0 44px; display: flex; align-items: center; gap: 8px; padding: 0 14px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; display: block"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E; display: block"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28C840; display: block"></span>
+</div>
+<div style="flex: 1; overflow-y: auto; padding: 8px 32px 20px">
+<h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">{{title}}</h1>
+<div style="margin-top: 4px; font-size: 14px; color: #5A5A60">TaskWing uses the tools you already have. It never asks for a password or a key: you sign in to each tool yourself.</div>
+<div style="margin-top: 18px">
+<sc-for list="{{ checks }}" as="c" hint-placeholder-count="6">
+<div style="padding: 11px 0; border-top: 1px solid #EDEDF0">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="flex: 0 0 20px; height: 20px; border-radius: 50%; background: {{c.bg}}; color: #FFFFFF; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{c.mark}}</span>
+<div style="flex: 1; min-width: 0"><div style="font-weight: 600; font-size: 14px">{{c.name}}</div><div style="font-size: 12px; color: #6E6E73">{{c.what}}</div></div>
+<span style="font-size: 12px; color: {{c.fg}}; white-space: nowrap">{{c.state}}</span>
+</div>
+<div style="display: {{c.fixDisp}}; margin: 8px 0 0 30px; align-items: center; gap: 8px">
+<span style="flex: 1; min-width: 0; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; background: #F2F2F4; border-radius: 6px; padding: 6px 9px">{{c.cmd}}</span>
+<button onClick="{{ c.recheck }}" style="height: 28px; padding: 0 12px; border-radius: 7px; cursor: pointer; font-size: 13px; white-space: nowrap; border: 1px solid #CFCFD4; background: #FFFFFF; color: #1D1D1F">{{c.btn}}</button>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="border-top: 1px solid #E2E2E6; padding: 12px 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<span style="color: #6E6E73">{{foot}}</span>
+<button style="height: 34px; padding: 0 20px; border-radius: 9px; border: 0; background: {{goBg}}; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap">Give it a task</button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":720,"height":696}}'>
+class Component extends DCLogic {
+state = { fixed: {} };
+renderVals() {
+const st = this.state;
+// name, what it is for, ok from the start, state when ok, how to fix, button, optional
+const C = [
+['Claude Code', 'Your lead agent. It plans and runs every task.', true, 'signed in · your subscription', '', '', false],
+['boat', 'Where the sandboxes run. It also carries your agent logins into them.', true, 'connected · 1 login shared', '', '', false],
+['GitHub', 'To open the pull request at the end.', false, 'signed in', 'gh auth login', 'Recheck', false],
+['tmux', 'Keeps agents running when you quit the app, and lets you open any of them in your own terminal.', true, 'installed', '', '', false],
+['A repository', 'The code the agents work on.', false, 'brief.finance', 'Pick a folder on this Mac', 'Add', false],
+['Codex and Gemini', 'Extra agents for pieces they are better at.', false, 'Codex signed in', 'codex login', 'Recheck', true]
+];
+const checks = C.map((c, i) => { const ok = c[2] || st.fixed[i];
+return { name: c[0], what: c[1], mark: ok ? '✓' : c[6] ? '·' : '!', bg: ok ? '#1A7F37' : c[6] ? '#C7C7CC' : '#E08A00', state: ok ? c[3] : c[6] ? 'optional' : 'needs you', fg: ok ? '#1A7F37' : c[6] ? '#6E6E73' : '#9A5B00',
+fixDisp: ok ? 'none' : 'flex', cmd: c[4], btn: c[5], recheck: () => this.setState({ fixed: { ...st.fixed, [i]: true } }) }; });
+const left = C.filter((c, i) => !c[6] && !(c[2] || st.fixed[i])).length;
+return { checks, title: left ? left + (left === 1 ? ' thing' : ' things') + ' to set up' : 'Ready.', foot: left ? 'Run the command in your own terminal, then press Recheck.' : 'Everything it needs is here.', goBg: left ? '#B0B0B6' : '#0A60FF' };
+}
+}
+</script>
+</body>
+</html>
