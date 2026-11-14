@@ -6,6 +6,17 @@ Draft, 2026-11-14. Built on `PRINCIPLES.md`; where the two disagree, the princip
 
 The user gives one task for a repository. Their own coding agent (the lead) plans it and splits it into pieces with no shared files. A fresh agent session writes the exam: plain-sentence checks plus hidden tests. The user approves the exam. TaskWing starts one agent per piece, each in its own cloud sandbox. When they finish, their work is joined, the exam runs in a clean sandbox, and the result is one draft pull request with proof. The user merges.
 
+```mermaid
+flowchart LR
+  T[Your task] --> L[Lead agent plans<br/>and splits it]
+  L --> E{{You approve<br/>the exam}}
+  E --> A1[Agent] & A2[Agent] & A3[Agent]
+  A1 & A2 & A3 --> J[Work joined]
+  J --> X[Hidden exam in<br/>a clean sandbox]
+  X --> P[One pull request]
+  P --> M((You merge))
+```
+
 ## Parts
 
 | Part | What it is | What it does | What it never does |
@@ -48,7 +59,7 @@ After the PR opens, trusted feedback (CI failures, reviews from users GitHub con
 }
 ```
 
-The engine refuses a plan where two cards own the same path, a seam has no owner, or a card has no `watch`. `watch.kind` is `page`, `request`, `test` or `file`; it feeds the card's proof line.
+The engine refuses a plan where two cards own the same path, a seam has no owner, or a card has no `watch`. `watch.kind` is `page`, `request`, `test` or `file`; it picks the picture on the card's proof (a page, a request, a timeline, a file).
 
 ## Exam file (host only, never copied into a worker's box)
 
@@ -106,10 +117,11 @@ On start the engine rebuilds every run from the provider's box list, git refs, G
 
 | Rule | What breaks without it |
 |---|---|
-| Views: Overview, Memories & Notes, Decisions, Pull Request. Stages: Plan > Build > Exam > Pull request | |
+| Views: Overview, Decisions, Pull Request. Stages: Plan > Build > Exam > Pull request. Memories live in each agent's panel; notes show as arrows between agents | Every extra tab is one more place to look |
+| Pictures over sentences: an agent is a square, a check is a lock that turns green, a note is an arrow, a decision is an icon. Words only where the user decides or reads a decision | The user reads paragraphs to learn what one icon says |
 | The agent decides and says so afterwards in Decisions (Decided, Fixed, Planned, You, Done), each with Change and Undo | The user manages the run instead of the agents |
 | It asks only what only the user can decide: the exam, product questions, the merge. One question card at a time | A queue of prompts nobody answers |
-| Each agent card shows one proof line, never file names or code | The user has to read code to know where things are |
+| Each agent card shows its proof as a picture, never file names or code. The sentence is on hover | The user has to read code to know where things are |
 | Above 8 agents the cards collapse into one square per agent; a square opens that agent | Cards stop being readable past a screen |
 | The task list shows one square per agent on every task | The user opens each task to see progress |
 | Desktop only, native Mac look, plain words | |
@@ -140,7 +152,7 @@ The cockpit comes after M1 and reads the same event stream.
 
 | Item | Needed for |
 |---|---|
-| boat exposes a preview port per box | Page proof lines |
+| boat exposes a preview port per box | Page proof pictures |
 | tmux can be mirrored into a Tauri view without lag | Terminal tab in the cockpit |
 | The exam's tests can be kept out of a worker's reach on each provider | Principle 12 on providers other than boat |
 | herdr over SSH works as the agent runtime in a box | Replacing per-provider agent quirks |
