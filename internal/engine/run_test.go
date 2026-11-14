@@ -263,3 +263,51 @@ func TestRunFailsFastWhenBoxHasNoClaudeLogin(t *testing.T) {
 		t.Errorf("took %s to notice", time.Since(start))
 	}
 }
+
+func TestHuntLocal(t *testing.T) {
+	quietSecrets(t)
+	repo := newRepo(t)
+	for f, body := range map[string]string{"calc/add.sh": "echo $(($1 - $2))\n", "text/upper.sh": "echo \"$1\"\n"} {
+		_ = os.MkdirAll(filepath.Join(repo, filepath.Dir(f)), 0o755)
+		_ = os.WriteFile(filepath.Join(repo, f), []byte(body), 0o644)
+	}
+	sh(t, repo, "git", "add", "-A")
+	sh(t, repo, "git", "commit", "-q", "-m", "buggy scripts")
+	home := t.TempDir()
+	var out bytes.Buffer
+	res, err := Run(context.Background(), Options{
+		Hunt:     true,
+		Dir:      repo,
+		Provider: &box.Local{Root: filepath.Join(home, "boxes"), AgentCmd: "bash " + testdata(t, "fixer.sh")},
+		Home:     home,
+		HuntCmd:  "bash " + testdata(t, "hunter.sh"),
+		Yes:      true,
+		NoPR:     true,
+		Out:      &out,
+		In:       strings.NewReader(""),
+	})
+	t.Log("\n" + out.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Total != 3 || res.Passed != 3 {
+		t.Fatalf("exam: %d of %d passed (want 3 of 3: two bugs + regression)", res.Passed, res.Total)
+	}
+	for _, want := range []string{"add subtracts instead of adding", "upper does not uppercase", "a false alarm (its test passes on today's code)", "add also bad (touches the same files as b1)"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output is missing %q", want)
+		}
+	}
+	if got := sh(t, repo, "bash", "-c", "git show "+res.Branch+":calc/add.sh"); !strings.Contains(got, "+") {
+		t.Errorf("add.sh not fixed on the branch: %s", got)
+	}
+	if strings.Contains(sh(t, repo, "git", "ls-tree", "-r", "--name-only", res.Branch), "taskwing_exam") {
+		t.Error("the hidden tests leaked into the branch")
+	}
+	logs, _ := filepath.Glob(filepath.Join(res.RunDir, "logs", "agent-*.log"))
+	for _, l := range logs {
+		if b, _ := os.ReadFile(l); strings.Contains(string(b), "LEAK") {
+			t.Errorf("%s: the fixer saw the hidden test", l)
+		}
+	}
+}

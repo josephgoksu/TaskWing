@@ -35,9 +35,11 @@ type Options struct {
 	LeadCmd      string // shell command for the lead; prompt on stdin
 	ExamCmd      string // shell command for the exam session; prompt on stdin
 	MaxCards     int
-	Yes          bool // skip the questions
-	NoPR         bool // stop after the exam; keep the branch locally
-	Keep         bool // keep boxes after the run
+	Yes          bool   // skip the questions
+	NoPR         bool   // stop after the exam; keep the branch locally
+	Keep         bool   // keep boxes after the run
+	Hunt         bool   // find bugs, prove each with a failing test, then fix them
+	HuntCmd      string // shell command for the bug hunter; prompt on stdin
 	AgentTimeout time.Duration
 	CheckTimeout time.Duration
 	Out          io.Writer
@@ -151,7 +153,7 @@ func errString(err error) string {
 
 func (r *runner) run(ctx context.Context) (*Result, error) {
 	o := r.o
-	if strings.TrimSpace(o.Task) == "" {
+	if strings.TrimSpace(o.Task) == "" && !o.Hunt {
 		return nil, errors.New("no task given")
 	}
 	var err error
@@ -192,16 +194,36 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	}
 
 	// 1. Plan and exam, side by side. The exam session never sees the plan.
-	r.ui.step(1, "Plan")
-	r.ui.say("  The lead agent is splitting the task. A separate session is writing the exam.")
-	plan, checks, patch, err := r.planAndExam(ctx)
-	if err != nil {
-		return res, err
+	var (
+		plan   *Plan
+		checks []Check
+		patch  []byte
+		what   string
+	)
+	if o.Hunt {
+		r.ui.step(1, "Hunt")
+		r.ui.say("  A session is reading the code and writing a failing test for each bug it suspects.")
+		if plan, checks, patch, err = r.hunt(ctx); err != nil {
+			return res, err
+		}
+		if len(plan.Cards) == 0 {
+			r.ui.say("\n  No bug could be proven with a failing test. Nothing to fix.")
+			res.Stopped = true
+			return res, nil
+		}
+		r.showBugs(plan)
+		what = fmt.Sprintf("Fix %d %s, one agent each in %s?", len(plan.Cards), plural(len(plan.Cards), "bug", "bugs"), sandboxWord(o.Provider))
+	} else {
+		r.ui.step(1, "Plan")
+		r.ui.say("  The lead agent is splitting the task. A separate session is writing the exam.")
+		if plan, checks, patch, err = r.planAndExam(ctx); err != nil {
+			return res, err
+		}
+		r.showPlan(plan, checks)
+		what = fmt.Sprintf("Start %d %s in %s? This is the exam they must pass.", len(plan.Cards), plural(len(plan.Cards), "agent", "agents"), sandboxWord(o.Provider))
 	}
 	res.Total = len(checks)
-	r.showPlan(plan, checks)
-	what := fmt.Sprintf("Start %d %s in %s?", len(plan.Cards), plural(len(plan.Cards), "agent", "agents"), sandboxWord(o.Provider))
-	if !o.Yes && !r.ui.ask("\n"+what+" This is the exam they must pass.") {
+	if !o.Yes && !r.ui.ask("\n"+what) {
 		r.ev.log("run.stopped", nil)
 		r.ui.say("Stopped. The plan and the exam are saved in %s", r.dir)
 		res.Stopped = true
@@ -624,6 +646,11 @@ func (r *runner) build(ctx context.Context, plan *Plan) ([]*cardRun, error) {
 func (r *runner) watch(stage string, started time.Time, cards []*cardRun, wg *sync.WaitGroup) {
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
+	r.watchUntil(stage, started, cards, done)
+}
+
+// watchUntil draws the live squares until done is closed.
+func (r *runner) watchUntil(stage string, started time.Time, cards []*cardRun, done chan struct{}) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	last := map[int]string{}

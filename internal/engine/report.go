@@ -46,6 +46,19 @@ func prBody(plan *Plan, cards []*cardRun, checks []Check, res *Result, took time
 	fmt.Fprintf(&b, "## Task\n\n%s\n\n", plan.Task)
 	fmt.Fprintf(&b, "**Exam: %d of %d checks passed** · %d %s · %s\n\n", passed, len(checks), len(cards), plural(len(cards), "piece", "pieces"), dur(took))
 
+	var bugs []*cardRun
+	for _, cr := range cards {
+		if cr.card.Why != "" {
+			bugs = append(bugs, cr)
+		}
+	}
+	if len(bugs) > 0 {
+		b.WriteString("## Bugs\n\nEach one was proven by a test that failed on the old code. The fixers never saw those tests.\n\n| | Where | What went wrong |\n|---|---|---|\n")
+		for _, cr := range bugs {
+			fmt.Fprintf(&b, "| %02d | `%s` | %s |\n", cr.n, cell(cr.card.Where), cell(cr.card.Why))
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString("## Pieces\n\n| | Piece | Files | Proof |\n|---|---|---|---|\n")
 	for _, cr := range cards {
 		mark := "✓"

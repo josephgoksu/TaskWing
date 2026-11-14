@@ -73,6 +73,22 @@ taskwing run "add an alert webhook, a list-evaluations endpoint and a dispositio
 
 The lead and the exam writer run on your Mac through `claude -p`. Change them with `TASKWING_LEAD_CMD` and `TASKWING_EXAM_CMD` (the prompt arrives on stdin).
 
+## Bug hunt
+
+```bash
+taskwing hunt "the payment scoring code" --no-pr     # or no area: the whole repository
+```
+
+```
+1 Hunt   a session writes a failing test for each bug it suspects; a test that passes today = dropped
+2 Pick   you see the proven bugs, press y
+3 Fix    one agent per bug, it gets the bug but not the test
+4 Exam   every bug's test passes + all existing tests pass
+5 PR     one draft pull request with a Bugs table
+```
+
+`--max-cards` caps how many bugs it keeps (default 4). Two bugs that need the same files: the second is left for the next hunt.
+
 ## 5. After a run
 
 | Where | What |

@@ -35,7 +35,9 @@ func main() {
 	var err error
 	switch os.Args[1] {
 	case "run":
-		err = cmdRun(os.Args[2:])
+		err = cmdRun(os.Args[2:], false)
+	case "hunt":
+		err = cmdRun(os.Args[2:], true)
 	case "doctor":
 		err = cmdDoctor(os.Args[2:])
 	case "version", "--version", "-v":
@@ -56,6 +58,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `taskwing runs one task with several agents in sandboxes and opens one draft pull request.
 
   taskwing run "<task>" [flags]    plan, exam, build, join, exam, pull request
+  taskwing hunt ["<area>"] [flags] find bugs, prove each with a failing test, fix them
   taskwing doctor [--clean]        find (and delete) leftover sandboxes and refs
   taskwing version
 
@@ -65,7 +68,7 @@ Run flags:
   --boat-env <name>       boat environment for the forks (TASKWING_BOAT_ENV)
   --model <name>          agent model in boat (TASKWING_MODEL, default opus-5-5)
   --effort <level>        agent effort in boat (TASKWING_EFFORT, default medium)
-  --max-cards <n>         most pieces the lead may make (default 4)
+  --max-cards <n>         most pieces the lead may make, or bugs a hunt keeps (default 4)
   --yes                   do not ask before starting or before the PR
   --no-pr                 stop after the exam; keep the branch locally
   --keep                  keep the sandboxes after the run
@@ -73,6 +76,7 @@ Run flags:
 Commands (prompt on stdin):
   TASKWING_LEAD_CMD    the lead agent      default: `+defaultLead+`
   TASKWING_EXAM_CMD    the exam writer     default: `+defaultExam+`
+  TASKWING_HUNT_CMD    the bug hunter      default: the exam writer's command
   TASKWING_LOCAL_AGENT agents in --provider local  default: `+defaultLocal+`
 `)
 }
@@ -151,7 +155,7 @@ func signalContext() (context.Context, func()) {
 	return ctx, func() { close(done); signal.Stop(sig); cancel() }
 }
 
-func cmdRun(args []string) error {
+func cmdRun(args []string, hunt bool) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	pf := addProviderFlags(fs)
 	maxCards := fs.Int("max-cards", 4, "most pieces")
@@ -163,7 +167,7 @@ func cmdRun(args []string) error {
 		return err
 	}
 	task := strings.TrimSpace(strings.Join(words, " "))
-	if task == "" {
+	if task == "" && !hunt {
 		return fmt.Errorf(`give the task in quotes: taskwing run "add a retry schedule to failed payments"`)
 	}
 	prov, err := pf.build()
@@ -180,6 +184,8 @@ func cmdRun(args []string) error {
 		Home:     home(),
 		LeadCmd:  env("TASKWING_LEAD_CMD", defaultLead),
 		ExamCmd:  env("TASKWING_EXAM_CMD", defaultExam),
+		HuntCmd:  env("TASKWING_HUNT_CMD", env("TASKWING_EXAM_CMD", defaultExam)),
+		Hunt:     hunt,
 		MaxCards: *maxCards,
 		Yes:      *yes,
 		NoPR:     *noPR,

@@ -22,6 +22,8 @@ type Card struct {
 	Title  string   `json:"title"`
 	Owns   []string `json:"owns"`
 	Prompt string   `json:"prompt"`
+	Where  string   `json:"where,omitempty"` // hunt: where the bug is
+	Why    string   `json:"why,omitempty"`   // hunt: what goes wrong, in plain words
 }
 
 // Seam is a contract between two cards, owned by one of them.
