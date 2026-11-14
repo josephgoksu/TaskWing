@@ -43,7 +43,11 @@ func hostAgent(ctx context.Context, command, dir, prompt, logPath string) (strin
 		_ = os.WriteFile(logPath, []byte("$ "+command+"\n--- prompt\n"+prompt+"\n--- stdout\n"+out.String()+"\n--- stderr\n"+errb.String()), 0o644)
 	}
 	if err != nil {
-		return out.String(), fmt.Errorf("%v: %s", err, lastLines(errb.String()+out.String(), 5))
+		all := errb.String() + out.String()
+		if strings.Contains(all, "Not logged in") || strings.Contains(all, "/login") {
+			return out.String(), fmt.Errorf("the claude CLI on this machine is not logged in: run claude, type /login, then try again")
+		}
+		return out.String(), fmt.Errorf("%v: %s", err, lastLines(all, 5))
 	}
 	return out.String(), nil
 }

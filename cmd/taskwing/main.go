@@ -216,7 +216,13 @@ func cmdDoctor(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	boxes, err := prov.List(ctx, engine.BoxPrefix)
+	all, err := prov.List(ctx, engine.RunBoxPrefix)
+	var boxes []box.Box
+	for _, b := range all {
+		if b.ID != os.Getenv("TASKWING_BOAT_BASE") && b.ID != *pf.base { // never the base box
+			boxes = append(boxes, b)
+		}
+	}
 	if err != nil {
 		fmt.Printf("%s sandboxes: could not list (%v)\n", prov.Name(), err)
 	} else if len(boxes) == 0 {

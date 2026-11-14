@@ -174,6 +174,8 @@ type boatAgent struct {
 	final    string
 	finished bool
 	exited   bool
+	// sawFinished: the stream sent a "finished" status; confirm with boat conversations.
+	sawFinished bool
 }
 
 func (a *boatAgent) setExited() {
@@ -189,8 +191,10 @@ func (a *boatAgent) read(r io.Reader) {
 	sc.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 	for sc.Scan() {
 		var ev struct {
-			Event string `json:"event"`
-			Data  struct {
+			Event  string `json:"event"`
+			Status string `json:"status"`
+			Data   struct {
+				Status         string `json:"status"`
 				ConversationID string `json:"conversationId"`
 				Type           string `json:"type"`
 				Message        string `json:"message"`
@@ -217,6 +221,9 @@ func (a *boatAgent) read(r io.Reader) {
 			if a.errText == "" {
 				a.errText = firstLine(sc.Text())
 			}
+		}
+		if ev.Status == "finished" || ev.Data.Status == "finished" {
+			a.sawFinished = true
 		}
 		if ev.Data.Type == "response" {
 			a.response = true
@@ -256,6 +263,13 @@ func (a *boatAgent) watch(every time.Duration) {
 				a.errText = "boat prompt exited before the agent answered"
 			}
 			a.mu.Unlock()
+			a.finish()
+			return
+		}
+		a.mu.Lock()
+		sawFinished := a.sawFinished
+		a.mu.Unlock()
+		if resp && sawFinished {
 			a.finish()
 			return
 		}

@@ -19,8 +19,12 @@ import (
 	"github.com/josephgoksu/TaskWing/internal/box"
 )
 
-// BoxPrefix starts the name of every box TaskWing creates, so doctor can find leftovers.
+// BoxPrefix starts the name of every box TaskWing creates.
 const BoxPrefix = "taskwing"
+
+// RunBoxPrefix starts the name of every box a run creates ("taskwing · tw-<time> · ...").
+// doctor only touches boxes with this prefix, never a base box named by hand.
+const RunBoxPrefix = BoxPrefix + " · tw-"
 
 // Options configure one run.
 type Options struct {
