@@ -15,7 +15,14 @@ flowchart LR
 
 ![The cockpit](docs/cockpit.png)
 
-Version 2 is being designed. Nothing here runs yet. The v1 knowledge layer was removed; it stays available at tag `v1.23.2`.
+Version 2 is being designed. A first proof of concept runs in the terminal: [docs/poc.md](docs/poc.md).
+
+```bash
+go install github.com/josephgoksu/TaskWing/cmd/taskwing@v2-poc
+taskwing run "add an alert webhook with tests"
+```
+
+The v1 knowledge layer was removed; it stays available at tag `v1.23.2`.
 
 | Read | Why |
 |---|---|
