@@ -45,6 +45,9 @@ func TestPatternsOverlap(t *testing.T) {
 		{"**/*_test.go", "api/x.go", false},
 		{"**/*_test.go", "api/**", true},
 		{"web/*.ts", "web/app.ts", true},
+		{"src/api", "src/*/handlers.go", true},
+		{"src/api", "src/**/handlers.go", true},
+		{"api/*.go", "api/sub", false},
 	}
 	for _, c := range cases {
 		if got := patternsOverlap(c.a, c.b); got != c.want {
@@ -90,6 +93,17 @@ func TestParsePlanInFences(t *testing.T) {
 	}
 	if _, err := parsePlan("no json here"); err == nil {
 		t.Error("expected an error")
+	}
+	p, err = parsePlan(`{"task":"t","cards":[{"id":"c1","owns":["a"],"prompt":"p"}],"interface":["GET /a","POST /b"]}`)
+	if err != nil || p.Interface != "GET /a\nPOST /b" || len(p.Cards) != 1 {
+		t.Fatalf("interface as a list: %v %+v", err, p)
+	}
+}
+
+func TestValidateRefusesUnsafeCardIDs(t *testing.T) {
+	p := &Plan{Cards: []Card{{ID: "auth api", Title: "A", Owns: []string{"a/**"}, Prompt: "x"}}}
+	if err := p.Validate(4); err == nil || !strings.Contains(err.Error(), "may use only") {
+		t.Fatalf("an id with a space was accepted: %v", err)
 	}
 }
 

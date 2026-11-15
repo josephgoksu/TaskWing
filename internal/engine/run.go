@@ -127,7 +127,7 @@ type runner struct {
 
 // Run executes one task end to end.
 func Run(ctx context.Context, o Options) (*Result, error) {
-	if o.MaxCards == 0 {
+	if o.MaxCards <= 0 {
 		o.MaxCards = 4
 	}
 	if o.AgentTimeout == 0 {
@@ -225,13 +225,14 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		r.showPlan(plan, checks)
 		what = fmt.Sprintf("Start %d %s in %s? This is the exam they must pass.", len(plan.Cards), plural(len(plan.Cards), "agent", "agents"), sandboxWord(o.Provider))
 	}
-	res.Total = len(checks)
 	if !o.Yes && !r.ui.ask("\n"+what) {
 		r.ev.log("run.stopped", nil)
 		r.ui.say("Stopped. The plan and the exam are saved in %s", r.dir)
 		res.Stopped = true
 		return res, nil
 	}
+	// Set only once the exam will run: a stop above is not a failed exam (exit 3).
+	res.Total = len(checks)
 	r.ev.log("exam.approved", map[string]any{"checks": len(checks)})
 
 	// 2. Build: one box and one agent per card.
@@ -244,13 +245,14 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	// 3. Join the work on one branch and run the exam in a clean box.
 	r.ui.step(3, "Exam")
 	res.Branch = "taskwing/" + r.id
-	if err := r.join(ctx, cards, res.Branch); err != nil {
-		return res, err
-	}
-	// Free the branch so the user can check it out; it stays in the repository.
+	// Free the branch so the user can check it out (or delete it), even when
+	// the join fails; it stays in the repository.
 	defer func() {
 		_, _ = git(context.Background(), r.root, "worktree", "remove", "--force", filepath.Join(r.dir, "join"))
 	}()
+	if err := r.join(ctx, cards, res.Branch); err != nil {
+		return res, err
+	}
 	if err := r.exam(ctx, checks, patch); err != nil {
 		return res, err
 	}
@@ -451,12 +453,9 @@ func (r *runner) writeExam(ctx context.Context, iface string) ([]Check, []byte, 
 	if _, err := git(ctx, wt, append([]string{"add", "--"}, keep...)...); err != nil {
 		return nil, nil, err
 	}
-	patch, err := git(ctx, wt, "diff", "--cached", "--binary", r.base)
+	patch, err := gitRaw(ctx, wt, "diff", "--cached", "--binary", r.base)
 	if err != nil {
 		return nil, nil, err
-	}
-	if patch != "" {
-		patch += "\n"
 	}
 	examDir := filepath.Join(r.dir, "exam")
 	_ = os.MkdirAll(examDir, 0o755)
@@ -534,14 +533,15 @@ func (r *runner) destroy(b *box.Box) {
 }
 
 // githubCreds lists the GitHub credentials a fresh box already holds. Agents
-// never start in such a box: they could push as the user.
-func (r *runner) githubCreds(ctx context.Context, b *box.Box) []string {
+// never start in such a box: they could push as the user. A scan that cannot
+// run is an error, never "nothing found".
+func (r *runner) githubCreds(ctx context.Context, b *box.Box) ([]string, error) {
 	if !r.o.Provider.Sandboxed() {
-		return nil
+		return nil, nil
 	}
 	var sb strings.Builder
 	if _, err := r.o.Provider.Exec(ctx, b, secretScanScript, nil, &sb); err != nil {
-		return nil
+		return nil, err
 	}
 	var gh []string
 	found, _ := scanBox(sb.String())
@@ -550,7 +550,7 @@ func (r *runner) githubCreds(ctx context.Context, b *box.Box) []string {
 			gh = append(gh, f)
 		}
 	}
-	return gh
+	return gh, nil
 }
 
 // cleanup deletes any box still alive, for example after Ctrl-C or an error.
@@ -695,7 +695,12 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 	r.track(b)
 	defer r.destroy(b)
 	cr.set(func(c *cardRun) { c.box, c.thought = b, "checking the sandbox for GitHub credentials" })
-	if found := r.githubCreds(ctx, b); len(found) > 0 {
+	found, err := r.githubCreds(ctx, b)
+	if err != nil {
+		fail("could not check the sandbox for GitHub credentials: " + err.Error())
+		return
+	}
+	if len(found) > 0 {
 		fail("this sandbox holds " + strings.Join(found, ", ") + "; make a base box without them (docs/poc.md)")
 		return
 	}
@@ -860,10 +865,16 @@ func (r *runner) exam(ctx context.Context, checks []Check, patch []byte) error {
 		}
 	}
 	for i := range checks {
+		// After Ctrl-C every remaining check would "fail"; stop instead.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		c := &checks[i]
 		cctx, cancel := context.WithTimeout(ctx, r.o.CheckTimeout)
 		var out strings.Builder
-		script := fmt.Sprintf("cd \"$TW_REPO\" || exit 99\n( %s ) > \"$TW_REPO.check.log\" 2>&1 </dev/null\nrc=$?\ntail -n 40 \"$TW_REPO.check.log\"\nexit $rc\n", c.Command)
+		// The command sits on its own lines, so a trailing "# comment" in it
+		// cannot swallow the closing parenthesis.
+		script := fmt.Sprintf("cd \"$TW_REPO\" || exit 99\n(\n%s\n) > \"$TW_REPO.check.log\" 2>&1 </dev/null\nrc=$?\ntail -n 40 \"$TW_REPO.check.log\"\nexit $rc\n", c.Command)
 		rc, err := r.o.Provider.Exec(cctx, b, script, nil, &out)
 		cancel()
 		c.Output = lastLines(out.String(), 40)
@@ -875,7 +886,7 @@ func (r *runner) exam(ctx context.Context, checks []Check, patch []byte) error {
 		r.ui.say("  %s %s", mark, c.Text)
 		r.ev.log("exam.check", map[string]any{"n": i + 1, "passed": c.Passed})
 	}
-	return nil
+	return ctx.Err()
 }
 
 func (r *runner) summary(res *Result) {

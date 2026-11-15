@@ -16,15 +16,22 @@ import (
 
 // git runs git in dir and returns trimmed stdout.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
+	out, err := gitRaw(ctx, dir, args...)
+	return strings.TrimSpace(out), err
+}
+
+// gitRaw runs git in dir and returns stdout untouched. Patches need it: a
+// binary patch ends with a blank line that git apply requires.
+func gitRaw(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
-		return strings.TrimSpace(out.String()), fmt.Errorf("git %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
+		return out.String(), fmt.Errorf("git %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
 	}
-	return strings.TrimSpace(out.String()), nil
+	return out.String(), nil
 }
 
 // hostAgent runs a coding agent on this machine (the lead or the exam

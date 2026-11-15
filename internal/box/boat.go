@@ -67,9 +67,6 @@ func (p *Boat) Create(ctx context.Context, name string) (*Box, error) {
 		args = append(args, "--environment", p.Environment)
 	}
 	out, err := p.run(ctx, nil, args...)
-	if err != nil {
-		return nil, err
-	}
 	// --json prints one event per line; the id is in the last line that has one.
 	var id string
 	dec := json.NewDecoder(bytes.NewReader(out))
@@ -79,15 +76,25 @@ func (p *Boat) Create(ctx context.Context, name string) (*Box, error) {
 			Event string `json:"event"`
 			Error string `json:"error"`
 		}
-		if err := dec.Decode(&ev); err != nil {
+		if dec.Decode(&ev) != nil {
 			break
 		}
-		if ev.Event == "error" {
-			return nil, fmt.Errorf("boat fork: %s", ev.Error)
+		if ev.Event == "error" && err == nil {
+			err = fmt.Errorf("boat fork: %s", ev.Error)
 		}
 		if ev.ID != "" {
 			id = ev.ID
 		}
+	}
+	if err != nil {
+		// A fork that failed or was cancelled after the box existed would leak
+		// a box without the taskwing name, which doctor cannot find.
+		if id != "" {
+			dctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			_, _ = p.run(dctx, nil, "delete", "--yes", id)
+			cancel()
+		}
+		return nil, err
 	}
 	if id == "" {
 		return nil, fmt.Errorf("boat fork: no box id in output: %s", firstLine(string(out)))
@@ -114,8 +121,10 @@ func (p *Boat) Exec(ctx context.Context, b *Box, script string, stdin io.Reader,
 	cmd.Stdout = stdout
 	cmd.Stderr = &errb
 	err := cmd.Run()
-	if m := rcLine.FindStringSubmatch(errb.String()); m != nil {
-		rc, _ := strconv.Atoi(m[1])
+	// The wrapper prints its marker last; anything earlier (the script's own
+	// stderr) must not be able to set the exit code.
+	if m := rcLine.FindAllStringSubmatch(errb.String(), -1); len(m) > 0 {
+		rc, _ := strconv.Atoi(m[len(m)-1][1])
 		return rc, nil
 	}
 	if err != nil {
@@ -253,6 +262,9 @@ func (a *boatAgent) read(r io.Reader) {
 		}
 		a.mu.Unlock()
 	}
+	// After a scan error (an oversized line) keep draining, or boat prompt
+	// blocks on its stdout and cmd.Wait never returns.
+	_, _ = io.Copy(io.Discard, r)
 }
 
 // watch asks boat whether the conversation still runs. boat prompt never exits

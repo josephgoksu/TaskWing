@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,6 +30,51 @@ type Card struct {
 	Why    string   `json:"why,omitempty"`   // hunt: what goes wrong, in plain words
 }
 
+// UnmarshalJSON accepts "interface" as a string, or as a list or object, which
+// leads often write for "one per line"; anything but a string is flattened.
+func (p *Plan) UnmarshalJSON(data []byte) error {
+	type plain Plan
+	var raw struct {
+		plain
+		Interface json.RawMessage `json:"interface,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*p = Plan(raw.plain)
+	p.Interface = flattenJSON(raw.Interface)
+	return nil
+}
+
+// flattenJSON turns a JSON string, list or object into plain lines.
+func flattenJSON(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var list []json.RawMessage
+	if json.Unmarshal(raw, &list) == nil {
+		lines := make([]string, 0, len(list))
+		for _, item := range list {
+			lines = append(lines, flattenJSON(item))
+		}
+		return strings.Join(lines, "\n")
+	}
+	var buf bytes.Buffer
+	if json.Indent(&buf, raw, "", "  ") == nil {
+		return buf.String()
+	}
+	return string(raw)
+}
+
+var cardIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
+
+// validCardID reports whether id can name a git branch, a ref and a log file.
+func validCardID(id string) bool { return cardIDRe.MatchString(id) }
+
 // Seam is a contract between two cards, owned by one of them.
 type Seam struct {
 	Between  []string `json:"between"`
@@ -50,6 +96,8 @@ func (p *Plan) Validate(maxCards int) error {
 	for i, c := range p.Cards {
 		if c.ID == "" {
 			errs = append(errs, fmt.Sprintf("card %d has no id", i+1))
+		} else if !validCardID(c.ID) {
+			errs = append(errs, fmt.Sprintf("card id %q may use only letters, digits, - and _", c.ID))
 		}
 		if ids[c.ID] {
 			errs = append(errs, fmt.Sprintf("card id %q is used twice", c.ID))
@@ -172,12 +220,32 @@ func patternsOverlap(a, b string) bool {
 	case !hasWild(a) && !hasWild(b):
 		return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
 	case !hasWild(a):
-		return MatchOwn(b, a) || strings.HasPrefix(staticPrefix(b), a+"/")
+		return MatchOwn(b, a) || strings.HasPrefix(staticPrefix(b), a+"/") || globReachesInside(b, a)
 	case !hasWild(b):
-		return MatchOwn(a, b) || strings.HasPrefix(staticPrefix(a), b+"/")
+		return MatchOwn(a, b) || strings.HasPrefix(staticPrefix(a), b+"/") || globReachesInside(a, b)
 	}
 	pa, pb := staticPrefix(a), staticPrefix(b)
 	return strings.HasPrefix(pa, pb) || strings.HasPrefix(pb, pa)
+}
+
+// globReachesInside reports whether glob g can match a path inside folder dir
+// (a plain pattern owns everything below it): "src/*/x.go" reaches into "src/api".
+// The leading segments of g must match dir's segments; a ** after at least one
+// matched segment reaches anywhere below.
+func globReachesInside(g, dir string) bool {
+	gs, ds := strings.Split(g, "/"), strings.Split(dir, "/")
+	for i, seg := range ds {
+		if i >= len(gs) {
+			return false
+		}
+		if gs[i] == "**" {
+			return i > 0
+		}
+		if !globRegexp(gs[i]).MatchString(seg) {
+			return false
+		}
+	}
+	return len(gs) > len(ds)
 }
 
 // Outside returns the changed files that no pattern of the card owns.

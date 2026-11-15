@@ -170,6 +170,15 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 			_ = os.Remove(filepath.Join(wt, f))
 		}
 	}
+	// Put the worktree back to today's code. Anything else the hunter changed
+	// (an edited source file, a helper file) is not in the exam box either, so
+	// it must not decide whether a test fails.
+	if _, err := git(ctx, wt, "checkout", "-q", "--", "."); err != nil {
+		return nil, "", nil, err
+	}
+	if _, err := git(ctx, wt, "clean", "-fdq"); err != nil {
+		return nil, "", nil, err
+	}
 
 	// Prove each bug: its test must fail on today's code. Owned files must not overlap.
 	var keep []string
@@ -180,8 +189,12 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 			continue
 		}
 		b.Test = strings.TrimPrefix(strings.TrimSpace(b.Test), "./")
-		if b.ID == "" || seen[b.ID] {
+		// The id names a git ref and a log file: it must be safe and unique.
+		if !validCardID(b.ID) || seen[b.ID] {
 			b.ID = fmt.Sprintf("b%d", i+1)
+			for n := i + 2; seen[b.ID]; n++ {
+				b.ID = fmt.Sprintf("b%d", n)
+			}
 		}
 		seen[b.ID] = true
 		view.set(func(c *cardRun) { c.thought = "checking " + b.ID + " fails today: " + b.Title })
@@ -198,6 +211,7 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 			continue
 		}
 		testPath := filepath.Join(wt, b.Test)
+		_ = os.MkdirAll(filepath.Dir(testPath), 0o755)
 		_ = os.WriteFile(testPath, files[b.Test], 0o644)
 		cctx, cancel := context.WithTimeout(ctx, r.o.CheckTimeout)
 		cmd := exec.CommandContext(cctx, "bash", "-c", "nice -n 10 bash -c "+shq(b.Command))
@@ -222,16 +236,16 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 		return h.Bugs, h.Regression, nil, nil
 	}
 	for _, f := range keep {
+		_ = os.MkdirAll(filepath.Dir(filepath.Join(wt, f)), 0o755)
 		_ = os.WriteFile(filepath.Join(wt, f), files[f], 0o644)
 	}
 	if _, err := git(ctx, wt, append([]string{"add", "--"}, keep...)...); err != nil {
 		return nil, "", nil, err
 	}
-	patch, err := git(ctx, wt, "diff", "--cached", "--binary", r.base)
+	patch, err := gitRaw(ctx, wt, "diff", "--cached", "--binary", r.base)
 	if err != nil {
 		return nil, "", nil, err
 	}
-	patch += "\n"
 	examDir := filepath.Join(r.dir, "exam")
 	_ = os.MkdirAll(examDir, 0o755)
 	_ = os.WriteFile(filepath.Join(examDir, "exam.patch"), []byte(patch), 0o644)
