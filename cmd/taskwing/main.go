@@ -156,7 +156,11 @@ func signalContext() (context.Context, func()) {
 }
 
 func cmdRun(args []string, hunt bool) error {
-	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	name := "run"
+	if hunt {
+		name = "hunt"
+	}
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	pf := addProviderFlags(fs)
 	maxCards := fs.Int("max-cards", 4, "most pieces")
 	yes := fs.Bool("yes", false, "do not ask")
