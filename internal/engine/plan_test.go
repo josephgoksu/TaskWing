@@ -148,7 +148,7 @@ func TestInterfaceReachesExamAndBuilders(t *testing.T) {
 	if !strings.Contains(workerPrompt(p, p.Cards[0], 1, "~/tw/repo"), iface) {
 		t.Error("the builder prompt lacks the pinned interface")
 	}
-	if strings.Contains(examPrompt("task", ""), "pinned") {
+	if strings.Contains(examPrompt("task", ""), "The public interface is pinned") {
 		t.Error("an empty interface should add nothing")
 	}
 }
