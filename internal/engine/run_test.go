@@ -293,7 +293,7 @@ func TestHuntLocal(t *testing.T) {
 	if res.Total != 3 || res.Passed != 3 {
 		t.Fatalf("exam: %d of %d passed (want 3 of 3: two bugs + regression)", res.Passed, res.Total)
 	}
-	for _, want := range []string{"add subtracts instead of adding", "upper does not uppercase", "a false alarm (its test passes on today's code)", "add also bad (touches the same files as b1)"} {
+	for _, want := range []string{"add subtracts instead of adding", "upper does not uppercase", "a false alarm (its test passes on today's code)", "add also bad (touches the same files as b1)", "readme typo (the hunter dropped it: not a bug)"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output is missing %q", want)
 		}

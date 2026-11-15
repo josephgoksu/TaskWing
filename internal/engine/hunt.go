@@ -36,12 +36,14 @@ Do this:
 1. Read the code and its tests. Look for real defects: wrong results, crashes, races, broken edge cases, code that does not do what its name, docs or callers expect, inconsistencies between parts. Not style, not missing features, not "could be risky".
 2. For each bug (at most %d, the most important first), write ONE new test file whose path contains "taskwing_exam" (for example "billing/taskwing_exam_b1_test.go"). Never change an existing file. The test must compile and run on the current code, and FAIL there because of the bug, through an assertion, not a compile error. It must pass once the bug is fixed properly.
 3. Run each test yourself and see it fail for the right reason. Delete any test that passes; that is not a bug.
-4. For each bug, name the files a fix should touch as path patterns ("billing/retry.go", "api/**"). Two bugs must not share files; if they do, keep the more important one.
+4. For each bug, name the files a fix should touch as path patterns ("billing/retry.go", "api/**"). Include one NEW test file for the fixer to add its own test, named after the bug, for example "billing/retry_b1_fix_test.go". Never list your taskwing_exam file. Two bugs must not share files; if they do, keep the more important one.
 5. Give one command that runs all the existing tests.
+6. List every suspect you dropped (its test passed, or it was not a real bug) with one plain reason each.
 
 When the files are written, answer with ONLY this JSON, no other text:
 {"bugs": [{"id": "b1", "title": "<3 to 8 plain words>", "where": "<file:line>", "why": "<one plain sentence: what goes wrong and when>", "owns": ["<pattern>"], "test": "<the test file path>", "command": "<shell command from the repository root that runs only this test>"}],
- "regression": "<command that runs all existing tests>"}
+ "regression": "<command that runs all existing tests>",
+ "dropped": [{"title": "<suspect>", "why": "<why it was dropped>"}]}
 `, focus, max)
 }
 
@@ -100,7 +102,7 @@ func (r *runner) hunt(ctx context.Context) (*Plan, []Check, []byte, error) {
 			r.ui.say("  %s dropped: %s (%s)", r.ui.dim("·"), b.Title, b.dropped)
 			continue
 		}
-		plan.Cards = append(plan.Cards, Card{ID: b.ID, Title: truncate(b.Title, 40), Owns: b.Owns, Prompt: fixPrompt(b), Where: b.Where, Why: b.Why})
+		plan.Cards = append(plan.Cards, Card{ID: b.ID, Title: b.Title, Owns: b.Owns, Prompt: fixPrompt(b), Where: b.Where, Why: b.Why})
 		checks = append(checks, Check{Text: "Fixed: " + b.Title, Command: b.Command})
 	}
 	if len(plan.Cards) > 0 && strings.TrimSpace(regression) != "" {
@@ -132,12 +134,21 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 	var h struct {
 		Bugs       []bug  `json:"bugs"`
 		Regression string `json:"regression"`
+		Dropped    []struct {
+			Title string `json:"title"`
+			Why   string `json:"why"`
+		} `json:"dropped"`
 	}
 	if err := json.Unmarshal([]byte(js), &h); err != nil {
 		return nil, "", nil, fmt.Errorf("the findings are not valid JSON: %v", err)
 	}
 	if len(h.Bugs) > max {
 		h.Bugs = h.Bugs[:max]
+	}
+	for _, d := range h.Dropped {
+		if strings.TrimSpace(d.Title) != "" {
+			h.Bugs = append(h.Bugs, bug{Title: d.Title, dropped: "the hunter dropped it: " + d.Why, ID: "-"})
+		}
 	}
 
 	// Only new files with "taskwing_exam" in the path count.
@@ -165,6 +176,9 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 	seen := map[string]bool{}
 	for i := range h.Bugs {
 		b := &h.Bugs[i]
+		if b.dropped != "" {
+			continue
+		}
 		b.Test = strings.TrimPrefix(strings.TrimSpace(b.Test), "./")
 		if b.ID == "" || seen[b.ID] {
 			b.ID = fmt.Sprintf("b%d", i+1)

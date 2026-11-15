@@ -12,5 +12,6 @@ cat <<'JSON'
   {"id": "b3", "title": "a false alarm", "where": "README.md", "why": "nothing", "owns": ["docs/**"], "test": "taskwing_exam_b3.sh", "command": "bash taskwing_exam_b3.sh"},
   {"id": "b4", "title": "add also bad", "where": "calc/add.sh", "why": "same file", "owns": ["calc/add.sh"], "test": "taskwing_exam_b4.sh", "command": "bash taskwing_exam_b4.sh"}
  ],
- "regression": "test -f README.md"}
+ "regression": "test -f README.md",
+ "dropped": [{"title": "readme typo", "why": "not a bug"}]}
 JSON
