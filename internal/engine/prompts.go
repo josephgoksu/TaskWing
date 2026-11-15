@@ -16,12 +16,14 @@ Rules for the split:
 - Every card owns its own files, given as path patterns ("billing/retry/**", "api/webhook.go"). No two cards may own the same path. Tests for a card's code belong to that card.
 - If one card needs something another card makes (a type, a function name, a route), write it as a seam with an owner, and put the exact contract (names, signatures, formats) in both cards' prompts.
 - Each prompt is complete on its own: the agent sees only its card, not the task or the other cards. Say what to build, which files, which existing code to follow, and how to check it works (the exact test command).
+- Pin the public interface: every name a user or test of the finished work would touch (routes and methods, JSON field names, env vars, CLI flags, exported functions, file formats), exact and complete. A separate session writes the acceptance tests from this alone.
 - Do not write code yourself. Do not change any file.
 
 Answer with ONLY this JSON, no other text:
 {"task": "<the task in one line>",
  "cards": [{"id": "c1", "title": "<3 to 6 words>", "owns": ["<pattern>"], "prompt": "<full instructions>"}],
- "seams": [{"between": ["c1", "c2"], "owner": "c1", "contract": "<exact contract>"}]}
+ "seams": [{"between": ["c1", "c2"], "owner": "c1", "contract": "<exact contract>"}],
+ "interface": "<the exact public names, one per line>"}
 `, task, maxCards)
 	if feedback != "" {
 		fmt.Fprintf(&b, "\nYour previous plan was refused: %s\nFix it and answer with the JSON again.\n", feedback)
@@ -29,21 +31,25 @@ Answer with ONLY this JSON, no other text:
 	return b.String()
 }
 
-func examPrompt(task string) string {
+func examPrompt(task, iface string) string {
+	pinned := ""
+	if strings.TrimSpace(iface) != "" {
+		pinned = "\nThe public interface is pinned. Use exactly these names; never invent others:\n" + iface + "\n"
+	}
 	return fmt.Sprintf(`You write the acceptance exam for a coding task, before anyone builds it. Other agents will build the task without seeing your exam. The exam runs on their joined work in a clean sandbox.
 
 Task: %s
-
+%s
 Do this:
 1. Read the repository: its language, its test framework, how tests are run.
 2. Write 3 to 6 checks. Each check is one plain sentence a non-programmer understands, plus one shell command, run from the repository root, that exits 0 only when the check holds.
 3. Write the tests behind the checks as NEW files whose path contains "taskwing_exam" (for example "billing/taskwing_exam_test.go" or "tests/taskwing_exam.spec.ts"). Never change an existing file.
-4. The tests must fail on the current code, because the feature is not built yet, and pass once it is built well. Test behaviour through public interfaces the task implies, not private names an agent could choose differently. When the task leaves a name open, pick the most natural one and say it in the check.
+4. The tests must fail on the current code, because the feature is not built yet, and pass once it is built well. Test behaviour through public interfaces the task implies, not private names an agent could choose differently. Use the pinned names above; only if a name is still open, pick the most natural one and say it in the check.
 5. One check should confirm that the existing tests still pass.
 
 When the files are written, answer with ONLY this JSON, no other text:
 {"checks": [{"text": "<plain sentence>", "command": "<shell command>"}]}
-`, task)
+`, task, pinned)
 }
 
 func workerPrompt(p *Plan, c Card, n int, repoDir string) string {
@@ -62,6 +68,9 @@ func workerPrompt(p *Plan, c Card, n int, repoDir string) string {
 				break
 			}
 		}
+	}
+	if strings.TrimSpace(p.Interface) != "" {
+		b.WriteString("Public interface for the whole task (a hidden exam uses exactly these names; do not rename anything):\n" + strings.TrimSpace(p.Interface) + "\n\n")
 	}
 	if len(seams) > 0 {
 		b.WriteString("Contracts with the other agents (follow them exactly):\n" + strings.Join(seams, "\n") + "\n\n")

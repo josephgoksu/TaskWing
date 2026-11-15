@@ -138,3 +138,17 @@ func TestScanBoxAgentLogin(t *testing.T) {
 		t.Fatalf("a real API key was missed: %v", leaks)
 	}
 }
+
+func TestInterfaceReachesExamAndBuilders(t *testing.T) {
+	iface := "POST /evaluations/{id}/disposition body {\"decision\": ...}"
+	if !strings.Contains(examPrompt("task", iface), iface) {
+		t.Error("the exam prompt lacks the pinned interface")
+	}
+	p := &Plan{Interface: iface, Cards: []Card{{ID: "c1", Title: "A", Owns: []string{"a/**"}, Prompt: "x"}}}
+	if !strings.Contains(workerPrompt(p, p.Cards[0], 1, "~/tw/repo"), iface) {
+		t.Error("the builder prompt lacks the pinned interface")
+	}
+	if strings.Contains(examPrompt("task", ""), "pinned") {
+		t.Error("an empty interface should add nothing")
+	}
+}

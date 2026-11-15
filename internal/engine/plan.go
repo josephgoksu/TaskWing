@@ -14,6 +14,9 @@ type Plan struct {
 	Task  string `json:"task"`
 	Cards []Card `json:"cards"`
 	Seams []Seam `json:"seams,omitempty"`
+	// Interface pins the public names the task implies (routes, JSON fields,
+	// env vars, flags, exported functions). Builders and the exam both use it.
+	Interface string `json:"interface,omitempty"`
 }
 
 // Card is one piece of the work, built by one agent in one box.

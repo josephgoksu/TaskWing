@@ -317,7 +317,7 @@ func (r *runner) planAndExam(ctx context.Context) (*Plan, []Check, []byte, error
 	t0 := time.Now()
 	views := []*cardRun{
 		{n: 1, card: Card{Title: "Lead: split the task"}, state: stWorking, thought: "reading the repository", started: t0},
-		{n: 2, card: Card{Title: "Exam writer"}, state: stWorking, thought: "writing the hidden tests", started: t0},
+		{n: 2, card: Card{Title: "Exam writer"}, state: stWaiting, thought: "waiting for the lead's public names", started: t0},
 	}
 	finish := func(cr *cardRun, err error, proof string) {
 		cr.set(func(c *cardRun) {
@@ -329,7 +329,10 @@ func (r *runner) planAndExam(ctx context.Context) (*Plan, []Check, []byte, error
 			}
 		})
 	}
-	wg.Add(2)
+	// The lead goes first and pins the public names (routes, fields, env vars).
+	// The exam is written from the task and those names only, never the pieces,
+	// so it tests behaviour instead of guessing names the builders chose.
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		plan, planErr = r.lead(ctx)
@@ -337,11 +340,12 @@ func (r *runner) planAndExam(ctx context.Context) (*Plan, []Check, []byte, error
 			finish(views[0], nil, fmt.Sprintf("%d %s", len(plan.Cards), plural(len(plan.Cards), "piece", "pieces")))
 		} else {
 			finish(views[0], planErr, "")
+			examErr = errors.New("no plan, so no exam")
+			finish(views[1], examErr, "")
+			return
 		}
-	}()
-	go func() {
-		defer wg.Done()
-		checks, patch, examErr = r.writeExam(ctx)
+		views[1].set(func(c *cardRun) { c.state, c.thought, c.started = stWorking, "writing the hidden tests", time.Now() })
+		checks, patch, examErr = r.writeExam(ctx, plan.Interface)
 		if examErr == nil {
 			finish(views[1], nil, fmt.Sprintf("%d checks", len(checks)))
 		} else {
@@ -386,7 +390,7 @@ func (r *runner) lead(ctx context.Context) (*Plan, error) {
 
 // writeExam runs the exam session in a throwaway worktree, then keeps its new
 // files as a patch on this machine. The patch only enters the exam box.
-func (r *runner) writeExam(ctx context.Context) ([]Check, []byte, error) {
+func (r *runner) writeExam(ctx context.Context, iface string) ([]Check, []byte, error) {
 	wt := filepath.Join(r.dir, "exam-worktree")
 	if _, err := git(ctx, r.root, "worktree", "add", "-q", "--detach", wt, r.base); err != nil {
 		return nil, nil, err
@@ -394,7 +398,7 @@ func (r *runner) writeExam(ctx context.Context) ([]Check, []byte, error) {
 	defer func() {
 		_, _ = git(context.Background(), r.root, "worktree", "remove", "--force", wt)
 	}()
-	out, err := hostAgent(ctx, r.o.ExamCmd, wt, examPrompt(r.o.Task), filepath.Join(r.dir, "logs", "exam-writer.log"))
+	out, err := hostAgent(ctx, r.o.ExamCmd, wt, examPrompt(r.o.Task, iface), filepath.Join(r.dir, "logs", "exam-writer.log"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("the exam session failed: %v", err)
 	}
