@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -38,6 +39,8 @@ func main() {
 		err = cmdRun(os.Args[2:], false)
 	case "hunt":
 		err = cmdRun(os.Args[2:], true)
+	case "config":
+		err = cmdConfig(os.Args[2:])
 	case "doctor":
 		err = cmdDoctor(os.Args[2:])
 	case "version", "--version", "-v":
@@ -59,12 +62,13 @@ func usage() {
 
   taskwing run "<task>" [flags]    plan, exam, build, join, exam, pull request
   taskwing hunt ["<area>"] [flags] find bugs, prove each with a failing test, fix them
+  taskwing config boat-base <id>   remember the boat base box (instead of TASKWING_BOAT_BASE)
   taskwing doctor [--clean]        find (and delete) leftover sandboxes and refs
   taskwing version
 
 Run flags:
   --provider boat|local   where agents run (TASKWING_PROVIDER, default boat)
-  --boat-base <id>        prepared boat box to fork (TASKWING_BOAT_BASE)
+  --boat-base <id>        prepared boat box to fork (TASKWING_BOAT_BASE, or taskwing config)
   --boat-env <name>       boat environment for the forks (TASKWING_BOAT_ENV)
   --model <name>          agent model in boat (TASKWING_MODEL, default opus-5-5)
   --effort <level>        agent effort in boat (TASKWING_EFFORT, default medium)
@@ -106,7 +110,7 @@ type providerFlags struct {
 func addProviderFlags(fs *flag.FlagSet) providerFlags {
 	return providerFlags{
 		provider: fs.String("provider", env("TASKWING_PROVIDER", "boat"), "boat or local"),
-		base:     fs.String("boat-base", os.Getenv("TASKWING_BOAT_BASE"), "boat box to fork"),
+		base:     fs.String("boat-base", env("TASKWING_BOAT_BASE", loadConfig().BoatBase), "boat box to fork"),
 		boatEnv:  fs.String("boat-env", os.Getenv("TASKWING_BOAT_ENV"), "boat environment"),
 		model:    fs.String("model", env("TASKWING_MODEL", "opus-5-5"), "agent model"),
 		effort:   fs.String("effort", env("TASKWING_EFFORT", "medium"), "agent effort"),
@@ -276,5 +280,42 @@ func cmdDoctor(args []string) error {
 	if !*clean {
 		fmt.Println("Run with --clean to delete the sandboxes and agent refs above.")
 	}
+	return nil
+}
+
+// config is ~/.taskwing/config.json: settings the user would otherwise export.
+type config struct {
+	BoatBase string `json:"boat_base,omitempty"`
+}
+
+func configPath() string { return filepath.Join(home(), "config.json") }
+
+func loadConfig() config {
+	var c config
+	if b, err := os.ReadFile(configPath()); err == nil {
+		_ = json.Unmarshal(b, &c)
+	}
+	return c
+}
+
+func cmdConfig(args []string) error {
+	c := loadConfig()
+	switch {
+	case len(args) == 0:
+		fmt.Printf("boat-base  %s\n  (%s)\n", c.BoatBase, configPath())
+		return nil
+	case len(args) == 2 && args[0] == "boat-base":
+		c.BoatBase = args[1]
+	default:
+		return fmt.Errorf("usage: taskwing config [boat-base <id>]")
+	}
+	if err := os.MkdirAll(home(), 0o755); err != nil {
+		return err
+	}
+	b, _ := json.MarshalIndent(c, "", "  ")
+	if err := os.WriteFile(configPath(), append(b, '\n'), 0o644); err != nil {
+		return err
+	}
+	fmt.Println("saved:", configPath())
 	return nil
 }

@@ -164,3 +164,26 @@ func truncate(s string, n int) string {
 	}
 	return string(r[:n-1]) + "…"
 }
+
+// claudeLoggedIn fails early when a host command uses the claude CLI and the
+// CLI is logged out (a logged-in desktop app does not log in the CLI).
+func claudeLoggedIn(ctx context.Context, o Options) error {
+	uses := false
+	for _, c := range []string{o.LeadCmd, o.ExamCmd, o.HuntCmd} {
+		if strings.HasPrefix(strings.TrimSpace(c), "claude ") {
+			uses = true
+		}
+	}
+	if !uses {
+		return nil
+	}
+	out, err := exec.CommandContext(ctx, "claude", "auth", "status").CombinedOutput()
+	if err != nil && len(out) == 0 {
+		return nil // older CLI without auth status: find out on the first call
+	}
+	compact := strings.ReplaceAll(strings.ReplaceAll(string(out), " ", ""), "\"", "")
+	if strings.Contains(compact, "loggedIn:false") {
+		return fmt.Errorf("the claude CLI on this machine is not logged in (the desktop app login is separate): run claude, type /login, then try again")
+	}
+	return nil
+}

@@ -55,7 +55,7 @@ A stopped box keeps its data for 14 days. After that, `boat fork` fails; save it
 ## 4. Run it
 
 ```bash
-export TASKWING_BOAT_BASE=bx_abc123
+taskwing config boat-base bx_abc123   # once; or export TASKWING_BOAT_BASE=bx_abc123
 cd path/to/osprey                    # clean working tree, on the branch the PR should target
 taskwing run "add an alert webhook, a list-evaluations endpoint and a disposition API"
 ```

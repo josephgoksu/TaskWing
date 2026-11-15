@@ -178,6 +178,9 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			return nil, errors.New("you are on a detached HEAD; check out the branch the pull request should target")
 		}
 	}
+	if err := claudeLoggedIn(ctx, o); err != nil {
+		return nil, err
+	}
 	r.id = "tw-" + time.Now().Format("20060102-150405")
 	r.dir = filepath.Join(o.Home, "runs", r.id)
 	if err := os.MkdirAll(filepath.Join(r.dir, "logs"), 0o755); err != nil {
