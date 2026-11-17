@@ -1,6 +1,6 @@
 # TaskWing v2 spec
 
-Draft, 2026-11-14. Built on `PRINCIPLES.md`; where the two disagree, the principles win until one of them is changed with its reason. The look is the Flight Deck prototype (`prototype/flight-deck/index.html`).
+Draft, 2026-11-14. Built on `PRINCIPLES.md`; where the two disagree, the principles win until one of them is changed with its reason. The look is the TaskWing website's design system; the desktop app is in `app/`.
 
 ## What it does
 
@@ -23,7 +23,7 @@ flowchart LR
 |---|---|---|---|
 | Engine | Go binary `taskwing`, AGPL-3.0 | Runs, state, Box and Agent adapters, key proxy, exam runner, git pull/combine/push, GitHub | Call a model itself (no model code, no API key of its own) |
 | CLI | Same binary | Every action the cockpit has, as a command | Anything the cockpit can't show |
-| Cockpit | Tauri app, engine bundled as a sidecar, Flight Deck UI | Shows engine events, sends engine commands | Hold logic or state of its own (`PRINCIPLES.md` #11) |
+| Cockpit | Tauri app in `app/`, engine bundled as a sidecar, the website's design system | Shows engine events, sends engine commands | Hold logic or state of its own (`PRINCIPLES.md` #11) |
 | Lead | The user's own Claude Code in tmux session `taskwing`, with the TaskWing skill | Reads the task and repo, writes `plan.json`, answers workers, resolves conflicts at combine | See the exam tests |
 | Exam session | A fresh headless agent session on the user's machine, started by the engine per run | Writes `exam.json` and the tests from the task and the repo only; explains failures in plain words | See the plan's prompts or any worker's output before the exam runs |
 | Workers | Agent CLIs (Claude Code, Codex, Gemini, ...) inside sandboxes | Build one piece, commit locally, pass notes | Hold a real secret, push, see the exam |

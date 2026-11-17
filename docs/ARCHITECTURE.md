@@ -172,7 +172,7 @@ classDiagram
 | Engine | All the logic: runs, plan check, boxes, bundles, exam, join, push, scan, event log | Call a model itself, hold a subscription login | Model code ties the engine to one vendor; holding a subscription login breaks the provider's terms (`PRINCIPLES.md` #3) | built (the PoC) |
 | CLI | Every engine action as a command | Anything the engine can't do | Logic in a client, so the CLI and the cockpit drift apart (`PRINCIPLES.md` #11) | partial: `run`, `hunt`, `config`, `doctor`, `version` |
 | Engine stream | Newline-delimited JSON: events out, commands in. The CLI and cockpit both use it | | | planned |
-| Cockpit | Desktop app (Tauri, Flight Deck look) that draws the stream as pictures | Hold logic or state of its own | The cockpit and the CLI drift apart, and runs can't be scripted (`PRINCIPLES.md` #11) | planned (prototype only) |
+| Cockpit | Desktop app (Tauri, `app/`, the website's design system) that draws the stream as pictures | Hold logic or state of its own | The cockpit and the CLI drift apart, and runs can't be scripted (`PRINCIPLES.md` #11) | partial: the app is built and runs on its demo engine until the engine stream exists |
 | Skill | A Claude Code skill: installs TaskWing, starts a run from a chat, fixes setup | Run agents itself | Agents the engine can't see, scan or clean up | planned |
 
 ## Adapters

@@ -16,8 +16,8 @@ Status: ✅ built · 🟡 partial · ⬜ planned. Milestones: **PoC** (done, Nov
 pie showData
   title Features by status
   "Built" : 26
-  "Partial" : 6
-  "Planned" : 35
+  "Partial" : 7
+  "Planned" : 34
 ```
 
 ## Run
@@ -120,7 +120,7 @@ pie showData
 | C4 | Engine stream: JSON events out, commands in | ⬜ | M1 | The cockpit and skill use it |
 | C5 | Start from a Claude Code skill | ⬜ | Talk | Joseph's pick |
 | C6 | Two minutes from install to the first agent | ⬜ | Talk | Joseph's pick; depends on S8 and C5 |
-| C7 | Cockpit desktop app (Flight Deck) | ⬜ | Later | Prototype only (sample data in `prototype/`, not in the code) |
+| C7 | Cockpit desktop app | 🟡 | M1 | Tauri app in `app/`, built for Mac, Linux and Windows by CI. Runs on its demo engine until C4 lands |
 
 ## Project
 

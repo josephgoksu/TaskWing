@@ -15,7 +15,7 @@ taskwing run "<task>"
 ## 1. Install
 
 ```bash
-go install github.com/josephgoksu/TaskWing/cmd/taskwing@v2-poc
+go install github.com/josephgoksu/TaskWing/cmd/taskwing@main
 ~/go/bin/taskwing version     # taskwing v2-poc (an old v1 from Homebrew may come first on PATH)
 ```
 
