@@ -27,7 +27,7 @@ go install github.com/josephgoksu/TaskWing/cmd/taskwing@main
 taskwing run "add an alert webhook with tests"
 ```
 
-Desktop builds are on the [releases page](https://github.com/josephgoksu/TaskWing/releases). To run the app from source, see [app/README.md](app/README.md).
+Desktop test builds for Mac, Linux and Windows are attached to each run of the [Release desktop app workflow](https://github.com/josephgoksu/TaskWing/actions/workflows/release-app.yml); tagged releases will be on the [releases page](https://github.com/josephgoksu/TaskWing/releases). To run the app from source, see [app/README.md](app/README.md).
 
 The v1 knowledge layer was removed; it stays available at tag `v1.23.2`.
 
