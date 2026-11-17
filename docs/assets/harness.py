@@ -1,4 +1,5 @@
-"""Draws docs/assets/harness-{light,dark}.svg. Run: python3 harness.py <out dir>"""
+"""Draws docs/assets/harness-{light,dark}.svg. Run: python3 harness.py [out dir, default: this folder]"""
+import os
 import sys
 
 THEMES = {
@@ -74,7 +75,7 @@ text{{font-family:{FONT};fill:{t['text']}}}
         if label:
             a(f'<text x="{lx}" y="{ly}" class="l" text-anchor="{anchor}">{label}</text>')
 
-    # Host row (y 92..196)
+    # Host row (y 96..200)
     y0, h0 = 96, 104
     node(40, y0, 140, h0, "Your task", "one sentence", step="01")
     node(214, y0, 190, h0, "Lead agent", "plans, splits into pieces,", "pins the interface", step="02")
@@ -113,7 +114,7 @@ text{{font-family:{FONT};fill:{t['text']}}}
             a(f'<rect x="{lx+1}" y="{yy+1}" width="16" height="16" rx="5" fill="none" stroke="{col}" stroke-width="1.6"/>')
         else:
             a(f'<rect x="{lx}" y="{yy}" width="18" height="18" rx="5" fill="{col}"/>')
-        a(f'<text x="{lx+30}" y="{yy+14}" class="s" style="fill:{t['text']}">{word}</text>')
+        a(f'<text x="{lx+30}" y="{yy+14}" class="s" style="fill:{t["text"]}">{word}</text>')
 
     # Exam box
     ex, ey, ew, eh = 920, 386, 316, 172
@@ -133,12 +134,11 @@ text{{font-family:{FONT};fill:{t['text']}}}
     arrow(f"M1000,{y0+h0} V{ey-4}", "joined work", 1010, 290)
     arrow(f"M1180,{ey} V{y0+h0+4}", "pass / fail", 1170, 302, anchor="end")
 
-    # Merge pill
     a('</svg>')
     return "\n".join(o)
 
 
-out = sys.argv[1]
+out = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))
 for name, theme in THEMES.items():
-    with open(f"{out}/harness-{name}.svg", "w") as f:
+    with open(os.path.join(out, f"harness-{name}.svg"), "w", encoding="utf-8") as f:
         f.write(svg(theme))

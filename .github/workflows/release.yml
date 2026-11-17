@@ -7,7 +7,7 @@ name: Release CLI
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v*.*.*']
 
 permissions:
   contents: write

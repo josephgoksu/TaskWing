@@ -48,7 +48,7 @@ The CLI and the desktop app are released separately.
 
 | Release | How |
 |---|---|
-| CLI | Push tag `vX.Y.Z` (or `vX.Y.Z-alpha.N`). `.github/workflows/release.yml` runs GoReleaser (`.goreleaser.yaml`): archives for macOS, Linux and Windows, `.deb`/`.rpm`/`.apk`, and the Homebrew formula in `josephgoksu/homebrew-tap` (needs the `HOMEBREW_TAP_TOKEN` secret). The module path is `github.com/josephgoksu/TaskWing/v2`, so v2 tags work with `go install` |
+| CLI | Push tag `vX.Y.Z` (or `vX.Y.Z-alpha.N`). `.github/workflows/release.yml` runs GoReleaser (`.goreleaser.yaml`): archives for macOS, Linux and Windows, `.deb`/`.rpm`/`.apk`, and the Homebrew formula in `josephgoksu/homebrew-tap` (needs the `HOMEBREW_TAP_TOKEN` secret; without it the release skips the formula). CI builds the same config as a snapshot on every pull request. The module path is `github.com/josephgoksu/TaskWing/v2`, so v2 tags work with `go install` |
 
 Desktop builds come from `.github/workflows/release-app.yml`.
 

@@ -54,18 +54,18 @@ go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@latest
 
 Linux packages (`.deb`, `.rpm`, `.apk`) and archives for macOS, Linux and Windows are on the [releases page](https://github.com/josephgoksu/TaskWing/releases).
 
-**You also need:** `git`, the [GitHub CLI](https://cli.github.com) (`gh`, logged in), [Claude Code](https://code.claude.com/docs) (`claude`, logged in) and, for sandboxes, the `boat` CLI.
+**You also need:** `bash` and `git` on your PATH (every run goes through bash, Windows included), the [GitHub CLI](https://cli.github.com) (`gh`, logged in), [Claude Code](https://code.claude.com/docs) (`claude`, logged in) and, for sandboxes, the `boat` CLI.
 
 ## Quickstart
 
 ```bash
 cd your-repo                     # a clean working tree
 
-# 1. See the flow in two minutes, on your machine, no sandboxes
+# 1. See the flow in two minutes, on your machine: no sandboxes, no isolation
 taskwing run "add a /health endpoint with a test" --provider local --no-pr
 
 # 2. The real thing: every agent in its own sandbox, one draft pull request
-taskwing config boat-base bx_abc123      # once per repository, see docs/poc.md
+taskwing config boat-base bx_abc123      # one setting for every repo; per repo use --boat-base (docs/poc.md)
 taskwing run "add discount codes at checkout, with tests"
 
 # 3. Hunt bugs: each one proven by a failing test, then fixed in parallel
@@ -138,13 +138,13 @@ Every concept and how they connect: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## Desktop app
 
-The app in [`app/`](app/) is a small [Tauri 2](https://tauri.app) shell with a plain HTML, CSS and JavaScript window. Every agent is a square: blue working, grey done, amber needs you, red stuck. It runs on a built-in demo engine until the engine event stream lands. Prebuilt downloads come with the first `app-v` release; until then, run it from source with `npm install && npm run dev` (see [app/README.md](app/README.md)).
+The app in [`app/`](app/) is a small [Tauri 2](https://tauri.app) shell with a plain HTML, CSS and JavaScript window. Every agent is a square: blue working, grey done, amber needs you, red stuck. It runs on a built-in demo engine until the engine event stream lands. Prebuilt downloads come with the first `app-v` release; until then, run it from source with `cd app && npm install && npm run dev` (see [app/README.md](app/README.md)).
 
 ## Contributing
 
 TaskWing is early, so this is a good time to shape it. Good first areas:
 
-- **A sandbox provider** (E2B, Docker, AWS). A Box needs only create, exec, copy, list and destroy: see [`internal/box`](internal/box).
+- **A sandbox provider** (E2B, Docker, AWS). A provider needs only create, exec, start agent, list and destroy: see the `Provider` interface in [`internal/box`](internal/box).
 - **A second agent runtime** (OpenCode, Codex CLI, Gemini CLI).
 - **The engine event stream** that the desktop app reads ([app/docs/engine-protocol.md](app/docs/engine-protocol.md)).
 

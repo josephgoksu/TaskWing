@@ -51,7 +51,9 @@ nfpms:
     description: Open source harness that runs one coding task as parallel agents in sandboxes and returns one tested pull request.
     license: AGPL-3.0-only
     formats: [deb, rpm, apk]
-    recommends: [git, gh]
+    # Every run shells out to bash and git on the host; Alpine ships neither.
+    dependencies: [bash, git]
+    recommends: [gh]
 
 brews:
   - name: taskwing
@@ -61,7 +63,10 @@ brews:
     repository:
       owner: josephgoksu
       name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+      token: '{{ envOrDefault "HOMEBREW_TAP_TOKEN" "" }}'
+    # Without the tap token, publish the GitHub release and skip the formula
+    # instead of failing the release after it is already public.
+    skip_upload: '{{ if eq (envOrDefault "HOMEBREW_TAP_TOKEN" "") "" }}true{{ else }}false{{ end }}'
     directory: Formula
     commit_author:
       name: Joseph Goksu
@@ -71,6 +76,10 @@ brews:
       - name: git
     install: |
       bin.install "taskwing"
+    # `brew upgrade` moves v1 users onto v2, which has none of the v1 commands.
+    caveats: |
+      TaskWing 2 replaces the v1 knowledge layer; the v1 commands are gone.
+      v1 stays at https://github.com/josephgoksu/TaskWing/releases/tag/v1.23.2
     test: |
       assert_match "taskwing", shell_output("#{bin}/taskwing version")
 
