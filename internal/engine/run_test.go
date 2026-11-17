@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/box"
+	"github.com/josephgoksu/TaskWing/v2/internal/box"
 )
 
 func sh(t *testing.T, dir string, args ...string) string {

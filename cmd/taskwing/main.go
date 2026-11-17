@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/box"
-	"github.com/josephgoksu/TaskWing/internal/engine"
+	"github.com/josephgoksu/TaskWing/v2/internal/box"
+	"github.com/josephgoksu/TaskWing/v2/internal/engine"
 )
 
 var version = "v2-poc"

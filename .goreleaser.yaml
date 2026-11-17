@@ -1,0 +1,97 @@
+# Release of the taskwing engine and CLI.
+# Push a tag vX.Y.Z (or vX.Y.Z-alpha.N) and .github/workflows/release.yml runs this.
+# The desktop app has its own tags (app-vX.Y.Z) and workflow (release-app.yml).
+version: 2
+
+project_name: taskwing
+
+git:
+  # Desktop app tags are a separate release line; never diff the CLI against them.
+  ignore_tags:
+    - "app-v*"
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: taskwing
+    main: ./cmd/taskwing
+    binary: taskwing
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version=v{{ .Version }}
+
+archives:
+  - id: taskwing
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+nfpms:
+  - id: taskwing
+    package_name: taskwing
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    homepage: https://taskwing.app
+    maintainer: Joseph Goksu <6523823+josephgoksu@users.noreply.github.com>
+    description: Open source harness that runs one coding task as parallel agents in sandboxes and returns one tested pull request.
+    license: AGPL-3.0-only
+    formats: [deb, rpm, apk]
+    recommends: [git, gh]
+
+brews:
+  - name: taskwing
+    description: Open source harness for parallel coding agents in sandboxes
+    homepage: https://taskwing.app
+    license: AGPL-3.0-only
+    repository:
+      owner: josephgoksu
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    commit_author:
+      name: Joseph Goksu
+      email: 6523823+josephgoksu@users.noreply.github.com
+    commit_msg_template: "taskwing {{ .Tag }}"
+    dependencies:
+      - name: git
+    install: |
+      bin.install "taskwing"
+    test: |
+      assert_match "taskwing", shell_output("#{bin}/taskwing version")
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore\\(deps\\)"
+
+release:
+  prerelease: auto
+  footer: |
+    ## Install
+
+    ```bash
+    brew install josephgoksu/tap/taskwing
+    # or
+    go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@{{ .Tag }}
+    ```
+
+    Linux packages (`.deb`, `.rpm`, `.apk`) and archives for macOS, Linux and Windows are below.

@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 600" width="1280" height="600" role="img" aria-label="The TaskWing harness: a lead agent plans on your machine, a fresh session writes a hidden exam, you approve it, one agent per piece works in its own sandbox, the host joins the commits, the hidden exam runs in a clean sandbox, and the host opens one pull request.">
+<defs>
+<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b2bd9"/><stop offset=".55" stop-color="#2f6bff"/><stop offset="1" stop-color="#6fc3ff"/></linearGradient>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7a8599"/></marker>
+<marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2f6bff"/></marker>
+<style>
+text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#0b1220}
+.t{font-size:16px;font-weight:600}
+.s{font-size:12.5px;fill:#5b6578}
+.k{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;letter-spacing:.08em;font-weight:600;fill:#5b6578}
+.l{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;fill:#5b6578}
+.w{fill:#ffffff}
+</style></defs>
+<rect x="16" y="16" width="1248" height="262" rx="24" fill="#f3f6ff" stroke="#c9d6fb"/>
+<text x="44" y="50" class="k">YOUR MACHINE · holds git, GitHub and your logins · pushes</text>
+<rect x="16" y="318" width="1248" height="266" rx="24" fill="#f6f7f9" stroke="#d5dae3" stroke-dasharray="6 5"/>
+<text x="44" y="352" class="k">SANDBOXES · one per agent · no GitHub login · cannot push</text>
+<rect x="40" y="96" width="140" height="104" rx="16" fill="#ffffff" stroke="#d0d7e2"/>
+<text x="56" y="120" class="l">01</text>
+<text x="56" y="140" class="t">Your task</text>
+<text x="56" y="161" class="s">one sentence</text>
+<rect x="214" y="96" width="190" height="104" rx="16" fill="#ffffff" stroke="#d0d7e2"/>
+<text x="230" y="120" class="l">02</text>
+<text x="230" y="140" class="t">Lead agent</text>
+<text x="230" y="161" class="s">plans, splits into pieces,</text>
+<text x="230" y="178" class="s">pins the interface</text>
+<rect x="438" y="96" width="200" height="104" rx="16" fill="#ffffff" stroke="#d0d7e2"/>
+<text x="454" y="120" class="l">03</text>
+<text x="454" y="140" class="t">Exam writer</text>
+<text x="454" y="161" class="s">fresh session: checks</text>
+<text x="454" y="178" class="s">+ hidden tests</text>
+<g transform="translate(612,110)"><rect x="0" y="6" width="12" height="9" rx="2" fill="#16a34a"/><path d="M2.5,6 V4 a3.5,3.5 0 0 1 7,0 V6" fill="none" stroke="#16a34a" stroke-width="1.8"/></g>
+<rect x="672" y="108" width="170" height="80" rx="40.0" fill="url(#g)"/>
+<text x="757.0" y="146.0" text-anchor="middle" class="t w">You approve</text>
+<text x="757.0" y="164.0" text-anchor="middle" class="s w" style="fill:#e6eeff">the exam</text>
+<rect x="876" y="96" width="170" height="104" rx="16" fill="#ffffff" stroke="#d0d7e2"/>
+<text x="892" y="120" class="l">05</text>
+<text x="892" y="140" class="t">Join</text>
+<text x="892" y="161" class="s">host pulls commits,</text>
+<text x="892" y="178" class="s">one branch</text>
+<rect x="1080" y="96" width="160" height="104" rx="16" fill="#ffffff" stroke="#d0d7e2"/>
+<text x="1096" y="120" class="l">07</text>
+<text x="1096" y="140" class="t">One draft PR</text>
+<text x="1096" y="161" class="s">pushed by the host,</text>
+<text x="1096" y="178" class="s">with exam results</text>
+<path d="M180,148.0 H210" fill="none" stroke="#7a8599" stroke-width="1.8" marker-end="url(#ah)"/>
+<path d="M404,148.0 H434" fill="none" stroke="#7a8599" stroke-width="1.8" marker-end="url(#ah)"/>
+<path d="M638,148.0 H668" fill="none" stroke="#7a8599" stroke-width="1.8" marker-end="url(#ah)"/>
+<path d="M1046,148.0 H1076" fill="none" stroke="#7a8599" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="470" y="576" class="l">04 · one agent per piece, in parallel · never sees the tests</text>
+<rect x="470" y="386" width="182" height="80" rx="14" fill="#ffffff" stroke="#d0d7e2"/>
+<rect x="484" y="402" width="18" height="18" rx="5" fill="#2f6bff"/>
+<text x="512" y="416" class="t" style="font-size:14.5px">Agent 1</text>
+<text x="484" y="444" class="s">own sandbox · working</text>
+<rect x="666" y="386" width="182" height="80" rx="14" fill="#ffffff" stroke="#d0d7e2"/>
+<rect x="680" y="402" width="18" height="18" rx="5" fill="#9aa3b2"/>
+<text x="708" y="416" class="t" style="font-size:14.5px">Agent 2</text>
+<text x="680" y="444" class="s">own sandbox · done</text>
+<rect x="470" y="478" width="182" height="80" rx="14" fill="#ffffff" stroke="#d0d7e2"/>
+<rect x="484" y="494" width="18" height="18" rx="5" fill="#2f6bff"/>
+<text x="512" y="508" class="t" style="font-size:14.5px">Agent 3</text>
+<text x="484" y="536" class="s">own sandbox · working</text>
+<rect x="666" y="478" width="182" height="80" rx="14" fill="#ffffff" stroke="#d0d7e2"/>
+<rect x="680" y="494" width="18" height="18" rx="5" fill="#f59e0b"/>
+<text x="708" y="508" class="t" style="font-size:14.5px">Agent 4</text>
+<text x="680" y="536" class="s">own sandbox · needs you</text>
+<text x="44" y="398" class="k">EVERY AGENT IS A SQUARE</text>
+<rect x="44" y="420" width="18" height="18" rx="5" fill="#2f6bff"/>
+<text x="74" y="434" class="s" style="fill:#0b1220">working</text>
+<rect x="44" y="448" width="18" height="18" rx="5" fill="#9aa3b2"/>
+<text x="74" y="462" class="s" style="fill:#0b1220">done</text>
+<rect x="45" y="477" width="16" height="16" rx="5" fill="none" stroke="#7a8599" stroke-width="1.6"/>
+<text x="74" y="490" class="s" style="fill:#0b1220">waiting</text>
+<rect x="44" y="504" width="18" height="18" rx="5" fill="#f59e0b"/>
+<text x="74" y="518" class="s" style="fill:#0b1220">needs you</text>
+<rect x="44" y="532" width="18" height="18" rx="5" fill="#ef4444"/>
+<text x="74" y="546" class="s" style="fill:#0b1220">stuck</text>
+<rect x="920" y="386" width="316" height="172" rx="18" fill="#0b1220"/>
+<text x="938" y="414" class="l" style="fill:#aab4c8">06 · CLEAN SANDBOX</text>
+<text x="938" y="442" class="t" style="fill:#ffffff">Hidden exam</text>
+<text x="938" y="462" class="s" style="fill:#aab4c8">runs on the joined work only</text>
+<g transform="translate(938,478)"><rect x="0" y="6" width="12" height="9" rx="2" fill="#16a34a"/><path d="M2.5,6 V4 a3.5,3.5 0 0 1 7,0 V6" fill="none" stroke="#16a34a" stroke-width="1.8"/></g>
+<text x="960" y="491" class="s" style="fill:#ffffff">valid code lowers the total</text>
+<g transform="translate(938,502)"><rect x="0" y="6" width="12" height="9" rx="2" fill="#16a34a"/><path d="M2.5,6 V4 a3.5,3.5 0 0 1 7,0 V6" fill="none" stroke="#16a34a" stroke-width="1.8"/></g>
+<text x="960" y="515" class="s" style="fill:#ffffff">expired code is refused</text>
+<g transform="translate(938,526)"><rect x="0" y="6" width="12" height="9" rx="2" fill="#16a34a"/><path d="M2.5,6 V4 a3.5,3.5 0 0 1 7,0 V6" fill="none" stroke="#16a34a" stroke-width="1.8"/></g>
+<text x="960" y="539" class="s" style="fill:#ffffff">existing tests still pass</text>
+<path d="M757,188 V382" fill="none" stroke="#2f6bff" stroke-width="1.8" marker-end="url(#ab)"/>
+<text x="767" y="302" class="l" text-anchor="start">one piece each</text>
+<path d="M858,470 H890 Q902,470 902,458 V262 Q902,250 914,250 H940 Q952,250 952,238 V204" fill="none" stroke="#7a8599" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="870" y="240" class="l" text-anchor="start">commits only</text>
+<path d="M1000,200 V382" fill="none" stroke="#7a8599" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="1010" y="290" class="l" text-anchor="start">joined work</text>
+<path d="M1180,386 V204" fill="none" stroke="#7a8599" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="1170" y="302" class="l" text-anchor="end">pass / fail</text>
+</svg>
