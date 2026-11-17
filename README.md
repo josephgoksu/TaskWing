@@ -15,13 +15,22 @@ flowchart LR
 
 ![The cockpit](docs/cockpit.png)
 
-Version 2 is being designed. Nothing here runs yet. The v1 knowledge layer was removed; it stays available at tag `v1.23.2`.
+Version 2 is being designed. A first proof of concept runs in the terminal: [docs/poc.md](docs/poc.md).
+
+```bash
+go install github.com/josephgoksu/TaskWing/cmd/taskwing@v2-poc
+taskwing run "add an alert webhook with tests"
+```
+
+The v1 knowledge layer was removed; it stays available at tag `v1.23.2`.
 
 | Read | Why |
 |---|---|
 | [PRINCIPLES.md](PRINCIPLES.md) | The rules every feature is built on |
 | [SPEC.md](SPEC.md) | What v2 is made of and the first milestone |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Every concept and how they connect |
+| [docs/FEATURES.md](docs/FEATURES.md) | What is built and what is planned |
 | [AGENTS.md](AGENTS.md) | Decisions so far |
 | [prototype/flight-deck/index.html](prototype/flight-deck/index.html) | What the desktop cockpit looks like (open from disk) |
 
-MIT licence.
+Licence: AGPL-3.0 (see [LICENSE](LICENSE) and [NOTICE](NOTICE)). Earlier copies (up to v1.23.2 and the first v2-poc builds) keep their old licence.

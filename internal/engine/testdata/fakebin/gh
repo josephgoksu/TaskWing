@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Stand-in GitHub CLI.
+case "$1 $2" in
+  "auth status") exit 0 ;;
+  "pr create")
+    while [ $# -gt 0 ]; do
+      case "$1" in --body-file) cp "$2" "$FAKE_STATE/pr-body.md" ;; esac
+      shift
+    done
+    echo "https://github.com/example/repo/pull/7" ;;
+  *) echo "fake gh: $*" >&2; exit 1 ;;
+esac
