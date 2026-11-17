@@ -83,7 +83,7 @@ Not verified: whether boat exposes a preview port per box, and the memory cost o
 
 ## Hidden exam (decided 2026-11-14)
 
-Before any agent starts, the lead agent writes the acceptance checks for the finished work. The agents never see them.
+Before any agent starts, the acceptance checks for the finished work are written and the user approves them. The agents never see the tests. Changed 2026-11-14: a fresh exam session writes them, not the lead, and the user approves the exam instead of the plan (`PRINCIPLES.md` #8 and #12).
 
 | Rule | What breaks without it |
 |---|---|

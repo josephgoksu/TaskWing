@@ -1,0 +1,18 @@
+TaskWing
+Copyright (C) 2024-2026 Joseph Goksu and the TaskWing contributors
+
+Original project: https://github.com/josephgoksu/TaskWing
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU Affero General Public License, version 3, as
+published by the Free Software Foundation. See LICENSE.
+
+If you share a copy or a changed version of TaskWing, or run a changed
+version as a network service, keep this NOTICE file and say where the
+original project is. "TaskWing" is the name of this project. A changed
+version that is shared under another name must still credit TaskWing
+here.
+
+Versions up to and including v1.23.2, and the v2-poc branch before this
+NOTICE was added, were released under the MIT License with the Commons
+Clause restriction. That licence still applies to those copies.

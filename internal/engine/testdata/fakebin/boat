@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Stand-in boat CLI: every box is a folder under $FAKE_STATE/boxes, used as $HOME.
+set -u
+B="$FAKE_STATE/boxes"
+mkdir -p "$B"
+cmd=$1; shift
+case "$cmd" in
+  fork)
+    id="box$RANDOM$RANDOM"
+    mkdir -p "$B/$id"
+    echo '{"event":"progress","message":"forking"}'
+    echo "{\"event\":\"done\",\"id\":\"$id\"}" ;;
+  rename) echo "$2" > "$B/$1/.name" ;;
+  ssh)
+    id=$1; shift; [ "$1" = "--" ] && shift
+    cd "$B/$id" && HOME="$B/$id" exec bash -c "$1" ;;
+  prompt)
+    id=$1; prompt="${@: -1}"
+    echo '{"event":"start","data":{"conversationId":"cv1"}}'
+    if [ -n "${FAKE_BOAT_NO_LOGIN:-}" ]; then
+      echo '{"event":"chat","data":{"type":"usage_limit","data":{"limitType":"auth_expiry","provider":"claude","summary":"Claude login required"}}}'
+      echo '{"event":"chat","status":"finished"}'
+      echo idle > "$B/$id/.conv"
+      exec sleep 600
+    fi
+    echo running > "$B/$id/.conv"
+    out=$(cd "$B/$id/tw/repo" && HOME="$B/$id" bash "$FAKE_AGENT" <<<"$prompt" 2>&1)
+    proof=$(grep '^PROOF:' <<<"$out" | tail -1)
+    echo '{"event":"chat","data":{"type":"response","data":{"content":"","tools":[{"use":{"name":"Bash","input":{"command":"echo working"}}}]}}}'
+    echo "{\"event\":\"chat\",\"data\":{\"type\":\"response\",\"data\":{\"content\":\"Done.\\n$proof\"}}}"
+    echo idle > "$B/$id/.conv"
+    exec sleep 600 ;;
+  conversations)
+    st=$(cat "$B/$1/.conv" 2>/dev/null)
+    r=true; [ "$st" = idle ] && r=false
+    echo "{\"event\":\"conversation\",\"data\":{\"id\":\"cv1\",\"running\":$r}}" ;;
+  interrupt) ;;
+  delete) for a in "$@"; do [ "$a" = --yes ] || rm -rf "$B/$a"; done ;;
+  list)
+    printf '{"sandboxes":['
+    sep=""
+    for d in "$B"/*/; do [ -d "$d" ] || continue; printf '%s{"id":"%s","name":"%s","state":"running"}' "$sep" "$(basename "$d")" "$(cat "$d/.name" 2>/dev/null)"; sep=","; done
+    echo ']}' ;;
+  *) echo "fake boat: unknown $cmd" >&2; exit 1 ;;
+esac

@@ -1958,6 +1958,74 @@
   .proof-line.ok { color: var(--accent-green); font-weight: 600; } .proof-line.bad { color: var(--accent-red); font-weight: 600; } .proof-line.mute { color: var(--text-tertiary); }
   .proof-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 9px; border-radius: 7px; background: var(--accent-amber-soft); color: var(--text-primary); font-size: 11.5px; }
   .proof-cta { flex-shrink: 0; padding: 2px 8px; border-radius: 5px; background: var(--accent-blue); color: #FFFFFF; font-size: 10.5px; font-weight: 600; }
+
+  /* Agent squares: one square per sandbox agent */
+  .sq-strip { display:inline-flex; flex-wrap:wrap; gap:2px; align-items:center; max-width:100%; }
+  .sq { width:7px; height:7px; border-radius:2px; box-sizing:border-box; flex:0 0 auto; }
+  .sq.done { background: var(--text-tertiary); opacity:.75; }
+  .sq.working { background: var(--accent-blue); }
+  .sq.waiting { border:1px solid var(--text-tertiary); opacity:.6; }
+  .sq.needs { background: var(--accent-amber); }
+  .sq.stuck { background: var(--accent-red); }
+  .swarm-card { background: var(--surface-1, var(--bg-elevated, transparent)); border:1px solid var(--border-subtle, rgba(127,127,127,.25)); border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+  .swarm-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .swarm-title { font-weight:600; font-size:13.5px; }
+  .swarm-counts { display:flex; gap:12px; flex-wrap:wrap; font-size:11.5px; color: var(--text-secondary); }
+  .swarm-counts .k { display:inline-flex; align-items:center; gap:5px; }
+  .swarm-grid { display:grid; grid-template-columns: repeat(auto-fill, 18px); gap:5px; }
+  .swarm-grid .sq { width:18px; height:18px; border-radius:4px; cursor:pointer; padding:0; border-width:1.5px; }
+  .swarm-grid .sq:hover, .swarm-grid .sq:focus-visible { outline:2px solid var(--accent-blue); outline-offset:1px; }
+  .swarm-grid button.sq { border:0; }
+  .swarm-grid button.sq.waiting { border:1.5px solid var(--text-tertiary); background:transparent; }
+  .swarm-hint { font-size:11.5px; color: var(--text-tertiary); }
+  .box-proof { display:flex; gap:7px; align-items:flex-start; font-size:12px; line-height:1.45; color: var(--text-primary); padding:8px 10px; border-radius:8px; background: var(--accent-green-soft, rgba(18,128,74,.08)); }
+  .box-proof.pending { background: rgba(127,127,127,.08); color: var(--text-secondary); }
+  .box-proof .lbl { font-size:10px; letter-spacing:.06em; text-transform:uppercase; color: var(--text-tertiary); flex-shrink:0; padding-top:2px; }
+  .exam-approve .exam-list { margin:8px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:4px; font-size:12.5px; }
+  .exam-approve .exam-add { display:flex; gap:6px; margin-top:8px; }
+  /* Visual proof: pictures instead of sentences */
+  .viz { border-radius:9px; background: var(--accent-green-soft); padding:10px 11px; min-height:64px; display:flex; flex-direction:column; justify-content:center; gap:7px; }
+  .viz.pending { background: var(--bg-well); }
+  .viz-tl { position:relative; height:24px; margin:0 8px; }
+  .viz-tl .axis { position:absolute; left:0; right:0; top:11px; height:2px; border-radius:2px; background: var(--border-strong); }
+  .viz-tl .mark { position:absolute; top:2px; transform:translateX(-50%); width:20px; height:20px; border-radius:50%; background: var(--accent-green); color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; box-shadow:0 0 0 2px var(--bg-card); }
+  .viz-tl .mark.start { background: var(--accent-red); width:12px; height:12px; top:6px; }
+  .viz-cap { display:flex; justify-content:space-between; font-size:10px; color: var(--text-tertiary); letter-spacing:.02em; }
+  .viz-flow { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .viz-node { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; color: var(--text-secondary); }
+  .viz-node .ic { width:30px; height:30px; border-radius:8px; background: var(--bg-card); display:flex; align-items:center; justify-content:center; box-shadow: var(--shadow-card); }
+  .viz-wire { flex:1; position:relative; height:2px; background: var(--accent-green); border-radius:2px; }
+  .viz-wire span { position:absolute; left:50%; top:-17px; transform:translateX(-50%); font-size:10.5px; font-weight:700; color: var(--accent-green); white-space:nowrap; }
+  .viz-page { border-radius:6px; background: var(--bg-card); box-shadow: var(--shadow-card); overflow:hidden; }
+  .viz-page .chrome { display:flex; gap:3px; padding:4px 6px; background: var(--bg-well); }
+  .viz-page .chrome i { width:5px; height:5px; border-radius:50%; background: var(--border-strong); }
+  .viz-page .body { padding:7px 8px; display:flex; flex-direction:column; gap:5px; }
+  .viz-page .bar { display:flex; align-items:center; justify-content:space-between; gap:6px; padding:4px 6px; border-radius:5px; background: var(--accent-amber-soft); font-size:10px; color: var(--text-primary); }
+  .viz-page .bar b { flex-shrink:0; padding:1px 6px; border-radius:4px; background: var(--accent-blue); color:#fff; font-size:9.5px; font-weight:600; }
+  .viz-page .line { height:4px; border-radius:2px; background: var(--bg-well); }
+  .seg-bar { display:flex; gap:3px; }
+  .seg-bar span { flex:1; height:6px; border-radius:3px; background: var(--border-strong); opacity:.45; }
+  .seg-bar span.on { background: var(--accent-blue); opacity:1; }
+  .seg-bar.done span.on { background: var(--accent-green); }
+  .viz-wait { display:flex; align-items:center; gap:8px; font-size:11.5px; color: var(--text-tertiary); }
+  .lock-row { display:flex; gap:6px; flex-wrap:wrap; }
+  .lock { width:28px; height:28px; border-radius:8px; background: var(--accent-amber-soft); color: var(--accent-amber); display:flex; align-items:center; justify-content:center; }
+  .lock.pass { background: var(--accent-green-soft); color: var(--accent-green); }
+  .flow-strip { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .flow-strip .step { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:10.5px; color: var(--text-tertiary); }
+  .flow-strip .sq-strip { max-width: 150px; }
+  .flow-strip .arrow { color: var(--text-tertiary); font-size:14px; }
+  .flow-strip .pr-ic { width:28px; height:28px; border-radius:8px; background: var(--accent-purple-soft); color: var(--accent-purple); display:flex; align-items:center; justify-content:center; }
+  .dec-ic { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .dec-ic.Decided { background: var(--accent-purple-soft); color: var(--accent-purple); }
+  .dec-ic.Fixed { background: var(--accent-amber-soft); color: var(--accent-amber); }
+  .dec-ic.Planned { background: var(--bg-well); color: var(--text-secondary); }
+  .dec-ic.You { background: var(--accent-blue-soft); color: var(--accent-blue); }
+  .dec-ic.Done { background: var(--accent-green-soft); color: var(--accent-green); }
+  .built-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap:10px; }
+  .built-tile { display:flex; flex-direction:column; gap:8px; padding:10px; border-radius:10px; background: var(--bg-card-subtle); }
+  .built-tile .nm { font-size:12px; font-weight:600; display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .exam-approve .exam-add input { flex:1; min-width:0; height:28px; border-radius:7px; border:1px solid var(--border-subtle, rgba(127,127,127,.35)); background:transparent; color:inherit; padding:0 9px; font:inherit; font-size:12px; }
 </style>
 </head>
 <body>
@@ -1999,10 +2067,6 @@
       <button class="seg-btn active" data-view="formation" id="segFormation">
         <span>Overview</span>
       </button>
-      <button class="seg-btn" data-view="memories" id="segMemories">
-        <span>Memories &amp; Notes</span>
-        <span class="seg-count" id="segMemCount">11</span>
-      </button>
       <button class="seg-btn" data-view="decisions" id="segDecisions">
         <span>Decisions</span>
         <span class="seg-count" id="segDecCount">7</span>
@@ -2036,7 +2100,7 @@
       <div class="sidebar-top">
         <div class="search-wrap">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14" stroke-linecap="round"/></svg>
-          <input type="text" class="search-input" id="searchInput" placeholder="Search 23 tasks...">
+          <input type="text" class="search-input" id="searchInput" placeholder="Search tasks...">
           <button class="search-clear" id="searchClear" title="Clear">&times;</button>
         </div>
         <div class="filter-pills" id="filterPills">
@@ -2130,7 +2194,7 @@
       cost: "$0.38",
       prompt: "Don't cancel customers right away when their card fails. Retry smartly over a week, send calm heads-up emails, and show a subtle update-card banner in the app.",
       improvedPlan: "Keep full workspace access during a 7-day grace window after a failed renewal. Schedule three retries (+24h, +72h, +7d), skip stolen cards, clear queued retries the moment a customer saves a new card, send at most two calm emails, and show a dismissible banner to workspace admins.",
-      leadNote: "I split the work into 4 pieces with no shared files, and wrote 5 exam checks before any agent started.",
+      leadNote: "I split the work into 4 pieces with no shared files. You approved the 5 exam checks, so all 4 agents are working.",
       vaultPeeked: false,
       checkProgress: 0,
       healedNote: null,
@@ -2150,7 +2214,7 @@
         { time: "10:31", kind: "Decided", text: "Gemini builds the banner. It did best on interface work in your last 3 tasks.", changedText: "You changed this: Claude Code builds the banner." },
         { time: "10:24", kind: "Fixed", text: "Box 03 tried the same layout fix 3 times. I told it to rethink, and it is moving again." },
         { time: "10:12", kind: "Planned", text: "I split the work into 4 pieces, each with its own files, and started all 4." },
-        { time: "10:11", kind: "Planned", text: "I wrote 5 checks first and sealed them. The agents cannot see or change them." },
+        { time: "10:11", kind: "You", text: "You approved the 5 exam checks. A separate session wrote the tests behind them and sealed them." },
         { time: "10:10", kind: "Decided", text: "I read your request as: keep access for 7 days, retry 3 times, skip stolen cards.", changedText: "You changed this: keep access for 14 days. All 4 boxes were told." }
       ],
       proof: [
@@ -2173,6 +2237,8 @@
           vm: "sbx-ams-01",
           folder: "billing/retry/",
           thought: "Skipping retries when the bank says the card was stolen or lost",
+          proofLine: "Retries land at +24h, +72h and +7d. A stolen card gets none.",
+          viz: { kind: "timeline", max: 7, marks: [1, 3, 7], icon: "retry", from: "Card fails", to: "Day 7" },
           files: [
             { name: "schedule", desc: "Plans +24h, +72h, and +7d retry timestamps", state: "done" },
             { name: "policy", desc: "Skips non-retriable card decline reasons", state: "done" },
@@ -2194,6 +2260,8 @@
           vm: "sbx-ams-02",
           folder: "webhooks/stripe/",
           thought: "Telling the other agents the moment a customer saves a new card",
+          proofLine: "Saving a new card clears queued retries in 0.4 seconds.",
+          viz: { kind: "flow", from: "New card", to: "Retries cleared", took: "0.4s" },
           files: [
             { name: "attached", desc: "Detects updated customer card from Stripe", state: "done" },
             { name: "dedupe", desc: "Prevents duplicate webhook deliveries", state: "done" },
@@ -2214,6 +2282,8 @@
           vm: "sbx-fra-03",
           folder: "web/banner/",
           thought: "Showing 'We will try again Thursday' using the retry date from Box 01",
+          proofLine: "The billing page shows: We will try your card again on Thursday.",
+          viz: { kind: "page", text: "We will try again Thursday", cta: "Update card" },
           files: [
             { name: "Banner", desc: "Calm top bar with one-click Update Card sheet", state: "done" },
             { name: "useGrace", desc: "Reads grace_ends_at and hides immediately on update", state: "active" },
@@ -2234,6 +2304,8 @@
           vm: "sbx-iad-04",
           folder: "mail/grace/",
           thought: "Capping heads-up emails to Day 1 and Day 5 per renewal cycle",
+          proofLine: "Only 2 emails go out per failed renewal: day 1 and day 5.",
+          viz: { kind: "timeline", max: 7, marks: [1, 5], icon: "mail", from: "Card fails", to: "Day 7" },
           files: [
             { name: "day1", desc: "Friendly heads-up note with direct card update link", state: "done" },
             { name: "day5", desc: "Final calm reminder two days before workspace pause", state: "done" },
@@ -2509,6 +2581,60 @@
     });
   });
 
+
+  // A wide task: 36 agents, shown as squares instead of cards
+  (function addWideTask() {
+    const langs = ["German", "French", "Spanish", "Italian", "Dutch", "Polish", "Turkish", "Japanese", "Korean", "Portuguese", "Swedish", "Arabic"];
+    const parts = ["billing pages", "emails", "receipts and PDFs"];
+    const models = ["claude", "codex", "gemini"];
+    const boxes = [];
+    langs.forEach((lang, li) => parts.forEach((part, pi) => {
+      const n = boxes.length;
+      const status = n < 21 ? "done" : (n === 26 ? "stuck" : (n < 30 ? "working" : "waiting"));
+      boxes.push({
+        id: "w" + (n + 1),
+        model: models[n % 3],
+        role: lang + " · " + part,
+        vm: "sbx-fra-" + String(40 + n),
+        folder: "locales/" + lang.toLowerCase() + "/",
+        status: status,
+        thought: status === "done" ? "Finished. Every " + part + " string is in " + lang + "."
+          : status === "stuck" ? "Tried the same plural rule 3 times. I restarted it with a hint."
+          : status === "working" ? "Translating " + part + " into " + lang + "."
+          : "Waiting for a free slot.",
+        proofLine: status === "done" ? "All " + part + " in " + lang + ", nothing left in English" : null,
+        files: [{ name: "strings", desc: lang + " text for " + part, state: status === "done" ? "done" : (status === "waiting" ? "queued" : "active") }],
+        memories: ["Prices keep the customer's currency; only words are translated"],
+        chat: [{ from: "agent", text: "I own the " + lang + " " + part + "." }]
+      });
+    }));
+    INITIAL_TASKS.splice(1, 0, {
+      id: "tw-425", pr: 425, title: "Translate billing into 12 languages", group: "active", stage: 2, time: "14m",
+      cost: "$2.10",
+      prompt: "Translate every billing page, email and receipt into our 12 launch languages.",
+      improvedPlan: "Translate the billing pages, emails and receipts into 12 languages: one agent per language and part, 36 in all. Prices and dates follow each country's format; only words change.",
+      leadNote: "21 of 36 agents are done. One got stuck on Polish plurals and I restarted it. One question for you about prices in Japanese.",
+      examApproved: true, vaultPeeked: false, checkProgress: 0, healedNote: null,
+      ask: {
+        boxIdx: 24,
+        question: "In Japanese, should prices show in yen, or stay in US dollars as they are charged?",
+        leadPick: "b",
+        options: {
+          a: { label: "Show yen", check: "Japanese billing pages show prices in yen" },
+          b: { label: "Keep US dollars", check: "Japanese billing pages show the charged US dollar price" }
+        },
+        answer: null
+      },
+      blindChecks: [
+        "Every billing page, email and receipt has no English left in all 12 languages",
+        "Prices and dates follow each language's local format",
+        "Receipts in Arabic read right to left and still print on one A4 page",
+        "English pages are exactly as before"
+      ],
+      boxes: boxes,
+      notes: []
+    });
+  })();
   // App State
   const state = {
     tasks: INITIAL_TASKS,
@@ -2549,6 +2675,77 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+
+  // One square per agent. Grey = done, blue = working, outline = waiting, amber = needs you, red = stuck.
+  const SQ_LABEL = { done: "Done", working: "Working", waiting: "Waiting", needs: "Needs you", stuck: "Stuck" };
+  function boxState(t, b, idx) {
+    if (t.stage >= 3) return "done";
+    if (t.stage === 1) return "waiting";
+    if (t.ask && !t.ask.answer && t.ask.boxIdx === idx + 1) return "needs";
+    if (b.status) return b.status;
+    const files = b.files || [];
+    if (files.length && files.every(f => f.state === "done")) return "done";
+    if (files.some(f => f.state === "active")) return "working";
+    return "waiting";
+  }
+  function squaresHtml(t) {
+    return `<span class="sq-strip">${t.boxes.map((b, i) => `<span class="sq ${boxState(t, b, i)}"></span>`).join("")}</span>`;
+  }
+  function boxProof(t, b, idx) {
+    if (t.stage === 1) return { text: "Starts when you approve the exam", pending: true };
+    if (t.stage === 5) return { text: b.proofLine || "Its part passed the exam and was merged", pending: false };
+    if (b.proofLine) return { text: b.proofLine, pending: false };
+    const files = b.files || [];
+    const done = files.filter(f => t.stage >= 3 || f.state === "done").length;
+    return done ? { text: done + " of " + files.length + " parts working in its sandbox", pending: false } : { text: "Nothing to show yet", pending: true };
+  }
+  const ICON = {
+    retry: `<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M13 8a5 5 0 11-1.5-3.6M13 2.5v2.5h-2.5"/></svg>`,
+    mail: `<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="M2.5 4.5L8 9l5.5-4.5"/></svg>`,
+    card: `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent-blue)" stroke-width="1.6"><rect x="1.5" y="3.5" width="13" height="9" rx="1.8"/><path d="M1.5 6.5h13"/></svg>`,
+    check: `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent-green)" stroke-width="2.2" stroke-linecap="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>`,
+    lock: `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="7" width="10" height="7" rx="1.8"/><path d="M5.2 7V5a2.8 2.8 0 015.6 0v2"/></svg>`,
+    tick: `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>`,
+    pause: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 4v8M10 4v8"/></svg>`,
+    pr: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="4" r="1.8"/><circle cx="5" cy="12" r="1.8"/><circle cx="11.5" cy="12" r="1.8"/><path d="M5 5.8v4.4M11.5 10.2V7.5c0-1.5-1-2.5-2.5-2.5H7.5"/></svg>`,
+    join: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l5 5 5-5M8 8v5"/></svg>`
+  };
+  const DEC_ICON = {
+    Decided: `<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5l1.6 4.2 4.4.3-3.4 2.8 1.1 4.3L8 10.7 4.3 13.1l1.1-4.3L2 6l4.4-.3z"/></svg>`,
+    Fixed: `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10.5 2.5a3 3 0 00-3.8 3.8L2.5 10.5l3 3 4.2-4.2a3 3 0 003.8-3.8l-2 2-2-.5-.5-2z"/></svg>`,
+    Planned: `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 2v4M8 6L3.5 10M8 6l4.5 4M3.5 10v3.5M12.5 10v3.5M8 6v7.5"/></svg>`,
+    You: `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="5.5" r="2.8"/><path d="M2.8 14c.6-2.8 2.7-4.2 5.2-4.2s4.6 1.4 5.2 4.2"/></svg>`,
+    Done: ICON.tick
+  };
+
+  // The proof as a picture. Falls back to a bar of the agent's parts.
+  function vizHtml(t, b, idx) {
+    if (t.stage === 1) return `<div class="viz pending"><div class="viz-wait">${ICON.pause}<span>Starts after your OK</span></div></div>`;
+    const v = b.viz;
+    const finished = t.stage >= 3 || boxState(t, b, idx) === "done";
+    if (v && v.kind === "timeline") {
+      const marks = v.marks.map(d => `<span class="mark" style="left:${(d / v.max) * 100}%" title="Day ${d}">${ICON[v.icon] || d}</span>`).join("");
+      return `<div class="viz" title="${escapeHtml(b.proofLine || "")}"><div class="viz-tl"><span class="axis"></span><span class="mark start" style="left:0"></span>${marks}</div><div class="viz-cap"><span>${escapeHtml(v.from)}</span><span>${v.marks.map(d => "day " + d).join(" · ")}</span><span>${escapeHtml(v.to)}</span></div></div>`;
+    }
+    if (v && v.kind === "flow") {
+      return `<div class="viz" title="${escapeHtml(b.proofLine || "")}"><div class="viz-flow"><div class="viz-node"><span class="ic">${ICON.card}</span>${escapeHtml(v.from)}</div><div class="viz-wire"><span>${escapeHtml(v.took)}</span></div><div class="viz-node"><span class="ic">${ICON.check}</span>${escapeHtml(v.to)}</div></div></div>`;
+    }
+    if (v && v.kind === "page") {
+      return `<div class="viz" title="${escapeHtml(b.proofLine || "")}"><div class="viz-page"><div class="chrome"><i></i><i></i><i></i></div><div class="body"><div class="bar"><span>${escapeHtml(v.text)}</span><b>${escapeHtml(v.cta)}</b></div><div class="line" style="width:80%"></div><div class="line" style="width:55%"></div></div></div></div>`;
+    }
+    const files = b.files || [];
+    const on = files.filter(f => finished || f.state === "done").length;
+    const segs = files.map((f, i) => `<span class="${i < on ? "on" : ""}"></span>`).join("");
+    return `<div class="viz ${on ? "" : "pending"}" title="${escapeHtml(b.proofLine || "")}"><div class="seg-bar ${on === files.length ? "done" : ""}">${segs}</div><div class="viz-cap"><span>${on} of ${files.length} parts</span><span>${on === files.length ? "done" : ""}</span></div></div>`;
+  }
+
+  function lockRowHtml(t) {
+    return `<div class="lock-row">${t.blindChecks.map((c, i) => {
+      const ok = t.stage >= 4 || (t.stage === 3 && i < t.checkProgress);
+      return `<span class="lock ${ok ? "pass" : ""}" title="${escapeHtml(c)}">${ok ? ICON.tick : ICON.lock}</span>`;
+    }).join("")}</div>`;
   }
 
   function clearAutoTimers() {
@@ -2622,7 +2819,7 @@
             <div class="row-body">
               <div class="row-title">${escapeHtml(t.title)}</div>
               <div class="row-meta">
-                <span class="agent-dots" title="${t.boxes.length} cloud sandboxes">${dots} <span style="margin-left:3px;">${t.boxes.length} boxes</span></span>
+                <span class="agent-dots" title="${t.boxes.length} agents, one square each" style="min-width:0;flex-wrap:wrap;">${squaresHtml(t)} <span style="margin-left:4px;">${t.boxes.length} agents</span></span>
                 <span>${escapeHtml(rightLabel)}</span>
               </div>
             </div>
@@ -2656,12 +2853,10 @@
     const t = currentTask();
     const bar = document.getElementById("taskBar");
 
-    const memTotal = t.boxes.reduce((acc, b) => acc + b.memories.length, 0) + t.notes.length;
-    document.getElementById("segMemCount").textContent = memTotal;
     document.getElementById("segDecCount").textContent = decisionsFor(t).length;
 
     let badgeCls = "working", badgeText = "Running";
-    if (t.stage === 1) { badgeCls = "working"; badgeText = "Planning"; }
+    if (t.stage === 1) { badgeCls = "checking"; badgeText = "Waiting for your OK"; }
     else if (t.stage === 2) { badgeCls = "working"; badgeText = "Agents working"; }
     else if (t.stage === 3) { badgeCls = "checking"; badgeText = "Taking the exam"; }
     else if (t.stage === 4) { badgeCls = "ready"; badgeText = "Pull request #" + t.pr + " ready"; }
@@ -2691,11 +2886,11 @@
 
     let primaryActionHtml = "";
     if (t.stage === 1) {
-      primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Start the agents</span><span>▸</span></button>`;
+      primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Approve exam and start</span><span>▸</span></button>`;
     } else if (t.stage === 2) {
       primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Run the exam</span><span>▸</span></button>`;
     } else if (t.stage === 3) {
-      primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Complete Verification</span><span>▸</span></button>`;
+      primaryActionHtml = `<button class="btn btn-primary" id="btnAdvanceStage"><span>Finish the exam</span><span>▸</span></button>`;
     } else if (t.stage === 4) {
       primaryActionHtml = `<button class="btn btn-merge" id="btnMergePr">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 8.5L6.5 11.5L12.5 4.5"/></svg>
@@ -2788,7 +2983,7 @@
       const boxes = t.boxes || [], checks = t.blindChecks || [];
       t.decisions = [
         { time: t.time, kind: "Planned", text: "I split the work into " + boxes.length + " pieces, each with its own files." },
-        { time: t.time, kind: "Planned", text: "I wrote " + checks.length + " checks first and sealed them. The agents never saw them." },
+        { time: t.time, kind: "You", text: "You approved " + checks.length + " exam checks before any agent started. A separate session wrote the tests and sealed them." },
         { time: t.time, kind: "Decided", text: "I read your request as: " + firstSentence(t.improvedPlan || t.prompt) }
       ];
       if (t.healedNote) t.decisions.unshift({ time: t.time, kind: "Fixed", text: t.healedNote });
@@ -2814,7 +3009,7 @@
     a.answer = key;
     t.blindChecks.push(opt.check);
     const n = t.blindChecks.length;
-    t.leadNote = (key === "lead" ? "You left it to me. I chose: " : "Got your answer: ") + opt.label.toLowerCase() + ". It is now check " + n + " of the exam, and Box 0" + a.boxIdx + " was told.";
+    t.leadNote = (key === "lead" ? "You left it to me. I chose: " : "Got your answer: ") + opt.label.toLowerCase() + ". It is now check " + n + " of the exam, and Box " + String(a.boxIdx).padStart(2, "0") + " was told.";
     decisionsFor(t).unshift(key === "lead"
       ? { time: "Just now", kind: "Decided", text: "You left the last-retry question to me. I chose: " + opt.label.toLowerCase() + ".", changedText: "You changed this: " + a.options[pick === "a" ? "b" : "a"].label.toLowerCase() + "." }
       : { time: "Just now", kind: "You", text: "You chose: " + opt.label.toLowerCase() + ". I added it to the exam as check " + n + "." });
@@ -2822,13 +3017,43 @@
     showToast("Your answer is now check " + n + " of the exam");
   }
 
+  function examApprovalHtml(t) {
+    const items = t.blindChecks.map(c => `<li>${escapeHtml(c)}</li>`).join("");
+    return `
+      <div class="ask-card exam-approve" id="examApproveCard">
+        <div style="min-width:0;flex:1;">
+          <div class="ask-eyebrow">The one thing only you can decide · before ${t.boxes.length} agents start</div>
+          <div class="ask-question">Is this what "done" means? The finished work must pass these ${t.blindChecks.length} checks.</div>
+          <ol class="exam-list">${items}</ol>
+          <div class="exam-add">
+            <input id="examAddInput" type="text" placeholder="Add a check in plain words, for example: works on phones too" aria-label="Add a check">
+            <button class="btn" id="examAddBtn">Add check</button>
+          </div>
+        </div>
+        <div class="ask-actions" style="align-self:flex-start;">
+          <button class="btn btn-primary" id="examApproveBtn">Yes, start the agents</button>
+        </div>
+      </div>`;
+  }
+
+  function approveExam(t) {
+    if (t.stage !== 1) return;
+    t.examApproved = true;
+    decisionsFor(t).unshift({ time: "Just now", kind: "You", text: "You approved the " + t.blindChecks.length + " exam checks. A separate session wrote the tests behind them and sealed them. I started " + t.boxes.length + " agents." });
+    t.leadNote = t.boxes.length + " agents are working at the same time. I am reading their notes before the exam.";
+    jumpToStage(t, 2);
+    showToast("Exam approved. " + t.boxes.length + " agents started");
+    if (t.autoRun) t.autoRun();
+  }
+
   function askCardHtml(t) {
+    if (t.stage === 1 && !t.examApproved) return examApprovalHtml(t);
     if (!t.ask || t.ask.answer || t.stage > 2) return "";
     const a = t.ask;
     return `
       <div class="ask-card" id="askCard">
         <div style="min-width:0;">
-          <div class="ask-eyebrow">The one thing only you can decide · from Box 0${a.boxIdx}</div>
+          <div class="ask-eyebrow">The one thing only you can decide · from Box ${String(a.boxIdx).padStart(2, "0")}</div>
           <div class="ask-question">${escapeHtml(a.question)}</div>
         </div>
         <div class="ask-actions">
@@ -2874,12 +3099,10 @@
       const idx = all.indexOf(d);
       const link = d.changedText && canChange ? ` <button class="link-btn" data-change="${idx}">${d.changed ? "Undo" : "Change"}</button>` : "";
       return `
-        <div class="decision-row">
+        <div class="decision-row" style="grid-template-columns:26px 1fr auto;align-items:center;">
+          <span class="dec-ic ${d.kind}" title="${d.kind}">${DEC_ICON[d.kind] || ""}</span>
+          <div class="decision-text">${escapeHtml(d.changed ? d.changedText : d.text)}${link}</div>
           <div class="decision-time">${escapeHtml(d.time)}</div>
-          <div>
-            <div class="kind-tag kind-${d.kind}">${d.kind}</div>
-            <div class="decision-text">${escapeHtml(d.changed ? d.changedText : d.text)}${link}</div>
-          </div>
         </div>`;
     }).join("");
     container.innerHTML = `
@@ -2888,10 +3111,10 @@
           <div class="panel-header">
             <div>
               <div class="panel-title">Your lead agent handled ${all.length} things without you</div>
-              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">It decides and tells you after. Change any decision and the agents are told.</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Change any of them and the agents are told.</div>
             </div>
             <div class="filter-pills" style="width:250px;" id="decisionFilters">
-              ${["All", "Decided", "Fixed"].map(k => `<button class="filter-pill ${f === k ? "active" : ""}" data-dfilter="${k}">${k === "All" ? "All " + all.length : k + " " + count(k)}</button>`).join("")}
+              ${["All", "Decided", "Fixed"].map(k => `<button class="filter-pill ${f === k ? "active" : ""}" data-dfilter="${k}">${k === "All" ? "All " + all.length : `<span class="dec-ic ${k}" style="width:16px;height:16px;display:inline-flex;vertical-align:-3px;">${DEC_ICON[k]}</span> ` + count(k)}</button>`).join("")}
             </div>
           </div>
           <div>${rowsHtml || `<div style="padding:14px 0;color:var(--text-tertiary);">Nothing of this kind yet.</div>`}</div>
@@ -2906,6 +3129,26 @@
     }));
   }
 
+
+  function swarmGridHtml(t) {
+    const counts = { done: 0, working: 0, waiting: 0, needs: 0, stuck: 0 };
+    const cells = t.boxes.map((b, i) => {
+      const st = boxState(t, b, i);
+      counts[st]++;
+      return `<button class="sq ${st}" data-sq-box="${b.id}" title="Agent ${i + 1} · ${escapeHtml(b.role)} · ${SQ_LABEL[st]}" aria-label="Agent ${i + 1}, ${escapeHtml(b.role)}, ${SQ_LABEL[st]}"></button>`;
+    }).join("");
+    const legend = ["done", "working", "waiting", "needs", "stuck"].filter(k => counts[k]).map(k =>
+      `<span class="k"><span class="sq ${k}"></span>${counts[k]} ${SQ_LABEL[k].toLowerCase()}</span>`).join("");
+    return `
+      <div class="swarm-card" id="swarmCard">
+        <div class="swarm-head">
+          <span class="swarm-title">${t.boxes.length} agents, one square each</span>
+          <span class="swarm-counts">${legend}</span>
+        </div>
+        <div class="swarm-grid">${cells}</div>
+        <div class="swarm-hint">Click a square to open that agent.</div>
+      </div>`;
+  }
   function renderStage() {
     const container = document.getElementById("stageContainer");
     const t = currentTask();
@@ -2915,27 +3158,20 @@
       return;
     }
 
-    if (state.viewMode === "memories") {
-      renderMemoriesView(container, t);
-      return;
-    }
     if (state.viewMode === "deliverable") {
       renderDeliverableView(container, t);
       return;
     }
 
-    const vaultOpen = t.vaultPeeked || t.stage >= 3;
+    const vaultOpen = t.vaultPeeked;
     const vaultCardCls = (t.stage >= 3 ? "unsealed" : (t.vaultPeeked ? "peeked" : ""));
 
     let vaultContentHtml = "";
     if (!vaultOpen) {
       vaultContentHtml = `
         <div class="vault-sealed-veil">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent-amber)" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.8"/><path d="M5.2 7V5a2.8 2.8 0 015.6 0v2"/></svg>
-            <span><strong>${t.blindChecks.length} checks</strong> written before any agent started. The agents never see them.</span>
-          </div>
-          <button class="btn" id="btnPeekVault" style="height:25px;padding:0 9px;font-size:11px;">Show</button>
+          ${lockRowHtml(t)}
+          <button class="btn" id="btnPeekVault" style="height:25px;padding:0 9px;font-size:11px;">${t.stage >= 3 ? "Read" : "Show"}</button>
         </div>
       `;
     } else {
@@ -2948,6 +3184,7 @@
       }).join("");
       const extra = t.blindChecks.length > 4 ? `<div style="font-size:11px;color:var(--text-tertiary);padding-left:20px;">+ ${t.blindChecks.length - 4} more</div>` : "";
       vaultContentHtml = `<div class="vault-checks-preview">${checkItems}${extra}</div>`;
+      if (t.stage >= 3) vaultContentHtml = `<div class="vault-sealed-veil">${lockRowHtml(t)}<button class="btn" id="btnHideVault" style="height:25px;padding:0 9px;font-size:11px;">Hide</button></div>` + vaultContentHtml;
     }
 
     // Mini Boxes
@@ -2959,12 +3196,14 @@
         return `<div class="file-tile ${st}" data-file-whisper="${escapeHtml(f.name + ": " + f.desc)}" title="${escapeHtml(f.desc)}">${escapeHtml(f.name)}</div>`;
       }).join("");
 
-      const doneCount = b.files.filter(f => (t.stage >= 3 ? "done" : (t.stage === 1 ? "queued" : f.state)) === "done").length;
+      const proof = boxProof(t, b, idx);
       const firstMem = b.memories[0] || "Scanning repository conventions";
       const extraMem = b.memories.length > 1 ? `<span class="mem-more">+${b.memories.length - 1}</span>` : "";
 
       let statusDot = `<span class="pulse-dot working" title="Working in its own sandbox"></span>`;
-      if (t.stage >= 3) {
+      if (boxState(t, b, idx) === "stuck") {
+        statusDot = `<span class="pulse-dot" style="background:var(--accent-red)" title="Stuck"></span>`;
+      } else if (t.stage >= 3) {
         statusDot = `<span class="pulse-dot" title="Finished its piece"></span>`;
       } else if (t.stage === 1) {
         statusDot = `<span class="pulse-dot amber" title="Booting cloud sandbox"></span>`;
@@ -2991,27 +3230,11 @@
           </div>
 
           <div class="box-role-row">
-            <span class="box-role">Box 0${idx + 1} · ${escapeHtml(b.role)}</span>
+            <span class="box-role" title="${escapeHtml(thoughtText)}">${escapeHtml(b.role)}</span>
             
           </div>
 
-          <div class="territory-well" data-default-folder="Its own files">
-            <div class="territory-head">
-              <span class="territory-folder" style="font-family:var(--font-sans);">Its own files</span>
-              <span class="tabular" style="flex-shrink:0;">${doneCount} of ${b.files.length} done</span>
-            </div>
-            <div class="file-tiles">${tilesHtml}</div>
-          </div>
-
-          <div class="box-thought">${escapeHtml(thoughtText)}</div>
-
-          <div class="box-memories" title="What this agent remembers. Click the box to see all of it.">
-            <div class="memory-pill">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2.2 1.3"/></svg>
-              <span>${escapeHtml(firstMem)}</span>
-            </div>
-            ${extraMem}
-          </div>
+          ${vizHtml(t, b, idx)}
         </article>
       `;
     }).join("");
@@ -3021,10 +3244,9 @@
       const senderIdx = t.boxes.findIndex(b => b.id === n.from) + 1;
       const recvIdx = t.boxes.findIndex(b => b.id === n.to) + 1;
       return `
-        <button class="note-chip" data-note-id="${n.id}" data-from="${n.from}" data-to="${n.to}">
+        <button class="note-chip" data-note-id="${n.id}" data-from="${n.from}" data-to="${n.to}" title="${escapeHtml(n.summary)}">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--accent-blue)" stroke-width="1.6"><path d="M2 4l6 4.5L14 4"/><rect x="2" y="3" width="12" height="10" rx="2"/></svg>
-          <span class="note-route">Box 0${senderIdx} → 0${recvIdx}:</span>
-          <span class="note-preview">${escapeHtml(n.summary)}</span>
+          <span class="note-route">${String(senderIdx).padStart(2, "0")} → ${String(recvIdx).padStart(2, "0")}</span>
         </button>
       `;
     }).join("");
@@ -3040,8 +3262,16 @@
                 <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l5 2.2v3.8c0 3.2-2.1 5.3-5 6.3-2.9-1-5-3.1-5-6.3V4.2L8 2z"/></svg>
               </div>
               <div>
-                <div class="gate-headline">The exam · waiting</div>
-                <div class="gate-sub">When all ${t.boxes.length} agents finish, their work is joined and takes the ${t.blindChecks.length} checks in a clean sandbox.</div>
+                <div class="gate-headline">Next: the exam</div>
+                <div class="flow-strip" style="margin-top:8px;" title="When all agents finish, their work is joined and takes the checks in a clean sandbox">
+                  <span class="step">${squaresHtml(t)}<span>${t.boxes.length} agents</span></span>
+                  <span class="arrow">→</span>
+                  <span class="step"><span class="lock" style="background:var(--bg-well);color:var(--text-secondary)">${ICON.join}</span><span>joined</span></span>
+                  <span class="arrow">→</span>
+                  <span class="step">${lockRowHtml(t)}<span>${t.blindChecks.length} checks</span></span>
+                  <span class="arrow">→</span>
+                  <span class="step"><span class="pr-ic">${ICON.pr}</span><span>pull request</span></span>
+                </div>
               </div>
             </div>
             <button class="btn" id="btnGateRunNow">Run the exam ▸</button>
@@ -3068,17 +3298,16 @@
               </div>
               <div>
                 <div class="gate-headline">Taking the exam · <span class="tabular">${t.checkProgress} of ${t.blindChecks.length}</span> checks passed</div>
-                <div class="gate-sub">Running in a fresh sandbox with nothing left over from the agents.</div>
+                <div style="margin-top:8px;">${lockRowHtml(t)}</div>
               </div>
             </div>
-            <button class="btn btn-primary" id="btnFinishGate">Finish Check ▸</button>
+            <button class="btn btn-primary" id="btnFinishGate">Finish the exam ▸</button>
           </div>
-          <div class="gate-checks-live">${rows}</div>
         </div>
       `;
     } else if (t.stage === 4) {
       const healedBanner = t.healedNote
-        ? `<div style="margin-top:10px;padding:7px 11px;border-radius:8px;background:var(--accent-amber-soft);color:var(--accent-amber);font-size:11.5px;"><strong>Fixed before the pull request:</strong> ${escapeHtml(t.healedNote)}</div>`
+        ? `<div style="margin-top:10px;padding:7px 11px;border-radius:8px;background:var(--accent-amber-soft);color:var(--accent-amber);font-size:11.5px;"><strong>Fixed on the way:</strong> ${escapeHtml(t.healedNote)}</div>`
         : "";
       gateHtml = `
         <div class="gate-card pr-ready" id="cleanGateCard">
@@ -3088,13 +3317,13 @@
                 <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8.5l3.2 3.2L13 4.5"/></svg>
               </div>
               <div>
-                <div class="gate-headline">Verified Pull Request #${t.pr} · Ready to Merge</div>
-                <div class="gate-sub">Passed <strong>${t.blindChecks.length} of ${t.blindChecks.length} exam checks</strong> in a clean sandbox · ${t.boxes.length} pieces joined into <span style="font-family:var(--font-mono)">wing/${t.id} → main</span></div>
+                <div class="gate-headline">Pull request #${t.pr} passed the exam</div>
+                <div style="margin-top:8px;">${lockRowHtml(t)}</div>
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
               <button class="btn" id="btnInspectPrSummary">Summary</button>
-              <button class="btn btn-merge" id="btnGateMerge">Merge Pull Request</button>
+              <button class="btn btn-merge" id="btnGateMerge">Merge</button>
             </div>
           </div>
           ${healedBanner}
@@ -3109,8 +3338,8 @@
                 <svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="4" r="1.8"/><circle cx="5" cy="12" r="1.8"/><circle cx="11.5" cy="8" r="1.8"/><path d="M5 5.8v4.4M6.7 4.6C8.8 5.2 9.2 7.5 9.7 7.8"/></svg>
               </div>
               <div>
-                <div class="gate-headline">Pull Request #${t.pr} Merged into main</div>
-                <div class="gate-sub">${t.blindChecks.length} of ${t.blindChecks.length} exam checks passed · All ${t.boxes.length} sandboxes are shut down</div>
+                <div class="gate-headline">Pull request #${t.pr} merged</div>
+                <div style="margin-top:8px;">${lockRowHtml(t)}</div>
               </div>
             </div>
             <button class="btn" id="btnViewDeliverable">View Outcome</button>
@@ -3132,16 +3361,14 @@
                 <span class="mac-chip">&gt;_</span>
                 <div>
                   <div class="deck-title">Lead Agent · Your Mac</div>
-                  <div class="deck-sub">Claude Code in a terminal on your Mac</div>
+                  <div class="deck-sub">Claude Code, on your plan</div>
                 </div>
               </div>
-              <span class="flat-tag">On your flat plan</span>
             </div>
             <div class="lead-say">${escapeHtml(t.leadNote)}</div>
             <div style="display:flex;gap:7px;margin-top:auto;">
-              <button class="btn" id="btnLeadTermCard" style="height:25px;font-size:11px;padding:0 9px;">Open its terminal</button>
-              <button class="btn" id="btnSendPulse" style="height:25px;font-size:11px;padding:0 9px;">Demo: pass a note</button>
-              <button class="btn" id="btnLeadDecisions" style="height:25px;font-size:11px;padding:0 9px;">Decisions ${decisionsFor(t).length}</button>
+              <button class="btn" id="btnLeadTermCard" style="height:25px;font-size:11px;padding:0 9px;">&gt;_ Terminal</button>
+              <button class="btn" id="btnLeadDecisions" style="height:25px;font-size:11px;padding:0 9px;">${DEC_ICON.Decided} ${decisionsFor(t).length}</button>
             </div>
           </div>
 
@@ -3167,7 +3394,7 @@
 
         <!-- Band 2: Cloud Sandbox Mini Boxes + Inter-Agent Notes -->
         <div class="boxes-section">
-          <div class="sandbox-grid" id="sandboxGrid">${boxesHtml}</div>
+          ${t.boxes.length > 8 ? swarmGridHtml(t) : `<div class="sandbox-grid" id="sandboxGrid">${boxesHtml}</div>`}
           ${t.notes.length ? `<div class="notes-ribbon">${notesHtml}</div>` : ""}
         </div>
 
@@ -3177,6 +3404,19 @@
     `;
 
     // Bind Formation Events
+    if (document.getElementById("examApproveCard")) {
+      document.getElementById("examApproveBtn").addEventListener("click", () => approveExam(t));
+      const addCheck = () => {
+        const inp = document.getElementById("examAddInput");
+        const v = inp.value.trim();
+        if (!v) { inp.focus(); return; }
+        t.blindChecks.push(v.charAt(0).toUpperCase() + v.slice(1));
+        renderStage();
+        showToast("Added. The exam session will write a test for it");
+      };
+      document.getElementById("examAddBtn").addEventListener("click", addCheck);
+      document.getElementById("examAddInput").addEventListener("keydown", e => { if (e.key === "Enter") addCheck(); });
+    }
     if (document.getElementById("askCard")) {
       document.getElementById("askOptA").addEventListener("click", () => answerAsk(t, "a"));
       document.getElementById("askOptB").addEventListener("click", () => answerAsk(t, "b"));
@@ -3189,7 +3429,12 @@
     if (hideBtn) hideBtn.addEventListener("click", () => { t.vaultPeeked = false; renderStage(); });
 
     document.getElementById("btnLeadTermCard").addEventListener("click", () => openTerminal("lead"));
-    document.getElementById("btnSendPulse").addEventListener("click", () => triggerLiveNotePulse(t));
+    const pulseBtn = document.getElementById("btnSendPulse");
+    if (pulseBtn) pulseBtn.addEventListener("click", () => triggerLiveNotePulse(t));
+
+    container.querySelectorAll("[data-sq-box]").forEach(sq => {
+      sq.addEventListener("click", () => openAgentDrawer(sq.getAttribute("data-sq-box"), "chat"));
+    });
 
     container.querySelectorAll(".mini-box").forEach(card => {
       card.addEventListener("click", (e) => {
@@ -3488,19 +3733,16 @@
       `;
     }).join("");
 
-    const slicesHtml = t.boxes.map((b, i) => {
+    const slicesHtml = t.boxes.length > 8
+      ? `<div style="display:flex;flex-direction:column;gap:8px;">${squaresHtml(t)}<span style="font-size:11.5px;color:var(--text-tertiary);">${t.boxes.length} agents</span></div>`
+      : `<div class="built-grid">${t.boxes.map((b, i) => {
       const meta = MODEL_META[b.model] || MODEL_META.claude;
       return `
-        <div class="mem-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;">
-            <span style="font-weight:600;font-size:12.5px;">Box 0${i + 1} · ${escapeHtml(b.role)}</span>
-            <span class="model-badge ${meta.cls}">${meta.label}</span>
-          </div>
-          <div style="font-size:12px;color:var(--text-secondary);">${b.files.map(f => f.desc).join(" · ")}</div>
-          <div style="font-family:var(--font-mono);font-size:10.5px;color:var(--text-tertiary);">Its own files: ${b.files.length} · no overlap with other agents</div>
-        </div>
-      `;
-    }).join("");
+        <div class="built-tile">
+          <div class="nm"><span>${escapeHtml(b.role)}</span><span class="model-badge ${meta.cls}"><span class="model-glyph">${meta.short}</span></span></div>
+          ${vizHtml(t, b, i)}
+        </div>`;
+    }).join("")}</div>`;
 
     const actionCta = t.stage === 4
       ? `<button class="btn btn-merge" id="btnDelivMerge">Merge Pull Request #${t.pr}</button>`
@@ -3513,12 +3755,12 @@
         <div class="studio-panel" style="margin-bottom:20px;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
             <div>
-              <div style="font-size:11.5px;color:var(--text-tertiary);font-family:var(--font-mono);">Pull request #${t.pr} · a plain summary, no code to read</div>
+              <div style="font-size:11.5px;color:var(--text-tertiary);font-family:var(--font-mono);">Pull request #${t.pr}</div>
               <h2 style="font-size:18px;font-weight:650;letter-spacing:-0.02em;margin-top:3px;">${escapeHtml(t.title)}</h2>
             </div>
             ${actionCta}
           </div>
-          <p style="font-size:13px;color:var(--text-secondary);line-height:1.55;">${escapeHtml(t.improvedPlan)}</p>
+          <p style="font-size:13px;color:var(--text-secondary);line-height:1.55;">${escapeHtml(firstSentence(t.improvedPlan || t.prompt))}</p>
         </div>
 
         ${proofGalleryHtml(t)}
@@ -3551,6 +3793,7 @@
   // Stage Transitions & Walkthrough Automation
   function jumpToStage(t, stageNum) {
     clearAutoTimers();
+    if (stageNum >= 2) t.examApproved = true;
     t.stage = stageNum;
 
     if (stageNum === 2) {
@@ -3594,7 +3837,7 @@
   }
 
   function advanceTaskStage(t) {
-    if (t.stage === 1) jumpToStage(t, 2);
+    if (t.stage === 1) approveExam(t);
     else if (t.stage === 2) jumpToStage(t, 3);
     else if (t.stage === 3) jumpToStage(t, 4);
   }
@@ -3980,7 +4223,8 @@
       cost: "$0.34",
       prompt: promptText,
       improvedPlan: `The lead agent read acme/payflow, turned "${promptText}" into 3 pieces with no shared files, and wrote 4 exam checks before any agent started.`,
-      leadNote: "Reading your task, writing the exam, and starting 3 agents...",
+      leadNote: "I read your task and split it into 3 pieces. A separate session wrote 4 checks for what done means. Say yes and I start the agents.",
+      examApproved: false,
       vaultPeeked: false,
       checkProgress: 0,
       healedNote: null,
@@ -4043,17 +4287,11 @@
     closeModal();
     renderAll();
 
-    showToast(fromTerminal ? `Started task #${pr} from the terminal` : `The lead agent planned the task and wrote 4 exam checks`);
+    showToast(fromTerminal ? `Task #${pr} from the terminal is waiting for your OK on the exam` : `Planned. Check the exam, then the agents start`);
 
     // Autonomous agentic progression: Stage 1 -> Stage 2 -> Note Sync -> Stage 3 Blind Checks -> Stage 4 Verified PR!
-    const t1 = setTimeout(() => {
-      if (currentTask().id !== newTask.id || newTask.stage !== 1) return;
-      newTask.stage = 2;
-      newTask.leadNote = "3 agents are working at the same time. I am reading their notes before the exam.";
-      renderAll();
-      setTimeout(() => animatePacketBetween("b1", "b3"), 320);
-    }, 1400);
-
+    newTask.autoRun = () => {
+    setTimeout(() => animatePacketBetween("b1", "b3"), 320);
     const t2 = setTimeout(() => {
       if (currentTask().id !== newTask.id || newTask.stage !== 2) return;
       newTask.notes.unshift({
@@ -4074,7 +4312,8 @@
       jumpToStage(newTask, 3);
     }, 5200);
 
-    state.autoTimers.push(t1, t2, t3);
+    state.autoTimers.push(t2, t3);
+    };
   }
 
   function deleteTask(taskId) {
@@ -4323,7 +4562,7 @@
         </div>
       </div>
       <div class="modal-foot">
-        <span style="font-size:11.5px;color:var(--text-tertiary);">TaskWing Open Source · MIT License</span>
+        <span style="font-size:11.5px;color:var(--text-tertiary);">TaskWing Open Source · AGPL-3.0</span>
         <button class="btn btn-primary" id="modalDoneBtn">Done</button>
       </div>
     `);
