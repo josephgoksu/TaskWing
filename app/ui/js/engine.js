@@ -118,7 +118,6 @@ class DemoEngine {
   constructor(emit) {
     this.emit = (e) => setTimeout(() => emit(e), 0);
     this.runs = new Map();
-    this.timers = new Map();
     this.n = 0;
   }
 
@@ -129,13 +128,8 @@ class DemoEngine {
     run.tickTimer = setTimeout(() => { run.tickTimer = null; this.tick(run); }, ms);
   }
 
-  later(runId, ms, fn) {
-    const t = setTimeout(() => {
-      this.timers.get(runId)?.delete(t);
-      fn();
-    }, ms);
-    if (!this.timers.has(runId)) this.timers.set(runId, new Set());
-    this.timers.get(runId).add(t);
+  later(ms, fn) {
+    setTimeout(fn, ms);
   }
 
   handle(cmd) {
@@ -164,7 +158,7 @@ class DemoEngine {
   plan(run) {
     run.stage = "planning";
     this.emit({ type: "run.stage", run_id: run.id, stage: "planning" });
-    this.later(run.id, 1600, () => {
+    this.later(1600, () => {
       const t = run.tpl;
       run.cards = t.cards.map(([title, owns, kind, text], i) => ({ id: `c${i + 1}`, title, owns, proof: { kind, text: text || "" }, state: "waiting", steps: 0 }));
       run.stage = "approve";
@@ -183,7 +177,10 @@ class DemoEngine {
     run.stage = "build";
     run.buildStarted = Date.now();
     this.emit({ type: "run.stage", run_id: run.id, stage: "build" });
-    run.cards.forEach((c, i) => this.later(run.id, 500 + i * 450, () => this.card(run, c, "working", "Starting in a fresh sandbox")));
+    // "Run the exam now" can come before every card has started.
+    run.cards.forEach((c, i) => this.later(500 + i * 450, () => {
+      if (run.stage === "build" && c.state === "waiting") this.card(run, c, "working", "Starting in a fresh sandbox");
+    }));
     this.schedule(run, 2600);
   }
 
@@ -197,7 +194,7 @@ class DemoEngine {
     const t = run.tpl;
     const working = run.cards.filter((c) => c.state === "working");
     if (!working.length) {
-      if (run.cards.every((c) => c.state === "passed")) this.later(run.id, 900, () => this.exam(run));
+      if (run.cards.every((c) => c.state === "passed")) this.later(900, () => this.exam(run));
       return;
     }
     const c = working[Math.floor(Math.random() * working.length)];
@@ -235,7 +232,7 @@ class DemoEngine {
     run.stage = "exam";
     for (const c of run.cards) if (c.state !== "passed") this.card(run, c, "done", "Stopped for the exam");
     this.emit({ type: "run.stage", run_id: run.id, stage: "exam" });
-    this.later(run.id, 2200, () => {
+    this.later(2200, () => {
       const results = run.checks.map((k) => ({ id: k.id, result: "pass" }));
       // A run cut short with "Run the exam now" fails on the unfinished pieces.
       if (run.cards.some((c) => c.state !== "passed")) results[0].result = "fail";
@@ -247,7 +244,7 @@ class DemoEngine {
       }
       run.stage = "pr";
       this.emit({ type: "run.stage", run_id: run.id, stage: "pr" });
-      this.later(run.id, 1400, () => {
+      this.later(1400, () => {
         const number = 40 + Math.floor(Math.random() * 60);
         // The demo has no real pull request, so it sends no link.
         this.emit({ type: "pr.opened", run_id: run.id, number, url: null, draft: true });

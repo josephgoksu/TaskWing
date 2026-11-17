@@ -21,7 +21,7 @@ The engine's first line should be `engine.hello`. An engine that exits before se
 | `exam.result` | `run_id, checks[{id, result}]` | `result` is `pass` or `fail`. |
 | `pr.opened` | `run_id, number, url, draft` | The draft pull request. `url` must be `https://`. |
 | `run.finished` | `run_id, ok, secrets_found, ended_at` | `ok: false` means the exam failed and nothing was pushed. |
-| `engine.exit` | | Sent by the app's shell when the engine stops. |
+| `engine.exit` | `spoke` | Sent by the app's shell when the engine stops. `spoke` is false if the engine never sent an event. |
 
 ## Commands (app to engine)
 

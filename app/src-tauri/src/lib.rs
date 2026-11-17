@@ -171,6 +171,9 @@ fn engine_start(app: AppHandle, engine: State<'_, Engine>) -> Result<String, Str
     thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         let mut buf = Vec::new();
+        // Whether the engine ever sent a protocol event. The window asks on
+        // exit: an engine that never spoke is too old, so the demo takes over.
+        let mut spoke = false;
         while let Ok(Some(fits)) = read_line_capped(&mut reader, &mut buf) {
             // Forward only JSON objects with a string "type".
             if !fits {
@@ -178,6 +181,7 @@ fn engine_start(app: AppHandle, engine: State<'_, Engine>) -> Result<String, Str
             }
             if let Ok(v) = serde_json::from_slice::<Value>(&buf) {
                 if v.get("type").and_then(Value::as_str).is_some() {
+                    spoke = true;
                     let _ = handle.emit_to("main", "engine://event", v);
                 }
             }
@@ -196,7 +200,7 @@ fn engine_start(app: AppHandle, engine: State<'_, Engine>) -> Result<String, Str
             let _ = handle.emit_to(
                 "main",
                 "engine://event",
-                serde_json::json!({ "type": "engine.exit" }),
+                serde_json::json!({ "type": "engine.exit", "spoke": spoke }),
             );
         }
     });
@@ -213,10 +217,11 @@ fn engine_send(cmd: Value, engine: State<'_, Engine>) -> Result<(), String> {
     }
     let mut line = serde_json::to_vec(&cmd).map_err(|e| e.to_string())?;
     line.push(b'\n');
-    let mut guard = engine.tx.lock().map_err(|_| "engine lock poisoned")?;
+    let guard = engine.tx.lock().map_err(|_| "engine lock poisoned")?;
     let (_, tx) = guard.as_ref().ok_or("engine is not running")?;
+    // On failure keep `tx`: the reader thread uses it to know this engine is
+    // still the current one, and must still report its exit.
     if tx.send(line).is_err() {
-        guard.take();
         return Err("engine write failed".into());
     }
     Ok(())

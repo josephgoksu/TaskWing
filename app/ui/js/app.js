@@ -48,7 +48,10 @@ function apply(e) {
   if (e.type === "engine.exit") {
     // An engine that exits before its first event doesn't speak this
     // protocol (an older taskwing with no `engine` command): use the demo.
-    if (!heard && state.engine !== "demo") useDemo();
+    // The shell says whether the engine ever spoke; that survives a reload of
+    // this page, which resets `heard`.
+    const silent = typeof e.spoke === "boolean" ? !e.spoke : !heard;
+    if (silent && state.engine !== "demo") useDemo();
     else state.engine = "stopped";
     return paint();
   }
@@ -535,7 +538,8 @@ function open(view) {
 
 function startTask(repo, task) {
   repo = repo.trim(); task = task.trim();
-  if (!repo || !task) return false;
+  // A stopped engine takes no commands: keep the typed task instead of losing it.
+  if (!repo || !task || state.engine === "stopped") return false;
   pendingOpen = true;
   engine.send({ type: "run.start", repo, task, sandbox: state.draft.sandbox, models: state.draft.models });
   state.draft.task = "";
@@ -636,9 +640,13 @@ onTrayNew(() => { open({ name: "home", runId: null }); document.getElementById("
 
 // True once the live engine has sent a protocol event.
 let heard = false;
+// Commands the live engine got before it spoke. If it exits without a word,
+// the demo engine replays them, so a task started in that gap isn't lost.
+let unheard = [];
 
 function useDemo() {
-  const queued = engine.queued || [];
+  const queued = [...(engine.queued || []), ...unheard];
+  unheard = [];
   engine = demoEngine(apply);
   state.engine = "demo";
   for (const cmd of queued) engine.send(cmd);
@@ -646,15 +654,15 @@ function useDemo() {
 
 paint();
 connect((e) => {
-  if (e && e.type !== "engine.exit") heard = true;
+  if (e && e.type !== "engine.exit" && !heard) { heard = true; unheard = []; }
   apply(e);
 }).then((e) => {
   // The engine already exited and the demo took over.
   if (state.engine === "demo" && e.mode === "live") return paint();
   const queued = engine.queued || [];
-  engine = e;
+  engine = e.mode === "live" ? { send: (cmd) => { if (!heard) unheard.push(cmd); e.send(cmd); } } : e;
   // An engine.exit that arrived first must not be overwritten with "live".
   if (state.engine === "connecting") state.engine = e.mode;
-  for (const cmd of queued) e.send(cmd);
+  for (const cmd of queued) engine.send(cmd);
   paint();
 });

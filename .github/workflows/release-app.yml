@@ -44,7 +44,8 @@ jobs:
           want="${GITHUB_REF_NAME#app-v}"
           pkg="$(node -p "require('./app/package.json').version")"
           conf="$(node -p "require('./app/src-tauri/tauri.conf.json').version")"
-          crate="$(sed -n 's/^version = "\(.*\)"$/\1/p' app/src-tauri/Cargo.toml | head -n 1)"
+          # Windows checks out with CRLF, so match up to the closing quote, not the line end.
+          crate="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' app/src-tauri/Cargo.toml | head -n 1)"
           echo "tag $want, package.json $pkg, tauri.conf.json $conf, Cargo.toml $crate"
           if [ "$pkg" != "$want" ] || [ "$conf" != "$want" ] || [ "$crate" != "$want" ]; then
             echo "::error::Set version $want in app/package.json, app/src-tauri/tauri.conf.json and app/src-tauri/Cargo.toml before tagging."
@@ -60,12 +61,16 @@ jobs:
         working-directory: app
         run: npm ci
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: stable
           targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-      - uses: Swatinem/rust-cache@v2
+      # A cache saved under a tag is never read again (each tag is its own
+      # cache scope), so only a manual run on main saves one for later tags.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: app/src-tauri -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Linux libraries for Tauri
         if: runner.os == 'Linux'
@@ -96,10 +101,10 @@ jobs:
             value="${!name}"
             [ -n "$value" ] || continue
             delim="EOF_$(openssl rand -hex 8)"
-            { echo "$name<<$delim"; echo "$value"; echo "$delim"; } >> "$GITHUB_ENV"
+            printf '%s<<%s\n%s\n%s\n' "$name" "$delim" "$value" "$delim" >> "$GITHUB_ENV"
           done
 
-      - uses: tauri-apps/tauri-action@v1
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

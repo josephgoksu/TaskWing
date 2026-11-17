@@ -38,7 +38,7 @@ CI runs these on every pull request (`.github/workflows/ci.yml`). Run them befor
 
 | Part | Command |
 |---|---|
-| Engine | `gofmt -l .`, `go vet ./...`, `go test ./...` |
+| Engine | `gofmt -l cmd internal`, `go vet ./...`, `go test -race ./...` |
 | App | `cd app && npm ci && npm run check` |
 | App shell | `cd app/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` |
 
@@ -49,7 +49,7 @@ Desktop builds come from `.github/workflows/release-app.yml`.
 | Step | How |
 |---|---|
 | Try a build | Run the workflow by hand (Actions, Release desktop app, Run workflow). Mac, Linux and Windows builds land as workflow artifacts |
-| Release | Set the same version in `app/package.json`, `app/src-tauri/tauri.conf.json` and `app/src-tauri/Cargo.toml`, merge, then push tag `app-vX.Y.Z`. CI checks the versions match and opens a draft release with every build |
+| Release | Set the same version in `app/package.json`, `app/src-tauri/tauri.conf.json` and `app/src-tauri/Cargo.toml`, run `cargo update --workspace` in `app/src-tauri` so `Cargo.lock` follows (CI builds with `--locked` and fails otherwise), merge, then push tag `app-vX.Y.Z`. CI checks the versions match and opens a draft release with every build |
 | Mac signing | Optional. With the `APPLE_*` secrets set, the Mac build is signed and notarised; without them it is ad hoc signed and macOS asks the user to allow it |
 
 ## House style

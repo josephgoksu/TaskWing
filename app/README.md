@@ -44,7 +44,7 @@ cargo test
 
 ## Releases
 
-`.github/workflows/release-app.yml` builds macOS (universal), Linux and Windows. Run it by hand for test builds, or push a tag `app-vX.Y.Z` (matching the version in `package.json`, `tauri.conf.json` and `Cargo.toml`) for a draft release. The Mac build is signed and notarised when the `APPLE_*` secrets are set, and ad hoc signed otherwise.
+`.github/workflows/release-app.yml` builds macOS (universal), Linux and Windows. Run it by hand for test builds, or push a tag `app-vX.Y.Z` (matching the version in `package.json`, `tauri.conf.json` and `Cargo.toml`; then run `cargo update --workspace` so `Cargo.lock` follows) for a draft release. The Mac build is signed and notarised when the `APPLE_*` secrets are set, and ad hoc signed otherwise.
 
 ## Licence
 
