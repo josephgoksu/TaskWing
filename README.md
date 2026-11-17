@@ -138,7 +138,7 @@ Every concept and how they connect: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## Desktop app
 
-The app in [`app/`](app/) is a small [Tauri 2](https://tauri.app) shell with a plain HTML, CSS and JavaScript window. Every agent is a square: blue working, grey done, amber needs you, red stuck. It runs on a built-in demo engine until the engine event stream lands. Prebuilt downloads come with the first `app-v` release; until then, run it from source with `cd app && npm install && npm run dev` (see [app/README.md](app/README.md)).
+The app in [`app/`](app/) is a small [Tauri 2](https://tauri.app) shell with a plain HTML, CSS and JavaScript window. Every agent is a square: blue working, grey done, amber needs you, red stuck. It runs on a built-in demo engine until the engine event stream lands. Until the first app release, test builds are on the successful manual runs of the [Release desktop app workflow](https://github.com/josephgoksu/TaskWing/actions/workflows/release-app.yml?query=event%3Aworkflow_dispatch+branch%3Amain+is%3Asuccess) (GitHub sign-in needed, kept 90 days). On a Mac take `darwin-universal-dmg`; the builds are not notarised or signed yet, so macOS and Windows ask before the first launch. Or run it from source with `cd app && npm install && npm run dev` (see [app/README.md](app/README.md)).
 
 ## Contributing
 
