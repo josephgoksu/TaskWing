@@ -1,259 +1,43 @@
-<h1 align="center">
-  <br>
-  <img src="https://taskwing.app/taskwing-icon.svg" alt="TaskWing" width="80">
-  <br>
-  TaskWing
-  <br>
-</h1>
+# TaskWing
 
-<h3 align="center">The local-first knowledge layer for AI development.</h3>
+One task in, one verified pull request out. Your own coding agent plans the task and splits it into pieces, many agents build the pieces in cloud sandboxes, a hidden exam checks the joined work in a clean sandbox, and you merge one pull request.
 
-<p align="center">
-  <a href="https://taskwing.app">Website</a> ·
-  <a href="docs/TUTORIAL.md">Tutorial</a> ·
-  <a href="docs/PRODUCT_VISION.md">Vision</a> ·
-  <a href="#install">Install</a>
-</p>
-
-<p align="center">
-  <a href="https://goreportcard.com/report/github.com/josephgoksu/TaskWing"><img src="https://goreportcard.com/badge/github.com/josephgoksu/TaskWing" alt="Go Report Card"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-</p>
-
-<p align="center">
-  <img src="demos/ask.gif" alt="TaskWing ask demo" width="800">
-</p>
-
----
-
-Your AI tools start every session from zero -- and every session, your code context flows through someone else's cloud.
-
-**TaskWing takes the opposite approach.** One command extracts your architecture into a local knowledge base on your machine. No cloud. No account. Every AI session after that just *knows* -- without your knowledge base leaving your infrastructure.
-
-```
-Without TaskWing              With TaskWing
-─────────────────             ─────────────
-8-12 file reads               1 taskwing ask
-~25,000 tokens                ~1,500 tokens
-2-3 minutes                   42 seconds
-No architectural context       170+ knowledge nodes
+```mermaid
+flowchart LR
+  T[Your task] --> L[Lead agent plans<br/>and splits it]
+  L --> E{{You approve<br/>the exam}}
+  E --> A1[Agent] & A2[Agent] & A3[Agent]
+  A1 & A2 & A3 --> J[Work joined]
+  J --> X[Hidden exam in<br/>a clean sandbox]
+  X --> P[One pull request]
+  P --> M((You merge))
 ```
 
-## Install
+![The desktop app](docs/cockpit.png)
+
+Version 2 is being built. Two pieces exist today:
+
+| Piece | Where | State |
+|---|---|---|
+| Engine and CLI | `cmd/`, `internal/` (Go) | Proof of concept: `taskwing run`, `hunt`, `doctor`. See [docs/poc.md](docs/poc.md) |
+| Desktop app | [`app/`](app/) (Tauri) | Built for Mac, Linux and Windows. Runs on its demo engine until the engine stream lands |
 
 ```bash
-brew install josephgoksu/tap/taskwing
+go install github.com/josephgoksu/TaskWing/cmd/taskwing@main
+taskwing run "add an alert webhook with tests"
 ```
 
-No signup. No account. Works offline. Everything stays local in SQLite.
+Desktop builds are on the [releases page](https://github.com/josephgoksu/TaskWing/releases). To run the app from source, see [app/README.md](app/README.md).
 
-<details>
-<summary>Alternative: install via curl</summary>
+The v1 knowledge layer was removed; it stays available at tag `v1.23.2`.
 
-```bash
-curl -fsSL https://taskwing.app/install.sh | sh
-```
-</details>
+| Read | Why |
+|---|---|
+| [PRINCIPLES.md](PRINCIPLES.md) | The rules every feature is built on |
+| [SPEC.md](SPEC.md) | What v2 is made of and the first milestone |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Every concept and how they connect |
+| [docs/FEATURES.md](docs/FEATURES.md) | What is built and what is planned |
+| [AGENTS.md](AGENTS.md) | Decisions so far |
+| [app/AGENTS.md](app/AGENTS.md) | Rules for the desktop app |
 
-## Quick Start
-
-```bash
-# 1. Declare a TaskWing project + generate AI tool integration files
-cd your-project
-taskwing init                  # writes .taskwing.yaml + .claude/commands/taskwing/
-
-# 2. Extract your architecture (one-time)
-taskwing learn
-# -> 22 decisions, 12 patterns, 9 constraints extracted
-
-# 3. Plan and execute with your AI assistant
-/taskwing:plan       # Create a plan
-/taskwing:next       # Get next task with full context
-# ...work...
-/taskwing:done       # Mark complete, advance to next
-```
-
-That's it. Your AI assistant now has local architectural context across every session.
-
-Slash commands are pure prompts that drive the `taskwing` CLI directly - no
-MCP server, no daemon, no per-AI registration. They work in any AI client that
-can run shell commands.
-
-## Private by Architecture
-
-TaskWing keeps your knowledge base on your machine. No cloud database, no account, no sync.
-
-```
-  YOUR MACHINE                          EXTERNAL
-  ─────────────────────────────────     ─────────────────────────
-                                        ┌───────────────────────┐
-  ┌──────────────┐   code context       │ LLM Provider          │
-  │ Your codebase ├────────────────────>│ (OpenAI, Anthropic,   │
-  └──────────────┘   (bootstrap only)   │  Google, Bedrock)     │
-         │                              └───────────┬───────────┘
-         │                                          │ findings
-         v                                          │
-  ┌──────────────────────┐  <───────────────────────┘
-  │ .taskwing/memory.db  │
-  │ Local SQLite         │  Your knowledge base.
-  │ Never uploaded.      │  Never leaves your machine.
-  └──────────┬───────────┘
-             │ taskwing CLI (local subprocess)
-             v
-  ┌──────────────────────┐              ┌───────────────────────┐
-  │ AI Tool              │  may send    │ Tool's own cloud      │
-  │ (Claude, Cursor,     ├─────────────>│ (per their privacy    │
-  │  Copilot, Gemini)    │  to their    │  policy)              │
-  └──────────────────────┘  servers     └───────────────────────┘
-
-
-  FULL AIR-GAP (everything stays left of the line):
-
-  ┌──────────────┐        ┌─────────┐        ┌──────────────┐
-  │ Your codebase ├──────>│ Ollama  ├──────>│ .taskwing/   │
-  └──────────────┘        │ (local) │        │ memory.db    │
-                          └─────────┘        └──────┬───────┘
-                                                    │ taskwing CLI
-                                                    v
-                                             ┌──────────────┐
-                                             │ Local AI tool │
-                                             └──────────────┘
-                                             Zero network calls.
-```
-
-**What TaskWing controls:** Your knowledge base is stored and queried locally. AI tools invoke the `taskwing` CLI as a local subprocess - no network calls.
-
-**What your AI tool controls:** Cloud-based tools (Claude, Cursor, Copilot) may send conversations to their own servers. Check their privacy settings (e.g., Cursor's Privacy Mode, Copilot's data retention policies).
-
-**Full air-gap:** Use [Ollama](https://ollama.com/) for bootstrap + a local AI tool. Nothing leaves your machine.
-
-## Works With
-
-<!-- TASKWING_TOOLS_START -->
-[![Claude Code](https://img.shields.io/badge/Claude_Code-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/claude-code)
-[![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex)
-[![Cursor](https://img.shields.io/badge/Cursor-111111?logo=cursor&logoColor=white)](https://cursor.com/)
-[![GitHub Copilot](https://img.shields.io/badge/GitHub_Copilot-181717?logo=githubcopilot&logoColor=white)](https://github.com/features/copilot)
-[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
-[![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)](https://opencode.ai/)
-<!-- TASKWING_TOOLS_END -->
-
-## Supported Models
-
-<!-- TASKWING_PROVIDERS_START -->
-[![OpenAI](https://img.shields.io/badge/OpenAI-412991?logo=openai&logoColor=white)](https://platform.openai.com/)
-[![Anthropic](https://img.shields.io/badge/Anthropic-191919?logo=anthropic&logoColor=white)](https://www.anthropic.com/)
-[![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
-[![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-OpenAI--Compatible_Beta-FF9900?logo=amazonaws&logoColor=white)](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html)
-[![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama&logoColor=white)](https://ollama.com/)
-<!-- TASKWING_PROVIDERS_END -->
-
-<!-- TASKWING_LEGAL_START -->
-Brand names and logos are trademarks of their respective owners; usage here indicates compatibility, not endorsement.
-<!-- TASKWING_LEGAL_END -->
-
-## What It Does
-
-| Capability | Description |
-|:-----------|:------------|
-| **Local knowledge** | Extracts decisions, patterns, and constraints into local SQLite |
-| **Plan to tasks** | Turns a plan into decomposed tasks with architecture context |
-| **AI-driven lifecycle** | Task execution -- next, start, complete, verify |
-| **Code analysis** | Symbol search, call graphs, impact analysis, simplification |
-| **Root cause first** | AI-powered diagnosis before proposing fixes |
-| **Works everywhere** | Slash commands invoke the `taskwing` CLI directly - works in any AI tool that runs shell commands |
-
-## Slash Commands
-
-Use these from your AI assistant once connected:
-
-| Command | When to use |
-|:--------|:------------|
-| `/taskwing:plan` | Clarify a goal and build an approved execution plan |
-| `/taskwing:next` | Start the next approved task with full context |
-| `/taskwing:done` | Complete the current task after verification |
-| `/taskwing:context` | Get full project knowledge dump for complete architectural context |
-
-<details>
-<summary>CLI verbs the slash commands rely on</summary>
-
-The four slash commands above are pure prompts that drive these CLI verbs.
-You can run any of them by hand to drive TaskWing without an AI tool:
-
-| Verb | Purpose |
-|------|---------|
-| `taskwing ask "<query>" --json` | Search project knowledge (decisions, patterns, constraints) |
-| `taskwing knowledge --json` | Dump every knowledge node, grouped by type |
-| `taskwing task next --json` | Get the next pending task |
-| `taskwing task current --json` | Show the current in-progress task |
-| `taskwing task start <id>` | Claim a task |
-| `taskwing task complete <id> --summary "..." --files a,b,c` | Mark complete |
-| `taskwing plan --params '<json>'` | Drive a plan flow (clarify → decompose → expand → finalize) |
-
-</details>
-
-<details>
-<summary>Autonomous task execution (hooks)</summary>
-
-TaskWing integrates with Claude Code's hook system for autonomous plan execution:
-
-```bash
-taskwing hook session-init      # Initialize session tracking
-taskwing hook continue-check    # Check if should continue to next task
-taskwing hook session-end       # Cleanup session
-taskwing hook status            # View current session state
-```
-
-**Circuit breakers** prevent runaway execution:
-- `--max-tasks=5` -- Stop after N tasks for human review
-- `--max-minutes=30` -- Stop after N minutes
-
-</details>
-
-<details>
-<summary>AWS Bedrock setup</summary>
-
-```yaml
-llm:
-  provider: bedrock
-  model: anthropic.claude-sonnet-4-5-20250929-v1:0
-  bedrock:
-    region: us-east-1
-  apiKeys:
-    bedrock: ${BEDROCK_API_KEY}
-```
-
-| Model | Use case |
-|:------|:---------|
-| `anthropic.claude-opus-4-6-v1` | Highest quality reasoning |
-| `anthropic.claude-sonnet-4-5-20250929-v1:0` | Best default balance |
-| `amazon.nova-premier-v1:0` | AWS flagship Nova |
-| `amazon.nova-pro-v1:0` | Strong balance |
-| `meta.llama4-maverick-17b-instruct-v1:0` | Open-weight general model |
-
-Or configure interactively: `taskwing config`
-
-</details>
-
-<!-- TASKWING_COMMANDS_START -->
-- `taskwing init`
-- `taskwing learn`
-- `taskwing ask "<query>"`
-- `taskwing knowledge`
-- `taskwing task <next|current|start|complete>`
-- `taskwing plan --params '<json>'`
-- `taskwing doctor`
-- `taskwing config`
-- `taskwing start`
-<!-- TASKWING_COMMANDS_END -->
-
-## Documentation
-
-- [Getting Started](docs/TUTORIAL.md)
-- [Product Vision](docs/PRODUCT_VISION.md)
-- [Architecture](docs/architecture/)
-- [Workflow Pack](docs/WORKFLOW_PACK.md)
-
-## License
-
-[MIT](LICENSE)
+Licence: AGPL-3.0 (see [LICENSE](LICENSE) and [NOTICE](NOTICE)). Earlier copies (up to v1.23.2 and the first v2-poc builds) keep their old licence. Geist fonts in the app are under the SIL Open Font License.

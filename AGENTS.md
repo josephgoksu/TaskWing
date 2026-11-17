@@ -1,120 +1,58 @@
-# Repository Guidelines
+# TaskWing
 
-## Project Structure & Module Organization
+Headless, vendor-agnostic orchestrator: one goal, many sandboxed agents, one verified PR. Go, AGPL-3.0.
 
-- `main.go` is the entrypoint; CLI commands live in `cmd/` (Cobra-based).
-- Core implementation is under `internal/` (for example `internal/app`, `internal/mcp`, `internal/memory`, `internal/planner`).
-- Unit tests are colocated with code as `*_test.go`; integration tests are in `tests/integration/`.
-- Documentation is in `docs/`; automation scripts are in `scripts/`; CI pipelines are in `.github/workflows/`.
-- Generated/local artifacts such as `.taskwing/`, `test-results/`, and the `taskwing` binary are gitignored.
+The v1 knowledge layer was removed in November 2026. Nothing from it carries over.
 
-## Build, Test, and Development Commands
+## Read first
 
-- `make dev-setup`: prepares local tooling, runs `go mod tidy`, and generates code.
-- `make build`: builds the local CLI binary (`./taskwing`).
-- `make test`: runs unit, integration, and MCP test targets.
-- `make test-quick`: fast local checks during iteration.
-- `make lint`: runs formatting and static analysis (`go fmt`, `go vet`, `staticcheck`, optional `golangci-lint`).
-- `go test ./...`: baseline CI-style test run.
+| File | Why |
+|---|---|
+| `PRINCIPLES.md` | The foundation. Every change must fit it. A change that breaks a principle updates the principle first, with its reason. |
+| `SPEC.md` | What v2 is built from: stages, engine, cockpit, CLI, first milestone. |
+| `docs/ARCHITECTURE.md` | The source of truth: every concept, how they connect, who owns each. A change that adds, renames or removes a concept updates it in the same pull request. |
+| `docs/FEATURES.md` | Every feature with its status. A change that builds a feature updates its row in the same pull request. |
+| `context/` | Research and decisions behind the principles. |
+| `app/AGENTS.md` | Rules for the desktop app. |
 
+## Decisions
 
-## Coding Style & Naming Conventions
+| Decision | Choice | Why |
+|---|---|---|
+| Where agents run | Inside the box | Works with every agent CLI unchanged and scales to hundreds of boxes |
+| How agents log in | Placeholder key + base URL; a proxy outside the box swaps in the real credential (`PRINCIPLES.md` #3). Subscription logins go through the sandbox provider (boat); TaskWing's proxy carries API keys only (decided 2026-11-14) | Agent CLIs offer many login methods (`context/agent-logins.md`). Holding a subscription login ourselves breaks the provider's terms; boat already handles it |
+| Who plans | The user's own agent (the real Claude Code, started on their machine) leads with a TaskWing skill. The engine has no model code (decided 2026-11-14) | Keeps the flat subscription, works with any vendor's agent, and the engine only checks and runs the plan |
+| Cockpit app | Tauri, in `app/`, with the Go engine bundled as a sidecar (decided 2026-11-13; app built from scratch 2026-11-17) | Plain web UI, runs on Mac, Linux and Windows. SwiftUI was rejected: Mac only, full rewrite, head-on with Sanductor |
+| Phone pings | A push service called from the engine, not a phone app | Works on day one with no app to build |
+| Sandboxes | boat first, local (Docker) later, never our own (decided 2026-11-14) | boat already runs agent CLIs, handles subscription logins and proxies keys. Local Docker gives a free backend for tests. Building a sandbox competes with a commodity |
+| What the user approves | The exam (plain-sentence checks), before any agent starts. The engine checks the file split itself (`PRINCIPLES.md` #8, decided 2026-11-14) | The exam is what "done" means and can be judged in seconds; a file split can't be judged without reading code |
+| Who writes the exam | A fresh agent session that gets only the task and the repo. The lead sees the sentences, never the tests (`PRINCIPLES.md` #12, decided 2026-11-14) | A lead that knows the tests can teach to them through its hints to workers |
+| Pictures over text | The cockpit shows state as pictures: squares for agents, locks for checks, arrows for notes, icons for decisions. Words only for the one question and the decisions log. Memories & Notes is no longer a tab (Joseph, 2026-11-14: "visual rather than text, simplicity over complexity") | Paragraphs on every card turn the cockpit into a report nobody reads |
+| Sandbox cards | One proof per agent, drawn as a picture (a page, a request, a timeline), with the sentence on hover; no file names. Above 8 agents the cards collapse into one square per agent: grey done, blue working, outline waiting, amber needs you, red stuck (decided 2026-11-14) | File names are code. Cards stop being readable past 8; squares stay readable at 100 |
+| Licence | AGPL-3.0 with a NOTICE file (decided 2026-11-15) | Open source, so open source events accept it. Copies must credit TaskWing and stay open, even when run as a hosted service |
+| Cockpit look | The website's design system: Geist, the blue scale, 24px cards, agent state colours (decided 2026-11-17, replaces Flight Deck). Tokens live in `app/ui/styles/tokens.css` | One look for the site and the app; Flight Deck and the cockpit boards stay in git history |
 
-- Target Go `1.24.x` (see `go.mod` and CI workflow).
-- Follow standard Go style: gofmt-managed formatting (tabs), idiomatic naming, lowercase package names.
-- Keep CLI wiring in `cmd/` and business logic in `internal/...`.
-- Use descriptive lowercase file names; tests must use `_test.go`.
-- Do not commit local secrets or machine-specific files (`.env`, local binaries, temp outputs).
+## Checks
 
-## Testing Guidelines
+CI runs these on every pull request (`.github/workflows/ci.yml`). Run them before you push.
 
-- Prefer table-driven tests for logic-heavy code and use `t.Run(...)` for subcases.
-- Name tests with `TestXxx` and keep assertions focused on observable behavior.
-- Run `make test-quick` before small commits; run `make test` before opening a PR.
-- Add/update integration tests in `tests/integration/` for end-to-end CLI/MCP behavior.
-- Use `make coverage` to inspect coverage and avoid reducing coverage in touched packages.
+| Part | Command |
+|---|---|
+| Engine | `gofmt -l cmd internal`, `go vet ./...`, `go test -race ./...` |
+| App | `cd app && npm ci && npm run check` |
+| App shell | `cd app/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` |
 
-## Commit & Pull Request Guidelines
+## Releases
 
-- Use Conventional Commit style: `feat(scope): ...`, `fix: ...`, `test: ...`, `chore: ...`.
-- Keep commit subjects concise, imperative, and focused on what changed.
-- PRs should include: purpose, linked issue (if applicable), test evidence, and docs updates for user-facing changes.
-- Ensure CI passes (`lint`, `test`, docs consistency) before requesting review.
-<!-- TASKWING_DOCS_START -->
+Desktop builds come from `.github/workflows/release-app.yml`.
 
-## TaskWing Integration
+| Step | How |
+|---|---|
+| Try a build | Run the workflow by hand (Actions, Release desktop app, Run workflow). Mac, Linux and Windows builds land as workflow artifacts |
+| Release | Set the same version in `app/package.json`, `app/src-tauri/tauri.conf.json` and `app/src-tauri/Cargo.toml`, run `cargo update --workspace` in `app/src-tauri` so `Cargo.lock` follows (CI builds with `--locked` and fails otherwise), merge, then push tag `app-vX.Y.Z`. CI checks the versions match and opens a draft release with every build |
+| Mac signing | Optional. With the `APPLE_*` secrets set, the Mac build is signed and notarised; without them it is ad hoc signed and macOS asks the user to allow it |
 
-This project uses TaskWing for architectural knowledge management. You have access to TaskWing MCP tools.
+## House style
 
-### TaskWing Workflow Contract v1
-1. No implementation before a clarified and approved plan/task checkpoint.
-2. No completion claim without fresh verification evidence.
-3. No debug fix proposal without root-cause evidence.
-
-### MCP Tools (use directly, no skill needed)
-- `ask` -- Search project knowledge before modifying unfamiliar code.
-- `remember` -- Persist a decision or pattern for future sessions.
-- `code` -- Find symbols, explain call graphs, analyze impact, simplify code.
-- `debug` -- Diagnose issues with root-cause analysis.
-- `task` with action=current -- Check current task status.
-
-**When to use TaskWing MCP tools:**
-- Before modifying unfamiliar code: call `ask` to check for relevant decisions, constraints, and patterns
-- Before planning multi-step work: call `plan` with action=clarify to get a structured plan
-- When asked about architecture, tech stack, or "why" questions: call `ask` with answer=true
-- After making an architectural decision: call `remember` to persist it for future sessions
-- To understand a symbol's role and callers: call `code` with action=explain
-
-**Do not** grep or read files to answer architecture questions when TaskWing MCP is available. The knowledge graph has pre-extracted, verified decisions with evidence.
-
-### Slash Commands
-- /taskwing:plan - Use when you need to clarify a goal and build an approved execution plan.
-- /taskwing:next - Use when you are ready to start the next approved TaskWing task with full context.
-- /taskwing:done - Use when implementation is verified and you are ready to complete the current task.
-- /taskwing:context - Use when you need the full project knowledge dump for complete architectural context.
-
-### Core Commands
-
-<!-- TASKWING_COMMANDS_START -->
-- taskwing bootstrap
-- taskwing ask "<query>"
-- taskwing task
-- taskwing mcp
-- taskwing doctor
-- taskwing config
-- taskwing start
-<!-- TASKWING_COMMANDS_END -->
-
-### MCP Tools (Canonical Contract)
-
-<!-- TASKWING_MCP_TOOLS_START -->
-| Tool | Description |
-|------|-------------|
-| ask | Search project knowledge (decisions, patterns, constraints) |
-| task | Unified task lifecycle (next, current, start, complete) |
-| plan | Plan management (clarify, decompose, expand, generate, finalize, audit) |
-| code | Code intelligence (find, search, explain, callers, impact, simplify) |
-| debug | Diagnose issues systematically with AI-powered analysis |
-| remember | Store knowledge in project memory |
-<!-- TASKWING_MCP_TOOLS_END -->
-
-### Autonomous Task Execution (Hooks)
-
-TaskWing integrates with Claude Code's hook system for autonomous plan execution:
-
-~~~bash
-taskwing hook session-init      # Initialize session tracking (SessionStart hook)
-taskwing hook continue-check    # Check if should continue to next task (Stop hook)
-taskwing hook session-end       # Cleanup session (SessionEnd hook)
-taskwing hook status            # View current session state
-~~~
-
-Circuit breakers prevent runaway execution:
-- --max-tasks=5 stops after N tasks for human review.
-- --max-minutes=30 stops after N minutes.
-
-Configuration in .claude/settings.json enables auto-continuation through plans.
-Hook commands prefer $CLAUDE_PROJECT_DIR/bin/taskwing and fall back to taskwing in PATH.
-If Claude Code is already running, use /hooks to review or reload hook changes.
-
-<!-- TASKWING_DOCS_END -->
+- Every rule in a doc says what breaks without it.
+- Tables and lists over prose.

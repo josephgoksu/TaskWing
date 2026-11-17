@@ -1,54 +1,85 @@
 name: CI
 
 on:
+  pull_request:
   push:
     branches: [main]
-    tags-ignore:
-      - 'v*'  # Don't run CI on tag pushes (release.yml handles it)
-  pull_request:
-    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # A newer push to a pull request replaces its run; every push to main keeps its own.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  lint:
+  engine:
+    name: Engine (Go)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version: '1.24.x'
-          cache: true  # Enable Go module caching
-
-      - name: Lint
-        run: make lint
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.24.x'
-          cache: true  # Enable Go module caching
-
-      - name: Test
-        run: go test ./...
-
-  bootstrap-integration:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.24.x'
-          cache: true
-
-      - name: Bootstrap regression tests
+          go-version-file: go.mod
+      - name: gofmt
         run: |
-          go test -v -count=1 -failfast \
-            -run "TestBootstrapRepro|TestClaudeDriftDetection|TestKnowledgeLinking_NoFK|TestSubrepoMetadata|TestDocIngestion|TestRootPathResolution|TestIsMonorepoDetection|TestWorkspaceRootSelection|TestGate3_Enforcement|TestParseJSONResponse_Hallucination" \
-            ./...
+          out="$(gofmt -l cmd internal)"
+          if [ -n "$out" ]; then
+            echo "::error::Run gofmt on these files:"
+            echo "$out"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go build -o /dev/null ./cmd/taskwing
 
+  app:
+    name: Desktop app (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux runs every check; macOS and Windows compile and lint the
+        # platform-only code in lib.rs so a release build can't be the first to.
+        os: [ubuntu-22.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: UI checks (syntax, no remote URLs)
+        if: runner.os == 'Linux'
+        run: npm run check
+      - name: Linux libraries for Tauri
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: app/src-tauri -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: cargo fmt
+        if: runner.os == 'Linux'
+        working-directory: app/src-tauri
+        run: cargo fmt --check
+      - name: cargo clippy
+        working-directory: app/src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: cargo test
+        working-directory: app/src-tauri
+        run: cargo test --locked
