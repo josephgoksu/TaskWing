@@ -27,7 +27,7 @@ go install github.com/josephgoksu/TaskWing/cmd/taskwing@main
 taskwing run "add an alert webhook with tests"
 ```
 
-Desktop test builds for Mac, Linux and Windows are attached to each run of the [Release desktop app workflow](https://github.com/josephgoksu/TaskWing/actions/workflows/release-app.yml); tagged releases will be on the [releases page](https://github.com/josephgoksu/TaskWing/releases). To run the app from source, see [app/README.md](app/README.md).
+Until the first app release, desktop test builds are on the successful manual runs of the [Release desktop app workflow](https://github.com/josephgoksu/TaskWing/actions/workflows/release-app.yml?query=event%3Aworkflow_dispatch+branch%3Amain+is%3Asuccess) (GitHub sign-in needed, kept 90 days). On a Mac take `darwin-universal-dmg`; the builds are not notarised or signed yet, so macOS and Windows ask before the first launch. To run the app from source, see [app/README.md](app/README.md).
 
 The v1 knowledge layer was removed; it stays available at tag `v1.23.2`.
 
