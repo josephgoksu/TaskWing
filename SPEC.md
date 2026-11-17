@@ -21,7 +21,7 @@ flowchart LR
 
 | Part | What it is | What it does | What it never does |
 |---|---|---|---|
-| Engine | Go binary `taskwing`, MIT | Runs, state, Box and Agent adapters, key proxy, exam runner, git pull/combine/push, GitHub | Call a model itself (no model code, no API key of its own) |
+| Engine | Go binary `taskwing`, AGPL-3.0 | Runs, state, Box and Agent adapters, key proxy, exam runner, git pull/combine/push, GitHub | Call a model itself (no model code, no API key of its own) |
 | CLI | Same binary | Every action the cockpit has, as a command | Anything the cockpit can't show |
 | Cockpit | Tauri app, engine bundled as a sidecar, Flight Deck UI | Shows engine events, sends engine commands | Hold logic or state of its own (`PRINCIPLES.md` #11) |
 | Lead | The user's own Claude Code in tmux session `taskwing`, with the TaskWing skill | Reads the task and repo, writes `plan.json`, answers workers, resolves conflicts at combine | See the exam tests |

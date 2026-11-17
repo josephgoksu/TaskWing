@@ -1,6 +1,6 @@
 # TaskWing
 
-Headless, vendor-agnostic orchestrator: one goal, many sandboxed agents, one verified PR. Go, MIT.
+Headless, vendor-agnostic orchestrator: one goal, many sandboxed agents, one verified PR. Go, AGPL-3.0.
 
 The v1 knowledge layer was removed in November 2026. Nothing from it carries over.
 
@@ -10,6 +10,8 @@ The v1 knowledge layer was removed in November 2026. Nothing from it carries ove
 |---|---|
 | `PRINCIPLES.md` | The foundation. Every change must fit it. A change that breaks a principle updates the principle first, with its reason. |
 | `SPEC.md` | What v2 is built from: stages, engine, cockpit, CLI, first milestone. |
+| `docs/ARCHITECTURE.md` | The source of truth: every concept, how they connect, who owns each. A change that adds, renames or removes a concept updates it in the same pull request. |
+| `docs/FEATURES.md` | Every feature with its status. A change that builds a feature updates its row in the same pull request. |
 | `context/` | Research and decisions behind the principles. |
 
 ## Decisions
@@ -26,6 +28,7 @@ The v1 knowledge layer was removed in November 2026. Nothing from it carries ove
 | Who writes the exam | A fresh agent session that gets only the task and the repo. The lead sees the sentences, never the tests (`PRINCIPLES.md` #12, decided 2026-11-14) | A lead that knows the tests can teach to them through its hints to workers |
 | Pictures over text | The cockpit shows state as pictures: squares for agents, locks for checks, arrows for notes, icons for decisions. Words only for the one question and the decisions log. Memories & Notes is no longer a tab (Joseph, 2026-11-14: "visual rather than text, simplicity over complexity") | Paragraphs on every card turn the cockpit into a report nobody reads |
 | Sandbox cards | One proof per agent, drawn as a picture (a page, a request, a timeline), with the sentence on hover; no file names. Above 8 agents the cards collapse into one square per agent: grey done, blue working, outline waiting, amber needs you, red stuck (decided 2026-11-14) | File names are code. Cards stop being readable past 8; squares stay readable at 100 |
+| Licence | AGPL-3.0 with a NOTICE file (decided 2026-11-15) | Open source, so open source events accept it. Copies must credit TaskWing and stay open, even when run as a hosted service |
 | Cockpit look | Flight Deck is the v2 base (locked 2026-11-14) | Stops redesign churn; changes go into Flight Deck from here on |
 
 ## Prototypes
