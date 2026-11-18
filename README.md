@@ -5,8 +5,9 @@
 <h1 align="center">TaskWing</h1>
 
 <p align="center">
-  <b>The open source harness. Many agents, any model.</b><br>
-  Give TaskWing one task. A team of AI agents works on it in parallel, and you get back one tested pull request.
+  <b>The open source harness for your coding agents.</b><br>
+  TaskWing has no AI of its own. It runs the coding agents you already use, many at once and each in its own sandbox,<br>
+  checks their joined work with a hidden exam, and gives you one tested pull request.
 </p>
 
 <p align="center">
@@ -31,6 +32,21 @@
 </p>
 
 > **Early and moving fast.** The CLI runs real tasks today with Claude Code agents in [boat](https://boat.dev) sandboxes. More agent runtimes, models and sandbox providers are next. See [Status](#status) for exactly what works.
+
+## What TaskWing is
+
+```
+           ┌──────────────────────── TaskWing (no AI inside) ────────────────────────┐
+ your task │  your agent plans  →  N agent sessions, one per sandbox  →  hidden exam │ → one tested PR
+           └─────────────────────────────────────────────────────────────────────────┘
+                      ↑ the agents are yours: Claude Code today, Codex or OpenCode next
+```
+
+| TaskWing is | TaskWing is not |
+|---|---|
+| A harness: it starts, isolates, checks and joins the work of coding agents | An AI model or a coding agent |
+| A Go binary that runs on your machine with your own agent logins | A hosted service, or a new subscription |
+| The layer between your agents and your sandboxes | A sandbox: it plugs into boat today, E2B, Docker and AWS next |
 
 ## Why TaskWing
 
