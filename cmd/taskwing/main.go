@@ -56,6 +56,8 @@ func main() {
 		err = cmdConfig(os.Args[2:])
 	case "doctor":
 		err = cmdDoctor(os.Args[2:])
+	case "engine":
+		err = cmdEngine(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println("taskwing", versionString())
 	case "help", "--help", "-h":
@@ -77,6 +79,7 @@ func usage() {
   taskwing hunt ["<area>"] [flags] find bugs, prove each with a failing test, fix them
   taskwing config boat-base <id>   remember the boat base box (instead of TASKWING_BOAT_BASE)
   taskwing doctor [--clean]        find (and delete) leftover sandboxes and refs
+  taskwing engine --json           the desktop app's engine: JSON lines on stdin and stdout
   taskwing version
 
 Run flags:
@@ -227,6 +230,67 @@ func cmdRun(args []string, hunt bool) error {
 		os.Exit(3)
 	}
 	return nil
+}
+
+// cmdEngine serves the desktop app (app/docs/engine-protocol.md). The app
+// picks the repository, the sandbox and the models for each run; the commands
+// and boat settings come from the same environment and config as `run`.
+func cmdEngine(args []string) error {
+	fs := flag.NewFlagSet("engine", flag.ContinueOnError)
+	jsonOut := fs.Bool("json", false, "JSON lines on stdin and stdout")
+	maxCards := fs.Int("max-cards", 4, "most pieces")
+	keep := fs.Bool("keep", false, "keep sandboxes")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if !*jsonOut {
+		return errors.New("the engine only speaks JSON lines for now: taskwing engine --json")
+	}
+	// The app closes stdin when it quits; Ctrl-C works too when run by hand.
+	ctx, stop := signalContext()
+	defer stop()
+	h := home()
+	start := func(ctx context.Context, c engine.Command) (engine.Options, error) {
+		if strings.TrimSpace(c.Task) == "" {
+			return engine.Options{}, errors.New("no task given")
+		}
+		switch c.Models {
+		case "", "Claude":
+		default:
+			return engine.Options{}, fmt.Errorf("%s is not ready yet: runs use Claude models today", c.Models)
+		}
+		provider := "boat"
+		switch c.Sandbox {
+		case "", "boat":
+		case "Local folders", "local":
+			provider = "local"
+		default:
+			return engine.Options{}, fmt.Errorf("unknown sandbox %q (use boat or Local folders)", c.Sandbox)
+		}
+		// The boat settings `run` would use, from the environment and config.
+		pf := addProviderFlags(flag.NewFlagSet("engine run", flag.ContinueOnError))
+		*pf.provider = provider
+		prov, err := pf.build()
+		if err != nil {
+			return engine.Options{}, err
+		}
+		dir, err := engine.ResolveRepo(ctx, h, c.Repo)
+		if err != nil {
+			return engine.Options{}, err
+		}
+		return engine.Options{
+			Task:     strings.TrimSpace(c.Task),
+			Dir:      dir,
+			Provider: prov,
+			Home:     h,
+			LeadCmd:  env("TASKWING_LEAD_CMD", defaultLead),
+			ExamCmd:  env("TASKWING_EXAM_CMD", defaultExam),
+			MaxCards: *maxCards,
+			Keep:     *keep,
+			Out:      os.Stderr,
+		}, nil
+	}
+	return engine.Serve(ctx, os.Stdin, os.Stdout, version, start)
 }
 
 func cmdDoctor(args []string) error {

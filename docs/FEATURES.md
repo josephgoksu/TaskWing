@@ -15,9 +15,9 @@ Status: ✅ built · 🟡 partial · ⬜ planned. Milestones: **PoC** (done, Nov
 ```mermaid
 pie showData
   title Features by status
-  "Built" : 26
+  "Built" : 27
   "Partial" : 8
-  "Planned" : 34
+  "Planned" : 33
 ```
 
 ## Run
@@ -117,10 +117,10 @@ pie showData
 | C1 | CLI: `run`, `hunt`, `config`, `doctor`, `version` | ✅ | PoC | |
 | C2 | CLI: `status`, `exam`, `answer`, `attach`, `stop` | ⬜ | M1 | |
 | C3 | `taskwing config boat-base` saves the base box | ✅ | PoC | |
-| C4 | Engine stream: JSON events out, commands in | ⬜ | M1 | The cockpit and skill use it |
+| C4 | Engine stream: JSON events out, commands in | ✅ | M1 | `taskwing engine --json` (`internal/engine/stream.go`). The desktop app runs real tasks on it. Not yet: pausing agents, agent questions, notes between agents |
 | C5 | Start from a Claude Code skill | ⬜ | Talk | Joseph's pick |
 | C6 | Two minutes from install to the first agent | ⬜ | Talk | Joseph's pick; depends on S8 and C5 |
-| C7 | Cockpit desktop app | 🟡 | M1 | Tauri app in `app/`, built for Mac, Linux and Windows by CI. Runs on its demo engine until C4 lands |
+| C7 | Cockpit desktop app | 🟡 | M1 | Tauri app in `app/`, built for Mac, Linux and Windows by CI. Runs real tasks on `taskwing engine --json`; falls back to its demo engine when no engine is installed |
 | C8 | Install the CLI with Homebrew, Linux packages, archives or `go install` | 🟡 | M1 | GoReleaser on `vX.Y.Z` tags. No v2 release yet, so Homebrew still installs v1.23.2 |
 
 ## Project

@@ -150,11 +150,11 @@ Every concept and how they connect: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 | **Sandboxes** | ✅ boat · ✅ local (no isolation, for trying it) | ⬜ E2B · ⬜ AWS · ⬜ Docker |
 | **Agents and models** | ✅ Claude Code · 🟡 lead and exam writer on any command | ⬜ a second runtime (OpenCode or Codex) · ⬜ open-weight models · ⬜ per-step model routing |
 | **Safety** | ✅ no GitHub login in any box · 🟡 refuse boxes with GitHub credentials · 🟡 secret scan before destroy | ⬜ key proxy · ⬜ hardened git reads of worker commits |
-| **Clients** | ✅ CLI · 🟡 desktop app for macOS, Linux and Windows (runs on a demo engine) | ⬜ engine event stream for the app · ⬜ start from a Claude Code skill |
+| **Clients** | ✅ CLI · 🟡 desktop app for macOS, Linux and Windows · ✅ engine event stream for the app (`taskwing engine --json`) | ⬜ start from a Claude Code skill |
 
 ## Desktop app
 
-The app in [`app/`](app/) is a small [Tauri 2](https://tauri.app) shell with a plain HTML, CSS and JavaScript window. Every agent is a square: blue working, grey done, amber needs you, red stuck. It runs on a built-in demo engine until the engine event stream lands. Until the first app release, test builds are on the successful manual runs of the [Release desktop app workflow](https://github.com/josephgoksu/TaskWing/actions/workflows/release-app.yml?query=event%3Aworkflow_dispatch+branch%3Amain+is%3Asuccess) (GitHub sign-in needed, kept 90 days). On a Mac take `darwin-universal-dmg`; the builds are not notarised or signed yet, so macOS and Windows ask before the first launch. Or run it from source with `cd app && npm install && npm run dev` (see [app/README.md](app/README.md)).
+The app in [`app/`](app/) is a small [Tauri 2](https://tauri.app) shell with a plain HTML, CSS and JavaScript window. Every agent is a square: blue working, grey done, amber needs you, red stuck. It runs real tasks through `taskwing engine --json`, and falls back to a built-in demo engine when no `taskwing` is installed. Until the first app release, test builds are on the successful manual runs of the [Release desktop app workflow](https://github.com/josephgoksu/TaskWing/actions/workflows/release-app.yml?query=event%3Aworkflow_dispatch+branch%3Amain+is%3Asuccess) (GitHub sign-in needed, kept 90 days). On a Mac take `darwin-universal-dmg`; the builds are not notarised or signed yet, so macOS and Windows ask before the first launch. Or run it from source with `cd app && npm install && npm run dev` (see [app/README.md](app/README.md)).
 
 ## Contributing
 
@@ -162,7 +162,7 @@ TaskWing is early, so this is a good time to shape it. Good first areas:
 
 - **A sandbox provider** (E2B, Docker, AWS). A provider needs only create, exec, start agent, list and destroy: see the `Provider` interface in [`internal/box`](internal/box).
 - **A second agent runtime** (OpenCode, Codex CLI, Gemini CLI).
-- **The engine event stream** that the desktop app reads ([app/docs/engine-protocol.md](app/docs/engine-protocol.md)).
+- **The missing app events**: pausing agents, agent questions and notes between agents ([app/docs/engine-protocol.md](app/docs/engine-protocol.md)).
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first; it has the checks CI runs and the few house rules. Found a security problem? See [SECURITY.md](SECURITY.md).
 

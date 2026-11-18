@@ -44,14 +44,21 @@ type Options struct {
 	CheckTimeout time.Duration
 	Out          io.Writer
 	In           io.Reader
+	// Stream connects the run to the desktop app (taskwing engine --json).
+	// With a stream the run asks the app, not In, and never opens a pull
+	// request when a check fails.
+	Stream *Stream
+	RunID  string // set by the stream; otherwise made from the time
 }
 
 // Check is one exam check: a plain sentence and the command behind it.
 type Check struct {
+	ID      string `json:"id,omitempty"` // k1, k2... or the app's id for a check the user added
 	Text    string `json:"text"`
 	Command string `json:"command"`
 	Passed  bool   `json:"passed"`
 	Output  string `json:"output,omitempty"`
+	User    bool   `json:"user,omitempty"` // added by the user in the app
 }
 
 // Result is what a run produced.
@@ -83,6 +90,7 @@ type cardRun struct {
 	files   []string
 	outside []string
 	joined  bool
+	early   bool // stopped when the user asked for the exam
 }
 
 func (c *cardRun) set(f func(c *cardRun)) {
@@ -110,6 +118,7 @@ func (c *cardRun) view() cardView {
 
 type runner struct {
 	o      Options
+	s      *Stream // nil outside the desktop app
 	ui     *ui
 	ev     *events
 	root   string
@@ -136,9 +145,15 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	if o.CheckTimeout == 0 {
 		o.CheckTimeout = 20 * time.Minute
 	}
-	r := &runner{o: o, ui: newUI(o.Out, o.In), start: time.Now()}
+	r := &runner{o: o, s: o.Stream, ui: newUI(o.Out, o.In), start: time.Now()}
 	res, err := r.run(ctx)
 	r.cleanup()
+	if res != nil {
+		// Boxes deleted on the way to an error were scanned too.
+		r.boxesMu.Lock()
+		res.Secrets = append([]string(nil), r.secrets...)
+		r.boxesMu.Unlock()
+	}
 	r.ev.log("run.done", map[string]any{"error": errString(err)})
 	r.ev.close()
 	return res, err
@@ -181,7 +196,10 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	if err := claudeLoggedIn(ctx, o); err != nil {
 		return nil, err
 	}
-	r.id = "tw-" + time.Now().Format("20060102-150405")
+	r.id = o.RunID
+	if r.id == "" {
+		r.id = "tw-" + time.Now().Format("20060102-150405")
+	}
 	r.dir = filepath.Join(o.Home, "runs", r.id)
 	if err := os.MkdirAll(filepath.Join(r.dir, "logs"), 0o755); err != nil {
 		return nil, err
@@ -225,7 +243,35 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		r.showPlan(plan, checks)
 		what = fmt.Sprintf("Start %d %s in %s? This is the exam they must pass.", len(plan.Cards), plural(len(plan.Cards), "agent", "agents"), sandboxWord(o.Provider))
 	}
-	if !o.Yes && !r.ui.ask("\n"+what) {
+	// In the app the user approves the plan there, may add checks of their
+	// own, or asks the lead for a new plan.
+	var userExam chan userExamResult
+	// The session writing the user's checks stops when the run does, however
+	// it ends, and is waited for, so it never outlives the run.
+	uctx, stopUserExam := context.WithCancel(ctx)
+	defer func() {
+		stopUserExam()
+		if userExam != nil {
+			<-userExam
+		}
+	}()
+	if r.s != nil {
+		for {
+			c, err := r.s.askApproval(ctx, plan, checks)
+			if err != nil {
+				return res, err
+			}
+			if c.Type == "plan.approve" {
+				userExam = r.startUserExam(uctx, plan.Interface, c.Checks)
+				break
+			}
+			r.ev.log("plan.redo", nil)
+			r.s.stage("planning")
+			if plan, checks, patch, err = r.planAndExam(ctx); err != nil {
+				return res, err
+			}
+		}
+	} else if !o.Yes && !r.ui.ask("\n"+what) {
 		r.ev.log("run.stopped", nil)
 		r.ui.say("Stopped. The plan and the exam are saved in %s", r.dir)
 		res.Stopped = true
@@ -237,13 +283,30 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 
 	// 2. Build: one box and one agent per card.
 	r.ui.step(2, "Build")
+	r.s.stage("build")
 	cards, err := r.build(ctx, plan)
 	if err != nil {
 		return res, err
 	}
 
+	// The user's own checks were written into tests while the agents built.
+	var userPatch []byte
+	if userExam != nil {
+		var u userExamResult
+		select {
+		case u = <-userExam:
+			userExam = nil
+		case <-ctx.Done():
+			return res, ctx.Err()
+		}
+		checks = append(checks, u.checks...)
+		userPatch = u.patch
+		res.Total = len(checks)
+	}
+
 	// 3. Join the work on one branch and run the exam in a clean box.
 	r.ui.step(3, "Exam")
+	r.s.stage("exam")
 	res.Branch = "taskwing/" + r.id
 	// Free the branch so the user can check it out (or delete it), even when
 	// the join fails; it stays in the repository.
@@ -253,9 +316,15 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	if err := r.join(ctx, cards, res.Branch); err != nil {
 		return res, err
 	}
-	if err := r.exam(ctx, checks, patch); err != nil {
+	for _, cr := range cards {
+		if cr.state == stDone && !cr.joined {
+			r.s.leftOut(cr)
+		}
+	}
+	if err := r.exam(ctx, checks, patch, userPatch); err != nil {
 		return res, err
 	}
+	r.s.examResult(checks)
 	for _, c := range checks {
 		if c.Passed {
 			res.Passed++
@@ -271,6 +340,12 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		r.summary(res)
 		return res, nil
 	}
+	if res.Passed < res.Total && r.s != nil {
+		// The app's promise: a failed exam pushes nothing.
+		r.ui.say("  Not opened: %d of %d checks failed. The joined work is on branch %s.", res.Total-res.Passed, res.Total, res.Branch)
+		r.summary(res)
+		return res, nil
+	}
 	if res.Passed < res.Total && !o.Yes {
 		if !r.ui.ask(fmt.Sprintf("  %d of %d checks failed. Open the draft pull request anyway?", res.Total-res.Passed, res.Total)) {
 			r.ui.say("  Not opened. The joined work is on branch %s.", res.Branch)
@@ -278,12 +353,14 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			return res, nil
 		}
 	}
+	r.s.stage("pr")
 	url, err := r.openPR(ctx, plan, cards, checks, res)
 	if err != nil {
 		return res, err
 	}
 	res.PRURL = url
 	r.ev.log("pr.opened", map[string]any{"url": url})
+	r.s.prOpened(url)
 	r.summary(res)
 	return res, nil
 }
@@ -393,14 +470,86 @@ func (r *runner) lead(ctx context.Context) (*Plan, error) {
 // writeExam runs the exam session in a throwaway worktree, then keeps its new
 // files as a patch on this machine. The patch only enters the exam box.
 func (r *runner) writeExam(ctx context.Context, iface string) ([]Check, []byte, error) {
-	wt := filepath.Join(r.dir, "exam-worktree")
+	checks, patch, err := r.examSession(ctx, examPrompt(r.o.Task, iface), "exam", "taskwing_exam")
+	for i := range checks {
+		checks[i].ID = fmt.Sprintf("k%d", i+1)
+	}
+	return checks, patch, err
+}
+
+type userExamResult struct {
+	checks []Check
+	patch  []byte
+}
+
+// startUserExam turns the checks the user added in the app into tests, in its
+// own session, while the agents build. Like the main exam, the builders never
+// see it. A check no test could be written for fails in the exam.
+func (r *runner) startUserExam(ctx context.Context, iface string, approved []WireCheck) chan userExamResult {
+	const most = 10
+	var mine, extra []WireCheck
+	for _, c := range approved {
+		if c.AddedBy != "user" || strings.TrimSpace(c.Text) == "" || c.ID == "" {
+			continue
+		}
+		if len(mine) < most {
+			mine = append(mine, c)
+		} else {
+			extra = append(extra, c)
+		}
+	}
+	if len(mine) == 0 {
+		return nil
+	}
+	texts := make([]string, len(mine))
+	for i, c := range mine {
+		texts[i] = truncate(strings.TrimSpace(c.Text), 300)
+	}
+	r.ev.log("exam.user", map[string]any{"checks": len(mine)})
+	done := make(chan userExamResult, 1)
+	go func() {
+		checks, patch, err := r.examSession(ctx, userExamPrompt(r.o.Task, iface, texts), "user-exam", userExamMarker)
+		why := ""
+		switch {
+		case err != nil:
+			why = err.Error()
+		case len(checks) != len(mine):
+			why = fmt.Sprintf("the session wrote %d checks for %d sentences", len(checks), len(mine))
+		}
+		out := make([]Check, len(mine))
+		for i, c := range mine {
+			out[i] = Check{ID: c.ID, Text: texts[i], User: true}
+			if why == "" {
+				out[i].Command = checks[i].Command
+			} else {
+				out[i].Output = "no test could be written for this check: " + why
+			}
+		}
+		// A check past the limit fails instead of vanishing from the exam.
+		for _, c := range extra {
+			out = append(out, Check{ID: c.ID, Text: truncate(strings.TrimSpace(c.Text), 300), User: true,
+				Output: fmt.Sprintf("no test was written: only the first %d checks you add get tests", most)})
+		}
+		if why != "" {
+			patch = nil
+			r.ev.log("exam.user.failed", map[string]any{"why": why})
+		}
+		done <- userExamResult{checks: out, patch: patch}
+	}()
+	return done
+}
+
+// examSession runs one exam-writing session (name is "exam" or "user-exam").
+// Only new files whose path contains marker are kept.
+func (r *runner) examSession(ctx context.Context, prompt, name, marker string) ([]Check, []byte, error) {
+	wt := filepath.Join(r.dir, name+"-worktree")
 	if _, err := git(ctx, r.root, "worktree", "add", "-q", "--detach", wt, r.base); err != nil {
 		return nil, nil, err
 	}
 	defer func() {
 		_, _ = git(context.Background(), r.root, "worktree", "remove", "--force", wt)
 	}()
-	out, err := hostAgent(ctx, r.o.ExamCmd, wt, examPrompt(r.o.Task, iface), filepath.Join(r.dir, "logs", "exam-writer.log"))
+	out, err := hostAgent(ctx, r.o.ExamCmd, wt, prompt, filepath.Join(r.dir, "logs", name+"-writer.log"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("the exam session failed: %v", err)
 	}
@@ -423,7 +572,7 @@ func (r *runner) writeExam(ctx context.Context, iface string) ([]Check, []byte, 
 	if len(checks) == 0 {
 		return nil, nil, errors.New("the exam has no checks")
 	}
-	// Keep only new files with "taskwing_exam" in the path. Anything else the
+	// Keep only new files with the marker in the path. Anything else the
 	// session touched (caches, lock files, edits to existing files) is dropped.
 	if _, err := git(ctx, wt, "add", "-A"); err != nil {
 		return nil, nil, err
@@ -435,14 +584,14 @@ func (r *runner) writeExam(ctx context.Context, iface string) ([]Check, []byte, 
 		if len(f) != 2 {
 			continue
 		}
-		if f[0] == "A" && strings.Contains(f[1], "taskwing_exam") {
+		if f[0] == "A" && strings.Contains(f[1], marker) {
 			keep = append(keep, f[1])
 		} else {
 			dropped = append(dropped, f[1])
 		}
 	}
 	if len(keep) == 0 {
-		return nil, nil, errors.New(`the exam session wrote no test files (their path must contain "taskwing_exam")`)
+		return nil, nil, fmt.Errorf("the exam session wrote no test files (their path must contain %q)", marker)
 	}
 	if len(dropped) > 0 {
 		r.ev.log("exam.dropped", map[string]any{"files": dropped})
@@ -457,7 +606,7 @@ func (r *runner) writeExam(ctx context.Context, iface string) ([]Check, []byte, 
 	if err != nil {
 		return nil, nil, err
 	}
-	examDir := filepath.Join(r.dir, "exam")
+	examDir := filepath.Join(r.dir, name)
 	_ = os.MkdirAll(examDir, 0o755)
 	_ = os.WriteFile(filepath.Join(examDir, "exam.patch"), []byte(patch), 0o644)
 	b, _ := json.MarshalIndent(checks, "", "  ")
@@ -669,6 +818,7 @@ func (r *runner) watchUntil(stage string, started time.Time, cards []*cardRun, d
 		}
 		views := make([]cardView, len(cards))
 		for i, cr := range cards {
+			r.s.card(cr)
 			views[i] = cr.view()
 			if !r.ui.tty && last[i] != views[i].state {
 				last[i] = views[i].state
@@ -685,6 +835,19 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 	fail := func(msg string) {
 		cr.set(func(c *cardRun) { c.state, c.err, c.ended = stFailed, msg, time.Now() })
 		r.ev.log("box.state", map[string]any{"card": cr.card.ID, "state": stFailed, "why": msg})
+	}
+	// Once the user asked for the exam, an agent that has not started never will.
+	examStarted := func() bool {
+		select {
+		case <-r.s.earlyExam():
+			fail("the exam started before this agent did")
+			return true
+		default:
+			return false
+		}
+	}
+	if examStarted() {
+		return
 	}
 	name := fmt.Sprintf("%s · %s · %02d %s", BoxPrefix, r.id, cr.n, cr.card.Title)
 	b, err := r.o.Provider.Create(ctx, name)
@@ -710,6 +873,9 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 		fail(err.Error())
 		return
 	}
+	if examStarted() {
+		return
+	}
 	shown := strings.Replace(b.RepoDir, "$HOME", "~", 1)
 	logPath := filepath.Join(r.dir, "logs", fmt.Sprintf("agent-%02d.log", cr.n))
 	agent, err := r.o.Provider.StartAgent(ctx, b, workerPrompt(plan, cr.card, cr.n, shown), logPath)
@@ -723,7 +889,8 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 	r.ev.log("box.state", map[string]any{"card": cr.card.ID, "box": b.ID, "state": stWorking})
 
 	deadline := time.Now().Add(r.o.AgentTimeout)
-	for {
+	early := false
+	for running := true; running; {
 		st := agent.Status()
 		if !st.Running {
 			if st.Failed {
@@ -746,6 +913,12 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 			agent.Stop()
 			fail("stopped")
 			return
+		case <-r.s.earlyExam():
+			// The user wants the exam now: keep what this agent has so far.
+			agent.Stop()
+			cr.set(func(c *cardRun) { c.early, c.proof = true, "stopped early for the exam" })
+			r.ev.log("box.state", map[string]any{"card": cr.card.ID, "state": "stopped-early"})
+			running, early = false, true
 		case <-time.After(time.Second):
 		}
 	}
@@ -779,6 +952,9 @@ base64 < "$TW_REPO.out"
 	switch {
 	case err != nil:
 		fail("could not read its commits: " + err.Error())
+		return
+	case rc == 5 && early:
+		fail("stopped for the exam before it changed anything")
 		return
 	case rc == 5:
 		fail("finished without changing anything")
@@ -839,7 +1015,7 @@ func (r *runner) join(ctx context.Context, cards []*cardRun, branch string) erro
 	return nil
 }
 
-func (r *runner) exam(ctx context.Context, checks []Check, patch []byte) error {
+func (r *runner) exam(ctx context.Context, checks []Check, patch, userPatch []byte) error {
 	wt := filepath.Join(r.dir, "join")
 	bundle := filepath.Join(r.dir, "joined.bundle")
 	if _, err := git(ctx, wt, "bundle", "create", "-q", bundle, "HEAD"); err != nil {
@@ -864,12 +1040,31 @@ func (r *runner) exam(ctx context.Context, checks []Check, patch []byte) error {
 			return fmt.Errorf("the exam's tests did not apply on the joined work (exit %d): %v %s", rc, err, lastLines(out.String(), 3))
 		}
 	}
+	// The user's checks have their own tests. If those do not apply, only
+	// the user's checks fail.
+	userBroken := ""
+	if len(userPatch) > 0 {
+		var out strings.Builder
+		rc, err := r.o.Provider.Exec(ctx, b, `cd "$TW_REPO" && git apply --index --whitespace=nowarn`, strings.NewReader(string(userPatch)), &out)
+		if err != nil || rc != 0 {
+			userBroken = fmt.Sprintf("the tests for your checks did not apply (exit %d): %v %s", rc, err, lastLines(out.String(), 3))
+		}
+	}
 	for i := range checks {
 		// After Ctrl-C every remaining check would "fail"; stop instead.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		c := &checks[i]
+		if c.User && userBroken != "" {
+			c.Output = userBroken
+		}
+		if c.Command == "" || (c.User && userBroken != "") {
+			c.Passed = false
+			r.ui.say("  %s %s %s", r.ui.red("✗"), c.Text, r.ui.dim("(no test)"))
+			r.ev.log("exam.check", map[string]any{"n": i + 1, "passed": false})
+			continue
+		}
 		cctx, cancel := context.WithTimeout(ctx, r.o.CheckTimeout)
 		var out strings.Builder
 		// The command sits on its own lines, so a trailing "# comment" in it

@@ -6,7 +6,7 @@
 // the built-in demo engine plays a believable run so the app can be tried.
 //
 // Events:   engine.hello, run.created, plan.ready, run.stage, card.update, question,
-//           question.closed, note, exam.result, pr.opened, run.finished,
+//           question.closed, note, exam.result, pr.opened, run.error, run.finished,
 //           engine.exit
 // Commands: run.start, plan.approve, plan.redo, answer, exam.now,
 //           run.pause, run.resume
