@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/box"
+	"github.com/josephgoksu/TaskWing/v2/internal/box"
 )
 
 // app drives Serve the way the desktop app does: commands in, events out.

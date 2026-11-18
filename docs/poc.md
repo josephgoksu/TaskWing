@@ -15,8 +15,8 @@ taskwing run "<task>"
 ## 1. Install
 
 ```bash
-go install github.com/josephgoksu/TaskWing/cmd/taskwing@main
-~/go/bin/taskwing version     # taskwing v2-poc (an old v1 from Homebrew may come first on PATH)
+go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@latest
+~/go/bin/taskwing version     # taskwing v2.x (an old v1 from Homebrew may come first on PATH; brew upgrade taskwing)
 ```
 
 Needs on your Mac: `git`, `claude` (logged in), `gh` (logged in), and the `boat` CLI (logged in).

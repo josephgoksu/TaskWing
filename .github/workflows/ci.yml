@@ -35,6 +35,26 @@ jobs:
       - run: go test -race ./...
       - run: go build -o /dev/null ./cmd/taskwing
 
+  # Builds every archive and package from .goreleaser.yaml without publishing,
+  # so a broken release config fails here and not halfway through a tagged release.
+  release-config:
+    name: Release config (GoReleaser snapshot)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          # The engine job already runs the tests; skip the before hook here.
+          args: release --snapshot --clean --skip=publish,before
+
   app:
     name: Desktop app (${{ matrix.os }})
     strategy:

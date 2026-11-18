@@ -16,7 +16,7 @@ Status: ✅ built · 🟡 partial · ⬜ planned. Milestones: **PoC** (done, Nov
 pie showData
   title Features by status
   "Built" : 27
-  "Partial" : 7
+  "Partial" : 8
   "Planned" : 33
 ```
 
@@ -121,6 +121,7 @@ pie showData
 | C5 | Start from a Claude Code skill | ⬜ | Talk | Joseph's pick |
 | C6 | Two minutes from install to the first agent | ⬜ | Talk | Joseph's pick; depends on S8 and C5 |
 | C7 | Cockpit desktop app | 🟡 | M1 | Tauri app in `app/`, built for Mac, Linux and Windows by CI. Runs real tasks on `taskwing engine --json`; falls back to its demo engine when no engine is installed |
+| C8 | Install the CLI with Homebrew, Linux packages, archives or `go install` | 🟡 | M1 | GoReleaser on `vX.Y.Z` tags. No v2 release yet, so Homebrew still installs v1.23.2 |
 
 ## Project
 
