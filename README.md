@@ -6,8 +6,8 @@
 
 <p align="center">
   <b>The open source harness for your coding agents.</b><br>
-  TaskWing has no AI of its own. It runs the coding agents you already use, many at once and each in its own sandbox,<br>
-  checks their joined work with a hidden exam, and gives you one tested pull request.
+  TaskWing runs the coding agents you already use, many at once and each in its own sandbox.<br>
+  It checks their joined work with a hidden exam and gives you one tested pull request.
 </p>
 
 <p align="center">
@@ -33,30 +33,30 @@
 
 > **Early and moving fast.** The CLI runs real tasks today with Claude Code agents in [boat](https://boat.dev) sandboxes. More agent runtimes, models and sandbox providers are next. See [Status](#status) for exactly what works.
 
-## What TaskWing is
+## How it works
 
 ```
-           ┌──────────────────────── TaskWing (no AI inside) ────────────────────────┐
+           ┌───────────────────────── TaskWing orchestrates ─────────────────────────┐
  your task │  your agent plans  →  N agent sessions, one per sandbox  →  hidden exam │ → one tested PR
            └─────────────────────────────────────────────────────────────────────────┘
                       ↑ the agents are yours: Claude Code today, Codex or OpenCode next
 ```
 
-| TaskWing is | TaskWing is not |
+| TaskWing | What that means for you |
 |---|---|
-| A harness: it starts, isolates, checks and joins the work of coding agents | An AI model or a coding agent |
-| A Go binary that runs on your machine with your own agent logins | A hosted service, or a new subscription |
-| The layer between your agents and your sandboxes | A sandbox: it plugs into boat today, E2B, Docker and AWS next |
+| **Orchestrates your agents** | Your coding agent plans the task. TaskWing starts one agent session per piece, then checks and joins their work |
+| **Runs on your machine** | One Go binary, using the agent logins and subscriptions you already have |
+| **Plugs into your sandboxes** | boat today; E2B, Docker and AWS next |
 
 ## Why TaskWing
 
-Running many coding agents is easy. What runs out is work that doesn't conflict, and your time to review it. TaskWing counts success in verified merges, not in agents running.
+Running many coding agents is easy. What runs out is work that doesn't conflict, and your time to review it. TaskWing counts success in verified merges.
 
 - **One task in, one pull request out.** Your own coding agent plans the task and splits it into pieces that share no files. One agent builds each piece, in parallel.
 - **Every agent in its own sandbox.** No GitHub login inside a box. Agents commit locally; your machine pulls the commits, joins them and pushes.
 - **A hidden exam.** Before any work starts, a fresh session writes the checks and the tests behind them. You approve the checks. The tests never reach the lead or any worker, so nobody can teach to them. They run in a clean sandbox on the joined work.
 - **Your agent, your subscription.** The engine has no model code and no API key of its own. The lead is your own coding agent on your machine.
-- **Plugs in, doesn't rebuild.** Sandboxes and agent CLIs are commodities. TaskWing has two adapters, Box and Agent, and builds neither layer itself.
+- **Plugs into what you have.** Bring your sandbox provider and your agent CLIs. TaskWing connects them through two small adapters, Box and Agent.
 
 ## Install
 
