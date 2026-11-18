@@ -20,7 +20,7 @@ Version 2 is being built. Two pieces exist today:
 | Piece | Where | State |
 |---|---|---|
 | Engine and CLI | `cmd/`, `internal/` (Go) | Proof of concept: `taskwing run`, `hunt`, `doctor`. See [docs/poc.md](docs/poc.md) |
-| Desktop app | [`app/`](app/) (Tauri) | Built for Mac, Linux and Windows. Runs on its demo engine until the engine stream lands |
+| Desktop app | [`app/`](app/) (Tauri) | Built for Mac, Linux and Windows. Runs real tasks through `taskwing engine --json`, or a demo when no engine is installed |
 
 ```bash
 go install github.com/josephgoksu/TaskWing/cmd/taskwing@main

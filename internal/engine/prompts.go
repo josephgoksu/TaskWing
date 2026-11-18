@@ -52,6 +52,36 @@ When the files are written, answer with ONLY this JSON, no other text:
 `, task, pinned)
 }
 
+// userExamMarker is in the path of every test written for a check the user added.
+const userExamMarker = "taskwing_exam_user"
+
+// userExamPrompt asks for one check per sentence the user added, in order.
+func userExamPrompt(task, iface string, sentences []string) string {
+	pinned := ""
+	if strings.TrimSpace(iface) != "" {
+		pinned = "\nThe public interface is pinned. Use exactly these names; never invent others:\n" + iface + "\n"
+	}
+	var list strings.Builder
+	for i, s := range sentences {
+		fmt.Fprintf(&list, "%d. %s\n", i+1, s)
+	}
+	return fmt.Sprintf(`You write acceptance tests for checks the user added to a coding task, before anyone builds it. Other agents will build the task without seeing your tests. The tests run on their joined work in a clean sandbox, next to another exam you cannot see.
+
+Task: %s
+%s
+Checks the user added:
+%s
+Do this:
+1. Read the repository: its language, its test framework, how tests are run.
+2. For each check above, in the same order, write one shell command, run from the repository root, that exits 0 only when the check holds.
+3. Write the tests behind them as NEW files whose path contains %q (for example "billing/%s_test.go"). Never change an existing file. Start the name of every test, class and helper you write with "UserCheck", so nothing clashes with the other exam.
+4. The tests must fail on the current code and pass once the task is built well. Test behaviour through public interfaces, using the pinned names above.
+
+When the files are written, answer with ONLY this JSON, exactly one entry per check, in order, no other text:
+{"checks": [{"text": "<the check, as given>", "command": "<shell command>"}]}
+`, task, pinned, list.String(), userExamMarker, userExamMarker)
+}
+
 func workerPrompt(p *Plan, c Card, n int, repoDir string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are agent %02d in a TaskWing run. The repository is checked out at %s on its own branch. Work only there.\n\n", n, repoDir)

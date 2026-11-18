@@ -9,6 +9,7 @@ import { icon, logo } from "./icons.js";
 
 const state = {
   engine: "connecting", // connecting | live | demo | stopped
+  can: null, // optional commands the live engine handles (engine.hello); null = all
   runs: new Map(),
   order: [], // newest first
   view: { name: "home", runId: null },
@@ -55,6 +56,10 @@ function apply(e) {
     else state.engine = "stopped";
     return paint();
   }
+  if (e.type === "engine.hello") {
+    state.can = Array.isArray(e.can) ? e.can.filter((x) => typeof x === "string").slice(0, 50) : null;
+    return paint();
+  }
   if (e.type === "run.created") {
     const r = e.run || {};
     const id = str(r.id, 80);
@@ -63,7 +68,7 @@ function apply(e) {
       id, repo: str(r.repo, 200), task: str(r.task, 2000), n: state.runs.size + 1,
       stage: "planning", paused: false, createdAt: Date.parse(r.created_at) || Date.now(),
       cards: [], checks: [], names: [], questions: [], notes: [], pr: null,
-      endedAt: null, ok: null, secrets: null, buildAt: null,
+      endedAt: null, ok: null, secrets: null, buildAt: null, error: "",
     });
     state.order.unshift(id);
     if (pendingOpen) { pendingOpen = false; state.view = { name: "run", runId: id }; }
@@ -124,6 +129,12 @@ function apply(e) {
       run.pr = { number: Number.isInteger(e.number) ? e.number : null, url: /^https:\/\//.test(url) ? url : null, draft: e.draft !== false };
       break;
     }
+    case "run.error":
+      // The run stopped on an error (no repository, a sandbox that would not
+      // start...), not on the exam. run.finished follows.
+      run.error = str(e.message, 400) || "The engine stopped this run.";
+      run.failed = true;
+      break;
     case "run.finished":
       run.endedAt = Date.parse(e.ended_at) || Date.now();
       run.ok = e.ok === true;
@@ -168,6 +179,7 @@ function minis(run) {
 function runMeta(run) {
   const q = openQuestions(run).length;
   if (q) return `<span class="m needs">${plural(q, "question", "questions")} for you</span>`;
+  if (run.error) return `<span class="m">Stopped · ${esc(run.repo)}</span>`;
   if (run.failed) return `<span class="m">Exam failed · ${esc(run.repo)}</span>`;
   if (run.stage === "done") return `<span class="m">${run.pr?.number ? `Draft PR #${run.pr.number}` : "Finished"} · ${esc(run.repo)}</span>`;
   const label = { planning: "Planning", approve: "Waiting for your OK", build: run.paused ? "Paused" : "Building", exam: "Exam running", pr: "Opening the PR" }[run.stage];
@@ -244,7 +256,8 @@ function stages(run) {
   const at = cur === "done" ? order.length : order.indexOf(cur);
   return `<div class="stages" aria-label="Stages">${order.map((s, i) => {
     let cls = "", lead = "";
-    if (run.failed && s === "exam") { cls = "bad"; lead = icon("x"); }
+    if (run.error && i === Math.min(at, order.length - 1)) { cls = "bad"; lead = icon("x"); }
+    else if (run.failed && !run.error && s === "exam") { cls = "bad"; lead = icon("x"); }
     else if (i < at) { cls = "ok"; lead = icon("check"); }
     else if (i === at) {
       cls = "now"; lead = `<span class="dot"></span>`;
@@ -335,8 +348,8 @@ function building(run) {
   const q = openQuestions(run)[0];
   const examLocked = run.stage === "build";
   const actions = run.stage === "build"
-    ? `<button class="btn btn-ghost" data-act="${run.paused ? "resume" : "pause"}">${run.paused ? "Resume" : "Pause"}</button>
-       <button class="btn btn-ink" data-act="examnow">Run the exam now</button>`
+    ? `${can("run.pause") ? `<button class="btn btn-ghost" data-act="${run.paused ? "resume" : "pause"}">${run.paused ? "Resume" : "Pause"}</button>` : ""}
+       ${can("exam.now") ? `<button class="btn btn-ink" data-act="examnow">Run the exam now</button>` : ""}`
     : "";
   const note = run.notes[0];
   return `
@@ -385,6 +398,18 @@ function building(run) {
     </section>` : ""}`;
 }
 
+// Whether the engine handles an optional command. The demo handles them all.
+const can = (cmd) => state.engine !== "live" || !state.can || state.can.includes(cmd);
+
+function stoppedView(run) {
+  return `
+    ${runHead(run)}
+    <section class="card-needs pr" aria-label="Why the run stopped">
+      <div class="who">${icon("x", "color:var(--needs-ink)")}<div><b>The run stopped</b><span class="selectable">${esc(run.error)}</span></div></div>
+      <div class="actions"><button class="btn btn-ink" data-act="again">Run this task again</button></div>
+    </section>`;
+}
+
 function receipt(run) {
   const passed = run.checks.filter((k) => k.result === "pass").length;
   const total = run.checks.length;
@@ -431,6 +456,7 @@ function main() {
   if (state.view.name !== "run") return home();
   const run = state.runs.get(state.view.runId);
   if (!run) return home();
+  if (run.error) return stoppedView(run);
   if (run.failed || run.stage === "done") return receipt(run);
   if (run.stage === "planning") return planning(run);
   if (run.stage === "approve") return approve(run);
