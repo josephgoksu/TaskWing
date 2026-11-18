@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/box"
+	"github.com/josephgoksu/TaskWing/v2/internal/box"
 )
 
 // BoxPrefix starts the name of every box TaskWing creates.

@@ -1,0 +1,39 @@
+name: Release CLI
+
+# Push a tag vX.Y.Z (or vX.Y.Z-alpha.N) to build the taskwing engine and CLI
+# for macOS, Linux and Windows, publish a GitHub release with Linux packages,
+# and update the Homebrew formula in josephgoksu/homebrew-tap.
+# Desktop app tags (app-vX.Y.Z) do not match and go to release-app.yml.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: GoReleaser
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # the changelog needs the previous tag
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Fine-grained token with contents: write on josephgoksu/homebrew-tap.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

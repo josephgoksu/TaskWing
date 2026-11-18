@@ -12,15 +12,28 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/josephgoksu/TaskWing/internal/box"
-	"github.com/josephgoksu/TaskWing/internal/engine"
+	"github.com/josephgoksu/TaskWing/v2/internal/box"
+	"github.com/josephgoksu/TaskWing/v2/internal/engine"
 )
 
-var version = "v2-poc"
+// version is set by GoReleaser (-X main.version=vX.Y.Z). Without it, a build
+// from `go install ...@vX.Y.Z` reports its module version instead.
+var version = ""
+
+func versionString() string {
+	if version != "" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "v2-poc"
+}
 
 const (
 	defaultLead  = `claude -p --output-format text --allowedTools "Read,Glob,Grep,Bash(git log:*),Bash(git ls-files:*)"`
@@ -44,7 +57,7 @@ func main() {
 	case "doctor":
 		err = cmdDoctor(os.Args[2:])
 	case "version", "--version", "-v":
-		fmt.Println("taskwing", version)
+		fmt.Println("taskwing", versionString())
 	case "help", "--help", "-h":
 		usage()
 	default:
