@@ -99,13 +99,6 @@ func (c *cardRun) set(f func(c *cardRun)) {
 	f(c)
 }
 
-// key changes whenever the app should hear about this card.
-func (c *cardRun) key() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return fmt.Sprint(c.state, "|", c.thought, "|", c.err, "|", c.proof, "|", c.early)
-}
-
 func (c *cardRun) view() cardView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -155,6 +148,12 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	r := &runner{o: o, s: o.Stream, ui: newUI(o.Out, o.In), start: time.Now()}
 	res, err := r.run(ctx)
 	r.cleanup()
+	if res != nil {
+		// Boxes deleted on the way to an error were scanned too.
+		r.boxesMu.Lock()
+		res.Secrets = append([]string(nil), r.secrets...)
+		r.boxesMu.Unlock()
+	}
 	r.ev.log("run.done", map[string]any{"error": errString(err)})
 	r.ev.close()
 	return res, err
@@ -247,16 +246,23 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	// In the app the user approves the plan there, may add checks of their
 	// own, or asks the lead for a new plan.
 	var userExam chan userExamResult
+	// The session writing the user's checks stops when the run does, however
+	// it ends, and is waited for, so it never outlives the run.
+	uctx, stopUserExam := context.WithCancel(ctx)
+	defer func() {
+		stopUserExam()
+		if userExam != nil {
+			<-userExam
+		}
+	}()
 	if r.s != nil {
 		for {
-			r.s.planReady(plan, checks)
-			r.s.stage("approve")
-			c, err := r.s.waitApproval(ctx)
+			c, err := r.s.askApproval(ctx, plan, checks)
 			if err != nil {
 				return res, err
 			}
 			if c.Type == "plan.approve" {
-				userExam = r.startUserExam(ctx, plan.Interface, c.Checks)
+				userExam = r.startUserExam(uctx, plan.Interface, c.Checks)
 				break
 			}
 			r.ev.log("plan.redo", nil)
@@ -289,6 +295,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		var u userExamResult
 		select {
 		case u = <-userExam:
+			userExam = nil
 		case <-ctx.Done():
 			return res, ctx.Err()
 		}
@@ -308,6 +315,11 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	}()
 	if err := r.join(ctx, cards, res.Branch); err != nil {
 		return res, err
+	}
+	for _, cr := range cards {
+		if cr.state == stDone && !cr.joined {
+			r.s.leftOut(cr)
+		}
 	}
 	if err := r.exam(ctx, checks, patch, userPatch); err != nil {
 		return res, err
@@ -474,13 +486,16 @@ type userExamResult struct {
 // own session, while the agents build. Like the main exam, the builders never
 // see it. A check no test could be written for fails in the exam.
 func (r *runner) startUserExam(ctx context.Context, iface string, approved []WireCheck) chan userExamResult {
-	var mine []WireCheck
+	const most = 10
+	var mine, extra []WireCheck
 	for _, c := range approved {
-		if c.AddedBy == "user" && strings.TrimSpace(c.Text) != "" && c.ID != "" {
-			mine = append(mine, c)
+		if c.AddedBy != "user" || strings.TrimSpace(c.Text) == "" || c.ID == "" {
+			continue
 		}
-		if len(mine) == 10 {
-			break
+		if len(mine) < most {
+			mine = append(mine, c)
+		} else {
+			extra = append(extra, c)
 		}
 	}
 	if len(mine) == 0 {
@@ -509,6 +524,11 @@ func (r *runner) startUserExam(ctx context.Context, iface string, approved []Wir
 			} else {
 				out[i].Output = "no test could be written for this check: " + why
 			}
+		}
+		// A check past the limit fails instead of vanishing from the exam.
+		for _, c := range extra {
+			out = append(out, Check{ID: c.ID, Text: truncate(strings.TrimSpace(c.Text), 300), User: true,
+				Output: fmt.Sprintf("no test was written: only the first %d checks you add get tests", most)})
 		}
 		if why != "" {
 			patch = nil
@@ -552,7 +572,7 @@ func (r *runner) examSession(ctx context.Context, prompt, name, marker string) (
 	if len(checks) == 0 {
 		return nil, nil, errors.New("the exam has no checks")
 	}
-	// Keep only new files with "taskwing_exam" in the path. Anything else the
+	// Keep only new files with the marker in the path. Anything else the
 	// session touched (caches, lock files, edits to existing files) is dropped.
 	if _, err := git(ctx, wt, "add", "-A"); err != nil {
 		return nil, nil, err
@@ -790,7 +810,6 @@ func (r *runner) watchUntil(stage string, started time.Time, cards []*cardRun, d
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	last := map[int]string{}
-	sent := map[int]string{}
 	for loop := true; loop; {
 		select {
 		case <-done:
@@ -799,12 +818,7 @@ func (r *runner) watchUntil(stage string, started time.Time, cards []*cardRun, d
 		}
 		views := make([]cardView, len(cards))
 		for i, cr := range cards {
-			if r.s != nil {
-				if k := cr.key(); sent[i] != k {
-					sent[i] = k
-					r.s.card(cr)
-				}
-			}
+			r.s.card(cr)
 			views[i] = cr.view()
 			if !r.ui.tty && last[i] != views[i].state {
 				last[i] = views[i].state
@@ -821,6 +835,19 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 	fail := func(msg string) {
 		cr.set(func(c *cardRun) { c.state, c.err, c.ended = stFailed, msg, time.Now() })
 		r.ev.log("box.state", map[string]any{"card": cr.card.ID, "state": stFailed, "why": msg})
+	}
+	// Once the user asked for the exam, an agent that has not started never will.
+	examStarted := func() bool {
+		select {
+		case <-r.s.earlyExam():
+			fail("the exam started before this agent did")
+			return true
+		default:
+			return false
+		}
+	}
+	if examStarted() {
+		return
 	}
 	name := fmt.Sprintf("%s · %s · %02d %s", BoxPrefix, r.id, cr.n, cr.card.Title)
 	b, err := r.o.Provider.Create(ctx, name)
@@ -846,11 +873,8 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 		fail(err.Error())
 		return
 	}
-	select {
-	case <-r.s.earlyExam():
-		fail("the exam started before this agent did")
+	if examStarted() {
 		return
-	default:
 	}
 	shown := strings.Replace(b.RepoDir, "$HOME", "~", 1)
 	logPath := filepath.Join(r.dir, "logs", fmt.Sprintf("agent-%02d.log", cr.n))
@@ -865,6 +889,7 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 	r.ev.log("box.state", map[string]any{"card": cr.card.ID, "box": b.ID, "state": stWorking})
 
 	deadline := time.Now().Add(r.o.AgentTimeout)
+	early := false
 	for running := true; running; {
 		st := agent.Status()
 		if !st.Running {
@@ -893,7 +918,7 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 			agent.Stop()
 			cr.set(func(c *cardRun) { c.early, c.proof = true, "stopped early for the exam" })
 			r.ev.log("box.state", map[string]any{"card": cr.card.ID, "state": "stopped-early"})
-			running = false
+			running, early = false, true
 		case <-time.After(time.Second):
 		}
 	}
@@ -927,6 +952,9 @@ base64 < "$TW_REPO.out"
 	switch {
 	case err != nil:
 		fail("could not read its commits: " + err.Error())
+		return
+	case rc == 5 && early:
+		fail("stopped for the exam before it changed anything")
 		return
 	case rc == 5:
 		fail("finished without changing anything")

@@ -41,14 +41,14 @@ The engine's first line should be `engine.hello`. An engine that exits before se
 
 | Field | Meaning |
 |---|---|
-| `repo` | An absolute folder on this machine (or `~/...`), or a GitHub `owner/name`. A GitHub repository is cloned once with the GitHub CLI into `~/.taskwing/repos/owner/name` and reset to its default branch before each run. A folder must be a git repository with no uncommitted changes. |
-| `sandbox` | `boat` (the default) or `Local folders`. Boat settings come from the same environment and `taskwing config` as `taskwing run`. |
+| `repo` | An absolute folder on this machine (or `~/...`), or a GitHub `owner/name`. A GitHub repository is cloned once with the GitHub CLI into `~/.taskwing/repos/owner/name` and reset to its default branch before each run, so only one run at a time may use it (a second gets `run.error`). A folder must be a git repository with no uncommitted changes. |
+| `sandbox` | `boat` (the default) or `Local folders`. Local folders are for testing: agents run on this machine with your own login and no isolation, and the app labels them that way. Boat settings come from the same environment and `taskwing config` as `taskwing run`. |
 | `models` | Only `Claude` works today. `Mixed` and `Open models` stop the run with `run.error` until model routing is built. |
-| `plan.approve` `checks` | Checks with `added_by: "user"` get their own exam session, which writes tests for them while the agents build. The builders never see those tests. A user check no test could be written for fails in the exam. |
+| `plan.approve` `checks` | Checks with `added_by: "user"` get their own exam session, which writes tests for them while the agents build. The builders never see those tests. A user check no test could be written for fails in the exam, and so does every one past the tenth. |
 | `plan.redo` | The lead plans again and a new exam is written. A second `plan.ready` follows. |
 | `exam.now` | Only during the build. Agents still working are stopped, whatever they wrote so far is kept (their card ends as `done`), and the exam runs on the joined work. |
 
-Cards end as `passed` when the agent finished its piece, `done` when it was stopped for the exam, and `stuck` when it failed. Every card's `proof.kind` is `test` today.
+Cards end as `passed` when the agent finished its piece, `done` when it was stopped for the exam, and `stuck` when it failed or its work conflicted with the others in the join and was left out. Every card's `proof.kind` is `test` today.
 
 A failed check means no pull request: the joined work stays on the local branch `taskwing/<run id>`. Each run also keeps a log in `~/.taskwing/runs/<run id>/`.
 

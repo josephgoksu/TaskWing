@@ -254,9 +254,10 @@ func cmdEngine(args []string) error {
 		default:
 			return engine.Options{}, fmt.Errorf("unknown sandbox %q (use boat or Local folders)", c.Sandbox)
 		}
-		base := env("TASKWING_BOAT_BASE", loadConfig().BoatBase)
-		boatEnv, model, effort := os.Getenv("TASKWING_BOAT_ENV"), env("TASKWING_MODEL", "opus-5-5"), env("TASKWING_EFFORT", "medium")
-		prov, err := providerFlags{provider: &provider, base: &base, boatEnv: &boatEnv, model: &model, effort: &effort}.build()
+		// The boat settings `run` would use, from the environment and config.
+		pf := addProviderFlags(flag.NewFlagSet("engine run", flag.ContinueOnError))
+		*pf.provider = provider
+		prov, err := pf.build()
 		if err != nil {
 			return engine.Options{}, err
 		}

@@ -236,7 +236,7 @@ function home() {
         <label class="sr-only" for="task">Task</label>
         <textarea id="task" name="task" rows="2" maxlength="2000" placeholder="Describe one task, for example: add discount codes at checkout, with tests">${esc(d.task)}</textarea>
         <div class="bar">
-          <label class="chipin">Sandbox<select name="sandbox">${["boat", "Local folders"].map((o) => `<option${o === d.sandbox ? " selected" : ""}>${o}</option>`).join("")}</select></label>
+          <label class="chipin">Sandbox<select name="sandbox">${[["boat", "boat"], ["Local folders", "Local folders (no sandbox)"]].map(([v, label]) => `<option value="${v}"${v === d.sandbox ? " selected" : ""}>${label}</option>`).join("")}</select></label>
           <label class="chipin">Models<select name="models">${["Claude", "Mixed", "Open models"].map((o) => `<option${o === d.models ? " selected" : ""}>${o}</option>`).join("")}</select></label>
           <button class="btn btn-ink send" type="submit" aria-label="Plan this task">${icon("up")}</button>
         </div>

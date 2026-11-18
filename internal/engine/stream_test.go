@@ -267,6 +267,32 @@ func TestEngineStreamErrors(t *testing.T) {
 	}
 }
 
+func TestServeStopsOnSignal(t *testing.T) {
+	// Run by hand, stdin stays open: a cancelled context (Ctrl-C) must still end Serve.
+	inR, inW := io.Pipe()
+	defer inW.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Serve(ctx, inR, io.Discard, "test", nil) }()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve kept reading stdin after its context ended")
+	}
+}
+
+func TestReadLinesSkipsLongLines(t *testing.T) {
+	in := "a\n" + strings.Repeat("x", 100) + "\nb\r\nc"
+	var got []string
+	if err := readLines(strings.NewReader(in), 10, func(l []byte) bool { got = append(got, string(l)); return true }); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, "|") != "a|b|c" {
+		t.Errorf("got %q", got)
+	}
+}
+
 func TestResolveRepo(t *testing.T) {
 	ctx := context.Background()
 	home := t.TempDir()
@@ -274,7 +300,7 @@ func TestResolveRepo(t *testing.T) {
 	if got, err := ResolveRepo(ctx, home, dir); err != nil || got != dir {
 		t.Errorf("folder: %q %v", got, err)
 	}
-	for _, bad := range []string{"", "a/b/c", "../x", "a/..", "x y/z", "/no/such/folder"} {
+	for _, bad := range []string{"", "a/b/c", "../x", "a/..", "a/.", "-u/x", "./x", "x y/z", "/no/such/folder"} {
 		if _, err := ResolveRepo(ctx, home, bad); err == nil {
 			t.Errorf("%q was accepted", bad)
 		}
@@ -295,4 +321,26 @@ func toStrings(v any) []string {
 		out = append(out, x.(string))
 	}
 	return out
+}
+
+func TestResolveRepoOneRunPerClone(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	origin := filepath.Dir(newRepo(t))
+	// A clone made earlier, as gh repo clone would leave it.
+	dir := filepath.Join(home, "repos", "acme", "shop")
+	sh(t, origin, "git", "--git-dir", filepath.Join(origin, "origin.git"), "symbolic-ref", "HEAD", "refs/heads/main")
+	sh(t, origin, "git", "clone", "-q", filepath.Join(origin, "origin.git"), dir)
+	got, err := ResolveRepo(ctx, home, "acme/shop")
+	if err != nil || got != dir {
+		t.Fatalf("first run: %q %v", got, err)
+	}
+	if _, err := ResolveRepo(ctx, home, "acme/shop"); err == nil || !strings.Contains(err.Error(), "another run") {
+		t.Fatalf("second run at the same time: %v", err)
+	}
+	ReleaseRepo(dir)
+	if _, err := ResolveRepo(ctx, home, "acme/shop"); err != nil {
+		t.Fatalf("after the first run: %v", err)
+	}
+	ReleaseRepo(dir)
 }

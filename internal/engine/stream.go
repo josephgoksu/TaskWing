@@ -53,6 +53,10 @@ type WireCheck struct {
 // output.
 type StartFunc func(ctx context.Context, c Command) (Options, error)
 
+// maxCommandLine is the longest command line Serve reads. Longer lines are
+// skipped, like any other line that is not a command.
+const maxCommandLine = 1 << 20
+
 // Serve reads commands from in and writes events to out until in closes or
 // ctx ends. It then stops every run, waits for their sandboxes to be cleaned
 // up, and returns.
@@ -62,19 +66,72 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, version string, sta
 	s := &server{out: out, start: start, runs: map[string]*Stream{}}
 	s.emit(map[string]any{"type": "engine.hello", "version": version, "protocol": ProtocolVersion, "can": Can})
 
-	sc := bufio.NewScanner(in)
-	sc.Buffer(make([]byte, 64*1024), 1<<20)
-	for sc.Scan() {
-		var c Command
-		if err := json.Unmarshal(sc.Bytes(), &c); err != nil || c.Type == "" {
-			continue
+	// Read on a goroutine of its own, so Ctrl-C stops the engine even while
+	// stdin stays open (run by hand).
+	cmds := make(chan Command)
+	readErr := make(chan error, 1)
+	go func() {
+		defer close(cmds)
+		readErr <- readLines(in, maxCommandLine, func(line []byte) bool {
+			var c Command
+			if err := json.Unmarshal(line, &c); err != nil || c.Type == "" {
+				return true
+			}
+			select {
+			case cmds <- c:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		})
+	}()
+	var err error
+loop:
+	for {
+		select {
+		case c, ok := <-cmds:
+			if !ok {
+				err = <-readErr
+				break loop
+			}
+			s.handle(ctx, c)
+		case <-ctx.Done():
+			break loop
 		}
-		s.handle(ctx, c)
 	}
-	// stdin closed: the app is quitting. Stop the agents and clean up.
+	// stdin closed (the app is quitting) or a signal: stop the agents and clean up.
 	cancel()
 	s.wg.Wait()
-	return sc.Err()
+	return err
+}
+
+// readLines calls f with each line of r, without its line ending, until r
+// ends or f returns false. A line longer than max is skipped, not fatal.
+func readLines(r io.Reader, max int, f func(line []byte) bool) error {
+	br := bufio.NewReaderSize(r, 64*1024)
+	var line []byte
+	over := false
+	for {
+		chunk, more, err := br.ReadLine()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !over && len(line)+len(chunk) <= max {
+			line = append(line, chunk...)
+		} else {
+			over = true
+		}
+		if more {
+			continue
+		}
+		if !over && !f(line) {
+			return nil
+		}
+		line, over = line[:0], false
+	}
 }
 
 type server struct {
@@ -150,6 +207,7 @@ func (s *server) run(ctx context.Context, st *Stream, c Command) (*Result, error
 		o.Out = io.Discard
 	}
 	o.In = strings.NewReader("")
+	defer ReleaseRepo(o.Dir)
 	return Run(ctx, o)
 }
 
@@ -159,14 +217,15 @@ type Stream struct {
 	emit func(map[string]any)
 
 	mu       sync.Mutex
-	cur      string       // the stage the app was last told
-	approval chan Command // plan.approve or plan.redo while the plan waits
+	cur      string            // the stage the app was last told
+	approval chan Command      // plan.approve or plan.redo while the plan waits
+	sent     map[string]string // the last card.update sent for each card
 	examNow  chan struct{}
 	examOnce sync.Once
 }
 
 func newStream(id string, emit func(map[string]any)) *Stream {
-	return &Stream{id: id, emit: emit, examNow: make(chan struct{})}
+	return &Stream{id: id, emit: emit, sent: map[string]string{}, examNow: make(chan struct{})}
 }
 
 func (s *Stream) send(typ string, fields map[string]any) {
@@ -218,12 +277,16 @@ func (s *Stream) earlyExam() <-chan struct{} {
 	return s.examNow
 }
 
-// waitApproval blocks until the user approves the plan or asks for a new one.
-func (s *Stream) waitApproval(ctx context.Context) (Command, error) {
+// askApproval shows the app the plan and blocks until the user approves it or
+// asks for a new one. It listens for the answer before the app is told, so an
+// answer that comes at once is never dropped.
+func (s *Stream) askApproval(ctx context.Context, p *Plan, checks []Check) (Command, error) {
 	ch := make(chan Command, 1)
 	s.mu.Lock()
 	s.approval = ch
 	s.mu.Unlock()
+	s.planReady(p, checks)
+	s.stage("approve")
 	select {
 	case c := <-ch:
 		return c, nil
@@ -286,7 +349,30 @@ func (s *Stream) card(cr *cardRun) {
 		detail = cr.err
 	}
 	cr.mu.Unlock()
-	s.send("card.update", map[string]any{"card": map[string]any{"id": cr.card.ID, "state": state, "detail": truncate(detail, 200), "proof": proof}})
+	s.sendCard(map[string]any{"id": cr.card.ID, "state": state, "detail": truncate(detail, 200), "proof": proof})
+}
+
+// leftOut tells the app that a finished card's work conflicted with the
+// others in the join and is not in the joined work.
+func (s *Stream) leftOut(cr *cardRun) {
+	if s == nil || cr.card.ID == "" {
+		return
+	}
+	s.sendCard(map[string]any{"id": cr.card.ID, "state": stFailed, "detail": "Conflicted with the other pieces; left out of the joined work", "proof": nil})
+}
+
+// sendCard sends a card.update unless the app already has exactly this one
+// (the board polls every card each second).
+func (s *Stream) sendCard(card map[string]any) {
+	b, _ := json.Marshal(card)
+	id, _ := card["id"].(string)
+	s.mu.Lock()
+	same := s.sent[id] == string(b)
+	s.sent[id] = string(b)
+	s.mu.Unlock()
+	if !same {
+		s.send("card.update", map[string]any{"card": card})
+	}
 }
 
 func (s *Stream) examResult(checks []Check) {
@@ -348,9 +434,26 @@ func (s *Stream) finish(res *Result, err error) {
 // The repository field of run.start is a folder on this machine or a GitHub
 // owner/name. A GitHub repository is cloned once into ~/.taskwing/repos and
 // brought up to date before each run.
-var ghRepoRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+// The owner may not start with "-" or ".", so the name never reads as a flag
+// to gh or git.
+var ghRepoRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$`)
 
-// ResolveRepo returns the folder a run works in.
+// A clone in ~/.taskwing/repos is reset before each run, so only one run may
+// use it at a time.
+var clones = struct {
+	sync.Mutex
+	busy map[string]bool
+}{busy: map[string]bool{}}
+
+// ReleaseRepo frees a clone ResolveRepo handed out. Other folders are ignored.
+func ReleaseRepo(dir string) {
+	clones.Lock()
+	delete(clones.busy, dir)
+	clones.Unlock()
+}
+
+// ResolveRepo returns the folder a run works in. For a GitHub repository the
+// clone stays claimed until ReleaseRepo.
 func ResolveRepo(ctx context.Context, home, repo string) (string, error) {
 	repo = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(repo), "@"))
 	if repo == "" {
@@ -369,10 +472,27 @@ func ResolveRepo(ctx context.Context, home, repo string) (string, error) {
 		return repo, nil
 	}
 	repo = strings.TrimSuffix(strings.TrimPrefix(repo, "https://github.com/"), ".git")
-	if !ghRepoRe.MatchString(repo) || strings.Contains(repo, "..") {
+	if !ghRepoRe.MatchString(repo) || strings.Contains(repo, "..") || strings.HasSuffix(repo, "/.") {
 		return "", fmt.Errorf("%q is not a folder path or a GitHub owner/name", repo)
 	}
 	dir := filepath.Join(home, "repos", filepath.FromSlash(repo))
+	clones.Lock()
+	if clones.busy[dir] {
+		clones.Unlock()
+		return "", fmt.Errorf("another run is using %s; wait for it to finish, or give the path of a folder of your own", repo)
+	}
+	clones.busy[dir] = true
+	clones.Unlock()
+	dir, err := syncClone(ctx, repo, dir)
+	if err != nil {
+		ReleaseRepo(filepath.Join(home, "repos", filepath.FromSlash(repo)))
+		return "", err
+	}
+	return dir, nil
+}
+
+// syncClone clones repo into dir, or brings an earlier clone up to date.
+func syncClone(ctx context.Context, repo, dir string) (string, error) {
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 			return "", err
