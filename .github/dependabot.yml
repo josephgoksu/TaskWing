@@ -7,17 +7,6 @@ updates:
     groups:
       actions:
         patterns: ['*']
-  - package-ecosystem: cargo
-    directory: /app/src-tauri
-    schedule:
-      interval: monthly
-    groups:
-      cargo:
-        patterns: ['*']
-  - package-ecosystem: npm
-    directory: /app
-    schedule:
-      interval: monthly
   - package-ecosystem: gomod
     directory: /
     schedule:

@@ -44,8 +44,8 @@ type Options struct {
 	CheckTimeout time.Duration
 	Out          io.Writer
 	In           io.Reader
-	// Stream connects the run to the desktop app (taskwing engine --json).
-	// With a stream the run asks the app, not In, and never opens a pull
+	// Stream connects the run to a client (taskwing engine --json).
+	// With a stream the run asks the client, not In, and never opens a pull
 	// request when a check fails.
 	Stream *Stream
 	RunID  string // set by the stream; otherwise made from the time
@@ -53,12 +53,12 @@ type Options struct {
 
 // Check is one exam check: a plain sentence and the command behind it.
 type Check struct {
-	ID      string `json:"id,omitempty"` // k1, k2... or the app's id for a check the user added
+	ID      string `json:"id,omitempty"` // k1, k2... or the client's id for a check the user added
 	Text    string `json:"text"`
 	Command string `json:"command"`
 	Passed  bool   `json:"passed"`
 	Output  string `json:"output,omitempty"`
-	User    bool   `json:"user,omitempty"` // added by the user in the app
+	User    bool   `json:"user,omitempty"` // added by the user in the client
 }
 
 // Result is what a run produced.
@@ -118,7 +118,7 @@ func (c *cardRun) view() cardView {
 
 type runner struct {
 	o      Options
-	s      *Stream // nil outside the desktop app
+	s      *Stream // nil for taskwing run and hunt
 	ui     *ui
 	ev     *events
 	root   string
@@ -243,7 +243,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		r.showPlan(plan, checks)
 		what = fmt.Sprintf("Start %d %s in %s? This is the exam they must pass.", len(plan.Cards), plural(len(plan.Cards), "agent", "agents"), sandboxWord(o.Provider))
 	}
-	// In the app the user approves the plan there, may add checks of their
+	// With a client the user approves the plan there, may add checks of their
 	// own, or asks the lead for a new plan.
 	var userExam chan userExamResult
 	// The session writing the user's checks stops when the run does, however
@@ -341,7 +341,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		return res, nil
 	}
 	if res.Passed < res.Total && r.s != nil {
-		// The app's promise: a failed exam pushes nothing.
+		// The promise: a failed exam pushes nothing.
 		r.ui.say("  Not opened: %d of %d checks failed. The joined work is on branch %s.", res.Total-res.Passed, res.Total, res.Branch)
 		r.summary(res)
 		return res, nil
@@ -482,7 +482,7 @@ type userExamResult struct {
 	patch  []byte
 }
 
-// startUserExam turns the checks the user added in the app into tests, in its
+// startUserExam turns the checks the user added in the client into tests, in its
 // own session, while the agents build. Like the main exam, the builders never
 // see it. A check no test could be written for fails in the exam.
 func (r *runner) startUserExam(ctx context.Context, iface string, approved []WireCheck) chan userExamResult {

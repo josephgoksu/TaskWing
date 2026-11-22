@@ -1,6 +1,6 @@
 # TaskWing v2 spec
 
-Draft, 2026-11-14. Built on `PRINCIPLES.md`; where the two disagree, the principles win until one of them is changed with its reason. The look is the TaskWing website's design system; the desktop app is in `app/`.
+Draft, 2026-11-14. Built on `PRINCIPLES.md`; where the two disagree, the principles win until one of them is changed with its reason. TaskWing is one Go binary used from the terminal (decided 2026-11-22; the earlier Tauri desktop app stays in git history).
 
 ## What it does
 
@@ -22,8 +22,8 @@ flowchart LR
 | Part | What it is | What it does | What it never does |
 |---|---|---|---|
 | Engine | Go binary `taskwing`, AGPL-3.0 | Runs, state, Box and Agent adapters, key proxy, exam runner, git pull/combine/push, GitHub | Call a model itself (no model code, no API key of its own) |
-| CLI | Same binary | Every action the cockpit has, as a command | Anything the cockpit can't show |
-| Cockpit | Tauri app in `app/`, engine bundled as a sidecar, the website's design system | Shows engine events, sends engine commands | Hold logic or state of its own (`PRINCIPLES.md` #11) |
+| CLI | Same binary | Every action as a command; draws the run as agent squares in the terminal | Hold logic the engine doesn't have (`PRINCIPLES.md` #11) |
+| JSON stream | `taskwing engine --json` | The same runs for scripts, CI and editors (`docs/engine-protocol.md`) | |
 | Lead | The user's own Claude Code in tmux session `taskwing`, with the TaskWing skill | Reads the task and repo, writes `plan.json`, answers workers, resolves conflicts at combine | See the exam tests |
 | Exam session | A fresh headless agent session on the user's machine, started by the engine per run | Writes `exam.json` and the tests from the task and the repo only; explains failures in plain words | See the plan's prompts or any worker's output before the exam runs |
 | Workers | Agent CLIs (Claude Code, Codex, Gemini, ...) inside sandboxes | Build one piece, commit locally, pass notes | Hold a real secret, push, see the exam |
@@ -73,7 +73,7 @@ After approval only the user can change a check. Every change is logged in Decis
 
 ## Engine interface
 
-The engine speaks newline-delimited JSON: events out, commands in. The CLI and the cockpit use the same stream.
+The engine speaks newline-delimited JSON: events out, commands in. The CLI's board and `taskwing engine --json` show the same run. The table below is the full design; what is built today is in `docs/engine-protocol.md`.
 
 | Events | Commands |
 |---|---|
@@ -87,7 +87,7 @@ The engine speaks newline-delimited JSON: events out, commands in. The CLI and t
 | `exam.check {n, passed, why}` | `exam.rule {n, "work" or "exam"}` |
 | `pr.opened {url}`, `run.done` | `run.stop` |
 
-Box states map to the cockpit's squares: `done` grey, `working` blue, `waiting` outline, `needs` amber, `stuck` red.
+Box states map to the board's squares: `done` grey, `working` blue, `waiting` outline, `needs` amber, `stuck` red.
 
 ## State on disk
 
@@ -113,18 +113,15 @@ On start the engine rebuilds every run from the provider's box list, git refs, G
 | `taskwing doctor` | Finds leaked boxes, stale branches, missing logins |
 | `taskwing plan submit <file>` | Used by the lead skill; not for people |
 
-## Cockpit
+## Terminal board
 
 | Rule | What breaks without it |
 |---|---|
-| Views: Overview, Decisions, Pull Request. Stages: Plan > Build > Exam > Pull request. Memories live in each agent's panel; notes show as arrows between agents | Every extra tab is one more place to look |
-| Pictures over sentences: an agent is a square, a check is a lock that turns green, a note is an arrow, a decision is an icon. Words only where the user decides or reads a decision | The user reads paragraphs to learn what one icon says |
-| The agent decides and says so afterwards in Decisions (Decided, Fixed, Planned, You, Done), each with Change and Undo | The user manages the run instead of the agents |
-| It asks only what only the user can decide: the exam, product questions, the merge. One question card at a time | A queue of prompts nobody answers |
-| Each agent card shows its proof as a picture, never file names or code. The sentence is on hover | The user has to read code to know where things are |
-| Above 8 agents the cards collapse into one square per agent; a square opens that agent | Cards stop being readable past a screen |
-| The task list shows one square per agent on every task | The user opens each task to see progress |
-| Desktop only, native Mac look, plain words | |
+| Stages in order: plan, exam, build, join, exam, pull request, one numbered step each | The user can't tell how far the run is |
+| Pictures over sentences: one square per agent on one line, then one short line per agent (state, piece, latest thought). Words only where the user decides | The user reads a log to learn what one square says |
+| It asks only what only the user can decide: the exam, product questions, the pull request. One question at a time, `y/N` | A queue of prompts nobody answers |
+| On a terminal the board redraws in place; piped or in CI it prints plain lines, and `NO_COLOR` turns colour off | Escape codes in CI logs, or a scrollback flood on a terminal |
+| Above one screen of agents only the square line stays; `taskwing status` lists the rest (planned) | Lines stop being readable past a screen |
 
 ## Logins and keys
 
@@ -146,14 +143,12 @@ CLI only, boat only, Claude Code workers, 2 to 4 cards.
 | Killing the engine mid-run and starting it again resumes the run | Same PR, no duplicate boxes |
 | `taskwing doctor` after the run finds nothing left | Its output |
 
-The cockpit comes after M1 and reads the same event stream.
 
 ## Not verified yet
 
 | Item | Needed for |
 |---|---|
 | boat exposes a preview port per box | Page proof pictures |
-| tmux can be mirrored into a Tauri view without lag | Terminal tab in the cockpit |
 | The exam's tests can be kept out of a worker's reach on each provider | Principle 12 on providers other than boat |
 | herdr over SSH works as the agent runtime in a box | Replacing per-provider agent quirks |
 | Exam session as `claude -p` stays inside plan limits next to the lead | Cost of the exam step |

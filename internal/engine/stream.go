@@ -17,18 +17,18 @@ import (
 	"time"
 )
 
-// The engine stream: `taskwing engine --json`. The desktop app sends commands
+// The engine stream: `taskwing engine --json`. A client sends commands
 // as JSON lines on stdin and reads events as JSON lines on stdout. The full
-// protocol is in app/docs/engine-protocol.md.
+// protocol is in docs/engine-protocol.md.
 
 // ProtocolVersion is sent in engine.hello.
 const ProtocolVersion = 1
 
-// Can lists the optional commands this engine handles. The app hides what is
+// Can lists the optional commands this engine handles. A client should not send what is
 // not listed (pausing agents is not built yet).
 var Can = []string{"plan.approve", "plan.redo", "exam.now"}
 
-// Command is one line from the app.
+// Command is one line from the client.
 type Command struct {
 	Type       string      `json:"type"`
 	RunID      string      `json:"run_id"`
@@ -41,7 +41,7 @@ type Command struct {
 	Checks     []WireCheck `json:"checks"`
 }
 
-// WireCheck is an exam check as the app sees it.
+// WireCheck is an exam check as the client sees it.
 type WireCheck struct {
 	ID      string `json:"id"`
 	Text    string `json:"text"`
@@ -99,7 +99,7 @@ loop:
 			break loop
 		}
 	}
-	// stdin closed (the app is quitting) or a signal: stop the agents and clean up.
+	// stdin closed (the client is quitting) or a signal: stop the agents and clean up.
 	cancel()
 	s.wg.Wait()
 	return err
@@ -211,13 +211,13 @@ func (s *server) run(ctx context.Context, st *Stream, c Command) (*Result, error
 	return Run(ctx, o)
 }
 
-// Stream connects one run to the app.
+// Stream connects one run to the client.
 type Stream struct {
 	id   string
 	emit func(map[string]any)
 
 	mu       sync.Mutex
-	cur      string            // the stage the app was last told
+	cur      string            // the stage the client was last told
 	approval chan Command      // plan.approve or plan.redo while the plan waits
 	sent     map[string]string // the last card.update sent for each card
 	examNow  chan struct{}
@@ -277,8 +277,8 @@ func (s *Stream) earlyExam() <-chan struct{} {
 	return s.examNow
 }
 
-// askApproval shows the app the plan and blocks until the user approves it or
-// asks for a new one. It listens for the answer before the app is told, so an
+// askApproval shows the client the plan and blocks until the user approves it or
+// asks for a new one. It listens for the answer before the client is told, so an
 // answer that comes at once is never dropped.
 func (s *Stream) askApproval(ctx context.Context, p *Plan, checks []Check) (Command, error) {
 	ch := make(chan Command, 1)
@@ -310,7 +310,7 @@ func (s *Stream) planReady(p *Plan, checks []Check) {
 	s.send("plan.ready", map[string]any{"cards": cards, "names": interfaceNames(p.Interface), "checks": wc})
 }
 
-// interfaceNames turns the lead's pinned interface into short names for the app.
+// interfaceNames turns the lead's pinned interface into short names for the client.
 func interfaceNames(iface string) []string {
 	names := []string{}
 	for _, line := range strings.Split(iface, "\n") {
@@ -326,7 +326,7 @@ func interfaceNames(iface string) []string {
 	return names
 }
 
-// card sends one agent's square to the app. Engine states map onto the app's:
+// card sends one agent's square to the client. Engine states map onto the client's:
 // a finished agent "passed" (its own tests), one stopped early for the exam is
 // "done", a failed one is "stuck".
 func (s *Stream) card(cr *cardRun) {
@@ -352,7 +352,7 @@ func (s *Stream) card(cr *cardRun) {
 	s.sendCard(map[string]any{"id": cr.card.ID, "state": state, "detail": truncate(detail, 200), "proof": proof})
 }
 
-// leftOut tells the app that a finished card's work conflicted with the
+// leftOut tells the client that a finished card's work conflicted with the
 // others in the join and is not in the joined work.
 func (s *Stream) leftOut(cr *cardRun) {
 	if s == nil || cr.card.ID == "" {
@@ -361,7 +361,7 @@ func (s *Stream) leftOut(cr *cardRun) {
 	s.sendCard(map[string]any{"id": cr.card.ID, "state": stFailed, "detail": "Conflicted with the other pieces; left out of the joined work", "proof": nil})
 }
 
-// sendCard sends a card.update unless the app already has exactly this one
+// sendCard sends a card.update unless the client already has exactly this one
 // (the board polls every card each second).
 func (s *Stream) sendCard(card map[string]any) {
 	b, _ := json.Marshal(card)

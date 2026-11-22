@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Square states, the same as the cockpit's squares.
+// Square states, drawn as the agent squares on the board.
 const (
 	stWaiting = "waiting"
 	stWorking = "working"

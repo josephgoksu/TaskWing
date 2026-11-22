@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 304" width="880" height="304" role="img" aria-label="A taskwing run in the terminal: the plan step, the approval question, and the live board with one square per agent">
+  <title>taskwing run in the terminal</title>
+  <style>
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; fill: #d7def0; white-space: pre; }
+    .dim { fill: #7d89a8; }
+    .b { font-weight: 700; fill: #ffffff; }
+    .blue { fill: #4f8bff; }
+    .grey { fill: #6b7590; }
+    .red { fill: #ff6b63; }
+    .green { fill: #3fcf93; }
+    .prompt { fill: #9ab7f9; }
+  </style>
+  <rect width="880" height="304" rx="14" fill="#0b1020"/>
+  <rect width="880" height="36" rx="14" fill="#151c33"/>
+  <rect y="22" width="880" height="14" fill="#151c33"/>
+  <circle cx="22" cy="18" r="6" fill="#ff5f57"/>
+  <circle cx="42" cy="18" r="6" fill="#febc2e"/>
+  <circle cx="62" cy="18" r="6" fill="#28c840"/>
+  <text x="440" y="23" text-anchor="middle" class="dim" style="font-size:12px">taskwing</text>
+
+  <text x="24" y="68"><tspan class="prompt">$</tspan> taskwing run "Add CSV export to the orders page"</text>
+
+  <text x="24" y="102" class="b">1/4 Plan</text>
+  <text x="24" y="124" class="dim">  The lead agent is splitting the task. A separate session is writing the exam.</text>
+  <text x="24" y="146">Start 3 agents in boat sandboxes? This is the exam they must pass. [y/N] <tspan class="green">y</tspan></text>
+
+  <text x="24" y="180" class="b">2/4 Build</text>
+  <text x="24" y="210">  <tspan class="grey">■</tspan> <tspan class="blue">■</tspan> <tspan class="blue">■</tspan>  Build · 2 working, 1 done · 2m41s</text>
+  <text x="24" y="236">  01 <tspan class="grey">■</tspan> done     CSV encoder and tests      <tspan class="dim">1m58s  encoder done, 9 tests pass</tspan></text>
+  <text x="24" y="258">  02 <tspan class="blue">■</tspan> working  Export endpoint            <tspan class="dim">wiring GET /orders/export</tspan></text>
+  <text x="24" y="280">  03 <tspan class="blue">■</tspan> working  Export button on orders    <tspan class="dim">adding the download button</tspan></text>
+
+</svg>

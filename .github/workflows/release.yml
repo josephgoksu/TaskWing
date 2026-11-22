@@ -3,7 +3,6 @@ name: Release CLI
 # Push a tag vX.Y.Z (or vX.Y.Z-alpha.N) to build the taskwing engine and CLI
 # for macOS, Linux and Windows, publish a GitHub release with Linux packages,
 # and update the Homebrew formula in josephgoksu/homebrew-tap.
-# Desktop app tags (app-vX.Y.Z) do not match and go to release-app.yml.
 
 on:
   push:

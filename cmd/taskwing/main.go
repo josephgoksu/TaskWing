@@ -79,7 +79,7 @@ func usage() {
   taskwing hunt ["<area>"] [flags] find bugs, prove each with a failing test, fix them
   taskwing config boat-base <id>   remember the boat base box (instead of TASKWING_BOAT_BASE)
   taskwing doctor [--clean]        find (and delete) leftover sandboxes and refs
-  taskwing engine --json           the desktop app's engine: JSON lines on stdin and stdout
+  taskwing engine --json           run tasks for scripts: JSON lines on stdin and stdout
   taskwing version
 
 Run flags:
@@ -232,9 +232,9 @@ func cmdRun(args []string, hunt bool) error {
 	return nil
 }
 
-// cmdEngine serves the desktop app (app/docs/engine-protocol.md). The app
-// picks the repository, the sandbox and the models for each run; the commands
-// and boat settings come from the same environment and config as `run`.
+// cmdEngine serves the JSON lines protocol (docs/engine-protocol.md). The
+// client picks the repository, the sandbox and the models for each run; the
+// commands and boat settings come from the same environment and config as `run`.
 func cmdEngine(args []string) error {
 	fs := flag.NewFlagSet("engine", flag.ContinueOnError)
 	jsonOut := fs.Bool("json", false, "JSON lines on stdin and stdout")
@@ -246,7 +246,7 @@ func cmdEngine(args []string) error {
 	if !*jsonOut {
 		return errors.New("the engine only speaks JSON lines for now: taskwing engine --json")
 	}
-	// The app closes stdin when it quits; Ctrl-C works too when run by hand.
+	// The client closes stdin to stop; Ctrl-C works too when run by hand.
 	ctx, stop := signalContext()
 	defer stop()
 	h := home()
