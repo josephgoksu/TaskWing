@@ -127,7 +127,7 @@ The full set of rules, each with its reason: [PRINCIPLES.md](PRINCIPLES.md).
 
 ### Architecture
 
-One Go binary does all the work, from your terminal. The same runs are available as JSON lines (`taskwing engine --json`, see [docs/engine-protocol.md](docs/engine-protocol.md)), so scripts, CI and editors can drive them too.
+One Go binary does all the work, from your terminal. The same runs (not hunts yet) are available as JSON lines (`taskwing engine --json`, see [docs/engine-protocol.md](docs/engine-protocol.md)), so scripts, CI and editors can drive them too.
 
 | Part | What it does | What it never does |
 |---|---|---|

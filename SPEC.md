@@ -117,7 +117,7 @@ On start the engine rebuilds every run from the provider's box list, git refs, G
 
 | Rule | What breaks without it |
 |---|---|
-| Stages in order: plan, exam, build, join, exam, pull request, one numbered step each | The user can't tell how far the run is |
+| Four numbered steps in order: 1/4 plan (the lead plans, a separate session writes the exam), 2/4 build, 3/4 exam (join, then the checks), 4/4 pull request | The user can't tell how far the run is |
 | Pictures over sentences: one square per agent on one line, then one short line per agent (state, piece, latest thought). Words only where the user decides | The user reads a log to learn what one square says |
 | It asks only what only the user can decide: the exam, product questions, the pull request. One question at a time, `y/N` | A queue of prompts nobody answers |
 | On a terminal the board redraws in place; piped or in CI it prints plain lines, and `NO_COLOR` turns colour off | Escape codes in CI logs, or a scrollback flood on a terminal |

@@ -8,7 +8,7 @@ Every feature TaskWing has or will have, with its status. The concepts are defin
 | A new idea goes in as *planned* with a milestone, before anyone builds it | Work starts that nobody agreed to |
 | A feature marked 🎤 is promised in a talk; it must be **built** before the talk date | A claim on stage that a live demo disproves |
 
-Status: ✅ built · 🟡 partial · ⬜ planned. Milestones: **PoC** (done, Nov 2026) · **M1** (first real milestone, `SPEC.md`) · **Talk** (ContainerDays / AI Context London, 10-11 Feb 2027) · **Later**.
+Status: ✅ built · 🟡 partial · ⬜ planned · — dropped. Milestones: **PoC** (done, Nov 2026) · **M1** (first real milestone, `SPEC.md`) · **Talk** (ContainerDays / AI Context London, 10-11 Feb 2027) · **Later**.
 
 ## Progress
 
@@ -16,7 +16,7 @@ Status: ✅ built · 🟡 partial · ⬜ planned. Milestones: **PoC** (done, Nov
 pie showData
   title Features by status
   "Built" : 27
-  "Partial" : 8
+  "Partial" : 7
   "Planned" : 33
 ```
 
@@ -58,7 +58,7 @@ pie showData
 | E2 | Hidden tests never reach a worker or the lead | ✅ | PoC | |
 | E3 | The exam runs in a clean box on the joined work | ✅ | PoC | |
 | E4 | User approves the exam before any agent starts | 🟡 | PoC | A y/N prompt; `--yes` skips it |
-| E5 | User adds a check; the exam writer turns it into a test | ⬜ | M1 | |
+| E5 | User adds a check; the exam writer turns it into a test | ⬜ | M1 | The engine stream takes user checks (`plan.approve`); the CLI cannot add one yet |
 | E6 | Ruling after a failure: the work or the check was wrong | ⬜ | M1 | Only the user changes a check |
 | E7 | The exam writer explains a failure in plain words | ⬜ | M1 | |
 

@@ -2,7 +2,7 @@
 
 The engine is the `taskwing` binary. `taskwing engine --json` runs tasks for a script, an editor or another front end, over stdin and stdout. Each message is one JSON object on one line, with a string `type`. A client should ignore lines that aren't JSON objects with a `type`, and lines over 1 MiB.
 
-To stop, a client closes the engine's stdin. The engine then stops its agents, deletes their sandboxes and exits.
+To stop, a client closes the engine's stdin. The engine then stops its agents, deletes their sandboxes (unless it was started with `--keep`) and exits.
 
 The engine's first line is `engine.hello`. An engine that exits before sending any event is missing or too old (an older `taskwing` has no `engine` command).
 
@@ -21,14 +21,14 @@ The engine's first line is `engine.hello`. An engine that exits before sending a
 | `exam.result` | `run_id, checks[{id, result}]` | `result` is `pass` or `fail`. |
 | `pr.opened` | `run_id, number, url, draft` | The draft pull request. `url` must be `https://`. |
 | `run.error` | `run_id, message` | The run stopped on an error before the exam could decide it (no such repository, a dirty working tree, a sandbox that would not start). `run.finished` with `ok: false` follows. |
-| `run.finished` | `run_id, ok, secrets_found, ended_at` | `ok: false` means the exam failed or the run stopped, and nothing was pushed. |
+| `run.finished` | `run_id, ok, secrets_found, ended_at` | `ok: false` means the exam failed or the run stopped. Nothing was pushed, unless `run.error` says `gh pr create failed`: the branch is pushed first, so `taskwing/<run id>` is then on the remote. |
 
 ## Commands (client to engine)
 
 | type | fields |
 |---|---|
 | `run.start` | `repo, task, sandbox, models` |
-| `plan.approve` | `run_id, checks[{id, text, added_by}]` (the user may add checks) |
+| `plan.approve` | `run_id, checks[{id, text, added_by}]` (the user may add checks; each needs its own `id`, not `k1`, `k2`... which are the exam's, and one without an `id` is ignored) |
 | `plan.redo` | `run_id` |
 | `answer` | `run_id, question_id, choice` |
 | `exam.now` | `run_id` |

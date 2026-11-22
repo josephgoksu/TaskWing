@@ -341,7 +341,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		return res, nil
 	}
 	if res.Passed < res.Total && r.s != nil {
-		// The promise: a failed exam pushes nothing.
+		// With a client, a failed exam pushes nothing (taskwing run asks first).
 		r.ui.say("  Not opened: %d of %d checks failed. The joined work is on branch %s.", res.Total-res.Passed, res.Total, res.Branch)
 		r.summary(res)
 		return res, nil

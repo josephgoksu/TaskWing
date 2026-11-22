@@ -2,7 +2,7 @@
 # Stand-in exam writer: adds one test file and prints the checks.
 prompt=$(cat)
 if grep -q "Checks the user added" <<<"$prompt"; then
-  # Checks the user added in the app: one per sentence, in order.
+  # Checks the user added with plan.approve: one per sentence, in order.
   mkdir -p taskwing_exam_user
   cat > taskwing_exam_user/check.sh <<'SH'
 #!/usr/bin/env bash
