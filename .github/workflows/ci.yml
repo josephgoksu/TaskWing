@@ -53,4 +53,11 @@ jobs:
           distribution: goreleaser
           version: '~> v2'
           args: release --snapshot --clean --skip=publish
+      # The snapshot skips publishing, so it never applies token templates.
+      # GoReleaser accepts only a bare {{ .Env.NAME }} there; anything else
+      # fails a tagged release after the GitHub release is already public.
+      - name: Token templates are bare env references
+        run: |
+          bad="$(grep -nE '^\s*token:' .goreleaser.yaml | grep -vE "token: '\{\{ \.Env\.[A-Za-z_][A-Za-z0-9_]* \}\}'" || true)"
+          if [ -n "$bad" ]; then echo "::error file=.goreleaser.yaml::token must be '{{ .Env.NAME }}' only: $bad"; exit 1; fi
 

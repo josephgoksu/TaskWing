@@ -59,7 +59,8 @@ brews:
     repository:
       owner: josephgoksu
       name: homebrew-tap
-      token: '{{ envOrDefault "HOMEBREW_TAP_TOKEN" "" }}'
+      # GoReleaser accepts only a bare {{ .Env.NAME }} here (no functions).
+      token: '{{ .Env.HOMEBREW_TAP_TOKEN }}'
     # Without the tap token, publish the GitHub release and skip the formula
     # instead of failing the release after it is already public.
     skip_upload: '{{ if eq (envOrDefault "HOMEBREW_TAP_TOKEN" "") "" }}true{{ else }}false{{ end }}'
