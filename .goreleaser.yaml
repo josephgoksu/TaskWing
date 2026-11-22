@@ -59,10 +59,14 @@ brews:
     repository:
       owner: josephgoksu
       name: homebrew-tap
-      token: '{{ envOrDefault "HOMEBREW_TAP_TOKEN" "" }}'
+      # GoReleaser accepts only a bare {{ .Env.NAME }} here (no functions), and
+      # an unset variable is an error. skip_upload below is what keeps a
+      # release without the secret going: keep it "true" whenever it is unset.
+      token: '{{ .Env.HOMEBREW_TAP_TOKEN }}'
     # Without the tap token, publish the GitHub release and skip the formula
-    # instead of failing the release after it is already public.
-    skip_upload: '{{ if eq (envOrDefault "HOMEBREW_TAP_TOKEN" "") "" }}true{{ else }}false{{ end }}'
+    # instead of failing the release after it is already public. A blank
+    # secret counts as no secret.
+    skip_upload: '{{ if eq (trim (envOrDefault "HOMEBREW_TAP_TOKEN" "")) "" }}true{{ else }}false{{ end }}'
     directory: Formula
     commit_author:
       name: Joseph Goksu
