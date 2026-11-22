@@ -153,7 +153,7 @@ func TestRunBoatWithPR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"3 of 3 checks passed", "01 Greeting", "greet/hello.txt says hello", "outside its area: stray.txt", "Secret scan: nothing found"} {
+	for _, want := range []string{"3 of 3 checks passed", "01 Greeting", "greet/hello.txt says hello", "outside its area: `stray.txt`", "Secret scan: nothing found"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("PR body is missing %q:\n%s", want, body)
 		}
@@ -223,7 +223,7 @@ func TestRunRefusesBoxWithGitHubLogin(t *testing.T) {
 		Out:      &out,
 		In:       strings.NewReader(""),
 	})
-	if err == nil || !strings.Contains(out.String(), "holds GitHub token") {
+	if err == nil || !strings.Contains(out.String(), "has GitHub token") {
 		t.Fatalf("expected the run to refuse a box with a GitHub token, got %v\n%s", err, out.String())
 	}
 	if strings.Contains(out.String(), "ghp_") {
@@ -309,5 +309,57 @@ func TestHuntLocal(t *testing.T) {
 		if b, _ := os.ReadFile(l); strings.Contains(string(b), "LEAK") {
 			t.Errorf("%s: the fixer saw the hidden test", l)
 		}
+	}
+}
+
+// At the terminal prompt the user can ask for a new plan and add a check of
+// their own, the same as a client can over the stream.
+func TestRunPromptRedoAndOwnCheck(t *testing.T) {
+	quietSecrets(t)
+	repo := newRepo(t)
+	home := t.TempDir()
+	var out bytes.Buffer
+	res, err := Run(context.Background(), Options{
+		Task:     "add a greeting and a farewell",
+		Dir:      repo,
+		Provider: &box.Local{Root: filepath.Join(home, "boxes"), AgentCmd: "bash " + testdata(t, "agent.sh")},
+		Home:     home,
+		LeadCmd:  "bash " + testdata(t, "lead.sh"),
+		ExamCmd:  "bash " + testdata(t, "exam.sh"),
+		NoPR:     true,
+		Out:      &out,
+		In:       strings.NewReader("r\nThe greeting ends with a newline\ny\n"),
+	})
+	t.Log("\n" + out.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Asking for a new plan") {
+		t.Error("r did not ask for a new plan")
+	}
+	if res.Total != 4 || res.Passed != 4 {
+		t.Errorf("exam: %d of %d passed, want the user's check as the 4th", res.Passed, res.Total)
+	}
+}
+
+// n (or just Enter) stops before any agent starts; it is not a failed exam.
+func TestRunPromptStops(t *testing.T) {
+	quietSecrets(t)
+	repo := newRepo(t)
+	home := t.TempDir()
+	var out bytes.Buffer
+	res, err := Run(context.Background(), Options{
+		Task:     "add a greeting and a farewell",
+		Dir:      repo,
+		Provider: &box.Local{Root: filepath.Join(home, "boxes"), AgentCmd: "bash " + testdata(t, "agent.sh")},
+		Home:     home,
+		LeadCmd:  "bash " + testdata(t, "lead.sh"),
+		ExamCmd:  "bash " + testdata(t, "exam.sh"),
+		NoPR:     true,
+		Out:      &out,
+		In:       strings.NewReader("\n"),
+	})
+	if err != nil || !res.Stopped || res.Total != 0 {
+		t.Fatalf("got %+v, %v\n%s", res, err, out.String())
 	}
 }

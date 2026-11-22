@@ -94,27 +94,36 @@ text{{font-family:{FONT};fill:{t['text']}}}
     # Workers grid (sandbox band)
     gx, gy = 470, 378
     a(f'<text x="{gx}" y="{gy+198}" class="l">04 · one agent per piece, in parallel · never sees the tests</text>')
-    states = [("#2f6bff", "Agent", "working"), ("#9aa3b2", "Agent", "done"),
-              ("#2f6bff", "Agent", "working"), ("#f59e0b", "Agent", "needs you")]
-    for i, (col, name, st) in enumerate(states):
+    # The board's glyphs: ■ grey done, ▣ blue working, □ waiting, ✗ red stuck.
+    # Amber "needs you" is planned (agents can't ask questions yet), so it is not drawn.
+    def glyph(x, y, st):
+        if st == "working":
+            a(f'<rect x="{x+1}" y="{y+1}" width="16" height="16" rx="5" fill="none" stroke="#2f6bff" stroke-width="1.8"/>')
+            a(f'<rect x="{x+5}" y="{y+5}" width="8" height="8" rx="2" fill="#2f6bff"/>')
+        elif st == "done":
+            a(f'<rect x="{x}" y="{y}" width="18" height="18" rx="5" fill="#9aa3b2"/>')
+        elif st == "waiting":
+            a(f'<rect x="{x+1}" y="{y+1}" width="16" height="16" rx="5" fill="none" stroke="{t["arrow"]}" stroke-width="1.6"/>')
+        else:
+            a(f'<path d="M{x+3},{y+3} L{x+15},{y+15} M{x+15},{y+3} L{x+3},{y+15}" stroke="#ef4444" stroke-width="2.6" stroke-linecap="round"/>')
+
+    states = [("Agent", "working"), ("Agent", "done"), ("Agent", "working"), ("Agent", "waiting")]
+    for i, (name, st) in enumerate(states):
         bx = gx + (i % 2) * 196
         by = gy + 8 + (i // 2) * 92
         a(f'<rect x="{bx}" y="{by}" width="182" height="80" rx="14" fill="{t["box_inner"]}" stroke="{t["node_line"]}"/>')
-        a(f'<rect x="{bx+14}" y="{by+16}" width="18" height="18" rx="5" fill="{col}"/>')
+        glyph(bx + 14, by + 16, st)
         a(f'<text x="{bx+42}" y="{by+30}" class="t" style="font-size:14.5px">{name} {i+1}</text>')
         a(f'<text x="{bx+14}" y="{by+58}" class="s">own sandbox · {st}</text>')
 
     # Legend
     lx, ly = 44, 398
-    a(f'<text x="{lx}" y="{ly}" class="k">EVERY AGENT IS A SQUARE</text>')
-    for i, (col, word, outline) in enumerate([("#2f6bff", "working", False), ("#9aa3b2", "done", False),
-            (t["arrow"], "waiting", True), ("#f59e0b", "needs you", False), ("#ef4444", "stuck", False)]):
+    a(f'<text x="{lx}" y="{ly}" class="k">ONE LINE PER AGENT</text>')
+    for i, word in enumerate(["working", "done", "waiting", "stuck"]):
         yy = ly + 22 + i * 28
-        if outline:
-            a(f'<rect x="{lx+1}" y="{yy+1}" width="16" height="16" rx="5" fill="none" stroke="{col}" stroke-width="1.6"/>')
-        else:
-            a(f'<rect x="{lx}" y="{yy}" width="18" height="18" rx="5" fill="{col}"/>')
+        glyph(lx, yy, word)
         a(f'<text x="{lx+30}" y="{yy+14}" class="s" style="fill:{t["text"]}">{word}</text>')
+    a(f'<text x="{lx}" y="{ly + 22 + 4 * 28 + 14}" class="s">needs you: planned</text>')
 
     # Exam box
     ex, ey, ew, eh = 920, 386, 316, 172

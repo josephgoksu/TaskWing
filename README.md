@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/board.svg" alt="A taskwing run in the terminal: the lead plans, you approve the exam, then one square per agent while they build in their own sandboxes" width="100%">
+  <img src="docs/assets/board.svg" alt="A taskwing run in the terminal: the lead plans, you approve the exam, then one line per agent while they build in their own sandboxes" width="100%">
 </p>
 
 > **Early and moving fast.** The CLI runs real tasks today with Claude Code agents in [boat](https://boat.dev) sandboxes. More agent runtimes, models and sandbox providers are next. See [Status](#status) for exactly what works.
@@ -68,6 +68,8 @@ brew install josephgoksu/tap/taskwing
 go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@latest
 ```
 
+> Until the first v2 tag ships, Homebrew still installs v1.23.2, which has none of these commands. Use `go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@latest` (needs Go 1.24+) for now.
+
 Linux packages (`.deb`, `.rpm`, `.apk`) and archives for macOS, Linux and Windows are on the [releases page](https://github.com/josephgoksu/TaskWing/releases).
 
 **You also need:** `bash` and `git` on your PATH (every run goes through bash, Windows included), the [GitHub CLI](https://cli.github.com) (`gh`, logged in), [Claude Code](https://code.claude.com/docs) (`claude`, logged in) and, for sandboxes, the `boat` CLI.
@@ -81,7 +83,7 @@ cd your-repo                     # a clean working tree
 taskwing run "add a /health endpoint with a test" --provider local --no-pr
 
 # 2. The real thing: every agent in its own sandbox, one draft pull request
-taskwing config boat-base bx_abc123      # one setting for every repo; per repo use --boat-base (docs/poc.md)
+taskwing config boat-base bx_abc123      # one setting for every repo; per repo use --boat-base (docs/guide.md)
 taskwing run "add discount codes at checkout, with tests"
 
 # 3. Hunt bugs: each one proven by a failing test, then fixed in parallel
@@ -89,14 +91,14 @@ taskwing hunt "the payment code"
 ```
 
 ```
-1/4 Plan    lead splits the task  ·  a separate session writes the hidden exam
-            you read both, press y
-2/4 Build   one sandbox and one agent per piece, one live square each
-3/4 Exam    pieces joined on one branch, exam runs in a clean sandbox
-4/4 PR      pushed from your machine, draft pull request, sandboxes deleted
+1/4 Plan          lead splits the task  ·  a separate session writes the hidden exam
+                  you read both: y to start, r for a new plan, or type a check of your own
+2/4 Build         one sandbox and one agent per piece, one live line each (e + Enter: exam now)
+3/4 Exam          pieces joined on one branch, exam runs in a clean sandbox
+4/4 Pull request  pushed from your machine, draft pull request, sandboxes deleted
 ```
 
-Every flag, the boat setup and what a run leaves behind: [docs/poc.md](docs/poc.md).
+Every flag and environment variable, the boat setup, exit codes and what a run leaves behind: [docs/guide.md](docs/guide.md).
 
 ## The harness
 
@@ -132,7 +134,7 @@ One Go binary does all the work, from your terminal. The same runs (not hunts ye
 | Part | What it does | What it never does |
 |---|---|---|
 | **Engine** (`internal/`, Go) | Runs, plan check, sandboxes, exam runner, git join, push, GitHub | Call a model itself |
-| **CLI** (`cmd/taskwing`) | Every action, as a command; draws the run as one square per agent | Anything the engine can't do |
+| **CLI** (`cmd/taskwing`) | Every action, as a command, plus `taskwing engine --json`; draws the run as one line per agent | Anything the engine can't do |
 | **Lead and exam writer** | Your own coding agent, on your machine | See the hidden tests (lead) |
 | **Workers** | Agent CLIs inside sandboxes, one piece each | Push, hold a GitHub login, see the exam |
 
@@ -145,11 +147,11 @@ Every concept and how they connect: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 | Area | Today | Next |
 |---|---|---|
 | **Run** | ✅ `taskwing run`, plan check, parallel agents, join, draft PR · ✅ `taskwing hunt` | ⬜ lead resolves join conflicts · ⬜ resume after a crash |
-| **Exam** | ✅ fresh exam writer, hidden tests, clean exam sandbox · 🟡 approve before dispatch | ⬜ add your own check · ⬜ plain-words failure reports |
+| **Exam** | ✅ fresh exam writer, hidden tests, clean exam sandbox · ✅ approve before dispatch · ✅ add your own check · ✅ new plan, exam now (CLI and JSON) | ⬜ rulings after a failure · ⬜ plain-words failure reports |
 | **Sandboxes** | ✅ boat · ✅ local (no isolation, for trying it) | ⬜ E2B · ⬜ AWS · ⬜ Docker |
 | **Agents and models** | ✅ Claude Code · 🟡 lead and exam writer on any command | ⬜ a second runtime (OpenCode or Codex) · ⬜ open-weight models · ⬜ per-step model routing |
-| **Safety** | ✅ no GitHub login in any box · 🟡 refuse boxes with GitHub credentials · 🟡 secret scan before destroy | ⬜ key proxy · ⬜ hardened git reads of worker commits |
-| **Clients** | ✅ CLI with live agent squares · ✅ JSON lines for scripts and CI (`taskwing engine --json`) | ⬜ start from a Claude Code skill |
+| **Safety** | ✅ no GitHub login in any box · 🟡 refuse boxes with GitHub credentials · 🟡 secret scan before destroy (GitHub tokens, SSH keys) · ✅ host git runs with hooks off on agent commits | ⬜ key proxy |
+| **Clients** | ✅ CLI with one live line per agent · ✅ JSON lines for scripts and CI (`taskwing engine --json`) | ⬜ start from a Claude Code skill |
 
 ## Contributing
 
@@ -175,7 +177,8 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) first; it has the checks CI runs and the
 cmd/taskwing/     the CLI entry point
 internal/engine/  runs, plan check, exam, join, pull request
 internal/box/     sandbox providers (boat, local)
-docs/             architecture, features, PoC guide, engine protocol, diagrams
+internal/proc/    child processes as a group, so a timeout or Ctrl-C stops them all
+docs/             architecture, features, user guide, engine protocol, diagrams
 context/          research behind the principles
 ```
 

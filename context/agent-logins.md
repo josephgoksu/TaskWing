@@ -43,7 +43,7 @@ Joseph pays for a flat Claude subscription and does not want to pay per token th
 
 What this means for TaskWing:
 
-- The lead agent is the real Claude Code binary, started on the user's Mac. TaskWing never sees or stores the login. No API key needed.
+- The lead agent is the real Claude Code binary, started on the user's machine. TaskWing never sees or stores the login. No API key needed.
 - Drive the `claude` binary itself. Building on the Agent SDK is the path Anthropic points product developers to API keys for.
 - Workers in boxes: decided 2026-11-14. The sandbox provider handles the subscription login (boat does, and Joseph has run his Claude subscription through it without a problem). TaskWing never holds it. TaskWing's own proxy is for API keys only. On a provider with no login handling, a subscription is not offered; use an API key.
 - Known risk, accepted: a provider proxy relaying a subscription login may itself be against Anthropic's terms. That risk sits with the provider and the account, not with TaskWing's code.

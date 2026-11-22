@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/josephgoksu/TaskWing/v2/internal/proc"
 )
 
 // Local runs every "box" as a folder on this machine. It is for testing the
@@ -44,8 +46,9 @@ func (l *Local) boxDir(b *Box) string {
 
 func (l *Local) Exec(ctx context.Context, b *Box, script string, stdin io.Reader, stdout io.Writer) (int, error) {
 	cmd := exec.CommandContext(ctx, "bash", "-c", script)
+	proc.Group(cmd)
 	cmd.Dir = l.boxDir(b)
-	cmd.Env = append(os.Environ(), "TW_REPO="+b.RepoDir)
+	cmd.Env = append(agentEnv(os.Environ()), "TW_REPO="+b.RepoDir)
 	cmd.Stdin = stdin
 	if stdout == nil {
 		stdout = io.Discard
@@ -54,12 +57,20 @@ func (l *Local) Exec(ctx context.Context, b *Box, script string, stdin io.Reader
 	cmd.Stdout = stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
+	// A killed script exits with -1 and no error; report the timeout instead.
+	if ctx.Err() != nil {
+		return -1, fmt.Errorf("local exec: %w", ctx.Err())
+	}
+	// Exit 0, but a background child kept the output open past WaitDelay.
+	if errors.Is(err, exec.ErrWaitDelay) {
+		return 0, nil
+	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		return ee.ExitCode(), nil
 	}
 	if err != nil {
-		return -1, fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
+		return -1, fmt.Errorf("%v%s", err, detail(stderr.String()))
 	}
 	return 0, nil
 }
@@ -69,9 +80,12 @@ func (l *Local) StartAgent(ctx context.Context, b *Box, prompt, logPath string) 
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command("bash", "-c", l.AgentCmd)
+	// ctx is the run's context: the agent keeps running after this call
+	// returns and dies, with everything it started, when the run ends.
+	cmd := exec.CommandContext(ctx, "bash", "-c", l.AgentCmd)
+	proc.Group(cmd)
 	cmd.Dir = b.RepoDir
-	cmd.Env = append(os.Environ(), "TW_REPO="+b.RepoDir)
+	cmd.Env = append(agentEnv(os.Environ()), "TW_REPO="+b.RepoDir)
 	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Stdout = logf
 	cmd.Stderr = logf
@@ -118,10 +132,10 @@ func (a *localAgent) Status() AgentStatus {
 	}
 }
 
+// Stop kills the whole process group: killing only bash leaves the agent CLI
+// it started running and writing to the log.
 func (a *localAgent) Stop() {
-	if a.cmd.Process != nil {
-		_ = a.cmd.Process.Kill()
-	}
+	_ = proc.Kill(a.cmd)
 	select {
 	case <-a.done:
 	case <-time.After(5 * time.Second):
@@ -147,6 +161,34 @@ func (l *Local) List(ctx context.Context, prefix string) ([]Box, error) {
 		}
 	}
 	return out, nil
+}
+
+// agentEnv is environ without the credentials a local agent has no business
+// holding: GitHub tokens (TaskWing pushes, never the agent), the SSH agent,
+// cloud keys and anything that looks like a token or secret. ANTHROPIC_* and
+// CLAUDE_* stay, because the local agent uses the user's own Claude login on
+// purpose. Local mode is still not a sandbox: files under HOME stay readable.
+func agentEnv(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		name, _, _ := strings.Cut(kv, "=")
+		if !credentialVar(strings.ToUpper(name)) {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+func credentialVar(name string) bool {
+	if strings.HasPrefix(name, "ANTHROPIC_") || strings.HasPrefix(name, "CLAUDE_") {
+		return false
+	}
+	switch name {
+	case "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+		"SSH_AUTH_SOCK", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN":
+		return true
+	}
+	return strings.HasSuffix(name, "_TOKEN") || strings.Contains(name, "SECRET")
 }
 
 func lastLine(s string) string {

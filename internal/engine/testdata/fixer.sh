@@ -6,6 +6,6 @@ if grep -q "Fix this bug: add subtracts" <<<"$prompt"; then
 else
   echo 'echo "$1" | tr a-z A-Z' > text/upper.sh; f=text/upper.sh
 fi
-grep -q "taskwing_exam" <<<"$prompt" && echo "LEAK: the fixer saw the hidden test" >&2
+grep -q "taskwing_exam_b" <<<"$prompt" && echo "LEAK: the fixer saw the hidden test" >&2
 git add -A && git commit -q -m "fix $f"
 echo "PROOF: fixed $f"

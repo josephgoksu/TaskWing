@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/josephgoksu/TaskWing/v2/internal/proc"
 )
 
 // Boat runs boxes on boat.dev through its CLI. Each box is forked from a base
@@ -44,19 +48,21 @@ func (p *Boat) bin() string {
 
 func (p *Boat) run(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, p.bin(), args...)
+	proc.Group(cmd)
 	cmd.Stdin = stdin
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
-		return out.Bytes(), fmt.Errorf("boat %s: %v: %s", args[0], err, firstLine(errb.String()+" "+out.String()))
+		// %w: doctor tells a missing boat CLI (exec.Error) from a failed call.
+		return out.Bytes(), fmt.Errorf("boat %s: %w%s", args[0], err, detail(errb.String()+" "+out.String()))
 	}
 	return out.Bytes(), nil
 }
 
 func (p *Boat) Create(ctx context.Context, name string) (*Box, error) {
 	if p.Base == "" {
-		return nil, errors.New("no base box: set TASKWING_BOAT_BASE to a prepared boat box id (see docs/poc.md)")
+		return nil, errors.New("no boat base box set: run taskwing config boat-base <id> (how to make one: docs/guide.md)")
 	}
 	ttl := p.TTL
 	if ttl == 0 {
@@ -67,28 +73,40 @@ func (p *Boat) Create(ctx context.Context, name string) (*Box, error) {
 		args = append(args, "--environment", p.Environment)
 	}
 	out, err := p.run(ctx, nil, args...)
-	// --json prints one event per line; the id is in the last line that has one.
+	// --json prints one event per line; the id is in the last line that has
+	// one. Lines that are not JSON are skipped: stopping at the first one would
+	// lose the id of a box that exists.
 	var id string
-	dec := json.NewDecoder(bytes.NewReader(out))
-	for {
+	for _, line := range strings.Split(string(out), "\n") {
 		var ev struct {
 			ID    string `json:"id"`
 			Event string `json:"event"`
 			Error string `json:"error"`
 		}
-		if dec.Decode(&ev) != nil {
-			break
+		if json.Unmarshal([]byte(line), &ev) != nil {
+			continue
 		}
 		if ev.Event == "error" && err == nil {
-			err = fmt.Errorf("boat fork: %s", ev.Error)
+			msg := firstLine(ev.Error)
+			if msg == "" {
+				msg = "failed"
+			}
+			err = errors.New("boat fork: " + msg)
 		}
 		if ev.ID != "" {
 			id = ev.ID
 		}
 	}
+	if err == nil && id == "" {
+		return nil, errors.New("boat fork: no box id in output" + detail(string(out)))
+	}
+	if err == nil {
+		// Without the taskwing name, doctor cannot find the box to clean it up.
+		_, err = p.run(ctx, nil, "rename", id, name)
+	}
 	if err != nil {
-		// A fork that failed or was cancelled after the box existed would leak
-		// a box without the taskwing name, which doctor cannot find.
+		// A fork that failed, was cancelled or could not be named after the
+		// box existed would leak a box nobody can find.
 		if id != "" {
 			dctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 			_, _ = p.run(dctx, nil, "delete", "--yes", id)
@@ -96,20 +114,27 @@ func (p *Boat) Create(ctx context.Context, name string) (*Box, error) {
 		}
 		return nil, err
 	}
-	if id == "" {
-		return nil, fmt.Errorf("boat fork: no box id in output: %s", firstLine(string(out)))
-	}
-	_, _ = p.run(ctx, nil, "rename", id, name)
 	return &Box{ID: id, Name: name, RepoDir: "$HOME/tw/repo"}, nil
 }
 
-var rcLine = regexp.MustCompile(`__TW_RC=(\d+)`)
+// nonce returns 16 random hex characters.
+func nonce() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b) // never fails on supported platforms
+	return hex.EncodeToString(b)
+}
 
 // Exec sends the script as base64 in the ssh command, so stdin stays free for data.
+// The exit code comes back as a marker on stderr, because boat ssh may not
+// pass the remote exit code through.
 func (p *Boat) Exec(ctx context.Context, b *Box, script string, stdin io.Reader, stdout io.Writer) (int, error) {
 	enc := base64.StdEncoding.EncodeToString([]byte("export TW_REPO=\"" + b.RepoDir + "\"\n" + script))
-	remote := "f=$(mktemp); echo " + enc + " | base64 -d > $f; bash $f; rc=$?; rm -f $f; echo __TW_RC=$rc >&2; exit $rc"
+	// A fresh nonce per call: with a fixed marker, code under test could print
+	// "rc=0" itself and hang until the timeout, and its failure would pass.
+	marker := "__TW_RC_" + nonce() + "="
+	remote := "f=$(mktemp); echo " + enc + " | base64 -d > $f; bash $f; rc=$?; rm -f $f; echo " + marker + "$rc >&2; exit $rc"
 	cmd := exec.CommandContext(ctx, p.bin(), "ssh", b.ID, "--", remote)
+	proc.Group(cmd)
 	if stdin == nil {
 		stdin = strings.NewReader("")
 	}
@@ -121,16 +146,20 @@ func (p *Boat) Exec(ctx context.Context, b *Box, script string, stdin io.Reader,
 	cmd.Stdout = stdout
 	cmd.Stderr = &errb
 	err := cmd.Run()
-	// The wrapper prints its marker last; anything earlier (the script's own
-	// stderr) must not be able to set the exit code.
+	// A killed call has no trustworthy exit code, whatever stderr says.
+	if ctx.Err() != nil {
+		return -1, fmt.Errorf("boat ssh %s: %w", b.ID, ctx.Err())
+	}
+	// The wrapper prints its marker last, so the last match wins.
+	rcLine := regexp.MustCompile(regexp.QuoteMeta(marker) + `(\d+)`)
 	if m := rcLine.FindAllStringSubmatch(errb.String(), -1); len(m) > 0 {
 		rc, _ := strconv.Atoi(m[len(m)-1][1])
 		return rc, nil
 	}
 	if err != nil {
-		return -1, fmt.Errorf("boat ssh %s: %v: %s", b.ID, err, firstLine(errb.String()))
+		return -1, fmt.Errorf("boat ssh %s: %v%s", b.ID, err, detail(errb.String()))
 	}
-	return -1, fmt.Errorf("boat ssh %s: no exit code from the box: %s", b.ID, firstLine(errb.String()))
+	return -1, fmt.Errorf("boat ssh %s: no exit code from the box%s", b.ID, detail(errb.String()))
 }
 
 func (p *Boat) StartAgent(ctx context.Context, b *Box, prompt, logPath string) (Agent, error) {
@@ -139,20 +168,25 @@ func (p *Boat) StartAgent(ctx context.Context, b *Box, prompt, logPath string) (
 	}
 	model, effort := p.Model, p.Effort
 	if model == "" {
-		model = "opus-5-5"
+		model = DefaultModel
 	}
 	if effort == "" {
-		effort = "medium"
+		effort = DefaultEffort
 	}
 	logf, err := os.Create(logPath)
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(p.bin(), "prompt", b.ID, "--new", "--provider", "claude", "--model", model, "--reasoning-effort", effort, prompt)
+	// The agent outlives this call but not the run: actx ends with ctx or
+	// when the agent finishes, and either way the whole boat prompt tree dies.
+	actx, cancel := context.WithCancel(ctx)
+	cmd := exec.CommandContext(actx, p.bin(), "prompt", b.ID, "--new", "--provider", "claude", "--model", model, "--reasoning-effort", effort, prompt)
+	proc.Group(cmd)
 	pr, pw := io.Pipe()
 	cmd.Stdout = io.MultiWriter(logf, pw)
 	cmd.Stderr = logf
 	if err := cmd.Start(); err != nil {
+		cancel()
 		logf.Close()
 		return nil, err
 	}
@@ -160,17 +194,25 @@ func (p *Boat) StartAgent(ctx context.Context, b *Box, prompt, logPath string) (
 	if poll == 0 {
 		poll = 15 * time.Second
 	}
-	a := &boatAgent{p: p, box: b, cmd: cmd, started: time.Now(), done: make(chan struct{})}
+	a := &boatAgent{p: p, box: b, cmd: cmd, ctx: actx, cancel: cancel, runDone: ctx.Done(), started: time.Now(), done: make(chan struct{})}
 	go func() { _ = cmd.Wait(); pw.Close(); logf.Close(); a.setExited() }()
 	go a.read(pr)
 	go a.watch(poll)
 	return a, nil
 }
 
+// maxFailedChecks is how many failed conversation checks in a row end an agent
+// whose boat prompt already exited. Without it a lost conversation id or a
+// broken boat conversations keeps the agent "running" until the run timeout.
+const maxFailedChecks = 5
+
 type boatAgent struct {
 	p       *Boat
 	box     *Box
 	cmd     *exec.Cmd
+	ctx     context.Context // ends when the agent finishes; bounds boat calls made for it
+	cancel  context.CancelFunc
+	runDone <-chan struct{} // the run's ctx
 	started time.Time
 	done    chan struct{}
 	once    sync.Once
@@ -272,9 +314,18 @@ func (a *boatAgent) read(r io.Reader) {
 func (a *boatAgent) watch(every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
+	fails := 0
 	for {
 		select {
 		case <-a.done:
+			return
+		case <-a.runDone:
+			a.mu.Lock()
+			if a.errText == "" && !a.response {
+				a.errText = "stopped"
+			}
+			a.mu.Unlock()
+			a.finish()
 			return
 		case <-t.C:
 		}
@@ -306,11 +357,24 @@ func (a *boatAgent) watch(every time.Duration) {
 			a.finish()
 			return
 		}
-		if conv == "" || !resp {
+		if !resp {
 			continue
 		}
-		running, ok := a.conversationRunning(conv)
+		running, ok := false, false
+		if conv != "" {
+			running, ok = a.conversationRunning(conv)
+		}
 		if ok && !running {
+			a.finish()
+			return
+		}
+		if ok || !exited {
+			fails = 0
+			continue
+		}
+		// boat prompt is gone and the conversation cannot be checked: keep
+		// the answer it already gave.
+		if fails++; fails >= maxFailedChecks {
 			a.finish()
 			return
 		}
@@ -318,7 +382,8 @@ func (a *boatAgent) watch(every time.Duration) {
 }
 
 func (a *boatAgent) conversationRunning(conv string) (running, ok bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// a.ctx, so stopping the agent also stops a check in flight.
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
 	defer cancel()
 	out, err := a.p.run(ctx, nil, "conversations", a.box.ID, "--json")
 	if err != nil {
@@ -346,10 +411,9 @@ func (a *boatAgent) finish() {
 		a.mu.Lock()
 		a.finished = true
 		a.mu.Unlock()
-		if a.cmd.Process != nil {
-			_ = a.cmd.Process.Kill()
-		}
 		close(a.done)
+		a.cancel() // kills the boat prompt process group
+		_ = proc.Kill(a.cmd)
 	})
 }
 
@@ -412,15 +476,4 @@ func describeTool(name string, in map[string]json.RawMessage) string {
 		}
 	}
 	return name
-}
-
-func firstLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = s[:i]
-	}
-	if len(s) > 200 {
-		s = s[:200]
-	}
-	return s
 }

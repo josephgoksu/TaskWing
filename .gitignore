@@ -1,7 +1,5 @@
 # TaskWing data directories
 .taskwing/
-.taskwing-bak/
-.tasks/
 
 # TaskWing binary
 /taskwing
@@ -53,8 +51,6 @@ Thumbs.db
 .gemini/
 
 # Test files and temporary test data
-test_*.py
-*_test_*
 *_test.go.tmp
 test_data/
 testdata/tmp/
@@ -69,10 +65,6 @@ temp/
 
 .cache
 
-# Internal documentation (not for public)
-# docs/internal/
-tw
-
-# Generated bundle files (stale after changes)
-repomix-output.md
-bin/
+# Local builds in the repository root (anchored, so a folder named tw or bin elsewhere stays tracked)
+/tw
+/bin/

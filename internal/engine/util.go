@@ -4,14 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+
+	"github.com/josephgoksu/TaskWing/v2/internal/proc"
 )
 
 // git runs git in dir and returns trimmed stdout.
@@ -20,41 +25,85 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	return strings.TrimSpace(out), err
 }
 
+// hostGit is put in front of every git command on this machine. The engine
+// merges and checks out commits that agents wrote, and agents are untrusted
+// (PRINCIPLES.md #5): without these, a worker that edits a hook in a repo
+// with core.hooksPath set (husky does this) runs code on the host at join,
+// and an fsmonitor or ext:: remote could do the same.
+var hostGit = []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "protocol.ext.allow=never"}
+
 // gitRaw runs git in dir and returns stdout untouched. Patches need it: a
 // binary patch ends with a blank line that git apply requires.
 func gitRaw(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", append(append([]string(nil), hostGit...), args...)...)
 	cmd.Dir = dir
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
-		return out.String(), fmt.Errorf("git %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
+		if ctx.Err() != nil {
+			return out.String(), ctx.Err()
+		}
+		return out.String(), withDetail(fmt.Errorf("git %s: %w", strings.Join(args, " "), err), errb.String())
 	}
 	return out.String(), nil
 }
 
+// withDetail adds a command's own words to its error, and nothing when it
+// printed none (an error ending in ": " reads as cut off).
+func withDetail(err error, detail string) error {
+	if detail = strings.TrimSpace(detail); detail == "" {
+		return err
+	}
+	return fmt.Errorf("%w: %s", err, detail)
+}
+
+// Run folders hold prompts, agent output and bundles of the user's code:
+// readable by the user only.
+const (
+	dirPerm  = 0o700
+	filePerm = 0o600
+)
+
+// hostAgentTimeout caps one lead, exam or hunter session.
+const hostAgentTimeout = 30 * time.Minute
+
 // hostAgent runs a coding agent on this machine (the lead or the exam
 // session). The command is a shell command; the prompt arrives on stdin.
-func hostAgent(ctx context.Context, command, dir, prompt, logPath string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+func hostAgent(parent context.Context, command, dir, prompt, logPath string) (string, error) {
+	ctx := parent
+	ctx, cancel := context.WithTimeout(ctx, hostAgentTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", "-c", command)
+	proc.Group(cmd)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(prompt)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	err := cmd.Run()
+	// Exit 0 with a leftover child holding stdout open: the session is done.
+	// The leftovers are stopped, so they do not outlive it on this machine.
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil
+	}
+	_ = proc.Kill(cmd)
 	if logPath != "" {
-		_ = os.WriteFile(logPath, []byte("$ "+command+"\n--- prompt\n"+prompt+"\n--- stdout\n"+out.String()+"\n--- stderr\n"+errb.String()), 0o644)
+		_ = os.WriteFile(logPath, []byte("$ "+command+"\n--- prompt\n"+prompt+"\n--- stdout\n"+out.String()+"\n--- stderr\n"+errb.String()), filePerm)
 	}
 	if err != nil {
-		all := errb.String() + out.String()
-		if strings.Contains(all, "Not logged in") || strings.Contains(all, "/login") {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) && parent.Err() == nil {
+			return out.String(), fmt.Errorf("ran over %s and was stopped", dur(hostAgentTimeout))
+		}
+		if parent.Err() != nil {
+			return out.String(), parent.Err()
+		}
+		// Only the CLI's own words: a plan that mentions a /login route must
+		// not read as a logged-out CLI.
+		if strings.Contains(errb.String(), "Not logged in") || strings.Contains(errb.String(), "Please run /login") {
 			return out.String(), fmt.Errorf("the claude CLI on this machine is not logged in: run claude, type /login, then try again")
 		}
-		return out.String(), fmt.Errorf("%v: %s", err, lastLines(all, 5))
+		return out.String(), withDetail(err, lastLines(errb.String()+out.String(), 5))
 	}
 	return out.String(), nil
 }
@@ -66,7 +115,7 @@ type events struct {
 }
 
 func openEvents(dir string) (*events, error) {
-	f, err := os.OpenFile(filepath.Join(dir, "events.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(filepath.Join(dir, "events.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, filePerm)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +150,8 @@ func lastLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-var proofRe = regexp.MustCompile(`(?m)^\s*\**PROOF:?\**:?\s*(.+)$`)
+// The colon is required, so a line that starts with "PROOFREAD" is not a proof.
+var proofRe = regexp.MustCompile(`(?m)^\s*\**PROOF\**\s*:\**\s*(.+)$`)
 
 // proofLine pulls the agent's "PROOF: ..." line out of its final answer.
 func proofLine(final string) string {
@@ -124,9 +174,13 @@ var secretPatterns = []struct {
 	{"AWS secret key", regexp.MustCompile(`AWS_SECRET_ACCESS_KEY=\S+`)},
 	{"GitHub token variable", regexp.MustCompile(`(?m)^(GH_TOKEN|GITHUB_TOKEN)=\S+`)},
 	{"gh login", regexp.MustCompile(`oauth_token:\s*\S+`)},
+	// An SSH key lets an agent push over SSH without any token. (Not
+	// SSH_AUTH_SOCK: the scan runs over boat ssh, whose own session may
+	// forward the user's agent, which the agent process never gets.)
+	{"SSH key", regexp.MustCompile(`(?m)^TW_SSH_KEY=\S+`)},
 }
 
-const secretScanScript = `env 2>/dev/null; cat ~/.git-credentials ~/.config/gh/hosts.yml ~/.netrc 2>/dev/null; true`
+const secretScanScript = `env 2>/dev/null; cat ~/.git-credentials ~/.config/gh/hosts.yml ~/.netrc 2>/dev/null; for k in ~/.ssh/id_*; do case "$k" in *.pub) ;; *) [ -f "$k" ] && echo "TW_SSH_KEY=$k";; esac; done; true`
 
 // scanBox splits a box's scan into leaks and the agent's own Claude login
 // (CLAUDE_CODE_OAUTH_TOKEN), which agents need to run and is expected.
@@ -193,4 +247,25 @@ func claudeLoggedIn(ctx context.Context, o Options) error {
 		return fmt.Errorf("the claude CLI on this machine is not logged in (the desktop app login is separate): run claude, type /login, then try again")
 	}
 	return nil
+}
+
+// safeName shows a file name an agent chose. git -z hands names over raw, so
+// a name may hold a newline (which restyles the pull request text) or an
+// escape sequence (which drives the terminal); such a name is shown quoted.
+func safeName(f string) string {
+	if strings.IndexFunc(f, unicode.IsControl) >= 0 {
+		return strconv.Quote(f)
+	}
+	return f
+}
+
+// splitNUL splits the output of a git command run with -z.
+func splitNUL(s string) []string {
+	var out []string
+	for _, f := range strings.Split(s, "\x00") {
+		if f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
 }

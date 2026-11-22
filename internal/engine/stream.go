@@ -7,9 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -39,6 +36,7 @@ type Command struct {
 	QuestionID string      `json:"question_id"`
 	Choice     string      `json:"choice"`
 	Checks     []WireCheck `json:"checks"`
+	NoPR       bool        `json:"no_pr"` // stop after the exam: push nothing
 }
 
 // WireCheck is an exam check as the client sees it.
@@ -139,7 +137,6 @@ type server struct {
 	out   io.Writer
 	start StartFunc
 	runs  map[string]*Stream
-	n     int
 	wg    sync.WaitGroup
 }
 
@@ -168,8 +165,12 @@ func (s *server) handle(ctx context.Context, c Command) {
 
 func (s *server) startRun(ctx context.Context, c Command) {
 	s.mu.Lock()
-	s.n++
-	id := fmt.Sprintf("tw-%s-%d", time.Now().Format("20060102-150405"), s.n)
+	id := NewRunID()
+	// Two runs started in the same second may draw the same random part;
+	// a second stream under one id would take over the first one's commands.
+	for s.runs[id] != nil {
+		id = NewRunID()
+	}
 	st := newStream(id, s.emit)
 	s.runs[id] = st
 	s.mu.Unlock()
@@ -190,6 +191,11 @@ func (s *server) startRun(ctx context.Context, c Command) {
 			s.mu.Unlock()
 		}()
 		res, err := s.run(ctx, st, c)
+		// A client that quits (stdin closed) ends ctx: whatever error that
+		// caused on the way, the run was stopped.
+		if err != nil && ctx.Err() != nil && !errors.Is(err, ctx.Err()) {
+			err = fmt.Errorf("%w (%v)", ctx.Err(), err)
+		}
 		st.finish(res, err)
 	}()
 }
@@ -203,6 +209,7 @@ func (s *server) run(ctx context.Context, st *Stream, c Command) (*Result, error
 	o.RunID = st.id
 	o.Hunt = false
 	o.Yes = false
+	o.NoPR = o.NoPR || c.NoPR
 	if o.Out == nil {
 		o.Out = io.Discard
 	}
@@ -345,11 +352,15 @@ func (s *Stream) card(cr *cardRun) {
 		if cr.proof != "" {
 			proof = map[string]any{"kind": "test", "text": truncate(cr.proof, 60)}
 		}
-	case stFailed:
+	case stStuck:
 		detail = cr.err
 	}
 	cr.mu.Unlock()
-	s.sendCard(map[string]any{"id": cr.card.ID, "state": state, "detail": truncate(detail, 200), "proof": proof})
+	card := map[string]any{"id": cr.card.ID, "state": state, "detail": truncate(detail, 200)}
+	if proof != nil {
+		card["proof"] = proof
+	}
+	s.sendCard(card)
 }
 
 // leftOut tells the client that a finished card's work conflicted with the
@@ -358,7 +369,7 @@ func (s *Stream) leftOut(cr *cardRun) {
 	if s == nil || cr.card.ID == "" {
 		return
 	}
-	s.sendCard(map[string]any{"id": cr.card.ID, "state": stFailed, "detail": "Conflicted with the other pieces; left out of the joined work", "proof": nil})
+	s.sendCard(map[string]any{"id": cr.card.ID, "state": stStuck, "detail": "Conflicted with the other pieces; left out of the joined work"})
 }
 
 // sendCard sends a card.update unless the client already has exactly this one
@@ -389,19 +400,18 @@ func (s *Stream) examResult(checks []Check) {
 
 var prNumberRe = regexp.MustCompile(`/pull/(\d+)`)
 
+// prOpened tells the client the pull request's link. gh printed something
+// else when the URL is not https or has no number; the client is not handed
+// a link it cannot open (the run log has gh's output).
 func (s *Stream) prOpened(url string) {
 	n := 0
 	if m := prNumberRe.FindStringSubmatch(url); m != nil {
 		n, _ = strconv.Atoi(m[1])
 	}
-	ev := map[string]any{"draft": true, "url": nil, "number": nil}
-	if strings.HasPrefix(url, "https://") {
-		ev["url"] = url
+	if !strings.HasPrefix(url, "https://") || n == 0 {
+		return
 	}
-	if n > 0 {
-		ev["number"] = n
-	}
-	s.send("pr.opened", ev)
+	s.send("pr.opened", map[string]any{"draft": true, "url": url, "number": n})
 }
 
 // finish sends the end of a run: run.finished, plus run.error when the run
@@ -429,101 +439,4 @@ func (s *Stream) finish(res *Result, err error) {
 		s.stage("done")
 	}
 	s.send("run.finished", map[string]any{"ok": ok, "secrets_found": secrets, "ended_at": ended})
-}
-
-// The repository field of run.start is a folder on this machine or a GitHub
-// owner/name. A GitHub repository is cloned once into ~/.taskwing/repos and
-// brought up to date before each run.
-// The owner may not start with "-" or ".", so the name never reads as a flag
-// to gh or git.
-var ghRepoRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+$`)
-
-// A clone in ~/.taskwing/repos is reset before each run, so only one run may
-// use it at a time.
-var clones = struct {
-	sync.Mutex
-	busy map[string]bool
-}{busy: map[string]bool{}}
-
-// ReleaseRepo frees a clone ResolveRepo handed out. Other folders are ignored.
-func ReleaseRepo(dir string) {
-	clones.Lock()
-	delete(clones.busy, dir)
-	clones.Unlock()
-}
-
-// ResolveRepo returns the folder a run works in. For a GitHub repository the
-// clone stays claimed until ReleaseRepo.
-func ResolveRepo(ctx context.Context, home, repo string) (string, error) {
-	repo = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(repo), "@"))
-	if repo == "" {
-		return "", errors.New("no repository given")
-	}
-	if strings.HasPrefix(repo, "~/") {
-		if h, err := os.UserHomeDir(); err == nil {
-			repo = filepath.Join(h, repo[2:])
-		}
-	}
-	if filepath.IsAbs(repo) {
-		st, err := os.Stat(repo)
-		if err != nil || !st.IsDir() {
-			return "", fmt.Errorf("no folder at %s", repo)
-		}
-		return repo, nil
-	}
-	repo = strings.TrimSuffix(strings.TrimPrefix(repo, "https://github.com/"), ".git")
-	if !ghRepoRe.MatchString(repo) || strings.Contains(repo, "..") || strings.HasSuffix(repo, "/.") {
-		return "", fmt.Errorf("%q is not a folder path or a GitHub owner/name", repo)
-	}
-	dir := filepath.Join(home, "repos", filepath.FromSlash(repo))
-	clones.Lock()
-	if clones.busy[dir] {
-		clones.Unlock()
-		return "", fmt.Errorf("another run is using %s; wait for it to finish, or give the path of a folder of your own", repo)
-	}
-	clones.busy[dir] = true
-	clones.Unlock()
-	dir, err := syncClone(ctx, repo, dir)
-	if err != nil {
-		ReleaseRepo(filepath.Join(home, "repos", filepath.FromSlash(repo)))
-		return "", err
-	}
-	return dir, nil
-}
-
-// syncClone clones repo into dir, or brings an earlier clone up to date.
-func syncClone(ctx context.Context, repo, dir string) (string, error) {
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-			return "", err
-		}
-		out, err := exec.CommandContext(ctx, "gh", "repo", "clone", repo, dir, "--", "-q").CombinedOutput()
-		if err != nil {
-			return "", fmt.Errorf("could not clone %s with the GitHub CLI: %s", repo, lastLines(strings.TrimSpace(string(out)), 2))
-		}
-		return dir, nil
-	}
-	// Our own clone: bring its default branch up to date. The user's work
-	// never lives here, so a reset is safe.
-	if _, err := git(ctx, dir, "fetch", "-q", "origin"); err != nil {
-		return "", fmt.Errorf("could not update %s: %v", repo, err)
-	}
-	head, err := git(ctx, dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
-	if err != nil {
-		_, _ = git(ctx, dir, "remote", "set-head", "origin", "--auto")
-		if head, err = git(ctx, dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err != nil {
-			return "", fmt.Errorf("could not find the default branch of %s", repo)
-		}
-	}
-	branch := strings.TrimPrefix(head, "origin/")
-	if _, err := git(ctx, dir, "checkout", "-q", "-B", branch, head); err != nil {
-		return "", fmt.Errorf("could not check out %s in %s: %v", branch, dir, err)
-	}
-	if _, err := git(ctx, dir, "reset", "-q", "--hard", head); err != nil {
-		return "", err
-	}
-	if _, err := git(ctx, dir, "clean", "-qfd"); err != nil {
-		return "", err
-	}
-	return dir, nil
 }

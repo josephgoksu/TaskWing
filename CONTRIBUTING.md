@@ -12,10 +12,12 @@ Thanks for helping. TaskWing is early, so issues, ideas and small pull requests 
 
 ## Set up
 
+Needs Go 1.24+, `bash` and `git`. A real run also needs `claude`, `gh` and the `boat` CLI ([docs/guide.md](docs/guide.md)).
+
 ```bash
 git clone https://github.com/josephgoksu/TaskWing
 cd TaskWing
-go build ./cmd/taskwing          # the engine and CLI (Go 1.24+)
+go build ./cmd/taskwing          # the engine and CLI
 ```
 
 ## Checks
@@ -25,6 +27,10 @@ CI runs these on every pull request. Run them before you push.
 | Part | Command |
 |---|---|
 | Engine | `gofmt -l cmd internal`, `go vet ./...`, `go test -race ./...` |
+| CLI build | `go build ./cmd/taskwing` |
+| Release config | `goreleaser release --snapshot --clean --skip=publish,before` |
+
+Without the last two, a broken binary or release config shows up only when a tag is pushed.
 
 ## House rules
 

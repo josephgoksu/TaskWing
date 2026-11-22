@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write # build provenance: sign the attestation
+  attestations: write # build provenance: store it with the repository
 
 concurrency:
   group: release-cli-${{ github.ref }}
@@ -24,9 +26,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the changelog needs the previous tag
+      # Releases build on the latest Go for its security fixes; CI tests the
+      # minimum in go.mod.
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: stable
+          check-latest: true
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
@@ -36,3 +41,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Fine-grained token with contents: write on josephgoksu/homebrew-tap.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      # Signed build provenance for every archive and package, so users can
+      # check a download came from this workflow: gh attestation verify <file> -R josephgoksu/TaskWing
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
