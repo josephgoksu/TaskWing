@@ -87,6 +87,7 @@ type Result struct {
 	Passed  int
 	Total   int
 	Secrets []string
+	Scanned bool // the boxes were scanned for secrets (false in local mode)
 	Stopped bool
 }
 
@@ -94,11 +95,8 @@ type cardRun struct {
 	mu      sync.Mutex
 	card    Card
 	n       int
-	box     *box.Box
-	agent   box.Agent
 	state   string
 	thought string
-	final   string
 	proof   string
 	err     string
 	started time.Time
@@ -145,6 +143,9 @@ type runner struct {
 	dir    string
 	start  time.Time
 
+	examNow     chan struct{} // closed by "e" in the terminal
+	examNowOnce sync.Once
+
 	boxesMu    sync.Mutex
 	boxes      []*box.Box
 	secrets    []string
@@ -162,8 +163,12 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	if o.CheckTimeout == 0 {
 		o.CheckTimeout = 20 * time.Minute
 	}
-	r := &runner{o: o, s: o.Stream, ui: newUI(o.Out, o.In), start: time.Now()}
+	r := &runner{o: o, s: o.Stream, ui: newUI(o.Out, o.In), start: time.Now(), examNow: make(chan struct{})}
 	res, err := r.run(ctx)
+	// Whatever failed on the way, a run that ended because ctx did is a stop.
+	if err != nil && ctx.Err() != nil && !errors.Is(err, ctx.Err()) {
+		err = fmt.Errorf("%w (%v)", ctx.Err(), err)
+	}
 	r.cleanup()
 	if res != nil {
 		// Boxes deleted on the way to an error were scanned too.
@@ -174,6 +179,66 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	r.ev.log("run.done", map[string]any{"error": errString(err)})
 	r.ev.close()
 	return res, err
+}
+
+// preflight checks everything a run needs before it starts the lead, so a
+// missing login or setup fails in a second, not after the plan.
+func (r *runner) preflight(ctx context.Context) error {
+	o := r.o
+	where := "run taskwing inside a git repository"
+	if r.s != nil {
+		where = o.Dir + " is not a git repository"
+	}
+	var err error
+	if r.root, err = git(ctx, o.Dir, "rev-parse", "--show-toplevel"); err != nil {
+		return ctxOr(ctx, errors.New(where))
+	}
+	st, err := git(ctx, r.root, "status", "--porcelain")
+	if err != nil {
+		return ctxOr(ctx, fmt.Errorf("could not read the repository's status: %w", err))
+	}
+	if st != "" {
+		return errors.New("you have uncommitted changes; commit or stash them first, because the agents start from your last commit")
+	}
+	if r.base, err = git(ctx, r.root, "rev-parse", "HEAD"); err != nil {
+		return ctxOr(ctx, errors.New("the repository has no commits yet"))
+	}
+	// Agents commit in their boxes and the engine merges here, both with the
+	// user's git name and email.
+	if _, err := git(ctx, r.root, "var", "GIT_COMMITTER_IDENT"); err != nil {
+		return ctxOr(ctx, errors.New(`git has no name and email for commits: git config --global user.name "Your Name"; git config --global user.email you@example.com`))
+	}
+	r.branch, _ = git(ctx, r.root, "rev-parse", "--abbrev-ref", "HEAD")
+	if !o.NoPR {
+		noPR := ", or pass --no-pr"
+		if r.s != nil {
+			noPR = `, or start the run with "no_pr": true`
+		}
+		if _, err := git(ctx, r.root, "remote", "get-url", "origin"); err != nil {
+			return ctxOr(ctx, errors.New("no origin remote to push to; add one"+noPR))
+		}
+		if out, err := exec.CommandContext(ctx, "gh", "auth", "status").CombinedOutput(); err != nil {
+			return ctxOr(ctx, withDetail(errors.New("the GitHub CLI is not logged in (gh auth login)"+noPR), lastLines(string(out), 2)))
+		}
+		if r.branch == "HEAD" {
+			return errors.New("you are on a detached HEAD; check out the branch the pull request should target")
+		}
+	}
+	if c, ok := o.Provider.(interface{ Check() error }); ok {
+		if err := c.Check(); err != nil {
+			return err
+		}
+	}
+	return claudeLoggedIn(ctx, o)
+}
+
+// ctxOr returns the context's error when it ended (Ctrl-C, or the client
+// quit), so a stop is reported as a stop and not as the git error it caused.
+func ctxOr(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 func errString(err error) string {
@@ -188,81 +253,38 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	if strings.TrimSpace(o.Task) == "" && !o.Hunt {
 		return nil, errors.New("no task given")
 	}
-	var err error
-	if r.root, err = git(ctx, o.Dir, "rev-parse", "--show-toplevel"); err != nil {
-		return nil, errors.New("run taskwing inside a git repository")
-	}
-	if st, _ := git(ctx, r.root, "status", "--porcelain"); st != "" {
-		return nil, errors.New("you have uncommitted changes; commit or stash them first, because the agents start from your last commit")
-	}
-	if r.base, err = git(ctx, r.root, "rev-parse", "HEAD"); err != nil {
-		return nil, errors.New("the repository has no commits yet")
-	}
-	r.branch, _ = git(ctx, r.root, "rev-parse", "--abbrev-ref", "HEAD")
-	if !o.NoPR {
-		if _, err := git(ctx, r.root, "remote", "get-url", "origin"); err != nil {
-			return nil, errors.New("no origin remote to push to; add one, or pass --no-pr")
-		}
-		if out, err := exec.CommandContext(ctx, "gh", "auth", "status").CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("GitHub CLI is not logged in (gh auth login), or pass --no-pr: %s", lastLines(string(out), 2))
-		}
-		if r.branch == "HEAD" {
-			return nil, errors.New("you are on a detached HEAD; check out the branch the pull request should target")
-		}
-	}
-	if err := claudeLoggedIn(ctx, o); err != nil {
+	if err := r.preflight(ctx); err != nil {
 		return nil, err
 	}
+	var err error
 	r.id = o.RunID
 	if r.id == "" {
 		r.id = NewRunID()
 	}
 	r.dir = filepath.Join(o.Home, "runs", r.id)
-	if err := os.MkdirAll(filepath.Join(r.dir, "logs"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(r.dir, "logs"), dirPerm); err != nil {
 		return nil, err
 	}
 	if r.ev, err = openEvents(r.dir); err != nil {
 		return nil, err
 	}
-	res := &Result{RunID: r.id, RunDir: r.dir}
+	res := &Result{RunID: r.id, RunDir: r.dir, Scanned: o.Provider.Sandboxed()}
 	r.ev.log("run.created", map[string]any{"task": o.Task, "repo": r.root, "base": r.base, "provider": o.Provider.Name()})
 	r.ui.say("%s %s  %s", r.ui.bold("TaskWing"), r.id, r.ui.dim(o.Provider.Name()+" · "+filepath.Base(r.root)+" @ "+r.base[:8]))
 	if !o.Provider.Sandboxed() {
-		r.ui.say(r.ui.amber("Local mode: agents run on this machine with your own login. This is for testing, not a sandbox."))
+		r.ui.say("%s", r.ui.amber("Local mode: agents run on this machine with your own login. This is for testing, not a sandbox."))
 	}
 
-	// 1. Plan and exam, side by side. The exam session never sees the plan.
+	// 1. Plan and exam (or hunt), then the user's yes. The exam session never
+	// sees the plan, and the lead never sees the exam.
 	var (
-		plan   *Plan
-		checks []Check
-		patch  []byte
-		what   string
+		plan       *Plan
+		checks     []Check
+		patch      []byte
+		what       string
+		userChecks []WireCheck // checks the user typed at the prompt
+		userExam   chan userExamResult
 	)
-	if o.Hunt {
-		r.ui.step(1, "Hunt")
-		r.ui.say("  A session is reading the code and writing a failing test for each bug it suspects.")
-		if plan, checks, patch, err = r.hunt(ctx); err != nil {
-			return res, err
-		}
-		if len(plan.Cards) == 0 {
-			r.ui.say("\n  No bug could be proven with a failing test. Nothing to fix.")
-			res.Stopped = true
-			return res, nil
-		}
-		r.showBugs(plan)
-		what = fmt.Sprintf("Fix %d %s, one agent each in %s?", len(plan.Cards), plural(len(plan.Cards), "bug", "bugs"), sandboxWord(o.Provider))
-	} else {
-		r.ui.step(1, "Plan")
-		r.ui.say("  The lead agent is splitting the task. A separate session is writing the exam.")
-		if plan, checks, patch, err = r.planAndExam(ctx); err != nil {
-			return res, err
-		}
-		r.showPlan(plan, checks)
-		what = fmt.Sprintf("Start %d %s in %s? This is the exam they must pass.", len(plan.Cards), plural(len(plan.Cards), "agent", "agents"), sandboxWord(o.Provider))
-	}
-	// With a client the user approves the plan there, may add checks of their
-	// own, or asks the lead for a new plan.
-	var userExam chan userExamResult
 	// The session writing the user's checks stops when the run does, however
 	// it ends, and is waited for, so it never outlives the run.
 	uctx, stopUserExam := context.WithCancel(ctx)
@@ -272,28 +294,73 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			<-userExam
 		}
 	}()
-	if r.s != nil {
-		for {
+	if o.Hunt {
+		r.ui.step(1, "Hunt")
+	} else {
+		r.ui.step(1, "Plan")
+	}
+	for approved := false; !approved; {
+		if o.Hunt {
+			r.ui.say("  A session is reading the code and writing a failing test for each bug it suspects.")
+			if plan, checks, patch, err = r.hunt(ctx); err != nil {
+				return res, err
+			}
+			if len(plan.Cards) == 0 {
+				r.ui.say("\n  No bug could be proven with a failing test. Nothing to fix.")
+				res.Stopped = true
+				return res, nil
+			}
+			r.showBugs(plan)
+			what = fmt.Sprintf("Fix %d %s, one agent each in %s?", len(plan.Cards), plural(len(plan.Cards), "bug", "bugs"), sandboxWord(o.Provider))
+		} else {
+			r.ui.say("  The lead agent is splitting the task. A separate session is writing the exam.")
+			if plan, checks, patch, err = r.planAndExam(ctx); err != nil {
+				return res, err
+			}
+			r.showPlan(plan, checks)
+			what = fmt.Sprintf("Start %d %s in %s? This is the exam they must pass.", len(plan.Cards), plural(len(plan.Cards), "agent", "agents"), sandboxWord(o.Provider))
+		}
+		var redo bool
+		switch {
+		case r.s != nil:
+			// The client shows the plan; the user approves it there (with
+			// checks of their own) or asks the lead for a new one.
 			c, err := r.s.askApproval(ctx, plan, checks)
 			if err != nil {
 				return res, err
 			}
 			if c.Type == "plan.approve" {
-				userExam = r.startUserExam(uctx, plan.Interface, c.Checks)
-				break
+				userChecks, approved = c.Checks, true
+			} else {
+				redo = true
 			}
-			r.ev.log("plan.redo", nil)
-			r.s.stage("planning")
-			if plan, checks, patch, err = r.planAndExam(ctx); err != nil {
+		case o.Yes:
+			approved = true
+		default:
+			answer, err := r.askPlan(ctx, what, &userChecks)
+			if err != nil {
 				return res, err
 			}
+			switch answer {
+			case "y":
+				approved = true
+			case "r":
+				redo = true
+			default:
+				r.ev.log("run.stopped", nil)
+				r.ui.say("Stopped. The plan and the exam are saved in %s", r.dir)
+				res.Stopped = true
+				return res, nil
+			}
 		}
-	} else if !o.Yes && !r.ui.ask("\n"+what) {
-		r.ev.log("run.stopped", nil)
-		r.ui.say("Stopped. The plan and the exam are saved in %s", r.dir)
-		res.Stopped = true
-		return res, nil
+		if redo {
+			r.ev.log("plan.redo", nil)
+			r.forgetExam()
+			r.s.stage("planning")
+			r.ui.say("\n  Asking for a new plan.")
+		}
 	}
+	userExam = r.startUserExam(uctx, plan.Interface, userChecks)
 	// Set only once the exam will run: a stop above is not a failed exam (exit 3).
 	res.Total = len(checks)
 	r.ev.log("exam.approved", map[string]any{"checks": len(checks)})
@@ -347,7 +414,6 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			res.Passed++
 		}
 	}
-	res.Secrets = r.secrets
 	r.saveJSON("exam-results.json", checks)
 
 	// 4. Pull request, pushed from this machine.
@@ -364,7 +430,11 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		return res, nil
 	}
 	if res.Passed < res.Total && !o.Yes {
-		if !r.ui.ask(fmt.Sprintf("  %d of %d checks failed. Open the draft pull request anyway?", res.Total-res.Passed, res.Total)) {
+		yes, err := r.ui.ask(ctx, fmt.Sprintf("  %d of %d checks failed. Open the draft pull request anyway?", res.Total-res.Passed, res.Total))
+		if err != nil {
+			return res, err
+		}
+		if !yes {
 			r.ui.say("  Not opened. The joined work is on branch %s.", res.Branch)
 			r.summary(res)
 			return res, nil
@@ -396,9 +466,48 @@ func sandboxWord(p box.Provider) string {
 	return "local folders"
 }
 
+// askPlan asks for the user's yes on a plan. Besides y and n, the user can
+// type r for a new plan, or any sentence to add a check of their own; it is
+// listed and the question comes again. It returns "y", "n" or "r".
+func (r *runner) askPlan(ctx context.Context, what string, mine *[]WireCheck) (string, error) {
+	hint := r.ui.dim("  y start · n stop · r new plan · or type a check of your own to add it")
+	for {
+		line, err := r.ui.prompt(ctx, "\n"+what+"\n"+hint+"\n> ")
+		if err != nil {
+			return "", err
+		}
+		switch strings.ToLower(line) {
+		case "y", "yes":
+			return "y", nil
+		case "r", "redo":
+			return "r", nil
+		case "", "n", "no", "q":
+			return "n", nil
+		}
+		c := WireCheck{ID: fmt.Sprintf("u%d", len(*mine)+1), Text: line, AddedBy: "user"}
+		*mine = append(*mine, c)
+		r.ev.log("exam.user.added", map[string]any{"id": c.ID})
+		r.ui.say("  %s %s %s", r.ui.green("+"), line, r.ui.dim("(its tests are written while the agents build; they never see them)"))
+	}
+}
+
+// saveJSON writes v into the run folder. The run goes on if it fails (these
+// files are records, not inputs), but the user hears about it.
 func (r *runner) saveJSON(name string, v any) {
-	b, _ := json.MarshalIndent(v, "", "  ")
-	_ = os.WriteFile(filepath.Join(r.dir, name), b, 0o644)
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err == nil {
+		err = os.WriteFile(filepath.Join(r.dir, name), b, filePerm)
+	}
+	if err != nil {
+		r.ui.say("  %s could not save %s: %v", r.ui.amber("!"), name, err)
+	}
+}
+
+// forgetExam deletes the last exam before the lead plans again: the lead's
+// tools can read files on this machine, and it must never see the tests.
+func (r *runner) forgetExam() {
+	_ = os.RemoveAll(filepath.Join(r.dir, "exam"))
+	_ = os.Remove(filepath.Join(r.dir, "logs", "exam-writer.log"))
 }
 
 func (r *runner) summary(res *Result) {
@@ -419,7 +528,7 @@ func (r *runner) summary(res *Result) {
 			if r.agentLogin {
 				msg += " (only the agents' own Claude login, as expected)"
 			}
-			r.ui.say(msg)
+			r.ui.say("%s", msg)
 		} else {
 			r.ui.say("  %s Secret scan found: %s", r.ui.red("!"), strings.Join(res.Secrets, "; "))
 		}

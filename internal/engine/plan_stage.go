@@ -64,6 +64,8 @@ func (r *runner) planAndExam(ctx context.Context) (*Plan, []Check, []byte, error
 	if examErr != nil {
 		return nil, nil, nil, fmt.Errorf("exam: %w", examErr)
 	}
+	// Saved only now: the exam session must not find the pieces' prompts.
+	r.saveJSON("plan.json", plan)
 	return plan, checks, patch, nil
 }
 
@@ -72,7 +74,7 @@ func (r *runner) lead(ctx context.Context) (*Plan, error) {
 	for attempt := 1; attempt <= 2; attempt++ {
 		out, err := hostAgent(ctx, r.o.LeadCmd, r.root, leadPrompt(r.o.Task, r.o.MaxCards, feedback), filepath.Join(r.dir, "logs", fmt.Sprintf("lead-%d.log", attempt)))
 		if err != nil {
-			return nil, fmt.Errorf("the lead agent failed: %v", err)
+			return nil, fmt.Errorf("the lead agent failed: %w", err)
 		}
 		plan, err := parsePlan(out)
 		if err == nil {
@@ -82,7 +84,6 @@ func (r *runner) lead(ctx context.Context) (*Plan, error) {
 			if plan.Task == "" {
 				plan.Task = r.o.Task
 			}
-			r.saveJSON("plan.json", plan)
 			r.ev.log("plan.ready", map[string]any{"cards": len(plan.Cards)})
 			return plan, nil
 		}
@@ -98,8 +99,12 @@ func (r *runner) showPlan(p *Plan, checks []Check) {
 	for i, c := range p.Cards {
 		r.ui.say("  %02d %s  %s", i+1, c.Title, r.ui.dim(strings.Join(c.Owns, ", ")))
 	}
+	num := map[string]int{}
+	for i, c := range p.Cards {
+		num[c.ID] = i + 1
+	}
 	for _, s := range p.Seams {
-		r.ui.say("     %s %s (owner %s)", r.ui.dim("seam:"), s.Contract, s.Owner)
+		r.ui.say("     %s %s (owner %02d)", r.ui.dim("seam:"), s.Contract, num[s.Owner])
 	}
 	r.ui.say("\n  %s", r.ui.bold("The exam")+r.ui.dim("  (written by a separate session; the agents never see it)"))
 	for i, c := range checks {

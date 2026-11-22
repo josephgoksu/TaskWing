@@ -30,25 +30,33 @@ func (r *runner) untrack(b *box.Box) {
 	}
 }
 
+// scan reads what a box holds that could be a credential. A scan that cannot
+// run is an error, never "nothing found".
+func (r *runner) scan(ctx context.Context, b *box.Box) (leaks []string, agentLogin bool, err error) {
+	var sb strings.Builder
+	if _, err := r.o.Provider.Exec(ctx, b, secretScanScript, nil, &sb); err != nil {
+		return nil, false, err
+	}
+	leaks, agentLogin = scanBox(sb.String())
+	return leaks, agentLogin, nil
+}
+
 // destroy scans a box for secrets, then deletes it (unless --keep).
 func (r *runner) destroy(b *box.Box) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
 	if r.o.Provider.Sandboxed() {
-		var sb strings.Builder
-		if _, err := r.o.Provider.Exec(ctx, b, secretScanScript, nil, &sb); err == nil {
-			found, login := scanBox(sb.String())
-			if login {
-				r.boxesMu.Lock()
-				r.agentLogin = true
-				r.boxesMu.Unlock()
+		// The scan gets its own deadline: a box that stopped answering (the
+		// usual reason to tear one down) must not use up the time to delete it.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		found, login, err := r.scan(ctx, b)
+		cancel()
+		if err == nil {
+			r.boxesMu.Lock()
+			r.agentLogin = r.agentLogin || login
+			for _, f := range found {
+				r.secrets = append(r.secrets, f+" in "+b.Name)
 			}
+			r.boxesMu.Unlock()
 			if len(found) > 0 {
-				r.boxesMu.Lock()
-				for _, f := range found {
-					r.secrets = append(r.secrets, f+" in "+b.Name)
-				}
-				r.boxesMu.Unlock()
 				r.ev.log("secret.found", map[string]any{"box": b.ID, "kinds": found})
 			}
 		}
@@ -58,6 +66,8 @@ func (r *runner) destroy(b *box.Box) {
 		r.untrack(b)
 		return
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
 	if err := r.o.Provider.Destroy(ctx, b); err != nil {
 		r.ui.say("  %s could not delete box %s: %v (taskwing doctor finds it)", r.ui.amber("!"), b.ID, err)
 	}
@@ -65,25 +75,35 @@ func (r *runner) destroy(b *box.Box) {
 	r.untrack(b)
 }
 
-// githubCreds lists the GitHub credentials a fresh box already holds. Agents
-// never start in such a box: they could push as the user. A scan that cannot
-// run is an error, never "nothing found".
-func (r *runner) githubCreds(ctx context.Context, b *box.Box) ([]string, error) {
+// pushCreds lists what in a fresh box would let an agent push as the user:
+// GitHub tokens, a gh login, an SSH key or agent. Agents never start in such
+// a box.
+func (r *runner) pushCreds(ctx context.Context, b *box.Box) ([]string, error) {
 	if !r.o.Provider.Sandboxed() {
 		return nil, nil
 	}
-	var sb strings.Builder
-	if _, err := r.o.Provider.Exec(ctx, b, secretScanScript, nil, &sb); err != nil {
+	found, _, err := r.scan(ctx, b)
+	if err != nil {
 		return nil, err
 	}
-	var gh []string
-	found, _ := scanBox(sb.String())
+	var push []string
 	for _, f := range found {
-		if strings.Contains(f, "GitHub") || strings.Contains(f, "gh ") {
-			gh = append(gh, f)
+		if strings.Contains(f, "GitHub") || strings.Contains(f, "gh ") || strings.Contains(f, "SSH") {
+			push = append(push, f)
 		}
 	}
-	return gh, nil
+	return push, nil
+}
+
+// bundle writes HEAD of dir into a git bundle at path. Some git versions
+// reject -q for bundle create, hence the second try.
+func bundle(ctx context.Context, dir, path string) error {
+	if _, err := git(ctx, dir, "bundle", "create", "-q", path, "HEAD"); err != nil {
+		if _, err2 := git(ctx, dir, "bundle", "create", path, "HEAD"); err2 != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // cleanup deletes any box still alive, for example after Ctrl-C or an error.

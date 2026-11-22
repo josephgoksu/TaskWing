@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strconv"
@@ -35,6 +36,7 @@ type Command struct {
 	QuestionID string      `json:"question_id"`
 	Choice     string      `json:"choice"`
 	Checks     []WireCheck `json:"checks"`
+	NoPR       bool        `json:"no_pr"` // stop after the exam: push nothing
 }
 
 // WireCheck is an exam check as the client sees it.
@@ -184,6 +186,11 @@ func (s *server) startRun(ctx context.Context, c Command) {
 			s.mu.Unlock()
 		}()
 		res, err := s.run(ctx, st, c)
+		// A client that quits (stdin closed) ends ctx: whatever error that
+		// caused on the way, the run was stopped.
+		if err != nil && ctx.Err() != nil && !errors.Is(err, ctx.Err()) {
+			err = fmt.Errorf("%w (%v)", ctx.Err(), err)
+		}
 		st.finish(res, err)
 	}()
 }
@@ -197,6 +204,7 @@ func (s *server) run(ctx context.Context, st *Stream, c Command) (*Result, error
 	o.RunID = st.id
 	o.Hunt = false
 	o.Yes = false
+	o.NoPR = o.NoPR || c.NoPR
 	if o.Out == nil {
 		o.Out = io.Discard
 	}
@@ -343,7 +351,11 @@ func (s *Stream) card(cr *cardRun) {
 		detail = cr.err
 	}
 	cr.mu.Unlock()
-	s.sendCard(map[string]any{"id": cr.card.ID, "state": state, "detail": truncate(detail, 200), "proof": proof})
+	card := map[string]any{"id": cr.card.ID, "state": state, "detail": truncate(detail, 200)}
+	if proof != nil {
+		card["proof"] = proof
+	}
+	s.sendCard(card)
 }
 
 // leftOut tells the client that a finished card's work conflicted with the
@@ -352,7 +364,7 @@ func (s *Stream) leftOut(cr *cardRun) {
 	if s == nil || cr.card.ID == "" {
 		return
 	}
-	s.sendCard(map[string]any{"id": cr.card.ID, "state": stStuck, "detail": "Conflicted with the other pieces; left out of the joined work", "proof": nil})
+	s.sendCard(map[string]any{"id": cr.card.ID, "state": stStuck, "detail": "Conflicted with the other pieces; left out of the joined work"})
 }
 
 // sendCard sends a card.update unless the client already has exactly this one
@@ -383,19 +395,18 @@ func (s *Stream) examResult(checks []Check) {
 
 var prNumberRe = regexp.MustCompile(`/pull/(\d+)`)
 
+// prOpened tells the client the pull request's link. gh printed something
+// else when the URL is not https or has no number; the client is not handed
+// a link it cannot open (the run log has gh's output).
 func (s *Stream) prOpened(url string) {
 	n := 0
 	if m := prNumberRe.FindStringSubmatch(url); m != nil {
 		n, _ = strconv.Atoi(m[1])
 	}
-	ev := map[string]any{"draft": true, "url": nil, "number": nil}
-	if strings.HasPrefix(url, "https://") {
-		ev["url"] = url
+	if !strings.HasPrefix(url, "https://") || n == 0 {
+		return
 	}
-	if n > 0 {
-		ev["number"] = n
-	}
-	s.send("pr.opened", ev)
+	s.send("pr.opened", map[string]any{"draft": true, "url": url, "number": n})
 }
 
 // finish sends the end of a run: run.finished, plus run.error when the run

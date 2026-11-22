@@ -85,16 +85,24 @@ func (r *runner) startUserExam(ctx context.Context, iface string, approved []Wir
 // examSession runs one exam-writing session (name is "exam" or "user-exam").
 // Only new files whose path contains marker are kept.
 func (r *runner) examSession(ctx context.Context, prompt, name, marker string) ([]Check, []byte, error) {
-	wt := filepath.Join(r.dir, name+"-worktree")
+	// The worktree sits outside the run folder, so the session's own folder
+	// does not lead it to the lead's plan and logs.
+	tmp, err := os.MkdirTemp("", "taskwing-"+name+"-")
+	if err != nil {
+		return nil, nil, err
+	}
+	wt := filepath.Join(tmp, "repo")
 	if _, err := git(ctx, r.root, "worktree", "add", "-q", "--detach", wt, r.base); err != nil {
+		_ = os.RemoveAll(tmp)
 		return nil, nil, err
 	}
 	defer func() {
 		_, _ = git(context.Background(), r.root, "worktree", "remove", "--force", wt)
+		_ = os.RemoveAll(tmp)
 	}()
 	out, err := hostAgent(ctx, r.o.ExamCmd, wt, prompt, filepath.Join(r.dir, "logs", name+"-writer.log"))
 	if err != nil {
-		return nil, nil, fmt.Errorf("the exam session failed: %v", err)
+		return nil, nil, fmt.Errorf("the exam session failed: %w", err)
 	}
 	js, err := extractJSON(out)
 	if err != nil {
@@ -120,17 +128,18 @@ func (r *runner) examSession(ctx context.Context, prompt, name, marker string) (
 	if _, err := git(ctx, wt, "add", "-A"); err != nil {
 		return nil, nil, err
 	}
-	status, _ := git(ctx, wt, "diff", "--cached", "--name-status", "--no-renames", r.base)
+	// -z keeps unusual file names as they are; it lists status, path, status, path...
+	status, err := gitRaw(ctx, wt, "diff", "--cached", "--name-status", "--no-renames", "-z", r.base)
+	if err != nil {
+		return nil, nil, err
+	}
 	var keep, dropped []string
-	for _, line := range strings.Split(status, "\n") {
-		f := strings.SplitN(line, "\t", 2)
-		if len(f) != 2 {
-			continue
-		}
-		if f[0] == "A" && strings.Contains(f[1], marker) {
-			keep = append(keep, f[1])
+	fields := splitNUL(status)
+	for i := 0; i+1 < len(fields); i += 2 {
+		if st, f := fields[i], fields[i+1]; st == "A" && strings.Contains(f, marker) {
+			keep = append(keep, f)
 		} else {
-			dropped = append(dropped, f[1])
+			dropped = append(dropped, f)
 		}
 	}
 	if len(keep) == 0 {
@@ -150,10 +159,13 @@ func (r *runner) examSession(ctx context.Context, prompt, name, marker string) (
 		return nil, nil, err
 	}
 	examDir := filepath.Join(r.dir, name)
-	_ = os.MkdirAll(examDir, 0o755)
-	_ = os.WriteFile(filepath.Join(examDir, "exam.patch"), []byte(patch), 0o644)
-	b, _ := json.MarshalIndent(checks, "", "  ")
-	_ = os.WriteFile(filepath.Join(examDir, "checks.json"), b, 0o644)
+	if err := os.MkdirAll(examDir, dirPerm); err != nil {
+		return nil, nil, err
+	}
+	if err := os.WriteFile(filepath.Join(examDir, "exam.patch"), []byte(patch), filePerm); err != nil {
+		return nil, nil, err
+	}
+	r.saveJSON(filepath.Join(name, "checks.json"), checks)
 	r.ev.log("exam.ready", map[string]any{"checks": len(checks), "files": keep})
 	return checks, []byte(patch), nil
 }

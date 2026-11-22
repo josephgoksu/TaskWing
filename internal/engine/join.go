@@ -20,7 +20,16 @@ func (r *runner) join(ctx context.Context, cards []*cardRun, branch string) erro
 		}
 		msg := fmt.Sprintf("Join %02d: %s", cr.n, cr.card.Title)
 		if _, err := git(ctx, wt, "merge", "--no-ff", "--no-edit", "-m", msg, cr.ref); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			// Only unmerged paths make a conflict. Any other failure (no git
+			// identity, a broken ref) is an error, not a card to leave out.
+			unmerged, _ := git(ctx, wt, "diff", "--name-only", "--diff-filter=U")
 			_, _ = git(ctx, wt, "merge", "--abort")
+			if unmerged == "" {
+				return fmt.Errorf("joining %02d failed: %w", cr.n, err)
+			}
 			conflicts = append(conflicts, fmt.Sprintf("%02d %s", cr.n, cr.card.Title))
 			r.ev.log("join.conflict", map[string]any{"card": cr.card.ID})
 			continue
