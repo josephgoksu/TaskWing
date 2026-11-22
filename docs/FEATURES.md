@@ -15,9 +15,9 @@ Status: ✅ built · 🟡 partial · ⬜ planned · — dropped. Milestones: **P
 ```mermaid
 pie showData
   title Features by status
-  "Built" : 27
-  "Partial" : 7
-  "Planned" : 33
+  "Built" : 33
+  "Partial" : 6
+  "Planned" : 31
 ```
 
 ## Run
@@ -26,13 +26,13 @@ pie showData
 |---|---|---|---|---|
 | R1 | `taskwing run "<task>"`: one task to one draft pull request | ✅ | PoC | |
 | R2 | Lead agent plans and splits the task into cards | ✅ | PoC | `claude -p` on the host |
-| R3 | Plan check: no two cards own the same path; seams have owners; ids are safe | ✅ | PoC | |
+| R3 | Plan check: no two cards own the same path; seams have owners; ids are safe | ✅ | PoC | Hardened: patterns normalised (no leading `/` or `./`, no `..`, not the whole repo), overlap compared without case and `**` against folders, ids unique ignoring case, seams name two known cards with the owner one of them, no card owns a `taskwing_exam` path |
 | R4 | Pinned interface: the lead names routes, fields and env vars before anyone builds | ✅ | PoC | 🎤 Added after the Osprey feature run |
 | R5 | One agent per card, in parallel, each in its own box | ✅ | PoC | |
 | R6 | Join every card's commits on one branch | ✅ | PoC | |
 | R7 | Push from the host and open a draft pull request with proof and exam results | ✅ | PoC | |
-| R8 | Live squares in the terminal, one per agent | ✅ | PoC | |
-| R9 | Lead resolves conflicts at join | ⬜ | M1 | Today a conflict drops the card |
+| R8 | Live board in the terminal, one line per agent | ✅ | PoC | ■ done, ▣ working, □ waiting, ✗ stuck; amber "needs you" is planned, for when agents can ask questions |
+| R9 | Lead resolves conflicts at join | ⬜ | M1 | Today a conflict leaves the card out |
 | R10 | Resume a run after a crash, with no duplicate boxes | ⬜ | M1 | From boxes, git refs, GitHub and the event log |
 | R11 | Trusted feedback: CI failures and reviews go back to the card that owns the files | ⬜ | Later | Only confirmed writers and exact bot logins |
 | R12 | Agents pass notes to each other across a seam | ⬜ | Later | |
@@ -57,8 +57,10 @@ pie showData
 | E1 | A separate session writes the exam: checks plus hidden tests | ✅ | PoC | |
 | E2 | Hidden tests never reach a worker or the lead | ✅ | PoC | |
 | E3 | The exam runs in a clean box on the joined work | ✅ | PoC | |
-| E4 | User approves the exam before any agent starts | 🟡 | PoC | A y/N prompt; `--yes` skips it |
-| E5 | User adds a check; the exam writer turns it into a test | ⬜ | M1 | The engine stream takes user checks (`plan.approve`); the CLI cannot add one yet |
+| E4 | User approves the exam before any agent starts | ✅ | PoC | CLI: `y` start, `n` stop; stream: `plan.approve`. `--yes` skips it |
+| E5 | User adds a check; the exam writer turns it into a test | ✅ | M1 | Built ahead of M1. CLI: type the sentence at the prompt; stream: `plan.approve` checks. Its tests are written while the agents build |
+| E8 | Ask the lead for a new plan | ✅ | M1 | Built ahead of M1. CLI: `r`; stream: `plan.redo`. The old exam is deleted first |
+| E9 | Run the exam now with what the agents have | ✅ | M1 | Built ahead of M1. CLI: `e` + Enter during the build; stream: `exam.now` |
 | E6 | Ruling after a failure: the work or the check was wrong | ⬜ | M1 | Only the user changes a check |
 | E7 | The exam writer explains a failure in plain words | ⬜ | M1 | |
 
@@ -93,10 +95,11 @@ pie showData
 | ID | Feature | Status | Milestone | Note |
 |---|---|---|---|---|
 | X1 | Refuse a box that holds GitHub credentials | 🟡 | PoC | Card boxes only; the exam box, where the joined work runs, is not checked. A scan that cannot run also refuses |
-| X2 | Secret scan of every box before it is destroyed | 🟡 | PoC | The agents' own login is named as expected. A scan that cannot run is skipped without a warning, and the PR body still says nothing was found (also in local mode, where no scan runs) |
+| X2 | Secret scan of every box before it is destroyed | 🟡 | PoC | Flags GitHub tokens, SSH keys and `SSH_AUTH_SOCK`; the agents' own login is named as expected. A scan that cannot run is skipped without a warning, and the PR body still says nothing was found (also in local mode, where no scan runs) |
 | X3 | Host pushes; no box ever gets a GitHub login | ✅ | PoC | |
 | X4 | Key proxy: placeholder key in the box, real API key swapped in outside | ⬜ | Talk | Needed for API-key models (A4) |
-| X5 | Read worker commits with git hooks and fsmonitor off | ⬜ | M1 | The PoC fetches bundles with default git settings |
+| X5 | Read worker commits with git hooks and fsmonitor off | ✅ | M1 | Built ahead of M1. Host git runs with hooks, fsmonitor and the ext protocol off |
+| X6 | Local mode strips GitHub and SSH tokens from the agents' environment | ✅ | M1 | Still not a sandbox: agents can read anything the user can |
 
 ## Record and proof
 
@@ -114,14 +117,14 @@ pie showData
 
 | ID | Feature | Status | Milestone | Note |
 |---|---|---|---|---|
-| C1 | CLI: `run`, `hunt`, `config`, `doctor`, `version` | ✅ | PoC | |
-| C2 | CLI: `status`, `exam`, `answer`, `attach`, `stop` | ⬜ | M1 | |
+| C1 | CLI: `run`, `hunt`, `config`, `doctor`, `engine`, `version`, `help` | ✅ | PoC | Checks for the boat CLI and a base box before planning |
+| C2 | CLI: `status`, `answer`, `attach`, `stop` | ⬜ | M1 | |
 | C3 | `taskwing config boat-base` saves the base box | ✅ | PoC | |
-| C4 | Engine stream: JSON events out, commands in | ✅ | M1 | `taskwing engine --json` (`internal/engine/stream.go`). For scripts, CI and editors (`docs/engine-protocol.md`). Not yet: pausing agents, agent questions, notes between agents |
+| C4 | Engine stream: JSON events out, commands in | ✅ | M1 | Built ahead of M1. `taskwing engine --json` (`internal/engine/stream.go`). For scripts, CI and editors (`docs/engine-protocol.md`). Not yet: pausing agents, agent questions, notes between agents |
 | C5 | Start from a Claude Code skill | ⬜ | Talk | Joseph's pick |
 | C6 | Two minutes from install to the first agent | ⬜ | Talk | Joseph's pick; depends on S8 and C5 |
-| C7 | ~~Cockpit desktop app~~ | — | — | Dropped 2026-11-22: TaskWing is terminal only. The Tauri app stays in git history (last on main at e6f117d); the board (R8) shows the run |
-| C8 | Install the CLI with Homebrew, Linux packages, archives or `go install` | 🟡 | M1 | GoReleaser on `vX.Y.Z` tags. No v2 release yet, so Homebrew still installs v1.23.2 |
+| C7 | ~~Desktop app~~ | — | — | Dropped 2026-11-22: TaskWing is terminal only. The app stays in git history (last on main at e6f117d); the board (R8) shows the run |
+| C8 | Install the CLI with Homebrew, Linux packages, archives or `go install` | 🟡 | M1 | GoReleaser on `vX.Y.Z` tags, built on the latest stable Go. No v2 release yet, so Homebrew still installs v1.23.2 |
 
 ## Project
 

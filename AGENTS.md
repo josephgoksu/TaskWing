@@ -20,14 +20,14 @@ The v1 knowledge layer was removed in November 2026. Nothing from it carries ove
 |---|---|---|
 | Where agents run | Inside the box | Works with every agent CLI unchanged and scales to hundreds of boxes |
 | How agents log in | Placeholder key + base URL; a proxy outside the box swaps in the real credential (`PRINCIPLES.md` #3). Subscription logins go through the sandbox provider (boat); TaskWing's proxy carries API keys only (decided 2026-11-14) | Agent CLIs offer many login methods (`context/agent-logins.md`). Holding a subscription login ourselves breaks the provider's terms; boat already handles it |
-| Who plans | The user's own agent (the real Claude Code, started on their machine) leads with a TaskWing skill. The engine has no model code (decided 2026-11-14) | Keeps the flat subscription, works with any vendor's agent, and the engine only checks and runs the plan |
-| Front end | The terminal only: one Go binary, the run drawn as agent squares, plus `taskwing engine --json` for scripts (decided 2026-11-22). The Tauri desktop app (2026-11-17) was removed and stays in git history | Developers install CLIs from Homebrew; one language, one release line, no app signing. A desktop shelf already full of agent apps |
+| Who plans | The user's own agent CLI, run headless on their machine (`TASKWING_LEAD_CMD`, default `claude -p` with read-only tools). Starting from a TaskWing skill is planned. The engine has no model code (decided 2026-11-14) | Keeps the flat subscription, works with any vendor's agent, and the engine only checks and runs the plan |
+| Front end | The terminal only: one Go binary, the run drawn as one line per agent, plus `taskwing engine --json` for scripts (decided 2026-11-22). The desktop app (2026-11-17) was removed and stays in git history | Developers install CLIs from Homebrew; one language, one release line, no app signing. A desktop shelf already full of agent apps |
 | Phone pings | A push service called from the engine, not a phone app | Works on day one with no app to build |
-| Sandboxes | boat first, local (Docker) later, never our own (decided 2026-11-14) | boat already runs agent CLIs, handles subscription logins and proxies keys. Local Docker gives a free backend for tests. Building a sandbox competes with a commodity |
+| Sandboxes | boat first; local folders for trying it (no isolation); Docker later; never our own (decided 2026-11-14) | boat already runs agent CLIs, handles subscription logins and proxies keys. Local folders show the flow in two minutes; Docker gives a free isolated backend for tests. Building a sandbox competes with a commodity |
 | What the user approves | The exam (plain-sentence checks), before any agent starts. The engine checks the file split itself (`PRINCIPLES.md` #8, decided 2026-11-14) | The exam is what "done" means and can be judged in seconds; a file split can't be judged without reading code |
 | Who writes the exam | A fresh agent session that gets only the task and the repo. The lead sees the sentences, never the tests (`PRINCIPLES.md` #12, decided 2026-11-14) | A lead that knows the tests can teach to them through its hints to workers |
-| Pictures over text | The terminal board shows state as pictures: one square per agent, one short line each. Words only for the one question and the result (Joseph, 2026-11-14: "visual rather than text, simplicity over complexity") | Paragraphs per agent turn the board into a log nobody reads |
-| Agent squares | One square per agent: grey done, blue working, outline waiting, amber needs you, red stuck (decided 2026-11-14). One proof line per agent, no file names | File names are code. Squares stay readable at 100 agents |
+| Pictures over text | The terminal board shows state as pictures: one glyph and one short line per agent. Words only for the one question and the result (Joseph, 2026-11-14: "visual rather than text, simplicity over complexity") | Paragraphs per agent turn the board into a log nobody reads |
+| Agent glyphs | One line per agent: ■ grey done, ▣ blue working, □ waiting, ✗ red stuck (decided 2026-11-14, updated 2026-11-22). Amber "needs you" is planned, for when agents can ask questions. One short proof line per agent, no file names | File names are code. Glyphs stay readable at 100 agents |
 | Licence | AGPL-3.0 with a NOTICE file (decided 2026-11-15) | Open source, so open source events accept it. Copies must credit TaskWing and stay open, even when run as a hosted service |
 
 ## Checks
@@ -37,12 +37,25 @@ CI runs these on every pull request (`.github/workflows/ci.yml`). Run them befor
 | Part | Command |
 |---|---|
 | Engine | `gofmt -l cmd internal`, `go vet ./...`, `go test -race ./...` |
+| CLI build | `go build ./cmd/taskwing` |
+| Release config | `goreleaser release --snapshot --clean --skip=publish,before` (the `release-config` job) |
+
+Without the last two, a broken binary or release config is found only when a tag is pushed, halfway through a public release.
+
+## Layout
+
+| Folder | What |
+|---|---|
+| `cmd/taskwing` | The CLI: commands, flags, config |
+| `internal/engine` | Runs, plan check, exam, join, pull request, board, JSON stream |
+| `internal/box` | Box providers: boat, local |
+| `internal/proc` | Starts child processes as a group, so a timeout or Ctrl-C stops the whole tree, not only bash |
 
 ## Releases
 
 | Release | How |
 |---|---|
-| CLI | Push tag `vX.Y.Z` (or `vX.Y.Z-alpha.N`). `.github/workflows/release.yml` runs GoReleaser (`.goreleaser.yaml`): archives for macOS, Linux and Windows, `.deb`/`.rpm`/`.apk`, and the Homebrew formula in `josephgoksu/homebrew-tap` (needs the `HOMEBREW_TAP_TOKEN` secret; without it the release skips the formula). CI builds the same config as a snapshot on every pull request. The module path is `github.com/josephgoksu/TaskWing/v2`, so v2 tags work with `go install` |
+| CLI | Push tag `vX.Y.Z` (or `vX.Y.Z-alpha.N`). `.github/workflows/release.yml` runs GoReleaser (`.goreleaser.yaml`): archives for macOS, Linux and Windows, `.deb`/`.rpm`/`.apk`, and the Homebrew formula in `josephgoksu/homebrew-tap` (needs the `HOMEBREW_TAP_TOKEN` secret; without it the release skips the formula). CI builds the same config as a snapshot on every pull request. Releases build on the latest stable Go; CI tests on the minimum in `go.mod`. The module path is `github.com/josephgoksu/TaskWing/v2`, so v2 tags work with `go install` |
 
 ## House style
 

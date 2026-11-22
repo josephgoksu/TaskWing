@@ -41,9 +41,11 @@ nfpms:
     package_name: taskwing
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     homepage: https://taskwing.app
+    vendor: TaskWing
     maintainer: Joseph Goksu <6523823+josephgoksu@users.noreply.github.com>
     description: Open source harness that runs one coding task as parallel agents in sandboxes and returns one tested pull request.
     license: AGPL-3.0-only
+    section: devel
     formats: [deb, rpm, apk]
     # Every run shells out to bash and git on the host; Alpine ships neither.
     dependencies: [bash, git]

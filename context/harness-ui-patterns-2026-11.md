@@ -1,5 +1,7 @@
 # UI patterns from other agent harness tools (2026-11-14)
 
+> Written for the desktop cockpit prototype, which was dropped on 2026-11-22 (TaskWing is terminal only). Kept as research; the patterns still guide the terminal board.
+
 What other tools do, and what the TaskWing cockpit takes from them. Most comparison pages are written by vendors, so treat rankings as opinion. Only the sources below were read.
 
 ## Tools
@@ -92,7 +94,7 @@ Before any agent starts, the acceptance checks for the finished work are written
 | The exam runs in a clean sandbox on the joined work | A pass that depends on one agent's leftover state |
 | Each check is one plain sentence the user can read | The user has to read test code to know what "verified" means |
 | A product answer from the user becomes a check | The answer is given once and never enforced |
-| The user can add a check in plain words; the lead agent turns it into a test | The exam only covers what the lead agent thought of |
+| The user can add a check in plain words; the exam writer turns it into a test | The exam only covers what the lead agent thought of |
 | Once work starts, changing a check needs the user's OK | The lead agent loosens the exam to pass it |
 | On a failed check the lead agent says whether the work or the exam was wrong | A bad check fails good work with no way out |
 
