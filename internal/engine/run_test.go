@@ -53,9 +53,20 @@ func testdata(t *testing.T, name string) string {
 	return p
 }
 
+// quietSecrets clears every credential the box secret scan would find, so the
+// fake boxes (which run on this machine and inherit its environment) pass the
+// scan wherever the tests run, including a release job that holds tokens such as
+// HOMEBREW_TAP_TOKEN.
 func quietSecrets(t *testing.T) {
+	t.Helper()
 	for _, k := range []string{"GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "AWS_SECRET_ACCESS_KEY"} {
 		t.Setenv(k, "")
+	}
+	for _, kv := range os.Environ() {
+		k, _, ok := strings.Cut(kv, "=")
+		if ok && k != "" && len(findSecrets(kv)) > 0 {
+			t.Setenv(k, "")
+		}
 	}
 }
 

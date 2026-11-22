@@ -4,9 +4,8 @@ version: 2
 
 project_name: taskwing
 
-before:
-  hooks:
-    - go test ./...
+# Tests run in their own step of .github/workflows/release.yml, before this,
+# so they never see the release tokens.
 
 builds:
   - id: taskwing
