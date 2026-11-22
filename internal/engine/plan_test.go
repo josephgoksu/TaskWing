@@ -48,6 +48,10 @@ func TestPatternsOverlap(t *testing.T) {
 		{"src/api", "src/*/handlers.go", true},
 		{"src/api", "src/**/handlers.go", true},
 		{"api/*.go", "api/sub", false},
+		{"api", "**/*_test.go", true},
+		{"billing", "**/handlers/*.go", true},
+		{"API/x.go", "api/x.go", true},
+		{"Billing/**", "billing/retry.go", true},
 	}
 	for _, c := range cases {
 		if got := patternsOverlap(c.a, c.b); got != c.want {
@@ -164,5 +168,133 @@ func TestInterfaceReachesExamAndBuilders(t *testing.T) {
 	}
 	if strings.Contains(examPrompt("task", ""), "The public interface is pinned") {
 		t.Error("an empty interface should add nothing")
+	}
+}
+
+func TestValidateNormalisesAndRefusesOwns(t *testing.T) {
+	p := &Plan{Cards: []Card{
+		{ID: "c1", Owns: []string{"./a/b/", `web\app.ts`, "x//y/./z.go"}, Prompt: "x"},
+	}}
+	if err := p.Validate(4); err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	if got := strings.Join(p.Cards[0].Owns, ","); got != "a/b/**,web/app.ts,x/y/z.go" {
+		t.Fatalf("owns not normalised: %s", got)
+	}
+	bad := map[string]string{
+		"":                        "empty",
+		"  ":                      "empty",
+		"/etc/passwd":             "relative",
+		"C:/x":                    "relative",
+		"../x":                    "..",
+		"a/../../x":               "..",
+		".":                       "whole repository",
+		"./":                      "whole repository",
+		"*":                       "whole repository",
+		"**":                      "whole repository",
+		"**/*":                    "whole repository",
+		"a/taskwing_exam_test.go": "reserved",
+		"a/TaskWing_Exam/**":      "reserved",
+	}
+	for own, want := range bad {
+		p := &Plan{Cards: []Card{{ID: "c1", Owns: []string{own}, Prompt: "x"}}}
+		err := p.Validate(4)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("owns %q: got %v, want an error with %q", own, err, want)
+		}
+	}
+}
+
+func TestValidateOverlapIgnoresCase(t *testing.T) {
+	p := &Plan{Cards: []Card{
+		{ID: "c1", Owns: []string{"API/handler.go"}, Prompt: "x"},
+		{ID: "c2", Owns: []string{"./api/handler.go"}, Prompt: "y"},
+	}}
+	if err := p.Validate(4); err == nil || !strings.Contains(err.Error(), "both own") {
+		t.Fatalf("case-different paths accepted: %v", err)
+	}
+}
+
+func TestValidateRefusesIDsDifferingInCase(t *testing.T) {
+	p := &Plan{Cards: []Card{
+		{ID: "api", Owns: []string{"a/**"}, Prompt: "x"},
+		{ID: "API", Owns: []string{"b/**"}, Prompt: "y"},
+	}}
+	if err := p.Validate(4); err == nil || !strings.Contains(err.Error(), "differ only in case") {
+		t.Fatalf("ids differing in case accepted: %v", err)
+	}
+}
+
+func TestValidateSeams(t *testing.T) {
+	cards := []Card{
+		{ID: "c1", Owns: []string{"a/**"}, Prompt: "x"},
+		{ID: "c2", Owns: []string{"b/**"}, Prompt: "y"},
+		{ID: "c3", Owns: []string{"c/**"}, Prompt: "z"},
+	}
+	cases := []struct {
+		seam Seam
+		want string // "" means accepted
+	}{
+		{Seam{Between: []string{"c1", "c2"}, Owner: "c2"}, ""},
+		{Seam{Between: []string{"c1"}, Owner: "c1"}, "two different cards"},
+		{Seam{Between: []string{"c1", "c1"}, Owner: "c1"}, "two different cards"},
+		{Seam{Between: []string{"c1", "c2", "c3"}, Owner: "c1"}, "two different cards"},
+		{Seam{Between: []string{"c1", "nope"}, Owner: "c1"}, "two different cards"},
+		{Seam{Between: []string{"c1", "c2"}, Owner: "c3"}, "not one of its two cards"},
+		{Seam{Between: []string{"c1", "c2"}, Owner: "zz"}, "no owner"},
+	}
+	for _, c := range cases {
+		p := &Plan{Cards: cards, Seams: []Seam{c.seam}}
+		err := p.Validate(4)
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%+v refused: %v", c.seam, err)
+		case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
+			t.Errorf("%+v: got %v, want %q", c.seam, err, c.want)
+		}
+	}
+}
+
+func TestExtractJSONSkipsProse(t *testing.T) {
+	plan := `{"task":"t","cards":[{"id":"c1","owns":["a"],"prompt":"use {id} routes"}]}`
+	for _, in := range []string{
+		"Routes like {id} stay.\n" + plan + "\nDone {really}.",
+		"Here:\n```json\n" + plan + "\n```\nNote: closing } here",
+		"{not json} " + plan,
+		plan,
+	} {
+		got, err := extractJSON(in)
+		if err != nil || got != plan {
+			t.Errorf("extractJSON(%q) = %q, %v", in, got, err)
+		}
+	}
+	for _, in := range []string{"", "no braces", "{id} and {name}", "[1, 2]"} {
+		if got, err := extractJSON(in); err == nil {
+			t.Errorf("extractJSON(%q) = %q, want an error", in, got)
+		}
+	}
+}
+
+func TestCardOverlaps(t *testing.T) {
+	a := Card{Owns: []string{"a/**", "shared.go"}}
+	b := Card{Owns: []string{"b/**", "shared.go"}}
+	if mine, theirs, ok := a.overlaps(b); !ok || mine != "shared.go" || theirs != "shared.go" {
+		t.Fatalf("overlaps = %q %q %v", mine, theirs, ok)
+	}
+	if _, _, ok := a.overlaps(Card{Owns: []string{"c/**"}}); ok {
+		t.Fatal("disjoint cards overlap")
+	}
+}
+
+func TestLeadPromptCardCount(t *testing.T) {
+	if p := leadPrompt("t", 1, ""); strings.Contains(p, "2 to 1") || !strings.Contains(p, "Exactly 1 card") {
+		t.Error("max 1 reads wrong")
+	}
+	if p := leadPrompt("t", 6, ""); !strings.Contains(p, "At most 6 cards") {
+		t.Error("max 6 not stated")
+	}
+	p := &Plan{Cards: []Card{{ID: "c1", Owns: []string{"a/**"}, Prompt: "x"}}}
+	if !strings.Contains(workerPrompt(p, p.Cards[0], 1, "~/r"), examMarker) {
+		t.Error("workers are not told the exam paths are reserved")
 	}
 }

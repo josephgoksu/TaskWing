@@ -6,16 +6,25 @@ import (
 )
 
 func leadPrompt(task string, maxCards int, feedback string) string {
+	var count string
+	switch {
+	case maxCards == 1:
+		count = "Exactly 1 card: this run builds the task with one agent."
+	case maxCards > 1:
+		count = fmt.Sprintf("At most %d cards. Use fewer when the task is small; 1 card is allowed only if the task cannot be split.", maxCards)
+	default:
+		count = "As few cards as the task needs; 1 card is allowed only if the task cannot be split."
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, `You are the lead agent of a TaskWing run. Read this repository, then split the task below into pieces that separate coding agents build at the same time, each in its own sandbox with its own copy of the repository.
 
 Task: %s
 
 Rules for the split:
-- 2 to %d cards. Use fewer cards when the task is small; 1 card is allowed only if the task cannot be split.
-- Every card owns its own files, given as path patterns ("billing/retry/**", "api/webhook.go"). No two cards may own the same path. Tests for a card's code belong to that card.
-- If one card needs something another card makes (a type, a function name, a route), write it as a seam with an owner, and put the exact contract (names, signatures, formats) in both cards' prompts.
-- Each prompt is complete on its own: the agent sees only its card, not the task or the other cards. Say what to build, which files, which existing code to follow, and how to check it works (the exact test command).
+- %s
+- Every card owns its own files, given as path patterns ("billing/retry/**", "api/webhook.go"). Patterns are relative to the repository root, use forward slashes, and start with neither "/" nor "./". * matches within one folder, ** matches any depth, and a pattern ending in / owns a folder. Never own the whole repository (".", "*", "**"), and never a path containing %q (reserved for the exam). No two cards may own the same path. Tests for a card's code belong to that card.
+- If one card needs something another card makes (a type, a function name, a route), write it as a seam between exactly those two cards, owned by one of them, and put the exact contract (names, signatures, formats) in both cards' prompts.
+- Each agent sees its own card, the public interface below and the seams it is part of; it never sees the task or the other cards. So each prompt must be complete on its own: say what to build, which files, which existing code to follow, and how to check it works (the exact test command).
 - Pin the public interface: every name a user or test of the finished work would touch (routes and methods, JSON field names, env vars, CLI flags, exported functions, file formats), exact and complete. A separate session writes the acceptance tests from this alone.
 - Do not write code yourself. Do not change any file.
 
@@ -24,7 +33,7 @@ Answer with ONLY this JSON, no other text:
  "cards": [{"id": "c1", "title": "<3 to 6 words>", "owns": ["<pattern>"], "prompt": "<full instructions>"}],
  "seams": [{"between": ["c1", "c2"], "owner": "c1", "contract": "<exact contract>"}],
  "interface": "<the exact public names, one per line>"}
-`, task, maxCards)
+`, task, count, examMarker)
 	if feedback != "" {
 		fmt.Fprintf(&b, "\nYour previous plan was refused: %s\nFix it and answer with the JSON again.\n", feedback)
 	}
@@ -52,11 +61,11 @@ When the files are written, answer with ONLY this JSON, no other text:
 `, task, pinned)
 }
 
-// userExamMarker is in the path of every test written for a check the user added.
 // examMarker must be in the path of every test file the exam writes. Only
 // new files with it are kept, and no card may own a path with it.
 const examMarker = "taskwing_exam"
 
+// userExamMarker is in the path of every test written for a check the user added.
 const userExamMarker = examMarker + "_user"
 
 // userExamPrompt asks for one check per sentence the user added, in order.
@@ -111,9 +120,10 @@ func workerPrompt(p *Plan, c Card, n int, repoDir string) string {
 	}
 	fmt.Fprintf(&b, `Rules:
 - Create or change only files matching: %s. Other agents own every other file, and their work is joined with yours later.
+- Never create or edit a file whose path contains %q. Those paths are reserved for the hidden exam, and a file of yours there breaks it.
 - Build it, then run the relevant tests until they pass.
 - Commit your work on the current branch with a short plain message. No trailers, no co-author lines, no mention of AI. Do not push, do not add remotes, do not create branches.
 - When you are done, end your answer with one line that starts with "PROOF:" and says in plain words what you showed working, for example "PROOF: retries land at +24h, +72h and +7d; 12 tests pass".
-`, strings.Join(c.Owns, ", "))
+`, strings.Join(c.Owns, ", "), examMarker)
 	return b.String()
 }

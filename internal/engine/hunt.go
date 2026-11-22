@@ -3,12 +3,16 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/josephgoksu/TaskWing/v2/internal/proc"
 )
 
 // bug is one finding from the hunter, with the test that proves it.
@@ -36,7 +40,7 @@ Do this:
 1. Read the code and its tests. Look for real defects: wrong results, crashes, races, broken edge cases, code that does not do what its name, docs or callers expect, inconsistencies between parts. Not style, not missing features, not "could be risky".
 2. For each bug (at most %d, the most important first), write ONE new test file whose path contains "taskwing_exam" (for example "billing/taskwing_exam_b1_test.go"). Never change an existing file. The test must compile and run on the current code, and FAIL there because of the bug, through an assertion, not a compile error. It must pass once the bug is fixed properly.
 3. Run each test yourself and see it fail for the right reason. Delete any test that passes; that is not a bug.
-4. For each bug, name the files a fix should touch as path patterns ("billing/retry.go", "api/**"). Include one NEW test file for the fixer to add its own test, named after the bug, for example "billing/retry_b1_fix_test.go". Never list your taskwing_exam file. Two bugs must not share files; if they do, keep the more important one.
+4. For each bug, name the files a fix should touch as path patterns relative to the repository root ("billing/retry.go", "api/**"). Include one NEW test file for the fixer to add its own test, named after the bug, for example "billing/retry_b1_fix_test.go". No pattern may cover any of your taskwing_exam files (so prefer exact files to folders), and none may own the whole repository. Two bugs must not share files; if they do, keep the more important one.
 5. Give one command that runs all the existing tests.
 6. List every suspect you dropped (its test passed, or it was not a real bug) with one plain reason each.
 
@@ -108,10 +112,27 @@ func (r *runner) hunt(ctx context.Context) (*Plan, []Check, []byte, error) {
 	if len(plan.Cards) > 0 && strings.TrimSpace(regression) != "" {
 		checks = append(checks, Check{Text: "All existing tests still pass", Command: regression})
 	}
+	for i := range checks {
+		checks[i].ID = fmt.Sprintf("k%d", i+1)
+	}
+	// Each bug passed Validate alone in runHunter; this catches anything the
+	// cards break together, with the same rules as a lead's plan.
+	if len(plan.Cards) > 0 {
+		if err := plan.Validate(r.o.MaxCards); err != nil {
+			return nil, nil, nil, fmt.Errorf("hunt: the fix plan is unsafe: %w", err)
+		}
+	}
 	r.saveJSON("plan.json", plan)
-	_ = os.MkdirAll(filepath.Join(r.dir, "exam"), 0o755)
-	b, _ := json.MarshalIndent(checks, "", "  ")
-	_ = os.WriteFile(filepath.Join(r.dir, "exam", "checks.json"), b, 0o644)
+	if err := os.MkdirAll(filepath.Join(r.dir, "exam"), 0o700); err != nil {
+		return nil, nil, nil, fmt.Errorf("hunt: %w", err)
+	}
+	b, err := json.MarshalIndent(checks, "", "  ")
+	if err == nil {
+		err = os.WriteFile(filepath.Join(r.dir, "exam", "checks.json"), b, 0o600)
+	}
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("hunt: could not save the checks: %w", err)
+	}
 	r.ev.log("hunt.ready", map[string]any{"found": len(bugs), "proven": len(plan.Cards)})
 	return plan, checks, patch, nil
 }
@@ -125,11 +146,11 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 	max := r.o.MaxCards
 	out, err := hostAgent(ctx, r.o.HuntCmd, wt, huntPrompt(r.o.Task, max), filepath.Join(r.dir, "logs", "hunter.log"))
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("the bug hunter failed: %v", err)
+		return nil, "", nil, fmt.Errorf("the bug hunter failed: %w", err)
 	}
 	js, err := extractJSON(out)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("the bug hunter gave no findings: %v", err)
+		return nil, "", nil, fmt.Errorf("the bug hunter gave no findings: %w", err)
 	}
 	var h struct {
 		Bugs       []bug  `json:"bugs"`
@@ -140,7 +161,7 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 		} `json:"dropped"`
 	}
 	if err := json.Unmarshal([]byte(js), &h); err != nil {
-		return nil, "", nil, fmt.Errorf("the findings are not valid JSON: %v", err)
+		return nil, "", nil, fmt.Errorf("the findings are not valid JSON: %w", err)
 	}
 	if len(h.Bugs) > max {
 		h.Bugs = h.Bugs[:max]
@@ -165,9 +186,13 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 	// place, so one broken test cannot make another bug look proven.
 	files := map[string][]byte{}
 	for f := range added {
-		if b, err := os.ReadFile(filepath.Join(wt, f)); err == nil {
+		p, err := insideTree(wt, f)
+		if err != nil {
+			continue
+		}
+		if b, err := os.ReadFile(p); err == nil {
 			files[f] = b
-			_ = os.Remove(filepath.Join(wt, f))
+			_ = os.Remove(p)
 		}
 	}
 	// Put the worktree back to today's code. Anything else the hunter changed
@@ -190,36 +215,62 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 		}
 		b.Test = strings.TrimPrefix(strings.TrimSpace(b.Test), "./")
 		// The id names a git ref and a log file: it must be safe and unique.
-		if !validCardID(b.ID) || seen[b.ID] {
+		// Case-folded: "B1" and "b1" are one ref file on macOS.
+		if !validCardID(b.ID) || seen[strings.ToLower(b.ID)] {
 			b.ID = fmt.Sprintf("b%d", i+1)
 			for n := i + 2; seen[b.ID]; n++ {
 				b.ID = fmt.Sprintf("b%d", n)
 			}
 		}
-		seen[b.ID] = true
+		seen[strings.ToLower(b.ID)] = true
 		view.set(func(c *cardRun) { c.thought = "checking " + b.ID + " fails today: " + b.Title })
 		switch {
 		case strings.TrimSpace(b.Command) == "" || len(b.Owns) == 0:
 			b.dropped = "no test command or no files to fix"
 			continue
-		case !added[b.Test]:
+		case files[b.Test] == nil:
 			b.dropped = "its test file is missing or not a new taskwing_exam file"
 			continue
 		}
-		if o := r.overlap(b, h.Bugs[:i]); o != "" {
+		// The same rules as a lead's plan, so a fixer cannot own the whole
+		// repository, a path outside it, or the exam's own files.
+		card := Card{ID: b.ID, Title: b.Title, Owns: b.Owns, Prompt: fixPrompt(*b)}
+		one := &Plan{Cards: []Card{card}}
+		if err := one.Validate(0); err != nil {
+			b.dropped = "its files are unsafe to hand out: " + err.Error()
+			continue
+		}
+		card = one.Cards[0]
+		b.Owns = card.Owns
+		if t := ownsAny(card, added); t != "" {
+			b.dropped = "its files cover the hidden test " + t
+			continue
+		}
+		if o := overlapsEarlier(card, h.Bugs[:i]); o != "" {
 			b.dropped = "touches the same files as " + o
 			continue
 		}
-		testPath := filepath.Join(wt, b.Test)
-		_ = os.MkdirAll(filepath.Dir(testPath), 0o755)
-		_ = os.WriteFile(testPath, files[b.Test], 0o644)
+		testPath, err := insideTree(wt, b.Test)
+		if err == nil {
+			err = os.MkdirAll(filepath.Dir(testPath), 0o700)
+		}
+		if err == nil {
+			err = os.WriteFile(testPath, files[b.Test], 0o600)
+		}
+		if err != nil {
+			b.dropped = "its test could not be put back: " + err.Error()
+			continue
+		}
 		cctx, cancel := context.WithTimeout(ctx, r.o.CheckTimeout)
-		cmd := exec.CommandContext(cctx, "bash", "-c", "nice -n 10 bash -c "+shq(b.Command))
+		cmd := exec.CommandContext(cctx, "nice", "-n", "10", "bash", "-c", b.Command)
+		proc.Group(cmd)
 		cmd.Dir = wt
 		cmdOut, err := cmd.CombinedOutput()
 		cancel()
 		_ = os.Remove(testPath)
-		_ = os.WriteFile(filepath.Join(r.dir, "logs", "bug-"+b.ID+".log"), cmdOut, 0o644)
+		if werr := os.WriteFile(filepath.Join(r.dir, "logs", "bug-"+b.ID+".log"), cmdOut, 0o600); werr != nil {
+			r.ui.say("  %s could not save the log of %s: %v", r.ui.amber("!"), b.ID, werr)
+		}
 		if err == nil {
 			b.dropped = "its test passes on today's code"
 			continue
@@ -236,8 +287,16 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 		return h.Bugs, h.Regression, nil, nil
 	}
 	for _, f := range keep {
-		_ = os.MkdirAll(filepath.Dir(filepath.Join(wt, f)), 0o755)
-		_ = os.WriteFile(filepath.Join(wt, f), files[f], 0o644)
+		p, err := insideTree(wt, f)
+		if err == nil {
+			err = os.MkdirAll(filepath.Dir(p), 0o700)
+		}
+		if err == nil {
+			err = os.WriteFile(p, files[f], 0o600)
+		}
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("could not put back the test %s: %w", f, err)
+		}
 	}
 	if _, err := git(ctx, wt, append([]string{"add", "--"}, keep...)...); err != nil {
 		return nil, "", nil, err
@@ -247,26 +306,71 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 		return nil, "", nil, err
 	}
 	examDir := filepath.Join(r.dir, "exam")
-	_ = os.MkdirAll(examDir, 0o755)
-	_ = os.WriteFile(filepath.Join(examDir, "exam.patch"), []byte(patch), 0o644)
+	if err := os.MkdirAll(examDir, 0o700); err != nil {
+		return nil, "", nil, err
+	}
+	if err := os.WriteFile(filepath.Join(examDir, "exam.patch"), []byte(patch), 0o600); err != nil {
+		return nil, "", nil, fmt.Errorf("could not save the exam patch: %w", err)
+	}
 	return h.Bugs, h.Regression, []byte(patch), nil
 }
 
-// overlap names an earlier proven bug whose files this bug would also touch.
-func (r *runner) overlap(b *bug, earlier []bug) string {
+// overlapsEarlier names an earlier proven bug whose files c would also touch.
+func overlapsEarlier(c Card, earlier []bug) string {
 	for _, e := range earlier {
 		if !e.proven {
 			continue
 		}
-		for _, x := range b.Owns {
-			for _, y := range e.Owns {
-				if patternsOverlap(x, y) {
-					return e.ID
-				}
+		if _, _, ok := c.overlaps(Card{Owns: e.Owns}); ok {
+			return e.ID
+		}
+	}
+	return ""
+}
+
+// ownsAny names a hidden test file that one of c's patterns covers. A fixer
+// owning it may write the same path, and the hidden test then fails to apply
+// in the exam box.
+func ownsAny(c Card, tests map[string]bool) string {
+	for t := range tests {
+		for _, p := range c.Owns {
+			if MatchOwn(strings.ToLower(p), strings.ToLower(t)) {
+				return t
 			}
 		}
 	}
 	return ""
+}
+
+// insideTree joins rel onto root and refuses anything that could land outside
+// it: an absolute path, a .. segment, or a symlink on the way (the hunter can
+// plant "pkg -> /home/you" and turn our write of "pkg/x_test.go" into a write
+// anywhere on this machine).
+func insideTree(root, rel string) (string, error) {
+	if rel == "" || filepath.IsAbs(rel) || strings.HasPrefix(rel, "/") {
+		return "", fmt.Errorf("%q is not a path inside the repository", rel)
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for _, part := range parts {
+		if part == ".." || part == "" || part == "." {
+			return "", fmt.Errorf("%q is not a clean path inside the repository", rel)
+		}
+	}
+	p := root
+	for _, part := range parts {
+		p = filepath.Join(p, part)
+		fi, err := os.Lstat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			break // nothing further down exists yet, so nothing can redirect
+		}
+		if err != nil {
+			return "", err
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			return "", fmt.Errorf("%q goes through a symlink", rel)
+		}
+	}
+	return filepath.Join(root, filepath.FromSlash(rel)), nil
 }
 
 func (r *runner) showBugs(p *Plan) {
