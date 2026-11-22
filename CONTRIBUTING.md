@@ -16,7 +16,6 @@ Thanks for helping. TaskWing is early, so issues, ideas and small pull requests 
 git clone https://github.com/josephgoksu/TaskWing
 cd TaskWing
 go build ./cmd/taskwing          # the engine and CLI (Go 1.24+)
-cd app && npm install && npm run dev   # the desktop app (Rust and Node 20+, see app/README.md)
 ```
 
 ## Checks
@@ -26,12 +25,10 @@ CI runs these on every pull request. Run them before you push.
 | Part | Command |
 |---|---|
 | Engine | `gofmt -l cmd internal`, `go vet ./...`, `go test -race ./...` |
-| App | `cd app && npm ci && npm run check` |
-| App shell | `cd app/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` |
 
 ## House rules
 
-- One focused change per pull request, with a [conventional commit](https://www.conventionalcommits.org) title: `feat(engine): ...`, `fix(app): ...`, `docs: ...`.
+- One focused change per pull request, with a [conventional commit](https://www.conventionalcommits.org) title: `feat(engine): ...`, `fix(cli): ...`, `docs: ...`.
 - A pull request that builds a feature, or adds or renames a concept, updates [docs/FEATURES.md](docs/FEATURES.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) in the same pull request.
 - The engine never calls a model and never imports a vendor SDK. New sandboxes and agents go behind the Box and Agent adapters.
 - No real secret ever goes into a sandbox, and no sandbox ever gets a GitHub login.

@@ -7,7 +7,7 @@ Rules for this file:
 | Rule | What breaks without it |
 |---|---|
 | A change that adds, renames or removes a concept updates this file in the same pull request | The map and the code drift apart, and the map stops being worth reading |
-| Every concept has one name, used the same way in code, docs, CLI and cockpit | Two words for one thing, or one word for two things |
+| Every concept has one name, used the same way in code, docs and CLI | Two words for one thing, or one word for two things |
 | A concept that is not built yet stays here, marked *planned* | Plans live only in someone's head |
 
 Status marks: **built** (in the code now), **partial** (in the code, but not all of what is described), **planned** (not in the code yet).
@@ -22,7 +22,7 @@ flowchart TB
 
   subgraph Clients["Clients: show state, send commands (no logic)"]
     CLI[CLI]
-    CP[Cockpit app]
+    JS[Scripts and CI, via JSON]
     SK[Claude Code skill]
   end
 
@@ -57,7 +57,7 @@ flowchart TB
     MD[Models<br/>Claude, GPT, open-weight]
   end
 
-  U --> CLI & CP & SK --> RUN
+  U --> CLI & JS & SK --> RUN
   RUN --> LEAD --> PLANCHK
   RUN --> EW --> EXAMR
   RUN --> ROUTER --> AR --> MD
@@ -131,7 +131,7 @@ classDiagram
 | Exam approval | The user says yes to the checks before any agent starts | User | partial (a y/N prompt; no adding checks yet) |
 | Exam result | Pass or fail per check, on the joined work, in a clean box | Exam runner | built |
 | Ruling | After a failure: the lead decides whether the work or the check was wrong; only the user changes a check | Lead, user | planned |
-| Proof | What each card shows as evidence (a page, a request, a test, a file), drawn as a picture | Agent, cockpit | partial (one text line per card) |
+| Proof | What each card shows as evidence (a page, a request, a test, a file), shown as one line on the board | Agent, CLI | partial (one text line per card) |
 | Receipt | What a run leaves behind for review and slides: time, cost, models used, checks passed, pull request link, a replay | Engine | partial (events, logs, PR body; no cost, models or replay) |
 
 ### Agents
@@ -161,7 +161,7 @@ classDiagram
 | Concept | What it is | Owned by | Status |
 |---|---|---|---|
 | Event log | Append-only `~/.taskwing/runs/<id>/events.jsonl`. Every dispatch is written before it is sent | Engine | partial (written after each step happens, not before it is sent; not yet used to resume) |
-| Decision | Something an agent decided and says afterwards (Decided, Fixed, Planned, You, Done), with change and undo | Engine, cockpit | planned |
+| Decision | Something an agent decided and says afterwards (Decided, Fixed, Planned, You, Done), with change and undo | Engine, CLI | planned |
 | Resume | After a crash the engine rebuilds a run from boxes, git refs, GitHub and the event log | Engine | planned |
 | Doctor | Finds and cleans boxes and refs a run left behind; never touches the base, or every later run loses the box it forks from | CLI today (`cmd/taskwing`); the engine once the engine stream exists | built |
 
@@ -170,9 +170,9 @@ classDiagram
 | Part | Does | Never does | What breaks without it | Status |
 |---|---|---|---|---|
 | Engine | All the logic: runs, plan check, boxes, bundles, exam, join, push, scan, event log | Call a model itself, hold a subscription login | Model code ties the engine to one vendor; holding a subscription login breaks the provider's terms (`PRINCIPLES.md` #3) | built (the PoC) |
-| CLI | Every engine action as a command | Anything the engine can't do | Logic in a client, so the CLI and the cockpit drift apart (`PRINCIPLES.md` #11) | partial: `run`, `hunt`, `config`, `doctor`, `version` |
-| Engine stream | Newline-delimited JSON: events out, commands in (`taskwing engine --json`, `app/docs/engine-protocol.md`). The cockpit uses it; the CLI still draws its own board from the same run | | | built: no pause, agent questions or notes yet |
-| Cockpit | Desktop app (Tauri, `app/`, the website's design system) that draws the stream as pictures | Hold logic or state of its own | The cockpit and the CLI drift apart, and runs can't be scripted (`PRINCIPLES.md` #11) | partial: the app runs real tasks on the engine stream; no signed release yet |
+| CLI | Every engine action as a command | Anything the engine can't do | Logic outside the engine, so runs can't be scripted (`PRINCIPLES.md` #11) | partial: `run`, `hunt`, `config`, `doctor`, `version` |
+| Engine stream | Newline-delimited JSON: events out, commands in (`taskwing engine --json`, `docs/engine-protocol.md`) for scripts, CI and editors; the CLI draws its own board from the same run | | | built: no pause, agent questions or notes yet |
+| Board | The CLI's live view: one square per agent (blue working, grey done, red stuck, outline waiting) and one line each, redrawn in place on a terminal | Hold state of its own; it draws the run | Paragraphs per agent nobody reads (`AGENTS.md`, Pictures over text) | built (`internal/engine/ui.go`) |
 | Skill | A Claude Code skill: installs TaskWing, starts a run from a chat, fixes setup | Run agents itself | Agents the engine can't see, scan or clean up | planned |
 
 ## Adapters

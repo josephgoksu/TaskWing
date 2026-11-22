@@ -14,8 +14,8 @@ import (
 	"github.com/josephgoksu/TaskWing/v2/internal/box"
 )
 
-// app drives Serve the way the desktop app does: commands in, events out.
-type app struct {
+// client drives Serve the way a front end does: commands in, events out.
+type client struct {
 	t      *testing.T
 	in     *io.PipeWriter
 	events chan map[string]any
@@ -23,11 +23,11 @@ type app struct {
 	done   chan error
 }
 
-func startApp(t *testing.T, start StartFunc) *app {
+func startClient(t *testing.T, start StartFunc) *client {
 	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
-	a := &app{t: t, in: inW, events: make(chan map[string]any, 1000), done: make(chan error, 1)}
+	a := &client{t: t, in: inW, events: make(chan map[string]any, 1000), done: make(chan error, 1)}
 	go func() {
 		err := Serve(context.Background(), inR, outW, "test", start)
 		outW.Close()
@@ -57,7 +57,7 @@ func startApp(t *testing.T, start StartFunc) *app {
 	return a
 }
 
-func (a *app) send(cmd map[string]any) {
+func (a *client) send(cmd map[string]any) {
 	a.t.Helper()
 	b, _ := json.Marshal(cmd)
 	if _, err := a.in.Write(append(b, '\n')); err != nil {
@@ -66,7 +66,7 @@ func (a *app) send(cmd map[string]any) {
 }
 
 // wait returns the next event that matches, failing after the timeout.
-func (a *app) wait(timeout time.Duration, match func(map[string]any) bool) map[string]any {
+func (a *client) wait(timeout time.Duration, match func(map[string]any) bool) map[string]any {
 	a.t.Helper()
 	deadline := time.After(timeout)
 	for {
@@ -89,7 +89,7 @@ func typed(typ string) func(map[string]any) bool {
 	return func(ev map[string]any) bool { return ev["type"] == typ }
 }
 
-func (a *app) count(match func(map[string]any) bool) int {
+func (a *client) count(match func(map[string]any) bool) int {
 	n := 0
 	for _, ev := range a.seen {
 		if match(ev) {
@@ -131,7 +131,7 @@ func TestEngineStreamRunToPR(t *testing.T) {
 	t.Setenv("PATH", testdata(t, "fakebin")+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FAKE_STATE", state)
 	t.Setenv("FAKE_AGENT", testdata(t, "agent.sh"))
-	a := startApp(t, boatStart(t, home))
+	a := startClient(t, boatStart(t, home))
 
 	hello := a.wait(5*time.Second, typed("engine.hello"))
 	if hello["version"] != "test" || !strings.Contains(strings.Join(toStrings(hello["can"]), ","), "exam.now") {
@@ -200,7 +200,7 @@ func TestEngineStreamRedoAndExamNow(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("FAKE_AGENT_SLEEP", "20")
 	t.Setenv("FAKE_AGENT_WRITE_FIRST", "1")
-	a := startApp(t, func(ctx context.Context, c Command) (Options, error) {
+	a := startClient(t, func(ctx context.Context, c Command) (Options, error) {
 		return Options{
 			Task:     c.Task,
 			Dir:      c.Repo,
@@ -247,7 +247,7 @@ func TestEngineStreamRedoAndExamNow(t *testing.T) {
 
 func TestEngineStreamErrors(t *testing.T) {
 	home := t.TempDir()
-	a := startApp(t, boatStart(t, home))
+	a := startClient(t, boatStart(t, home))
 	for _, repo := range []string{"/no/such/folder", "not a repo!"} {
 		a.send(map[string]any{"type": "run.start", "repo": repo, "task": "x"})
 		id := a.wait(5*time.Second, typed("run.created"))["run"].(map[string]any)["id"]

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Square states, the same as the cockpit's squares.
+// Square states, drawn as the agent squares on the board.
 const (
 	stWaiting = "waiting"
 	stWorking = "working"
@@ -131,9 +131,13 @@ func (u *ui) board(stage string, started time.Time, cards []cardView) {
 		return
 	}
 	u.clearBoard()
+	// Autowrap off while drawing: a line wider than the terminal is cut at the
+	// edge instead of taking two rows, so the next redraw clears all of it.
+	fmt.Fprint(u.out, "\x1b[?7l")
 	for _, l := range lines {
 		fmt.Fprintln(u.out, l)
 	}
+	fmt.Fprint(u.out, "\x1b[?7h")
 	u.drawn = len(lines)
 }
 

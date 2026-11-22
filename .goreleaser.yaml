@@ -1,14 +1,8 @@
 # Release of the taskwing engine and CLI.
 # Push a tag vX.Y.Z (or vX.Y.Z-alpha.N) and .github/workflows/release.yml runs this.
-# The desktop app has its own tags (app-vX.Y.Z) and workflow (release-app.yml).
 version: 2
 
 project_name: taskwing
-
-git:
-  # Desktop app tags are a separate release line; never diff the CLI against them.
-  ignore_tags:
-    - "app-v*"
 
 before:
   hooks:

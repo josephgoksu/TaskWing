@@ -102,4 +102,4 @@ Exit code: 0 all checks passed, 3 some checks failed, 1 error.
 
 ## Not in the PoC
 
-The cockpit, the price tag before you say yes, starting from a Claude Code skill, live proof previews, run replays, NATS, other vendors, resuming after a crash.
+The price tag before you say yes, starting from a Claude Code skill, live proof previews, run replays, NATS, other vendors, resuming after a crash.
