@@ -18,8 +18,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Tests run in their own job with a read-only token and no OIDC, so test code
+  # never sees the release tokens (HOMEBREW_TAP_TOKEN, the write GITHUB_TOKEN
+  # that checkout persists, the id-token that signs provenance).
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # The same Go the release builds with.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+      - run: go test ./...
+
   release:
     name: GoReleaser
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

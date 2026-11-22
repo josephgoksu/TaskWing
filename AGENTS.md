@@ -38,7 +38,7 @@ CI runs these on every pull request (`.github/workflows/ci.yml`). Run them befor
 |---|---|
 | Engine | `gofmt -l cmd internal`, `go vet ./...`, `go test -race ./...` |
 | CLI build | `go build ./cmd/taskwing` |
-| Release config | `goreleaser release --snapshot --clean --skip=publish,before` (the `release-config` job) |
+| Release config | `goreleaser release --snapshot --clean --skip=publish` (the `release-config` job) |
 
 Without the last two, a broken binary or release config is found only when a tag is pushed, halfway through a public release.
 
@@ -55,7 +55,7 @@ Without the last two, a broken binary or release config is found only when a tag
 
 | Release | How |
 |---|---|
-| CLI | Push tag `vX.Y.Z` (or `vX.Y.Z-alpha.N`). `.github/workflows/release.yml` runs GoReleaser (`.goreleaser.yaml`): archives for macOS, Linux and Windows, `.deb`/`.rpm`/`.apk`, and the Homebrew formula in `josephgoksu/homebrew-tap` (needs the `HOMEBREW_TAP_TOKEN` secret; without it the release skips the formula). CI builds the same config as a snapshot on every pull request. Releases build on the latest stable Go; CI tests on the minimum in `go.mod`. The module path is `github.com/josephgoksu/TaskWing/v2`, so v2 tags work with `go install` |
+| CLI | Push tag `vX.Y.Z` (or `vX.Y.Z-alpha.N`). `.github/workflows/release.yml` runs the tests in a job without the release tokens, then GoReleaser (`.goreleaser.yaml`): archives for macOS, Linux and Windows, `.deb`/`.rpm`/`.apk`, and the Homebrew formula in `josephgoksu/homebrew-tap` (needs the `HOMEBREW_TAP_TOKEN` secret; without it the release skips the formula). CI builds the same config as a snapshot on every pull request. Releases build on the latest stable Go; CI tests on the minimum in `go.mod`. The module path is `github.com/josephgoksu/TaskWing/v2`, so v2 tags work with `go install` |
 
 ## House style
 

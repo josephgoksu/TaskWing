@@ -4,9 +4,9 @@ version: 2
 
 project_name: taskwing
 
-before:
-  hooks:
-    - go test ./...
+# Tests run in their own job of .github/workflows/release.yml, before this,
+# so they never see the release tokens. A goreleaser release run by hand does
+# not test: run go test ./... first.
 
 builds:
   - id: taskwing
