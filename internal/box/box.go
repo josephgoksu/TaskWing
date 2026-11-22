@@ -5,6 +5,14 @@ package box
 import (
 	"context"
 	"io"
+	"strings"
+	"unicode/utf8"
+)
+
+// Defaults for the agent in a boat box. The engine's flags show the same values.
+const (
+	DefaultModel  = "opus-5-5"
+	DefaultEffort = "medium"
 )
 
 // Box is one sandbox.
@@ -42,4 +50,30 @@ type Provider interface {
 	Destroy(ctx context.Context, b *Box) error
 	// List returns boxes whose name starts with prefix.
 	List(ctx context.Context, prefix string) ([]Box, error)
+}
+
+// firstLine returns the first line of s, at most 200 bytes, cut on a rune
+// boundary so an error message never ends in a broken UTF-8 sequence.
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	if len(s) > 200 {
+		i := 200
+		for i > 0 && !utf8.RuneStart(s[i]) {
+			i--
+		}
+		s = s[:i]
+	}
+	return s
+}
+
+// detail formats the first line of s as ": line", or "" when there is none,
+// so an error never ends in a dangling ": ".
+func detail(s string) string {
+	if l := firstLine(s); l != "" {
+		return ": " + l
+	}
+	return ""
 }
