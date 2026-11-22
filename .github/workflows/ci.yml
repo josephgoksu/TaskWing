@@ -52,6 +52,5 @@ jobs:
         with:
           distribution: goreleaser
           version: '~> v2'
-          # The engine job already runs the tests; skip the before hook here.
-          args: release --snapshot --clean --skip=publish,before
+          args: release --snapshot --clean --skip=publish
 
