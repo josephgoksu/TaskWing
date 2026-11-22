@@ -8,12 +8,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,7 +34,7 @@ func versionString() string {
 	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
 		return bi.Main.Version
 	}
-	return "v2-poc"
+	return "dev"
 }
 
 const (
@@ -41,63 +43,101 @@ const (
 	defaultLocal = `claude -p --dangerously-skip-permissions`
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
+// Exit codes: 0 done, 1 error or stopped, 2 usage, 3 the exam ran and some
+// checks failed (so scripts can tell "it ran, the work is not right" apart
+// from "it did not run").
+const (
+	exitError  = 1
+	exitUsage  = 2
+	exitFailed = 3
+)
+
+// errChecksFailed ends a run whose exam had failures. main turns it into
+// exit 3 after every deferred cleanup has run.
+var errChecksFailed = errors.New("some checks failed")
+
+// errUsage marks a mistake in the command line (exit 2).
+type errUsage struct{ msg string }
+
+func (e errUsage) Error() string { return e.msg }
+
+func main() { os.Exit(run(os.Args[1:])) }
+
+func run(args []string) int {
+	if len(args) == 0 {
+		usage(os.Stderr)
+		return exitUsage
 	}
 	var err error
-	switch os.Args[1] {
+	switch args[0] {
 	case "run":
-		err = cmdRun(os.Args[2:], false)
+		err = cmdRun(args[1:], false)
 	case "hunt":
-		err = cmdRun(os.Args[2:], true)
+		err = cmdRun(args[1:], true)
 	case "config":
-		err = cmdConfig(os.Args[2:])
+		err = cmdConfig(args[1:])
 	case "doctor":
-		err = cmdDoctor(os.Args[2:])
+		err = cmdDoctor(args[1:])
 	case "engine":
-		err = cmdEngine(os.Args[2:])
+		err = cmdEngine(args[1:])
 	case "version", "--version", "-v":
 		fmt.Println("taskwing", versionString())
 	case "help", "--help", "-h":
-		usage()
+		usage(os.Stdout)
 	default:
-		usage()
-		os.Exit(2)
+		fmt.Fprintf(os.Stderr, "taskwing: unknown command %q (taskwing help lists them)\n", args[0])
+		return exitUsage
 	}
-	if err != nil {
+	var u errUsage
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, flag.ErrHelp):
+		usage(os.Stdout)
+		return 0
+	case errors.Is(err, errChecksFailed):
+		return exitFailed
+	case errors.As(err, &u):
 		fmt.Fprintln(os.Stderr, "taskwing:", err)
-		os.Exit(1)
+		return exitUsage
+	default:
+		fmt.Fprintln(os.Stderr, "taskwing:", err)
+		return exitError
 	}
 }
 
-func usage() {
-	fmt.Fprint(os.Stderr, `taskwing runs one task with several agents in sandboxes and opens one draft pull request.
+func usage(w io.Writer) {
+	fmt.Fprint(w, `TaskWing: give it one task; a team of agents builds it in sandboxes, and you get back one tested pull request.
 
-  taskwing run "<task>" [flags]    plan, exam, build, join, exam, pull request
+New here? In a git repository, try it on this machine first:
+  taskwing run "add a /health endpoint" --provider local --no-pr
+
+Commands
+  taskwing run "<task>" [flags]    plan · you approve the exam · agents build · exam · draft PR
   taskwing hunt ["<area>"] [flags] find bugs, prove each with a failing test, fix them
-  taskwing config boat-base <id>   remember the boat base box (instead of TASKWING_BOAT_BASE)
-  taskwing doctor [--clean]        find (and delete) leftover sandboxes and refs
-  taskwing engine --json           run tasks for scripts: JSON lines on stdin and stdout
+  taskwing config [boat-base <id>] show or save settings (~/.taskwing/config.json)
+  taskwing doctor [--provider boat|local] [--clean]
+                                   find (and delete) leftover sandboxes and agent refs
+  taskwing engine --json [--max-cards n] [--keep]
+                                   the same runs for scripts: JSON lines on stdin and stdout
   taskwing version
 
-Run flags:
-  --provider boat|local   where agents run (TASKWING_PROVIDER, default boat)
-  --boat-base <id>        prepared boat box to fork (TASKWING_BOAT_BASE, or taskwing config)
-  --boat-env <name>       boat environment for the forks (TASKWING_BOAT_ENV)
-  --model <name>          agent model in boat (TASKWING_MODEL, default opus-5-5)
-  --effort <level>        agent effort in boat (TASKWING_EFFORT, default medium)
-  --max-cards <n>         most pieces the lead may make, or bugs a hunt keeps (default 4)
+Run flags
+  --provider boat|local   where agents run (default boat; local = folders on this machine, not a sandbox)
+  --boat-base <id>        boat box to fork (or taskwing config boat-base <id>)
+  --boat-env <name>       boat environment for the forks
+  --model <name>          agent model in boat (default `+box.DefaultModel+`)
+  --effort <level>        agent effort in boat (default `+box.DefaultEffort+`)
+  --max-cards <n>         most agents the lead may plan, or bugs a hunt keeps (default 4)
   --yes                   do not ask before starting or before the PR
-  --no-pr                 stop after the exam; keep the branch locally
+  --no-pr                 stop after the exam; keep the joined branch locally
   --keep                  keep the sandboxes after the run
 
-Commands (prompt on stdin):
-  TASKWING_LEAD_CMD    the lead agent      default: `+defaultLead+`
-  TASKWING_EXAM_CMD    the exam writer     default: `+defaultExam+`
-  TASKWING_HUNT_CMD    the bug hunter      default: the exam writer's command
-  TASKWING_LOCAL_AGENT agents in --provider local  default: `+defaultLocal+`
+At the plan: y starts, n stops, r asks for a new plan, any other sentence adds a check of your own.
+During the build: e + Enter runs the exam now with what the agents have so far.
+
+Exit codes: 0 done, 1 error or stopped, 2 usage, 3 some exam checks failed.
+Every environment variable (TASKWING_*) and the agent commands: docs/guide.md
 `)
 }
 
@@ -128,8 +168,8 @@ func addProviderFlags(fs *flag.FlagSet) providerFlags {
 		provider: fs.String("provider", env("TASKWING_PROVIDER", "boat"), "boat or local"),
 		base:     fs.String("boat-base", env("TASKWING_BOAT_BASE", loadConfig().BoatBase), "boat box to fork"),
 		boatEnv:  fs.String("boat-env", os.Getenv("TASKWING_BOAT_ENV"), "boat environment"),
-		model:    fs.String("model", env("TASKWING_MODEL", "opus-5-5"), "agent model"),
-		effort:   fs.String("effort", env("TASKWING_EFFORT", "medium"), "agent effort"),
+		model:    fs.String("model", env("TASKWING_MODEL", box.DefaultModel), "agent model"),
+		effort:   fs.String("effort", env("TASKWING_EFFORT", box.DefaultEffort), "agent effort"),
 	}
 }
 
@@ -140,18 +180,33 @@ func (p providerFlags) build() (box.Provider, error) {
 	case "local":
 		return &box.Local{Root: filepath.Join(home(), "boxes"), AgentCmd: env("TASKWING_LOCAL_AGENT", defaultLocal)}, nil
 	}
-	return nil, fmt.Errorf("unknown provider %q (use boat or local)", *p.provider)
+	return nil, errUsage{fmt.Sprintf("unknown provider %q (use boat or local)", *p.provider)}
 }
 
 // parseAnywhere lets flags come before or after the positional words.
+// Everything after "--" is words, even if it looks like a flag.
 func parseAnywhere(fs *flag.FlagSet, args []string) ([]string, error) {
+	fs.SetOutput(io.Discard) // errors are printed once, by main
+	var rest []string
+	for i, a := range args {
+		if a == "--" {
+			args, rest = args[:i], args[i+1:]
+			break
+		}
+	}
 	var words []string
 	for {
 		if err := fs.Parse(args); err != nil {
-			return nil, err
+			if errors.Is(err, flag.ErrHelp) {
+				return nil, err
+			}
+			if name, ok := strings.CutPrefix(err.Error(), "flag provided but not defined: -"); ok {
+				return nil, errUsage{"unknown flag --" + strings.TrimPrefix(name, "-") + " (taskwing help lists them)"}
+			}
+			return nil, errUsage{err.Error()}
 		}
 		if fs.NArg() == 0 {
-			return words, nil
+			return append(words, rest...), nil
 		}
 		words = append(words, fs.Arg(0))
 		args = fs.Args()[1:]
@@ -175,6 +230,8 @@ func signalContext() (context.Context, func()) {
 	return ctx, func() { close(done); signal.Stop(sig); cancel() }
 }
 
+var errStopped = errors.New("stopped; every sandbox was cleaned up")
+
 func cmdRun(args []string, hunt bool) error {
 	name := "run"
 	if hunt {
@@ -192,13 +249,16 @@ func cmdRun(args []string, hunt bool) error {
 	}
 	task := strings.TrimSpace(strings.Join(words, " "))
 	if task == "" && !hunt {
-		return fmt.Errorf(`give the task in quotes: taskwing run "add a retry schedule to failed payments"`)
+		return errUsage{`give the task in quotes: taskwing run "add a retry schedule to failed payments"`}
 	}
 	prov, err := pf.build()
 	if err != nil {
 		return err
 	}
-	cwd, _ := os.Getwd()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
 	ctx, stop := signalContext()
 	defer stop()
 	res, err := engine.Run(ctx, engine.Options{
@@ -218,7 +278,7 @@ func cmdRun(args []string, hunt bool) error {
 		In:       os.Stdin,
 	})
 	if errors.Is(err, context.Canceled) {
-		err = errors.New("stopped; every sandbox was cleaned up")
+		err = errStopped
 	}
 	if err != nil {
 		if res != nil && res.RunDir != "" {
@@ -227,7 +287,7 @@ func cmdRun(args []string, hunt bool) error {
 		return err
 	}
 	if res.Total > 0 && res.Passed < res.Total {
-		os.Exit(3)
+		return errChecksFailed
 	}
 	return nil
 }
@@ -240,7 +300,7 @@ func cmdEngine(args []string) error {
 	jsonOut := fs.Bool("json", false, "JSON lines on stdin and stdout")
 	maxCards := fs.Int("max-cards", 4, "most pieces")
 	keep := fs.Bool("keep", false, "keep sandboxes")
-	if err := fs.Parse(args); err != nil {
+	if _, err := parseAnywhere(fs, args); err != nil {
 		return err
 	}
 	if !*jsonOut {
@@ -254,18 +314,20 @@ func cmdEngine(args []string) error {
 		if strings.TrimSpace(c.Task) == "" {
 			return engine.Options{}, errors.New("no task given")
 		}
-		switch c.Models {
-		case "", "Claude":
+		// Canonical values are lower case; the desktop app's labels
+		// ("Claude", "Local folders") are still accepted.
+		switch strings.ToLower(c.Models) {
+		case "", "claude":
 		default:
 			return engine.Options{}, fmt.Errorf("%s is not ready yet: runs use Claude models today", c.Models)
 		}
 		provider := "boat"
-		switch c.Sandbox {
+		switch strings.ToLower(c.Sandbox) {
 		case "", "boat":
-		case "Local folders", "local":
+		case "local", "local folders":
 			provider = "local"
 		default:
-			return engine.Options{}, fmt.Errorf("unknown sandbox %q (use boat or Local folders)", c.Sandbox)
+			return engine.Options{}, fmt.Errorf("unknown sandbox %q (use boat or local)", c.Sandbox)
 		}
 		// The boat settings `run` would use, from the environment and config.
 		pf := addProviderFlags(flag.NewFlagSet("engine run", flag.ContinueOnError))
@@ -290,7 +352,13 @@ func cmdEngine(args []string) error {
 			Out:      os.Stderr,
 		}, nil
 	}
-	return engine.Serve(ctx, os.Stdin, os.Stdout, version, start)
+	if err := engine.Serve(ctx, os.Stdin, os.Stdout, versionString(), start); err != nil {
+		return err
+	}
+	if ctx.Err() != nil {
+		return errStopped // Ctrl-C, not the client closing stdin
+	}
+	return nil
 }
 
 func cmdDoctor(args []string) error {
@@ -310,18 +378,20 @@ func cmdDoctor(args []string) error {
 	all, err := prov.List(ctx, engine.RunBoxPrefix)
 	var boxes []box.Box
 	for _, b := range all {
-		if b.ID != os.Getenv("TASKWING_BOAT_BASE") && b.ID != *pf.base { // never the base box
+		if b.ID != *pf.base { // never the base box
 			boxes = append(boxes, b)
 		}
 	}
-	if err != nil {
+	var missing *exec.Error
+	if errors.As(err, &missing) {
+		fmt.Printf("%s: not installed, nothing to check\n", prov.Name())
+	} else if err != nil {
 		fmt.Printf("%s sandboxes: could not list (%v)\n", prov.Name(), err)
 	} else if len(boxes) == 0 {
 		fmt.Printf("%s sandboxes: none left over\n", prov.Name())
 	} else {
 		fmt.Printf("%s sandboxes left over: %d\n", prov.Name(), len(boxes))
 		for _, b := range boxes {
-			b := b
 			line := "  " + b.ID + "  " + b.Name
 			if *clean {
 				if err := prov.Destroy(ctx, &b); err != nil {
@@ -334,17 +404,17 @@ func cmdDoctor(args []string) error {
 		}
 	}
 
-	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
+	if out, err := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel").Output(); err == nil {
 		root := strings.TrimSpace(string(out))
-		_ = exec.Command("git", "-C", root, "worktree", "prune").Run()
-		refs, _ := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname)", engine.AgentRefPrefix).Output()
-		branches, _ := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname:short)", "refs/heads/"+engine.BranchPrefix).Output()
+		_ = exec.CommandContext(ctx, "git", "-C", root, "worktree", "prune").Run()
+		refs, _ := exec.CommandContext(ctx, "git", "-C", root, "for-each-ref", "--format=%(refname)", engine.AgentRefPrefix).Output()
+		branches, _ := exec.CommandContext(ctx, "git", "-C", root, "for-each-ref", "--format=%(refname:short)", "refs/heads/"+engine.BranchPrefix).Output()
 		list := strings.Fields(string(refs))
 		fmt.Printf("agent refs in this repository: %d\n", len(list))
 		for _, r := range list {
 			line := "  " + r
 			if *clean {
-				if err := exec.Command("git", "-C", root, "update-ref", "-d", r).Run(); err == nil {
+				if err := exec.CommandContext(ctx, "git", "-C", root, "update-ref", "-d", r).Run(); err == nil {
 					line += "  deleted"
 				}
 			}
@@ -367,13 +437,17 @@ type config struct {
 
 func configPath() string { return filepath.Join(home(), "config.json") }
 
-func loadConfig() config {
+// loadConfig reads the config file once per process. A broken file is
+// reported, not silently read as empty (the boat base would vanish).
+var loadConfig = sync.OnceValue(func() config {
 	var c config
 	if b, err := os.ReadFile(configPath()); err == nil {
-		_ = json.Unmarshal(b, &c)
+		if err := json.Unmarshal(b, &c); err != nil {
+			fmt.Fprintf(os.Stderr, "taskwing: ignoring %s: %v\n", configPath(), err)
+		}
 	}
 	return c
-}
+})
 
 func cmdConfig(args []string) error {
 	c := loadConfig()
@@ -382,15 +456,15 @@ func cmdConfig(args []string) error {
 		fmt.Printf("boat-base  %s\n  (%s)\n", c.BoatBase, configPath())
 		return nil
 	case len(args) == 2 && args[0] == "boat-base":
-		c.BoatBase = args[1]
+		c.BoatBase = strings.TrimSpace(args[1])
 	default:
-		return fmt.Errorf("usage: taskwing config [boat-base <id>]")
+		return errUsage{"usage: taskwing config [boat-base <id>]"}
 	}
-	if err := os.MkdirAll(home(), 0o755); err != nil {
+	if err := os.MkdirAll(home(), 0o700); err != nil {
 		return err
 	}
 	b, _ := json.MarshalIndent(c, "", "  ")
-	if err := os.WriteFile(configPath(), append(b, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(configPath(), append(b, '\n'), 0o600); err != nil {
 		return err
 	}
 	fmt.Println("saved:", configPath())
