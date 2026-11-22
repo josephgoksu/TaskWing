@@ -53,7 +53,11 @@ When the files are written, answer with ONLY this JSON, no other text:
 }
 
 // userExamMarker is in the path of every test written for a check the user added.
-const userExamMarker = "taskwing_exam_user"
+// examMarker must be in the path of every test file the exam writes. Only
+// new files with it are kept, and no card may own a path with it.
+const examMarker = "taskwing_exam"
+
+const userExamMarker = examMarker + "_user"
 
 // userExamPrompt asks for one check per sentence the user added, in order.
 func userExamPrompt(task, iface string, sentences []string) string {

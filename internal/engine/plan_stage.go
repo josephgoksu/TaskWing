@@ -28,7 +28,7 @@ func (r *runner) planAndExam(ctx context.Context) (*Plan, []Check, []byte, error
 		cr.set(func(c *cardRun) {
 			c.ended = time.Now()
 			if err != nil {
-				c.state, c.err = stFailed, truncate(err.Error(), 70)
+				c.state, c.err = stStuck, truncate(err.Error(), 70)
 			} else {
 				c.state, c.proof = stDone, proof
 			}

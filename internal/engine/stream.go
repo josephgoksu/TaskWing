@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"regexp"
 	"strconv"
@@ -136,7 +135,6 @@ type server struct {
 	out   io.Writer
 	start StartFunc
 	runs  map[string]*Stream
-	n     int
 	wg    sync.WaitGroup
 }
 
@@ -165,8 +163,7 @@ func (s *server) handle(ctx context.Context, c Command) {
 
 func (s *server) startRun(ctx context.Context, c Command) {
 	s.mu.Lock()
-	s.n++
-	id := fmt.Sprintf("tw-%s-%d", time.Now().Format("20060102-150405"), s.n)
+	id := NewRunID()
 	st := newStream(id, s.emit)
 	s.runs[id] = st
 	s.mu.Unlock()
@@ -342,7 +339,7 @@ func (s *Stream) card(cr *cardRun) {
 		if cr.proof != "" {
 			proof = map[string]any{"kind": "test", "text": truncate(cr.proof, 60)}
 		}
-	case stFailed:
+	case stStuck:
 		detail = cr.err
 	}
 	cr.mu.Unlock()
@@ -355,7 +352,7 @@ func (s *Stream) leftOut(cr *cardRun) {
 	if s == nil || cr.card.ID == "" {
 		return
 	}
-	s.sendCard(map[string]any{"id": cr.card.ID, "state": stFailed, "detail": "Conflicted with the other pieces; left out of the joined work", "proof": nil})
+	s.sendCard(map[string]any{"id": cr.card.ID, "state": stStuck, "detail": "Conflicted with the other pieces; left out of the joined work", "proof": nil})
 }
 
 // sendCard sends a card.update unless the client already has exactly this one

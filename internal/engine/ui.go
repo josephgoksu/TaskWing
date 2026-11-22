@@ -15,7 +15,7 @@ const (
 	stWaiting = "waiting"
 	stWorking = "working"
 	stDone    = "done"
-	stFailed  = "stuck"
+	stStuck  = "stuck"
 )
 
 type ui struct {
@@ -57,7 +57,7 @@ func (u *ui) square(state string) string {
 		return u.c("90", "■")
 	case stWorking:
 		return u.c("34", "■")
-	case stFailed:
+	case stStuck:
 		return u.c("31", "■")
 	default:
 		return "□"
@@ -114,7 +114,7 @@ func (u *ui) board(stage string, started time.Time, cards []cardView) {
 		sq = append(sq, u.square(c.state))
 	}
 	var parts []string
-	for _, k := range []string{stWorking, stWaiting, stDone, stFailed} {
+	for _, k := range []string{stWorking, stWaiting, stDone, stStuck} {
 		if counts[k] > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", counts[k], k))
 		}

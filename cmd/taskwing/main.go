@@ -337,8 +337,8 @@ func cmdDoctor(args []string) error {
 	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
 		root := strings.TrimSpace(string(out))
 		_ = exec.Command("git", "-C", root, "worktree", "prune").Run()
-		refs, _ := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname)", "refs/taskwing/").Output()
-		branches, _ := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname:short)", "refs/heads/taskwing/").Output()
+		refs, _ := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname)", engine.AgentRefPrefix).Output()
+		branches, _ := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname:short)", "refs/heads/"+engine.BranchPrefix).Output()
 		list := strings.Fields(string(refs))
 		fmt.Printf("agent refs in this repository: %d\n", len(list))
 		for _, r := range list {

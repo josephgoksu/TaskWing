@@ -3,6 +3,8 @@ package engine
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +25,23 @@ const BoxPrefix = "taskwing"
 // RunBoxPrefix starts the name of every box a run creates ("taskwing · tw-<time> · ...").
 // doctor only touches boxes with this prefix, never a base box named by hand.
 const RunBoxPrefix = BoxPrefix + " · tw-"
+
+// BranchPrefix starts every branch a run makes: taskwing/<run id> for the
+// joined work, taskwing/<card id> inside a box.
+const BranchPrefix = "taskwing/"
+
+// AgentRefPrefix holds each agent's commits on this machine:
+// refs/taskwing/<run id>/<card id>. doctor deletes them.
+const AgentRefPrefix = "refs/taskwing/"
+
+// NewRunID names a run: tw-<date>-<time>-<4 hex>. The random part keeps two
+// runs started in the same second (two terminals, two engines) apart; they
+// would otherwise share a run folder, a branch and box names.
+func NewRunID() string {
+	b := make([]byte, 2)
+	_, _ = rand.Read(b)
+	return "tw-" + time.Now().Format("20060102-150405") + "-" + hex.EncodeToString(b)
+}
 
 // Options configure one run.
 type Options struct {
@@ -108,7 +127,7 @@ func (c *cardRun) view() cardView {
 		}
 		v.took = c.ended.Sub(c.started)
 	}
-	if c.state == stFailed {
+	if c.state == stStuck {
 		v.thought = c.err
 	}
 	return v
@@ -196,7 +215,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	}
 	r.id = o.RunID
 	if r.id == "" {
-		r.id = "tw-" + time.Now().Format("20060102-150405")
+		r.id = NewRunID()
 	}
 	r.dir = filepath.Join(o.Home, "runs", r.id)
 	if err := os.MkdirAll(filepath.Join(r.dir, "logs"), 0o755); err != nil {
@@ -305,7 +324,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	// 3. Join the work on one branch and run the exam in a clean box.
 	r.ui.step(3, "Exam")
 	r.s.stage("exam")
-	res.Branch = "taskwing/" + r.id
+	res.Branch = BranchPrefix + r.id
 	// Free the branch so the user can check it out (or delete it), even when
 	// the join fails; it stays in the repository.
 	defer func() {

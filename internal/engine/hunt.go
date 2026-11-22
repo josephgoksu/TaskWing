@@ -74,7 +74,7 @@ func (r *runner) hunt(ctx context.Context) (*Plan, []Check, []byte, error) {
 		view.set(func(c *cardRun) {
 			c.ended = time.Now()
 			if herr != nil {
-				c.state, c.err = stFailed, truncate(herr.Error(), 70)
+				c.state, c.err = stStuck, truncate(herr.Error(), 70)
 				return
 			}
 			n := 0
@@ -156,7 +156,7 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 	status, _ := git(ctx, wt, "diff", "--cached", "--name-status", "--no-renames", r.base)
 	added := map[string]bool{}
 	for _, line := range strings.Split(status, "\n") {
-		if f := strings.SplitN(line, "\t", 2); len(f) == 2 && f[0] == "A" && strings.Contains(f[1], "taskwing_exam") {
+		if f := strings.SplitN(line, "\t", 2); len(f) == 2 && f[0] == "A" && strings.Contains(f[1], examMarker) {
 			added[f[1]] = true
 		}
 	}

@@ -13,7 +13,7 @@ import (
 // writeExam runs the exam session in a throwaway worktree, then keeps its new
 // files as a patch on this machine. The patch only enters the exam box.
 func (r *runner) writeExam(ctx context.Context, iface string) ([]Check, []byte, error) {
-	checks, patch, err := r.examSession(ctx, examPrompt(r.o.Task, iface), "exam", "taskwing_exam")
+	checks, patch, err := r.examSession(ctx, examPrompt(r.o.Task, iface), "exam", examMarker)
 	for i := range checks {
 		checks[i].ID = fmt.Sprintf("k%d", i+1)
 	}

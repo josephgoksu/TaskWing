@@ -87,8 +87,8 @@ func (r *runner) watchUntil(stage string, started time.Time, cards []*cardRun, d
 // runCard creates the card's box, runs its agent, and pulls its commits back.
 func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle string) {
 	fail := func(msg string) {
-		cr.set(func(c *cardRun) { c.state, c.err, c.ended = stFailed, msg, time.Now() })
-		r.ev.log("box.state", map[string]any{"card": cr.card.ID, "state": stFailed, "why": msg})
+		cr.set(func(c *cardRun) { c.state, c.err, c.ended = stStuck, msg, time.Now() })
+		r.ev.log("box.state", map[string]any{"card": cr.card.ID, "state": stStuck, "why": msg})
 	}
 	// Once the user asked for the exam, an agent that has not started never will.
 	examStarted := func() bool {
@@ -123,7 +123,7 @@ func (r *runner) runCard(ctx context.Context, plan *Plan, cr *cardRun, bundle st
 	}
 	cr.set(func(c *cardRun) { c.thought = "copying the repository" })
 	r.ev.log("box.state", map[string]any{"card": cr.card.ID, "box": b.ID, "state": "created"})
-	if err := r.upload(ctx, b, bundle, "taskwing/"+cr.card.ID); err != nil {
+	if err := r.upload(ctx, b, bundle, BranchPrefix+cr.card.ID); err != nil {
 		fail(err.Error())
 		return
 	}
@@ -217,7 +217,7 @@ base64 < "$TW_REPO.out"
 		fail(fmt.Sprintf("could not bundle its commits (exit %d)", rc))
 		return
 	}
-	ref := fmt.Sprintf("refs/taskwing/%s/%s", r.id, cr.card.ID)
+	ref := AgentRefPrefix + r.id + "/" + cr.card.ID
 	if _, err := git(ctx, r.root, "fetch", "-q", out, "HEAD:"+ref); err != nil {
 		fail("could not fetch its commits: " + err.Error())
 		return
