@@ -28,7 +28,7 @@ CI runs these on every pull request. Run them before you push.
 |---|---|
 | Engine | `gofmt -l cmd internal`, `go vet ./...`, `go test -race ./...` |
 | CLI build | `go build ./cmd/taskwing` |
-| Release config | `goreleaser release --snapshot --clean --skip=publish` |
+| Release config | `goreleaser release --snapshot --clean --skip=publish`; every `token:` in `.goreleaser.yaml` must be a bare `'{{ .Env.NAME }}'` |
 
 Without the last two, a broken binary or release config shows up only when a tag is pushed.
 

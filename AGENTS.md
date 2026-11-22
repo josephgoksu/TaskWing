@@ -38,7 +38,7 @@ CI runs these on every pull request (`.github/workflows/ci.yml`). Run them befor
 |---|---|
 | Engine | `gofmt -l cmd internal`, `go vet ./...`, `go test -race ./...` |
 | CLI build | `go build ./cmd/taskwing` |
-| Release config | `goreleaser release --snapshot --clean --skip=publish` (the `release-config` job) |
+| Release config | `goreleaser release --snapshot --clean --skip=publish` (the `release-config` job, which also checks that every `token:` in `.goreleaser.yaml` is a bare `'{{ .Env.NAME }}'`) |
 
 Without the last two, a broken binary or release config is found only when a tag is pushed, halfway through a public release.
 

@@ -48,16 +48,26 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # The snapshot below skips publishing, so it never applies token templates.
+      # GoReleaser accepts only a bare {{ .Env.NAME }} there; anything else
+      # fails a tagged release after the GitHub release is already public.
+      # Every token: key (block or flow style, not in a comment) must be
+      # exactly token: '{{ .Env.NAME }}'. A missing config fails the check.
+      - name: Token templates are bare env references
+        run: |
+          cfg=.goreleaser.yaml
+          test -f "$cfg" || { echo "::error::$cfg not found: point this check at the GoReleaser config"; exit 1; }
+          good="^[0-9]+:token: '\{\{ \.Env\.[A-Za-z_][A-Za-z0-9_]* \}\}'[[:space:]]*(#.*)?$"
+          bad="$(grep -nE '(^|[[:space:]{,])token:' "$cfg" | sed -E 's/^([0-9]+):[[:space:]]*/\1:/' | grep -vE '^[0-9]+:#' | grep -vE "$good" || true)"
+          if [ -n "$bad" ]; then
+            while IFS= read -r l; do
+              echo "::error file=$cfg,line=${l%%:*}::token must be '{{ .Env.NAME }}' only, got: ${l#*:}"
+            done <<< "$bad"
+            exit 1
+          fi
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
           version: '~> v2'
           args: release --snapshot --clean --skip=publish
-      # The snapshot skips publishing, so it never applies token templates.
-      # GoReleaser accepts only a bare {{ .Env.NAME }} there; anything else
-      # fails a tagged release after the GitHub release is already public.
-      - name: Token templates are bare env references
-        run: |
-          bad="$(grep -nE '^\s*token:' .goreleaser.yaml | grep -vE "token: '\{\{ \.Env\.[A-Za-z_][A-Za-z0-9_]* \}\}'" || true)"
-          if [ -n "$bad" ]; then echo "::error file=.goreleaser.yaml::token must be '{{ .Env.NAME }}' only: $bad"; exit 1; fi
 
