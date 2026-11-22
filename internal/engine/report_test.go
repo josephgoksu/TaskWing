@@ -82,3 +82,17 @@ func TestFenceAndCode(t *testing.T) {
 		t.Errorf("code = %q", got)
 	}
 }
+
+// git -z hands file names over raw: a newline in one must not end the list
+// item and start markdown of its own.
+func TestPRBodyQuotesControlCharsInNames(t *testing.T) {
+	plan, cards, checks, res := reportFixture()
+	cards[2].outside = []string{"x\n\n# All checks passed"}
+	body := prBody(plan, cards, checks, res, 0)
+	if strings.Contains(body, "\n# All checks passed") {
+		t.Fatalf("a newline in a file name injected markdown:\n%s", body)
+	}
+	if !strings.Contains(body, `"x\n\n# All checks passed"`) {
+		t.Errorf("the name is not shown quoted:\n%s", body)
+	}
+}

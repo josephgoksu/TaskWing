@@ -10,9 +10,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/josephgoksu/TaskWing/v2/internal/proc"
 )
@@ -80,6 +82,12 @@ func hostAgent(parent context.Context, command, dir, prompt, logPath string) (st
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	err := cmd.Run()
+	// Exit 0 with a leftover child holding stdout open: the session is done.
+	// The leftovers are stopped, so they do not outlive it on this machine.
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil
+	}
+	_ = proc.Kill(cmd)
 	if logPath != "" {
 		_ = os.WriteFile(logPath, []byte("$ "+command+"\n--- prompt\n"+prompt+"\n--- stdout\n"+out.String()+"\n--- stderr\n"+errb.String()), filePerm)
 	}
@@ -166,9 +174,10 @@ var secretPatterns = []struct {
 	{"AWS secret key", regexp.MustCompile(`AWS_SECRET_ACCESS_KEY=\S+`)},
 	{"GitHub token variable", regexp.MustCompile(`(?m)^(GH_TOKEN|GITHUB_TOKEN)=\S+`)},
 	{"gh login", regexp.MustCompile(`oauth_token:\s*\S+`)},
-	// An SSH key or agent lets an agent push over SSH without any token.
+	// An SSH key lets an agent push over SSH without any token. (Not
+	// SSH_AUTH_SOCK: the scan runs over boat ssh, whose own session may
+	// forward the user's agent, which the agent process never gets.)
 	{"SSH key", regexp.MustCompile(`(?m)^TW_SSH_KEY=\S+`)},
-	{"SSH agent", regexp.MustCompile(`(?m)^SSH_AUTH_SOCK=\S+`)},
 }
 
 const secretScanScript = `env 2>/dev/null; cat ~/.git-credentials ~/.config/gh/hosts.yml ~/.netrc 2>/dev/null; for k in ~/.ssh/id_*; do case "$k" in *.pub) ;; *) [ -f "$k" ] && echo "TW_SSH_KEY=$k";; esac; done; true`
@@ -238,6 +247,16 @@ func claudeLoggedIn(ctx context.Context, o Options) error {
 		return fmt.Errorf("the claude CLI on this machine is not logged in (the desktop app login is separate): run claude, type /login, then try again")
 	}
 	return nil
+}
+
+// safeName shows a file name an agent chose. git -z hands names over raw, so
+// a name may hold a newline (which restyles the pull request text) or an
+// escape sequence (which drives the terminal); such a name is shown quoted.
+func safeName(f string) string {
+	if strings.IndexFunc(f, unicode.IsControl) >= 0 {
+		return strconv.Quote(f)
+	}
+	return f
 }
 
 // splitNUL splits the output of a git command run with -z.

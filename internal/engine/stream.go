@@ -166,6 +166,11 @@ func (s *server) handle(ctx context.Context, c Command) {
 func (s *server) startRun(ctx context.Context, c Command) {
 	s.mu.Lock()
 	id := NewRunID()
+	// Two runs started in the same second may draw the same random part;
+	// a second stream under one id would take over the first one's commands.
+	for s.runs[id] != nil {
+		id = NewRunID()
+	}
 	st := newStream(id, s.emit)
 	s.runs[id] = st
 	s.mu.Unlock()

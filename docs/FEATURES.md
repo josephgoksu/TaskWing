@@ -95,7 +95,7 @@ pie showData
 | ID | Feature | Status | Milestone | Note |
 |---|---|---|---|---|
 | X1 | Refuse a box that holds GitHub credentials | 🟡 | PoC | Card boxes only; the exam box, where the joined work runs, is not checked. A scan that cannot run also refuses |
-| X2 | Secret scan of every box before it is destroyed | 🟡 | PoC | Flags GitHub tokens, SSH keys and `SSH_AUTH_SOCK`; the agents' own login is named as expected. A scan that cannot run is skipped without a warning, and the PR body still says nothing was found (also in local mode, where no scan runs) |
+| X2 | Secret scan of every box before it is destroyed | 🟡 | PoC | Flags GitHub tokens and SSH keys; the agents' own login is named as expected. A scan that cannot run is skipped without a warning, and the PR body still says nothing was found (also in local mode, where no scan runs) |
 | X3 | Host pushes; no box ever gets a GitHub login | ✅ | PoC | |
 | X4 | Key proxy: placeholder key in the box, real API key swapped in outside | ⬜ | Talk | Needed for API-key models (A4) |
 | X5 | Read worker commits with git hooks and fsmonitor off | ✅ | M1 | Built ahead of M1. Host git runs with hooks, fsmonitor and the ext protocol off |

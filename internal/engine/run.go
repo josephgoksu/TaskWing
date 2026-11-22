@@ -414,6 +414,11 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			res.Passed++
 		}
 	}
+	// Every box is scanned and deleted by now (agent boxes in build, the exam
+	// box when exam returned): the summary and the pull request report this.
+	r.boxesMu.Lock()
+	res.Secrets = append([]string(nil), r.secrets...)
+	r.boxesMu.Unlock()
 	r.saveJSON("exam-results.json", checks)
 
 	// 4. Pull request, pushed from this machine.

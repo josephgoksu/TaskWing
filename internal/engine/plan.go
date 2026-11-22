@@ -203,7 +203,7 @@ func (c Card) overlaps(o Card) (mine, theirs string, ok bool) {
 
 // parsePlan takes the lead's output and finds the JSON object in it.
 func parsePlan(out string) (*Plan, error) {
-	js, err := extractJSON(out)
+	js, err := extractJSON(out, "cards")
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +217,11 @@ func parsePlan(out string) (*Plan, error) {
 // extractJSON returns the first JSON object in text. Taking the first { to
 // the last } breaks on prose around it ("routes like {id}", a closing "}" in
 // a note), so it decodes from each { in turn and keeps the first that parses.
-func extractJSON(text string) (string, error) {
+// With want, the first object holding one of those keys wins, so a small
+// example object in the prose ("{}", {"id": 1}) cannot hide the answer; the
+// first object is the fallback.
+func extractJSON(text string, want ...string) (string, error) {
+	first := ""
 	for i := 0; i < len(text); i++ {
 		j := strings.IndexByte(text[i:], '{')
 		if j < 0 {
@@ -229,9 +233,23 @@ func extractJSON(text string) (string, error) {
 			continue
 		}
 		var obj map[string]json.RawMessage
-		if json.Unmarshal(raw, &obj) == nil {
+		if json.Unmarshal(raw, &obj) != nil {
+			continue
+		}
+		if len(want) == 0 {
 			return string(raw), nil
 		}
+		for _, k := range want {
+			if _, ok := obj[k]; ok {
+				return string(raw), nil
+			}
+		}
+		if first == "" {
+			first = string(raw)
+		}
+	}
+	if first != "" {
+		return first, nil
 	}
 	return "", errors.New("no JSON object in the output")
 }

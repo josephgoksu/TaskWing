@@ -104,7 +104,7 @@ func (r *runner) examSession(ctx context.Context, prompt, name, marker string) (
 	if err != nil {
 		return nil, nil, fmt.Errorf("the exam session failed: %w", err)
 	}
-	js, err := extractJSON(out)
+	js, err := extractJSON(out, "checks")
 	if err != nil {
 		return nil, nil, fmt.Errorf("the exam session gave no checks: %v", err)
 	}

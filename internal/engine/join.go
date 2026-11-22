@@ -23,15 +23,18 @@ func (r *runner) join(ctx context.Context, cards []*cardRun, branch string) erro
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			// Only unmerged paths make a conflict. Any other failure (no git
-			// identity, a broken ref) is an error, not a card to leave out.
+			// A conflict, or commits git refuses to merge (an unrelated
+			// history, a path this machine cannot check out): either way this
+			// card is left out and the others go on. The reason is logged.
 			unmerged, _ := git(ctx, wt, "diff", "--name-only", "--diff-filter=U")
 			_, _ = git(ctx, wt, "merge", "--abort")
+			_, _ = git(ctx, wt, "reset", "-q", "--hard", "HEAD")
+			why := "conflicts with the others"
 			if unmerged == "" {
-				return fmt.Errorf("joining %02d failed: %w", cr.n, err)
+				why = "could not be merged: " + truncate(err.Error(), 120)
 			}
-			conflicts = append(conflicts, fmt.Sprintf("%02d %s", cr.n, cr.card.Title))
-			r.ev.log("join.conflict", map[string]any{"card": cr.card.ID})
+			conflicts = append(conflicts, fmt.Sprintf("%02d %s %s", cr.n, cr.card.Title, why))
+			r.ev.log("join.conflict", map[string]any{"card": cr.card.ID, "why": why})
 			continue
 		}
 		cr.joined = true
@@ -39,11 +42,15 @@ func (r *runner) join(ctx context.Context, cards []*cardRun, branch string) erro
 	}
 	r.ui.say("  Joined %d %s on branch %s", len(joined), plural(len(joined), "piece", "pieces"), branch)
 	for _, c := range conflicts {
-		r.ui.say("  %s %s conflicts with the others and was left out", r.ui.red("✗"), c)
+		r.ui.say("  %s %s and was left out", r.ui.red("✗"), c)
 	}
 	for _, cr := range cards {
 		if len(cr.outside) > 0 {
-			r.ui.say("  %s %02d changed files outside its area: %s", r.ui.amber("!"), cr.n, truncate(strings.Join(cr.outside, ", "), 100))
+			names := make([]string, len(cr.outside))
+			for i, f := range cr.outside {
+				names[i] = safeName(f)
+			}
+			r.ui.say("  %s %02d changed files outside its area: %s", r.ui.amber("!"), cr.n, truncate(strings.Join(names, ", "), 100))
 		}
 	}
 	if len(joined) == 0 {

@@ -160,7 +160,7 @@ classDiagram
 | Box provider | The adapter that makes boxes. Target: only create, exec, copy, list, destroy; anything else is an optional capability. Today it also starts the agent, and code moves as git bundles over exec (no copy verb yet) | Adapter | partial (boat and local only) |
 | Base | What every box starts from: a boat base box today, an OCI image later. Holds the repository's toolchain and the agents' own login (on boat, through its environment), and no other secret | User, `taskwing setup` | partial (made by hand) |
 | Bundle | How code moves: a git bundle into each box, a bundle of commits back out. Works over plain exec | Engine | built |
-| Secret scan | Before an agent starts, look for credentials in the box (GitHub tokens, SSH keys, `SSH_AUTH_SOCK`); refuse a box that holds GitHub credentials; list every leak at the end | Engine | partial (the exam box is not checked before the joined work runs in it; at the end a scan that cannot run is skipped without a warning) |
+| Secret scan | Before an agent starts, look for credentials in the box (GitHub tokens, SSH keys); refuse a box that holds GitHub credentials; list every leak at the end | Engine | partial (the exam box is not checked before the joined work runs in it; at the end a scan that cannot run is skipped without a warning) |
 | Key proxy | Outside the box: gives agents a placeholder key and a base URL, swaps in the real API key | Engine | planned |
 
 ### Record

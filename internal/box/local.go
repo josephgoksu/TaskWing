@@ -61,6 +61,10 @@ func (l *Local) Exec(ctx context.Context, b *Box, script string, stdin io.Reader
 	if ctx.Err() != nil {
 		return -1, fmt.Errorf("local exec: %w", ctx.Err())
 	}
+	// Exit 0, but a background child kept the output open past WaitDelay.
+	if errors.Is(err, exec.ErrWaitDelay) {
+		return 0, nil
+	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		return ee.ExitCode(), nil

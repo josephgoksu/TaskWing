@@ -54,7 +54,8 @@ func (p *Boat) run(ctx context.Context, stdin io.Reader, args ...string) ([]byte
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
-		return out.Bytes(), fmt.Errorf("boat %s: %v%s", args[0], err, detail(errb.String()+" "+out.String()))
+		// %w: doctor tells a missing boat CLI (exec.Error) from a failed call.
+		return out.Bytes(), fmt.Errorf("boat %s: %w%s", args[0], err, detail(errb.String()+" "+out.String()))
 	}
 	return out.Bytes(), nil
 }

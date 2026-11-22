@@ -148,7 +148,7 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("the bug hunter failed: %w", err)
 	}
-	js, err := extractJSON(out)
+	js, err := extractJSON(out, "bugs")
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("the bug hunter gave no findings: %w", err)
 	}
@@ -174,11 +174,14 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 
 	// Only new files with "taskwing_exam" in the path count.
 	_, _ = git(ctx, wt, "add", "-A")
-	status, _ := git(ctx, wt, "diff", "--cached", "--name-status", "--no-renames", r.base)
+	// -z: without it git quotes non-ASCII paths ("\303\251"), and a quoted
+	// name never matches the test path the hunter gave.
+	status, _ := gitRaw(ctx, wt, "diff", "--cached", "--name-status", "--no-renames", "-z", r.base)
 	added := map[string]bool{}
-	for _, line := range strings.Split(status, "\n") {
-		if f := strings.SplitN(line, "\t", 2); len(f) == 2 && f[0] == "A" && strings.Contains(f[1], examMarker) {
-			added[f[1]] = true
+	fields := splitNUL(status)
+	for i := 0; i+1 < len(fields); i += 2 {
+		if st, f := fields[i], fields[i+1]; st == "A" && strings.Contains(f, examMarker) {
+			added[f] = true
 		}
 	}
 	_, _ = git(ctx, wt, "reset", "-q")
@@ -266,6 +269,13 @@ func (r *runner) runHunter(ctx context.Context, view *cardRun) ([]bug, string, [
 		proc.Group(cmd)
 		cmd.Dir = wt
 		cmdOut, err := cmd.CombinedOutput()
+		// A test that exits 0 but leaves a process holding the output open
+		// ends with ErrWaitDelay: it passed. The leftovers are stopped, or
+		// they keep running on this machine.
+		if errors.Is(err, exec.ErrWaitDelay) {
+			err = nil
+		}
+		_ = proc.Kill(cmd)
 		cancel()
 		_ = os.Remove(testPath)
 		if werr := os.WriteFile(filepath.Join(r.dir, "logs", "bug-"+b.ID+".log"), cmdOut, 0o600); werr != nil {

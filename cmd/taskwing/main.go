@@ -216,7 +216,9 @@ func parseAnywhere(fs *flag.FlagSet, args []string) ([]string, error) {
 func signalContext() (context.Context, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	// SIGHUP too: agents run in process groups of their own, so a closed
+	// terminal no longer reaches them; only this cleanup stops them.
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	done := make(chan struct{})
 	go func() {
 		select {
@@ -378,7 +380,9 @@ func cmdDoctor(args []string) error {
 	all, err := prov.List(ctx, engine.RunBoxPrefix)
 	var boxes []box.Box
 	for _, b := range all {
-		if b.ID != *pf.base { // never the base box
+		// Never a base box: the flag's, the environment's or the saved one,
+		// since --boat-base can name a different box than the others.
+		if b.ID != *pf.base && b.ID != os.Getenv("TASKWING_BOAT_BASE") && b.ID != loadConfig().BoatBase {
 			boxes = append(boxes, b)
 		}
 	}

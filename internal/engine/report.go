@@ -86,7 +86,7 @@ func prBody(plan *Plan, cards []*cardRun, checks []Check, res *Result, took time
 		}
 		files := make([]string, len(cr.outside))
 		for i, f := range cr.outside {
-			files[i] = code(noMention(f))
+			files[i] = code(noMention(safeName(f)))
 		}
 		fmt.Fprintf(&b, "- Piece %02d changed files outside its area: %s\n", cr.n, strings.Join(files, ", "))
 		outside = true
@@ -115,7 +115,9 @@ func prBody(plan *Plan, cards []*cardRun, checks []Check, res *Result, took time
 		if !c.Passed {
 			out := "$ " + c.Command + "\n" + c.Output
 			f := fence(out)
-			fmt.Fprintf(&b, "\n<details><summary>✗ %s</summary>\n\n%s\n%s\n%s\n</details>\n", html.EscapeString(noMention(c.Text)), f, out, f)
+			// One line: a blank line in the text would end the HTML block.
+			summary := strings.Join(strings.Fields(c.Text), " ")
+			fmt.Fprintf(&b, "\n<details><summary>✗ %s</summary>\n\n%s\n%s\n%s\n</details>\n", html.EscapeString(noMention(summary)), f, out, f)
 		}
 	}
 	switch {

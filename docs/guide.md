@@ -72,7 +72,7 @@ boat stop bx_abc123                  # stopping takes the snapshot that forks st
 | Don't use a `--no-env` box | It has no secrets, but also no Claude login, so `boat prompt` fails with "Claude login required" |
 | Save the base within 14 days of stopping it: `boat snapshot <id> <name>`, or make a new one | A stopped box keeps its data for 14 days; after that `boat fork` fails |
 
-The end-of-run secret scan lists any leak, including SSH keys and a forwarded `SSH_AUTH_SOCK`. The agents' own Claude login is expected and named as such.
+The end-of-run secret scan lists any leak, including SSH keys. The agents' own Claude login is expected and named as such.
 
 ## 4. Run it
 

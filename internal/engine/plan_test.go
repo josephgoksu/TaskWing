@@ -298,3 +298,15 @@ func TestLeadPromptCardCount(t *testing.T) {
 		t.Error("workers are not told the exam paths are reserved")
 	}
 }
+
+// A small object in the prose must not hide the answer that holds the key.
+func TestExtractJSONPrefersWantedKey(t *testing.T) {
+	plan := `{"cards":[{"id":"c1"}]}`
+	got, err := extractJSON(`Example: {"id": 1} and {}.`+"\n"+plan, "cards")
+	if err != nil || got != plan {
+		t.Errorf("extractJSON = %q, %v; want the plan", got, err)
+	}
+	if got, err := extractJSON(`{"id": 1}`, "cards"); err != nil || got != `{"id": 1}` {
+		t.Errorf("without the key the first object is the fallback, got %q, %v", got, err)
+	}
+}
