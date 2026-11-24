@@ -74,6 +74,8 @@ func run(args []string) int {
 		err = cmdRun(args[1:], false)
 	case "hunt":
 		err = cmdRun(args[1:], true)
+	case "approve":
+		err = cmdApprove(args[1:])
 	case "config":
 		err = cmdConfig(args[1:])
 	case "doctor":
@@ -115,6 +117,8 @@ New here? In a git repository, try it on this machine first:
 Commands
   taskwing run "<task>" [flags]    plan · you approve the exam · agents build · exam · draft PR
   taskwing hunt ["<area>"] [flags] find bugs, prove each with a failing test, fix them
+  taskwing approve <run id> [--check "<sentence>"]...
+                                   build a plan saved by --plan-only (for coding agents)
   taskwing config [boat-base <id>] show or save settings (~/.taskwing/config.json)
   taskwing doctor [--provider boat|local] [--clean]
                                    find (and delete) leftover sandboxes and agent refs
@@ -130,6 +134,7 @@ Run flags
   --effort <level>        agent effort in boat (default `+box.DefaultEffort+`)
   --max-cards <n>         most agents the lead may plan, or bugs a hunt keeps (default 4)
   --yes                   do not ask before starting or before the PR
+  --plan-only             stop after the plan and the exam; start later with taskwing approve
   --no-pr                 stop after the exam; keep the joined branch locally
   --keep                  keep the sandboxes after the run
 
@@ -217,8 +222,14 @@ func signalContext() (context.Context, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	sig := make(chan os.Signal, 1)
 	// SIGHUP too: agents run in process groups of their own, so a closed
-	// terminal no longer reaches them; only this cleanup stops them.
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	// terminal no longer reaches them; only this cleanup stops them. Under
+	// nohup (how a coding agent starts a long run in the background) SIGHUP
+	// stays ignored: catching it would undo nohup and stop the run.
+	sigs := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if !signal.Ignored(syscall.SIGHUP) {
+		sigs = append(sigs, syscall.SIGHUP)
+	}
+	signal.Notify(sig, sigs...)
 	done := make(chan struct{})
 	go func() {
 		select {
@@ -243,6 +254,7 @@ func cmdRun(args []string, hunt bool) error {
 	pf := addProviderFlags(fs)
 	maxCards := fs.Int("max-cards", 4, "most pieces")
 	yes := fs.Bool("yes", false, "do not ask")
+	planOnly := fs.Bool("plan-only", false, "stop after the plan and the exam")
 	noPR := fs.Bool("no-pr", false, "no pull request")
 	keep := fs.Bool("keep", false, "keep sandboxes")
 	words, err := parseAnywhere(fs, args)
@@ -274,11 +286,67 @@ func cmdRun(args []string, hunt bool) error {
 		Hunt:     hunt,
 		MaxCards: *maxCards,
 		Yes:      *yes,
+		PlanOnly: *planOnly,
 		NoPR:     *noPR,
 		Keep:     *keep,
 		Out:      os.Stdout,
 		In:       os.Stdin,
 	})
+	return runResult(res, err)
+}
+
+// stringList is a flag that may be given more than once.
+type stringList []string
+
+func (l *stringList) String() string     { return strings.Join(*l, "; ") }
+func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
+
+// cmdApprove builds a plan that `taskwing run --plan-only` saved, after the
+// user approved it. A coding agent uses it: its shell cannot answer the
+// prompt of a plain run, so it shows the user the plan and runs this on a yes.
+func cmdApprove(args []string) error {
+	fs := flag.NewFlagSet("approve", flag.ContinueOnError)
+	pf := addProviderFlags(fs)
+	var checks stringList
+	fs.Var(&checks, "check", "a check of your own (repeat for more)")
+	yes := fs.Bool("yes", false, "open the PR even when checks fail")
+	noPR := fs.Bool("no-pr", false, "no pull request")
+	keep := fs.Bool("keep", false, "keep sandboxes")
+	words, err := parseAnywhere(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(words) != 1 {
+		return errUsage{"give the run id from taskwing run --plan-only: taskwing approve tw-20261122-143005-a1b2"}
+	}
+	prov, err := pf.build()
+	if err != nil {
+		return err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	ctx, stop := signalContext()
+	defer stop()
+	res, err := engine.Run(ctx, engine.Options{
+		Approve:  words[0],
+		Checks:   checks,
+		Dir:      cwd,
+		Provider: prov,
+		Home:     home(),
+		ExamCmd:  env("TASKWING_EXAM_CMD", defaultExam),
+		Yes:      *yes,
+		NoPR:     *noPR,
+		Keep:     *keep,
+		Out:      os.Stdout,
+		In:       os.Stdin,
+	})
+	return runResult(res, err)
+}
+
+// runResult turns a run's outcome into the command's error (and exit code).
+func runResult(res *engine.Result, err error) error {
 	if errors.Is(err, context.Canceled) {
 		err = errStopped
 	}

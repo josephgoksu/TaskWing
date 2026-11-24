@@ -19,6 +19,7 @@
 </p>
 
 <p align="center">
+  <a href="#use-it-from-your-agent">From your agent</a> ·
   <a href="#install">Install</a> ·
   <a href="#quickstart">Quickstart</a> ·
   <a href="#the-harness">The harness</a> ·
@@ -57,6 +58,25 @@ Running many coding agents is easy. What runs out is work that doesn't conflict,
 - **A hidden exam.** Before any work starts, a fresh session writes the checks and the tests behind them. You approve the checks. The tests never reach the lead or any worker, so nobody can teach to them. They run in a clean sandbox on the joined work.
 - **Your agent, your subscription.** The engine has no model code and no API key of its own. The lead is your own coding agent on your machine.
 - **Plugs into what you have.** Bring your sandbox provider and your agent CLIs. TaskWing connects them through two small adapters, Box and Agent.
+
+## Use it from your agent
+
+Paste this into Claude Code, Codex, Cursor, Gemini CLI, Antigravity or any coding agent that can run commands:
+
+```text
+Read https://taskwing.app/skill.md and set up TaskWing in this repo.
+```
+
+Your agent installs the CLI, checks your logins, adds the `taskwing` skill for every agent the repository uses (`.agents/skills/` and `.claude/skills/`) and a short TaskWing section to `AGENTS.md` or `CLAUDE.md`. From then on, ask it for a task in plain words. It plans with TaskWing, shows you the plan and the exam, and starts the agents only after your yes.
+
+```
+you      "Build discount codes at checkout with TaskWing"
+agent    taskwing run "..." --plan-only   →  shows you the plan and the exam
+you      "yes, and codes must be case-insensitive"
+agent    taskwing approve <run id> --check "codes are case-insensitive"   →  one draft PR
+```
+
+The skill is [skills/taskwing/SKILL.md](skills/taskwing/SKILL.md). Any agent can drive a run; the agents inside a run are Claude Code for now ([Status](#status)).
 
 ## Install
 
@@ -151,7 +171,7 @@ Every concept and how they connect: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 | **Sandboxes** | ✅ boat · ✅ local (no isolation, for trying it) | ⬜ E2B · ⬜ AWS · ⬜ Docker |
 | **Agents and models** | ✅ Claude Code · 🟡 lead and exam writer on any command | ⬜ a second runtime (OpenCode or Codex) · ⬜ open-weight models · ⬜ per-step model routing |
 | **Safety** | ✅ no GitHub login in any box · 🟡 refuse boxes with GitHub credentials · 🟡 secret scan before destroy (GitHub tokens, SSH keys) · ✅ host git runs with hooks off on agent commits | ⬜ key proxy |
-| **Clients** | ✅ CLI with one live line per agent · ✅ JSON lines for scripts and CI (`taskwing engine --json`) | ⬜ start from a Claude Code skill |
+| **Clients** | ✅ CLI with one live line per agent · ✅ JSON lines for scripts and CI (`taskwing engine --json`) · ✅ agent skill for any harness, with plan-only and `taskwing approve` | ⬜ `taskwing status` for a run in the background |
 
 ## Contributing
 

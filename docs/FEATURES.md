@@ -117,11 +117,11 @@ pie showData
 
 | ID | Feature | Status | Milestone | Note |
 |---|---|---|---|---|
-| C1 | CLI: `run`, `hunt`, `config`, `doctor`, `engine`, `version`, `help` | ✅ | PoC | Checks for the boat CLI and a base box before planning |
+| C1 | CLI: `run`, `hunt`, `approve`, `config`, `doctor`, `engine`, `version`, `help` | ✅ | PoC | Checks for the boat CLI and a base box before planning |
 | C2 | CLI: `status`, `answer`, `attach`, `stop` | ⬜ | M1 | |
 | C3 | `taskwing config boat-base` saves the base box | ✅ | PoC | |
 | C4 | Engine stream: JSON events out, commands in | ✅ | M1 | Built ahead of M1. `taskwing engine --json` (`internal/engine/stream.go`). For scripts, CI and editors (`docs/engine-protocol.md`). Not yet: pausing agents, agent questions, notes between agents |
-| C5 | Start from a Claude Code skill | ⬜ | Talk | Joseph's pick |
+| C5 | Start from an agent skill | ✅ | Talk | Joseph's pick. `skills/taskwing/SKILL.md` for any agent that reads skills (`.agents/skills/` and `.claude/skills/`): installs the CLI, checks logins, adds the skill and an `AGENTS.md`/`CLAUDE.md` section, drives runs with `--plan-only` and `taskwing approve` so the user approves the exam in chat. One paste starts it (README). The agents inside a run are still Claude Code (A-rows) |
 | C6 | Two minutes from install to the first agent | ⬜ | Talk | Joseph's pick; depends on S8 and C5 |
 | C7 | ~~Desktop app~~ | — | — | Dropped 2026-11-22: TaskWing is terminal only. The app stays in git history (last on main at e6f117d); the board (R8) shows the run |
 | C8 | Install the CLI with Homebrew, Linux packages, archives or `go install` | 🟡 | M1 | GoReleaser on `vX.Y.Z` tags, built on the latest stable Go. v2 ships as alphas (`v2.0.0-alpha.N`) on every channel, Homebrew included; no stable v2 yet |

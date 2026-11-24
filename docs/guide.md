@@ -109,6 +109,7 @@ During step 2, type `e` then Enter to run the exam now with what the agents have
 | `--max-cards` | 4 | most pieces the lead may make, or bugs a hunt keeps |
 | `--no-pr` | off | stop after the exam, keep the branch locally |
 | `--yes` | off | do not ask before starting or before a PR with failed checks |
+| `--plan-only` | off | stop after the plan and the exam; build later with `taskwing approve <run id>` ([From a coding agent](#from-a-coding-agent)) |
 | `--keep` | off | keep the sandboxes to look inside |
 
 ### Environment
@@ -126,6 +127,25 @@ During step 2, type `e` then Enter to run the exam now with what the agents have
 | `TASKWING_LOCAL_AGENT` | `claude -p --dangerously-skip-permissions` | the agents in `--provider local` |
 | `TASKWING_BOAT_BIN` | `boat` | path to the boat CLI |
 | `TASKWING_HOME` | `~/.taskwing` | where config, runs, repo cache and local boxes live |
+
+## From a coding agent
+
+An agent's shell cannot answer the question at the plan, so a run from an agent goes in two steps. The `taskwing` skill ([skills/taskwing/SKILL.md](../skills/taskwing/SKILL.md)) teaches an agent this flow.
+
+```bash
+taskwing run "<task>" --plan-only        # plan and exam, then stop; prints the run id
+taskwing approve <run id>                # after the user's yes: build that plan with that exam
+taskwing approve <run id> --check "codes are case-insensitive"     # with checks of the user's own
+```
+
+| Rule | What breaks without it |
+|---|---|
+| `approve` runs in the same repository, at the same commit as the plan | The exam's tests were written against that commit; on another one they test the wrong code. A moved repository is refused: plan again |
+| Each plan is approved once (`planned.json` becomes `planned.used.json`) | A second build would reuse the run folder and branch |
+| `approve` takes the same `--provider`, `--boat-base`, `--no-pr` and `--keep` as the plan | The plan does not store them; without them `approve` uses the defaults |
+| `taskwing hunt --plan-only` works the same way | |
+
+A build outlives most agent tool timeouts. Start it with `nohup taskwing approve <id> > log 2>&1 &`: TaskWing keeps running under `nohup` (it stops on a hang-up only when it catches one).
 
 ## Bug hunt
 
