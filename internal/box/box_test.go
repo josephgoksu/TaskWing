@@ -212,3 +212,60 @@ esac`)
 		t.Fatalf("got %+v", st)
 	}
 }
+
+// Each agent reaches boat as --provider. Claude keeps its default model and
+// effort; other agents get the dashboard's choice unless the run named one.
+func TestBoatAgentProviderAndModel(t *testing.T) {
+	for _, tc := range []struct {
+		agent, model, effort string
+		want, wantNot        []string
+	}{
+		{agent: "", want: []string{"--provider claude", "--model " + DefaultModel, "--reasoning-effort " + DefaultEffort}},
+		{agent: "codex", want: []string{"--provider codex"}, wantNot: []string{"--model", "--reasoning-effort"}},
+		{agent: "codex", model: "gpt-6.1-sol", effort: "high", want: []string{"--provider codex", "--model gpt-6.1-sol", "--reasoning-effort high"}},
+	} {
+		p, calls := stubBoat(t, `case $cmd in
+prompt) echo '{"event":"start","data":{"conversationId":"cv1"}}'
+        echo '{"event":"chat","data":{"type":"response","data":{"content":"Done."}}}' ;;
+*) exit 1 ;;
+esac`)
+		p.Agent, p.Model, p.Effort, p.Poll = tc.agent, tc.model, tc.effort, 20*time.Millisecond
+		a, err := p.StartAgent(context.Background(), &Box{ID: "b1"}, "go", filepath.Join(t.TempDir(), "log"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for deadline := time.Now().Add(5 * time.Second); a.Status().Running && time.Now().Before(deadline); {
+			time.Sleep(20 * time.Millisecond)
+		}
+		a.Stop()
+		var prompt string
+		for _, c := range readCalls(t, calls) {
+			if strings.HasPrefix(c, "prompt ") {
+				prompt = c
+			}
+		}
+		for _, w := range tc.want {
+			if !strings.Contains(prompt, w) {
+				t.Errorf("agent %q: %q lacks %q", tc.agent, prompt, w)
+			}
+		}
+		for _, w := range tc.wantNot {
+			if strings.Contains(prompt, w) {
+				t.Errorf("agent %q: %q has %q", tc.agent, prompt, w)
+			}
+		}
+	}
+}
+
+// The secret scan exempts an agent's own login by AgentLogins: an agent
+// without an entry would have its login reported as a leak in every box.
+func TestEveryAgentHasLogins(t *testing.T) {
+	for _, a := range Agents {
+		if len(AgentLogins[a]) == 0 {
+			t.Errorf("agent %q has no AgentLogins entry", a)
+		}
+	}
+	if len(AgentLogins) != len(Agents) {
+		t.Errorf("AgentLogins has %d agents, Agents %d", len(AgentLogins), len(Agents))
+	}
+}

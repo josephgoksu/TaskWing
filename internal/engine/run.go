@@ -152,7 +152,7 @@ type runner struct {
 	boxesMu    sync.Mutex
 	boxes      []*box.Box
 	secrets    []string
-	agentLogin bool // a box held the agent's Claude login (expected)
+	agentLogin bool // a box held the agent's own login (expected)
 }
 
 // Run executes one task end to end.
@@ -281,7 +281,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	res := &Result{RunID: r.id, RunDir: r.dir, Scanned: o.Provider.Sandboxed()}
 	// An approve logs run.approved once the saved plan is accepted, below.
 	if o.Approve == "" {
-		r.ev.log("run.created", map[string]any{"task": o.Task, "repo": r.root, "base": r.base, "provider": o.Provider.Name()})
+		r.ev.log("run.created", map[string]any{"task": o.Task, "repo": r.root, "base": r.base, "provider": o.Provider.Name(), "agent": r.agent()})
 	}
 	r.ui.say("%s %s  %s", r.ui.bold("TaskWing"), r.id, r.ui.dim(o.Provider.Name()+" · "+filepath.Base(r.root)+" @ "+r.base[:8]))
 	if !o.Provider.Sandboxed() {
@@ -598,7 +598,7 @@ func (r *runner) summary(res *Result) {
 		if len(res.Secrets) == 0 {
 			msg := "  Secret scan: nothing found in any sandbox"
 			if r.agentLogin {
-				msg += " (only the agents' own Claude login, as expected)"
+				msg += " (only the agents' own login, as expected)"
 			}
 			r.ui.say("%s", msg)
 		} else {

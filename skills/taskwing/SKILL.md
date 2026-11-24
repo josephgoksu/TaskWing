@@ -14,11 +14,12 @@ You, the agent reading this, drive TaskWing from the user's chat. You run the CL
 | Part | Today | Not yet |
 |---|---|---|
 | Driving TaskWing (this skill) | Any agent that can run shell commands: Claude Code, Codex, Cursor, Gemini CLI, Antigravity, Copilot and others | |
-| Lead, exam writer, workers | Claude Code (`claude` CLI, logged in) | Codex, Gemini CLI and other worker agents |
+| Lead and exam writer | Claude Code (`claude` CLI, logged in, on this machine) | Other agents as lead (possible today with `TASKWING_LEAD_CMD`, untested) |
+| Workers (one per piece) | Claude Code by default. In boat, `--agent codex` (or `opencode`, `pi`, `prime`, `kimi`, `mistral`) runs that agent in every box, not yet proven in a live run | Gemini CLI; a different agent per piece |
 | Sandboxes | boat, or `--provider local` (folders on this machine, no isolation, for trying it) | E2B, Docker, AWS |
 | Systems | macOS, Linux, Windows with Git Bash or WSL (every run goes through `bash`) | |
 
-Say this plainly if the user asks: whatever agent they chat with, the agents inside a run are Claude Code for now.
+Say this plainly if the user asks: whatever agent they chat with, the lead and exam writer are Claude Code for now, and the builders are Claude Code unless the run uses `--agent` in boat.
 
 ## Set up (once per machine and repository)
 

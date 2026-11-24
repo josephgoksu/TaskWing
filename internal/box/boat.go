@@ -23,15 +23,16 @@ import (
 )
 
 // Boat runs boxes on boat.dev through its CLI. Each box is forked from a base
-// box that already has the repository's toolchain and a Claude Code login.
+// box that already has the repository's toolchain and the agent's login.
 // The agent runs through `boat prompt`, so model usage is billed to the
 // account connected to boat. GitHub credentials never enter a box.
 type Boat struct {
 	Bin         string // path to the boat CLI, default "boat"
 	Base        string // box id to fork from
 	Environment string // optional boat environment to pin forks to
-	Model       string // e.g. opus-5-5
-	Effort      string // low|medium|high|xhigh|max
+	Agent       string // boat --provider: claude (default), codex, opencode, pi, prime, kimi, mistral
+	Model       string // e.g. opus-5-5; empty: opus-5-5 for claude, the dashboard's choice for the others
+	Effort      string // low|medium|high|xhigh|max; empty: medium for claude, the dashboard's choice for the others
 	TTL         int    // box lifetime in seconds
 	Poll        time.Duration
 }
@@ -166,12 +167,27 @@ func (p *Boat) StartAgent(ctx context.Context, b *Box, prompt, logPath string) (
 	if strings.TrimSpace(prompt) == "" {
 		return nil, errors.New("empty prompt")
 	}
-	model, effort := p.Model, p.Effort
-	if model == "" {
-		model = DefaultModel
+	agent, model, effort := p.Agent, p.Model, p.Effort
+	if agent == "" {
+		agent = DefaultAgent
 	}
-	if effort == "" {
-		effort = DefaultEffort
+	// Each agent has its own models and effort levels. Claude keeps the
+	// defaults it always had; the others use what the boat dashboard picked
+	// for them unless the run named a model or an effort.
+	if agent == DefaultAgent {
+		if model == "" {
+			model = DefaultModel
+		}
+		if effort == "" {
+			effort = DefaultEffort
+		}
+	}
+	args := []string{"prompt", b.ID, "--new", "--provider", agent}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	if effort != "" {
+		args = append(args, "--reasoning-effort", effort)
 	}
 	logf, err := os.Create(logPath)
 	if err != nil {
@@ -180,7 +196,7 @@ func (p *Boat) StartAgent(ctx context.Context, b *Box, prompt, logPath string) (
 	// The agent outlives this call but not the run: actx ends with ctx or
 	// when the agent finishes, and either way the whole boat prompt tree dies.
 	actx, cancel := context.WithCancel(ctx)
-	cmd := exec.CommandContext(actx, p.bin(), "prompt", b.ID, "--new", "--provider", "claude", "--model", model, "--reasoning-effort", effort, prompt)
+	cmd := exec.CommandContext(actx, p.bin(), append(args, prompt)...)
 	proc.Group(cmd)
 	pr, pw := io.Pipe()
 	cmd.Stdout = io.MultiWriter(logf, pw)

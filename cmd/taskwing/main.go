@@ -130,8 +130,9 @@ Run flags
   --provider boat|local   where agents run (default boat; local = folders on this machine, not a sandbox)
   --boat-base <id>        boat box to fork (or taskwing config boat-base <id>)
   --boat-env <name>       boat environment for the forks
-  --model <name>          agent model in boat (default `+box.DefaultModel+`)
-  --effort <level>        agent effort in boat (default `+box.DefaultEffort+`)
+  --agent <name>          coding agent in each boat box: `+strings.Join(box.Agents, ", ")+` (default `+box.DefaultAgent+`)
+  --model <name>          agent model in boat (default `+box.DefaultModel+` for claude, else the boat dashboard's)
+  --effort <level>        agent effort in boat (default `+box.DefaultEffort+` for claude, else the boat dashboard's)
   --max-cards <n>         most agents the lead may plan, or bugs a hunt keeps (default 4)
   --yes                   do not ask before starting or before the PR
   --plan-only             stop after the plan and the exam; start later with taskwing approve
@@ -165,7 +166,7 @@ func home() string {
 }
 
 type providerFlags struct {
-	provider, base, boatEnv, model, effort *string
+	provider, base, boatEnv, agent, model, effort *string
 }
 
 func addProviderFlags(fs *flag.FlagSet) providerFlags {
@@ -173,16 +174,25 @@ func addProviderFlags(fs *flag.FlagSet) providerFlags {
 		provider: fs.String("provider", env("TASKWING_PROVIDER", "boat"), "boat or local"),
 		base:     fs.String("boat-base", env("TASKWING_BOAT_BASE", loadConfig().BoatBase), "boat box to fork"),
 		boatEnv:  fs.String("boat-env", os.Getenv("TASKWING_BOAT_ENV"), "boat environment"),
-		model:    fs.String("model", env("TASKWING_MODEL", box.DefaultModel), "agent model"),
-		effort:   fs.String("effort", env("TASKWING_EFFORT", box.DefaultEffort), "agent effort"),
+		agent:    fs.String("agent", env("TASKWING_AGENT", box.DefaultAgent), "coding agent in each box"),
+		model:    fs.String("model", os.Getenv("TASKWING_MODEL"), "agent model"),
+		effort:   fs.String("effort", os.Getenv("TASKWING_EFFORT"), "agent effort"),
 	}
 }
 
 func (p providerFlags) build() (box.Provider, error) {
+	agent := strings.ToLower(strings.TrimSpace(*p.agent))
+	if !box.KnownAgent(agent) {
+		return nil, errUsage{fmt.Sprintf("unknown agent %q (use one of: %s)", *p.agent, strings.Join(box.Agents, ", "))}
+	}
 	switch *p.provider {
 	case "boat":
-		return &box.Boat{Bin: env("TASKWING_BOAT_BIN", "boat"), Base: *p.base, Environment: *p.boatEnv, Model: *p.model, Effort: *p.effort}, nil
+		return &box.Boat{Bin: env("TASKWING_BOAT_BIN", "boat"), Base: *p.base, Environment: *p.boatEnv, Agent: agent, Model: *p.model, Effort: *p.effort}, nil
 	case "local":
+		// Local agents are a shell command on this machine, not a boat agent.
+		if agent != box.DefaultAgent && os.Getenv("TASKWING_LOCAL_AGENT") == "" {
+			return nil, errUsage{fmt.Sprintf("agent %s runs only in boat; for local folders set TASKWING_LOCAL_AGENT to the %s command (prompt on stdin, see docs/guide.md)", agent, agent)}
+		}
 		return &box.Local{Root: filepath.Join(home(), "boxes"), AgentCmd: env("TASKWING_LOCAL_AGENT", defaultLocal)}, nil
 	}
 	return nil, errUsage{fmt.Sprintf("unknown provider %q (use boat or local)", *p.provider)}
@@ -386,10 +396,13 @@ func cmdEngine(args []string) error {
 		}
 		// Canonical values are lower case; the desktop app's labels
 		// ("Claude", "Local folders") are still accepted.
-		switch strings.ToLower(c.Models) {
-		case "", "claude":
-		default:
-			return engine.Options{}, fmt.Errorf("%s is not ready yet: runs use Claude models today", c.Models)
+		// models names the coding agent in each box (boat --provider).
+		agent := strings.ToLower(strings.TrimSpace(c.Models))
+		if agent == "" {
+			agent = strings.ToLower(env("TASKWING_AGENT", box.DefaultAgent))
+		}
+		if !box.KnownAgent(agent) {
+			return engine.Options{}, fmt.Errorf("%s is not ready yet: use one agent for every box, one of %s", c.Models, strings.Join(box.Agents, ", "))
 		}
 		provider := "boat"
 		switch strings.ToLower(c.Sandbox) {
@@ -402,6 +415,7 @@ func cmdEngine(args []string) error {
 		// The boat settings `run` would use, from the environment and config.
 		pf := addProviderFlags(flag.NewFlagSet("engine run", flag.ContinueOnError))
 		*pf.provider = provider
+		*pf.agent = agent
 		prov, err := pf.build()
 		if err != nil {
 			return engine.Options{}, err
@@ -438,6 +452,9 @@ func cmdDoctor(args []string) error {
 	if _, err := parseAnywhere(fs, args); err != nil {
 		return err
 	}
+	// Doctor starts no agent: an agent setting it cannot use (a typo in
+	// TASKWING_AGENT, or codex with --provider local) must not stop the cleanup.
+	*pf.agent = box.DefaultAgent
 	prov, err := pf.build()
 	if err != nil {
 		return err
