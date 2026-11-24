@@ -23,7 +23,7 @@ flowchart TB
   subgraph Clients["Clients: show state, send commands (no logic)"]
     CLI[CLI]
     JS[Scripts and CI, via JSON]
-    SK[Claude Code skill, planned]
+    SK[Agent skill, any harness]
   end
 
   subgraph Engine["Engine: Go binary, all the logic"]
@@ -184,10 +184,10 @@ classDiagram
 | Part | Does | Never does | What breaks without it | Status |
 |---|---|---|---|---|
 | Engine | All the logic: runs, plan check, boxes, bundles, exam, join, push, scan, event log | Call a model itself, hold a subscription login | Model code ties the engine to one vendor; holding a subscription login breaks the provider's terms (`PRINCIPLES.md` #3) | built |
-| CLI | Every engine action as a command | Anything the engine can't do | Logic outside the engine, so runs can't be scripted (`PRINCIPLES.md` #11) | partial: `run`, `hunt`, `config`, `doctor`, `engine`, `version`, `help` |
+| CLI | Every engine action as a command | Anything the engine can't do | Logic outside the engine, so runs can't be scripted (`PRINCIPLES.md` #11) | partial: `run`, `hunt`, `approve`, `config`, `doctor`, `engine`, `version`, `help` |
 | Engine stream | Newline-delimited JSON: events out, commands in (`taskwing engine --json`, `docs/engine-protocol.md`) for scripts, CI and editors; the CLI draws its own board from the same run | | | built: no pause, agent questions or notes yet |
 | Board | The CLI's live view: one line per agent with a glyph (■ grey done, ▣ blue working, □ waiting, ✗ red stuck; amber "needs you" planned) and a short proof line, redrawn in place on a terminal, one line per state change when piped | Hold state of its own; it draws the run | Paragraphs per agent nobody reads (`AGENTS.md`, Pictures over text) | built (`internal/engine/ui.go`) |
-| Skill | A Claude Code skill: installs TaskWing, starts a run from a chat, fixes setup | Run agents itself | Agents the engine can't see, scan or clean up | planned |
+| Skill | `skills/taskwing/SKILL.md`, for any agent that reads skills: installs the CLI, checks logins, writes the agent docs, starts a run from a chat with `--plan-only`, shows the user the plan and the exam, and runs `taskwing approve` on their yes | Run agents itself, approve for the user, read the exam | Agents the engine can't see, scan or clean up; an exam nobody approved | built |
 
 ## Adapters
 

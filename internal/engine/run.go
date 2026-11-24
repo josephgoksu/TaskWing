@@ -52,11 +52,14 @@ type Options struct {
 	LeadCmd      string // shell command for the lead; prompt on stdin
 	ExamCmd      string // shell command for the exam session; prompt on stdin
 	MaxCards     int
-	Yes          bool   // skip the questions
-	NoPR         bool   // stop after the exam; keep the branch locally
-	Keep         bool   // keep boxes after the run
-	Hunt         bool   // find bugs, prove each with a failing test, then fix them
-	HuntCmd      string // shell command for the bug hunter; prompt on stdin
+	Yes          bool     // skip the questions
+	PlanOnly     bool     // stop after the plan and the exam; start it later with Approve
+	Approve      string   // run id of a plan saved by PlanOnly: build it without planning again
+	Checks       []string // checks of the user's own, added with Approve
+	NoPR         bool     // stop after the exam; keep the branch locally
+	Keep         bool     // keep boxes after the run
+	Hunt         bool     // find bugs, prove each with a failing test, then fix them
+	HuntCmd      string   // shell command for the bug hunter; prompt on stdin
 	AgentTimeout time.Duration
 	CheckTimeout time.Duration
 	Out          io.Writer
@@ -162,6 +165,13 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	}
 	if o.CheckTimeout == 0 {
 		o.CheckTimeout = 20 * time.Minute
+	}
+	if o.Approve != "" {
+		p, err := readPlanned(o.Home, o.Approve)
+		if err != nil {
+			return nil, err
+		}
+		o.Task, o.Hunt, o.RunID = p.Task, p.Hunt, o.Approve
 	}
 	r := &runner{o: o, s: o.Stream, ui: newUI(o.Out, o.In), start: time.Now(), examNow: make(chan struct{})}
 	res, err := r.run(ctx)
@@ -269,7 +279,10 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 	res := &Result{RunID: r.id, RunDir: r.dir, Scanned: o.Provider.Sandboxed()}
-	r.ev.log("run.created", map[string]any{"task": o.Task, "repo": r.root, "base": r.base, "provider": o.Provider.Name()})
+	// An approve logs run.approved once the saved plan is accepted, below.
+	if o.Approve == "" {
+		r.ev.log("run.created", map[string]any{"task": o.Task, "repo": r.root, "base": r.base, "provider": o.Provider.Name()})
+	}
 	r.ui.say("%s %s  %s", r.ui.bold("TaskWing"), r.id, r.ui.dim(o.Provider.Name()+" · "+filepath.Base(r.root)+" @ "+r.base[:8]))
 	if !o.Provider.Sandboxed() {
 		r.ui.say("%s", r.ui.amber("Local mode: agents run on this machine with your own login. This is for testing, not a sandbox."))
@@ -299,7 +312,26 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	} else {
 		r.ui.step(1, "Plan")
 	}
-	for approved := false; !approved; {
+	if o.Approve != "" {
+		// The plan and the exam were made and shown by an earlier
+		// --plan-only run; the user approved them since.
+		if plan, checks, patch, err = r.loadPlanned(); err != nil {
+			return res, err
+		}
+		r.ev.log("run.approved", map[string]any{"base": r.base, "provider": o.Provider.Name(), "user_checks": len(o.Checks)})
+		if o.Hunt {
+			r.showBugs(plan)
+		} else {
+			r.showPlan(plan, checks)
+		}
+		for i, text := range o.Checks {
+			if text = strings.TrimSpace(text); text != "" {
+				userChecks = append(userChecks, WireCheck{ID: fmt.Sprintf("u%d", i+1), Text: text, AddedBy: "user"})
+				r.ui.say("  %s %s %s", r.ui.green("+"), text, r.ui.dim("(its tests are written while the agents build; they never see them)"))
+			}
+		}
+	}
+	for approved := o.Approve != ""; !approved; {
 		if o.Hunt {
 			r.ui.say("  A session is reading the code and writing a failing test for each bug it suspects.")
 			if plan, checks, patch, err = r.hunt(ctx); err != nil {
@@ -334,6 +366,17 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 			} else {
 				redo = true
 			}
+		case o.PlanOnly:
+			if err := r.savePlanned(); err != nil {
+				return res, err
+			}
+			r.ev.log("run.planned", nil)
+			approve := "taskwing approve " + r.id + r.approveFlags()
+			r.ui.say("\n  Plan ready. Nothing has started.")
+			r.ui.say("  Approve it:  %s", approve)
+			r.ui.say("  %s", r.ui.dim(`Add a check of your own: `+approve+` --check "<sentence>"`))
+			res.Stopped = true
+			return res, nil
 		case o.Yes:
 			approved = true
 		default:
@@ -434,6 +477,13 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		r.summary(res)
 		return res, nil
 	}
+	if res.Passed < res.Total && !o.Yes && o.Approve != "" && !r.ui.inTTY {
+		// approve is run by coding agents, whose shell cannot answer: asking
+		// would wait forever on an input that never ends.
+		r.ui.say("  Not opened: %d of %d checks failed. The joined work is on branch %s.", res.Total-res.Passed, res.Total, res.Branch)
+		r.summary(res)
+		return res, nil
+	}
 	if res.Passed < res.Total && !o.Yes {
 		yes, err := r.ui.ask(ctx, fmt.Sprintf("  %d of %d checks failed. Open the draft pull request anyway?", res.Total-res.Passed, res.Total))
 		if err != nil {
@@ -455,6 +505,23 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	r.s.prOpened(url)
 	r.summary(res)
 	return res, nil
+}
+
+// approveFlags repeats the flags of this run that the saved plan does not
+// keep, so the printed approve command builds where the plan was made for
+// (without them approve falls back to boat and opens a pull request).
+func (r *runner) approveFlags() string {
+	f := " --provider " + r.o.Provider.Name()
+	if b, ok := r.o.Provider.(*box.Boat); ok && b.Base != "" {
+		f += " --boat-base " + shq(b.Base)
+	}
+	if r.o.NoPR {
+		f += " --no-pr"
+	}
+	if r.o.Keep {
+		f += " --keep"
+	}
+	return f
 }
 
 func plural(n int, one, many string) string {

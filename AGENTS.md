@@ -20,7 +20,7 @@ The v1 knowledge layer was removed in November 2026. Nothing from it carries ove
 |---|---|---|
 | Where agents run | Inside the box | Works with every agent CLI unchanged and scales to hundreds of boxes |
 | How agents log in | Placeholder key + base URL; a proxy outside the box swaps in the real credential (`PRINCIPLES.md` #3). Subscription logins go through the sandbox provider (boat); TaskWing's proxy carries API keys only (decided 2026-11-14) | Agent CLIs offer many login methods (`context/agent-logins.md`). Holding a subscription login ourselves breaks the provider's terms; boat already handles it |
-| Who plans | The user's own agent CLI, run headless on their machine (`TASKWING_LEAD_CMD`, default `claude -p` with read-only tools). Starting from a TaskWing skill is planned. The engine has no model code (decided 2026-11-14) | Keeps the flat subscription, works with any vendor's agent, and the engine only checks and runs the plan |
+| Who plans | The user's own agent CLI, run headless on their machine (`TASKWING_LEAD_CMD`, default `claude -p` with read-only tools). Any agent can also start a run from a chat with the `taskwing` skill (`skills/taskwing/SKILL.md`: `--plan-only`, then `taskwing approve`). The engine has no model code (decided 2026-11-14) | Keeps the flat subscription, works with any vendor's agent, and the engine only checks and runs the plan |
 | Front end | The terminal only: one Go binary, the run drawn as one line per agent, plus `taskwing engine --json` for scripts (decided 2026-11-22). The desktop app (2026-11-17) was removed and stays in git history | Developers install CLIs from Homebrew; one language, one release line, no app signing. A desktop shelf already full of agent apps |
 | Phone pings | A push service called from the engine, not a phone app | Works on day one with no app to build |
 | Sandboxes | boat first; local folders for trying it (no isolation); Docker later; never our own (decided 2026-11-14) | boat already runs agent CLIs, handles subscription logins and proxies keys. Local folders show the flow in two minutes; Docker gives a free isolated backend for tests. Building a sandbox competes with a commodity |
@@ -50,6 +50,7 @@ Without the last two, a broken binary or release config is found only when a tag
 | `internal/engine` | Runs, plan check, exam, join, pull request, board, JSON stream |
 | `internal/box` | Box providers: boat, local |
 | `internal/proc` | Starts child processes as a group, so a timeout or Ctrl-C stops the whole tree, not only bash |
+| `skills/taskwing` | The agent skill (`SKILL.md`); `cmd/taskwing/skill_test.go` checks every command and flag it names exists |
 
 ## Releases
 
