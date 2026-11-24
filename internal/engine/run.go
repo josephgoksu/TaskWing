@@ -269,7 +269,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 	res := &Result{RunID: r.id, RunDir: r.dir, Scanned: o.Provider.Sandboxed()}
-	r.ev.log("run.created", map[string]any{"task": o.Task, "repo": r.root, "base": r.base, "provider": o.Provider.Name()})
+	r.ev.log("run.created", map[string]any{"task": o.Task, "repo": r.root, "base": r.base, "provider": o.Provider.Name(), "agent": r.agent()})
 	r.ui.say("%s %s  %s", r.ui.bold("TaskWing"), r.id, r.ui.dim(o.Provider.Name()+" · "+filepath.Base(r.root)+" @ "+r.base[:8]))
 	if !o.Provider.Sandboxed() {
 		r.ui.say("%s", r.ui.amber("Local mode: agents run on this machine with your own login. This is for testing, not a sandbox."))

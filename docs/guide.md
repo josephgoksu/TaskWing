@@ -52,7 +52,7 @@ taskwing run "add a /health endpoint with a test" --provider local --no-pr
 
 Every agent box is a fork of this one, so it needs what the repository needs to build and test.
 
-Agents need your Claude login and nothing else. boat's default environment also passes your GitHub token, gh login and secret files into every box, and taskwing refuses to start agents in a box that holds GitHub credentials. So make a separate environment first:
+Agents need their own login and nothing else: your Claude login for the default agent, or the login of the agent you pick with `--agent` ([Other agents](#other-agents)). boat's default environment also passes your GitHub token, gh login and secret files into every box, and taskwing refuses to start agents in a box that holds GitHub credentials. So make a separate environment first:
 
 1. In boat, create an environment (for example `tw-agents`) that passes only the agent login: GitHub, secret files, boat CLI credentials and repositories all off. Keep `base` as it is.
 2. Make the base box from it, install the toolchain, stop it:
@@ -69,10 +69,10 @@ boat stop bx_abc123                  # stopping takes the snapshot that forks st
 | Rule | What breaks without it |
 |---|---|
 | Never give the base box a name that starts with "taskwing" | `taskwing doctor --clean` treats it as a leftover |
-| Don't use a `--no-env` box | It has no secrets, but also no Claude login, so `boat prompt` fails with "Claude login required" |
+| Don't use a `--no-env` box | It has no secrets, but also no agent login, so `boat prompt` fails (for Claude: "Claude login required") |
 | Save the base within 14 days of stopping it: `boat snapshot <id> <name>`, or make a new one | A stopped box keeps its data for 14 days; after that `boat fork` fails |
 
-The end-of-run secret scan lists any leak, including SSH keys. The agents' own Claude login is expected and named as such.
+The end-of-run secret scan lists any leak, including SSH keys. The agent's own login is expected and named as such; another agent's login (a Claude login in a codex box) is reported, so pass only the login of the agent you run.
 
 ## 4. Run it
 
@@ -141,8 +141,8 @@ taskwing run "..." --agent codex --model gpt-6.1-sol --effort high     # a model
 | Rule | What breaks without it |
 |---|---|
 | Connect the agent's login in boat (Agents & Proxying) and let the base box's environment pass it | The first prompt fails with `provider_not_configured` and every piece ends stuck |
-| Without `--model` and `--effort`, an agent other than claude uses the model boat's dashboard picked for it | Each agent has its own model names and effort levels; Claude's defaults would be refused |
-| The secret scan expects each agent's own login (`CLAUDE_CODE_OAUTH_TOKEN` for claude, `OPENAI_API_KEY` for codex: `box.AgentLogins`) and reports any other credential | An agent cannot run without its login; anything else in a box is a leak |
+| Without `--model` and `--effort` (and with `TASKWING_MODEL` and `TASKWING_EFFORT` unset), an agent other than claude uses the model boat's dashboard picked for it | Each agent has its own model names and effort levels; Claude's defaults, or a `TASKWING_MODEL` exported for claude, would be refused |
+| The secret scan expects each agent's own login (`CLAUDE_CODE_OAUTH_TOKEN` for claude, `OPENAI_API_KEY` for codex: `box.AgentLogins`) and reports any other credential it recognizes (GitHub, Anthropic, OpenAI-style `sk-` keys, AWS, SSH keys) | An agent cannot run without its login; anything else in a box is a leak |
 | One agent for every box in a run | Routing pieces to different agents is planned (FEATURES A5) |
 | The lead and the exam writer still run on this machine with `TASKWING_LEAD_CMD` and `TASKWING_EXAM_CMD` (Claude Code by default) | `--agent` changes the builders only; a Codex lead needs its own command |
 

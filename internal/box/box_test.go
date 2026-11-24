@@ -256,3 +256,16 @@ esac`)
 		}
 	}
 }
+
+// The secret scan exempts an agent's own login by AgentLogins: an agent
+// without an entry would have its login reported as a leak in every box.
+func TestEveryAgentHasLogins(t *testing.T) {
+	for _, a := range Agents {
+		if len(AgentLogins[a]) == 0 {
+			t.Errorf("agent %q has no AgentLogins entry", a)
+		}
+	}
+	if len(AgentLogins) != len(Agents) {
+		t.Errorf("AgentLogins has %d agents, Agents %d", len(AgentLogins), len(Agents))
+	}
+}

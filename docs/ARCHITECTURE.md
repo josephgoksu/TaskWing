@@ -146,7 +146,7 @@ classDiagram
 |---|---|---|---|
 | Agent | One coding agent session working on one job | Agent runtime | built |
 | Role | What an agent is for. Lead: plans, on the host. Exam writer: writes the exam, on the host, separate session. Worker: builds one card, in a box. Hunter: finds and proves bugs. Fixer: a worker that gets a bug but not its test | Engine | built |
-| Agent runtime | The CLI that runs an agent: Claude Code today; Codex, Gemini CLI, OpenCode later. Spoken to through ACP where possible | Adapter | partial (Claude Code only) |
+| Agent runtime | The CLI that runs an agent: Claude Code today; Codex, OpenCode and other boat harnesses through `--agent`; Gemini CLI later. Spoken to through ACP where possible | Adapter | partial (Claude Code proven; others through boat, not yet proven live) |
 | Model | The model an agent thinks with: Claude today; GPT and an open-weight model next | Agent runtime | partial (Claude only) |
 | Model router | Picks the runtime and model per role and per card: a cheap open model for routine work, a frontier model for hard work. The engine picks; it never calls a model itself | Engine | planned |
 | Login | How an agent signs in to its model. A subscription login goes through the box provider; an API key goes through the key proxy | Box provider, key proxy | partial (subscription through boat only) |
@@ -209,7 +209,7 @@ flowchart LR
 | Box provider | E2B | planned | Promised in the ContainerDays abstract |
 | Box provider | AWS | planned | Promised in the abstract. AWS Nitro Sandboxes (hardware-isolated EKS pods, ECS tasks, EC2) or Lambda MicroVMs; pick one by a spike |
 | Agent runtime | Claude Code | built | Through `boat prompt` in boxes and `claude -p` on the host |
-| Agent runtime | Codex CLI, OpenCode | planned | OpenCode can drive open-weight models |
+| Agent runtime | Codex CLI, OpenCode, pi, prime, Kimi, Mistral | partial | Through `boat prompt --provider` in boxes (`--agent`); not yet proven in a live run. OpenCode can drive open-weight models |
 | Model | Claude | built | |
 | Model | GPT, an open-weight model | planned | At least one non-Claude model must work in a live run by 10 Feb 2027 |
 

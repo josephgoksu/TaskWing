@@ -65,6 +65,9 @@ func TestExitCodes(t *testing.T) {
 }
 
 func TestBuildProvider(t *testing.T) {
+	// The shell's own agent settings must not decide the result.
+	t.Setenv("TASKWING_AGENT", "")
+	t.Setenv("TASKWING_LOCAL_AGENT", "")
 	for name, want := range map[string]string{"boat": "boat", "local": "local"} {
 		fs := flag.NewFlagSet("t", flag.ContinueOnError)
 		pf := addProviderFlags(fs)
@@ -72,6 +75,19 @@ func TestBuildProvider(t *testing.T) {
 		p, err := pf.build()
 		if err != nil || p.Name() != want {
 			t.Errorf("%s: got %v, %v", name, p, err)
+		}
+	}
+	for _, tc := range []struct{ provider, agent, err string }{
+		{"boat", " Codex ", ""},
+		{"boat", "codx", "unknown agent"},
+		{"local", "codex", "runs only in boat"},
+	} {
+		fs := flag.NewFlagSet("t", flag.ContinueOnError)
+		pf := addProviderFlags(fs)
+		*pf.provider, *pf.agent = tc.provider, tc.agent
+		_, err := pf.build()
+		if (tc.err == "" && err != nil) || (tc.err != "" && (err == nil || !strings.Contains(err.Error(), tc.err))) {
+			t.Errorf("%s --agent %q: err = %v, want %q", tc.provider, tc.agent, err, tc.err)
 		}
 	}
 }

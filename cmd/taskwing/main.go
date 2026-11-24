@@ -186,7 +186,7 @@ func (p providerFlags) build() (box.Provider, error) {
 	case "local":
 		// Local agents are a shell command on this machine, not a boat agent.
 		if agent != box.DefaultAgent && os.Getenv("TASKWING_LOCAL_AGENT") == "" {
-			return nil, errUsage{fmt.Sprintf("--agent %s needs boat; with --provider local set TASKWING_LOCAL_AGENT to the %s command (prompt on stdin, see docs/guide.md)", agent, agent)}
+			return nil, errUsage{fmt.Sprintf("agent %s runs only in boat; for local folders set TASKWING_LOCAL_AGENT to the %s command (prompt on stdin, see docs/guide.md)", agent, agent)}
 		}
 		return &box.Local{Root: filepath.Join(home(), "boxes"), AgentCmd: env("TASKWING_LOCAL_AGENT", defaultLocal)}, nil
 	}
@@ -329,9 +329,9 @@ func cmdEngine(args []string) error {
 		// Canonical values are lower case; the desktop app's labels
 		// ("Claude", "Local folders") are still accepted.
 		// models names the coding agent in each box (boat --provider).
-		agent := strings.ToLower(c.Models)
+		agent := strings.ToLower(strings.TrimSpace(c.Models))
 		if agent == "" {
-			agent = box.DefaultAgent
+			agent = strings.ToLower(env("TASKWING_AGENT", box.DefaultAgent))
 		}
 		if !box.KnownAgent(agent) {
 			return engine.Options{}, fmt.Errorf("%s is not ready yet: use one agent for every box, one of %s", c.Models, strings.Join(box.Agents, ", "))
@@ -384,6 +384,9 @@ func cmdDoctor(args []string) error {
 	if _, err := parseAnywhere(fs, args); err != nil {
 		return err
 	}
+	// Doctor starts no agent: an agent setting it cannot use (a typo in
+	// TASKWING_AGENT, or codex with --provider local) must not stop the cleanup.
+	*pf.agent = box.DefaultAgent
 	prov, err := pf.build()
 	if err != nil {
 		return err
