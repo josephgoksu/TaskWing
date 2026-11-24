@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // The skill teaches agents the CLI, so every command and flag it names in a
@@ -28,21 +29,26 @@ func TestSkillMatchesCLI(t *testing.T) {
 		t.Error("frontmatter needs name: taskwing")
 	}
 	desc := regexp.MustCompile(`(?m)^description: (.+)$`).FindStringSubmatch(front)
-	if desc == nil || len(desc[1]) > 1024 {
+	if desc == nil || utf8.RuneCountInString(desc[1]) > 1024 {
 		t.Errorf("frontmatter needs a description of at most 1024 characters")
 	}
 
 	var help bytes.Buffer
 	usage(&help)
 	known := help.String() + " taskwing help --check --clean --version "
-	cmdRe := regexp.MustCompile("taskwing ([a-z]+)")
+	cmdRe := regexp.MustCompile(`taskwing ([a-z]+)\b`)
+	// Whole command names only: a prefix ("taskwing app") is not a command.
+	commands := map[string]bool{}
+	for _, m := range cmdRe.FindAllStringSubmatch(known, -1) {
+		commands[m[1]] = true
+	}
 	flagRe := regexp.MustCompile(`(?:^|\s)(--[a-z][a-z-]*)`)
 	for _, line := range strings.Split(skill, "\n") {
 		if !strings.Contains(line, "taskwing ") || strings.Contains(line, "brew ") || strings.Contains(line, "go install") || strings.Contains(line, "gh skill") {
 			continue
 		}
 		for _, m := range cmdRe.FindAllStringSubmatch(line, -1) {
-			if !strings.Contains(known, "taskwing "+m[1]) {
+			if !commands[m[1]] {
 				t.Errorf("the skill uses taskwing %s, which is not a command: %s", m[1], line)
 			}
 		}

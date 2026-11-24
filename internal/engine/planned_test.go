@@ -34,7 +34,9 @@ func TestPlanOnlyThenApprove(t *testing.T) {
 	if err != nil || !res.Stopped {
 		t.Fatalf("plan-only: %v %+v\n%s", err, res, out.String())
 	}
-	if !strings.Contains(out.String(), "taskwing approve "+res.RunID) {
+	// With the flags the plan was made with: a bare approve would build in
+	// boat and open a pull request.
+	if !strings.Contains(out.String(), "taskwing approve "+res.RunID+" --provider local --no-pr") {
 		t.Errorf("plan-only output does not say how to approve:\n%s", out.String())
 	}
 	if left, _ := os.ReadDir(filepath.Join(home, "boxes")); len(left) != 0 {

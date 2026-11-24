@@ -198,6 +198,7 @@ cmd/taskwing/     the CLI entry point
 internal/engine/  runs, plan check, exam, join, pull request
 internal/box/     sandbox providers (boat, local)
 internal/proc/    child processes as a group, so a timeout or Ctrl-C stops them all
+skills/taskwing/  the agent skill: set up TaskWing and drive runs from any coding agent
 docs/             architecture, features, user guide, engine protocol, diagrams
 context/          research behind the principles
 ```

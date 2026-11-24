@@ -34,7 +34,7 @@ Do these in order and stop at the first step that needs the user. Tell them what
 | macOS or Linux, no Homebrew | `curl -fsSL https://taskwing.app/install.sh \| sh` |
 | Windows, or anywhere with Go 1.24+ | `go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@latest` |
 
-- Still no `approve` after that: the newest release predates it. Build from main: `go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@main`, then call `$(go env GOPATH)/bin/taskwing` if an older one comes first on PATH.
+- Still no `approve` after that: the newest release predates it. Build from main: `go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@main`, then call `$(go env GOBIN)/taskwing` (or `$(go env GOPATH)/bin/taskwing` when `go env GOBIN` is empty) if an older one comes first on PATH.
 - A `taskwing` that prints v1 commands is the old v1 tool: `brew upgrade taskwing` replaces it.
 
 **2. What a run needs.** Check each and give the user the exact fix for any that fails:
@@ -83,13 +83,20 @@ Large tasks that split into independent pieces can run as a team of agents with 
 - Write the task as one or two sentences: what to build, what "done" means, "with tests". The lead reads the code itself; do not paste code into the task.
 - Pick where agents run. boat when it is set up. Otherwise `--provider local --no-pr`, and tell the user first: local agents run on this machine with the user's own login, with no isolation.
 
-**2. Plan.** This takes a few minutes. Give the command at least 15 minutes before your tool times out.
+**2. Plan.** This takes a few minutes, sometimes more than 10. Run it directly only if your tool waits at least 15 minutes; a tool timeout stops the plan.
 
 ```bash
 taskwing run "<task>" --plan-only            # add --provider local --no-pr when there is no boat
 ```
 
-It prints the plan (one line per piece), the exam (plain-sentence checks) and a run id such as `tw-20261124-143005-a1b2`. Nothing is built yet.
+Otherwise (Claude Code's Bash, for example, stops a command after 10 minutes) start it in the background like step 4 and check the log until it has an `Approve it:` line, or `taskwing:` and an error:
+
+```bash
+plan_log=$(mktemp)
+nohup taskwing run "<task>" --plan-only > "$plan_log" 2>&1 &
+```
+
+It prints the plan (one line per piece), the exam (plain-sentence checks), a run id such as `tw-20261124-143005-a1b2` and the `taskwing approve` command to run, with the flags of this plan. Nothing is built yet.
 
 **3. Ask the user.** Show them the plan and every exam check, word for word. Then ask one question with four answers:
 
@@ -97,17 +104,17 @@ It prints the plan (one line per piece), the exam (plain-sentence checks) and a 
 |---|---|
 | Yes | step 4 |
 | Add a check ("it must also ...") | step 4 with `--check "<their sentence>"`, once per check |
-| Plan again | run step 2 again (a new run id) |
-| Stop | nothing; the plan stays in `~/.taskwing/runs/<run id>/` |
+| Plan again | delete this run (`rm -rf "${TASKWING_HOME:-$HOME/.taskwing}/runs/<run id>"`), then run step 2 again (a new run id) |
+| Stop | delete this run the same way: its exam must not stay on disk where the next run's lead can read it |
 
 Never answer this yourself. The exam is what "done" means, and only the user approves it.
 
-**4. Build.** A build takes 5 to 60 minutes, longer than most tool timeouts, so start it in the background with a log. Use the same `--provider`, `--no-pr` and `--boat-base` flags as step 2.
+**4. Build.** A build takes 5 to 60 minutes, longer than most tool timeouts, so start it in the background with a log. Use the `taskwing approve` command step 2 printed: it carries the same `--provider`, `--boat-base` and `--no-pr` flags as the plan.
 
 ```bash
 run=tw-20261124-143005-a1b2                   # the run id from step 2
-log="$HOME/.taskwing/runs/$run/approve.log"
-nohup taskwing approve "$run" > "$log" 2>&1 &
+log="${TASKWING_HOME:-$HOME/.taskwing}/runs/$run/approve.log"
+nohup taskwing approve "$run" > "$log" 2>&1 &   # plus the flags step 2 printed after the run id
 ```
 
 If your harness has its own way to run a command in the background (Claude Code's background Bash, for example), use that instead of `nohup`. Then check the log every minute or two with `tail -n 30 "$log"`. Each agent prints a line when its state changes: `working`, `done` or `stuck`. Tell the user only when something changes: an agent stuck, the exam result, the end.
@@ -143,7 +150,7 @@ The pull request is a draft. The user reviews and merges it. Never merge it, nev
 | `no boat base box set` or `the boat CLI is not installed` | `--provider local` to try it, or boat setup in docs/guide.md |
 | `the repository moved since the plan` | a commit landed after step 2: plan again |
 | `was already approved` | each plan builds once: plan again |
-| exit code 3 | the run finished and some exam checks failed; report which, from the log |
+| `Done` with fewer checks passed than the total (exit code 3 in the foreground) | the run finished and some exam checks failed; report which, from the log |
 | leftover sandboxes | `taskwing doctor`, then `taskwing doctor --clean` |
 
 Everything else (flags, environment variables, what a run leaves behind): https://github.com/josephgoksu/TaskWing/blob/main/docs/guide.md

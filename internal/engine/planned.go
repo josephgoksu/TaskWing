@@ -57,6 +57,13 @@ func readPlanned(home, id string) (*planned, error) {
 }
 
 func (r *runner) savePlanned() error {
+	// plan.json and the exam's checks were saved as records on the way, where
+	// a failed save only warns; approve reads them back, so they must exist.
+	for _, f := range []string{"plan.json", filepath.Join("exam", "checks.json"), filepath.Join("exam", "exam.patch")} {
+		if _, err := os.Stat(filepath.Join(r.dir, f)); err != nil {
+			return fmt.Errorf("could not save the plan for later: %w", err)
+		}
+	}
 	b, err := json.MarshalIndent(planned{Task: r.o.Task, Hunt: r.o.Hunt, Repo: r.root, Base: r.base, Created: time.Now().UTC()}, "", "  ")
 	if err != nil {
 		return err

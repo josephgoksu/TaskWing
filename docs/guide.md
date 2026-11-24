@@ -142,8 +142,10 @@ taskwing approve <run id> --check "codes are case-insensitive"     # with checks
 |---|---|
 | `approve` runs in the same repository, at the same commit as the plan | The exam's tests were written against that commit; on another one they test the wrong code. A moved repository is refused: plan again |
 | Each plan is approved once (`planned.json` becomes `planned.used.json`) | A second build would reuse the run folder and branch |
-| `approve` takes the same `--provider`, `--boat-base`, `--no-pr` and `--keep` as the plan | The plan does not store them; without them `approve` uses the defaults |
-| `taskwing hunt --plan-only` works the same way | |
+| `approve` takes the same `--provider`, `--boat-base`, `--no-pr` and `--keep` as the plan (the plan prints its `taskwing approve` command with them) | The plan does not store them; without them `approve` uses the defaults: boat, and a pull request |
+| A plan that is not approved is deleted before the next plan (`rm -rf ~/.taskwing/runs/<run id>`) | Its exam stays on disk, where the next run's lead could read the hidden tests |
+| `taskwing hunt --plan-only` works the same way | A hunt from an agent could only start with `--yes`, so fixers would start on bugs nobody saw |
+| `approve` without a terminal does not ask before a pull request with failed checks; it leaves the work on the branch (`--yes` opens it anyway) | An agent's shell cannot answer, so the run would wait forever |
 
 A build outlives most agent tool timeouts. Start it with `nohup taskwing approve <id> > log 2>&1 &`: TaskWing keeps running under `nohup` (it stops on a hang-up only when it catches one).
 

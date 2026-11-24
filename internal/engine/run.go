@@ -279,9 +279,8 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 	res := &Result{RunID: r.id, RunDir: r.dir, Scanned: o.Provider.Sandboxed()}
-	if o.Approve != "" {
-		r.ev.log("run.approved", map[string]any{"base": r.base, "provider": o.Provider.Name(), "user_checks": len(o.Checks)})
-	} else {
+	// An approve logs run.approved once the saved plan is accepted, below.
+	if o.Approve == "" {
 		r.ev.log("run.created", map[string]any{"task": o.Task, "repo": r.root, "base": r.base, "provider": o.Provider.Name()})
 	}
 	r.ui.say("%s %s  %s", r.ui.bold("TaskWing"), r.id, r.ui.dim(o.Provider.Name()+" · "+filepath.Base(r.root)+" @ "+r.base[:8]))
@@ -319,6 +318,7 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		if plan, checks, patch, err = r.loadPlanned(); err != nil {
 			return res, err
 		}
+		r.ev.log("run.approved", map[string]any{"base": r.base, "provider": o.Provider.Name(), "user_checks": len(o.Checks)})
 		if o.Hunt {
 			r.showBugs(plan)
 		} else {
@@ -371,9 +371,10 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 				return res, err
 			}
 			r.ev.log("run.planned", nil)
+			approve := "taskwing approve " + r.id + r.approveFlags()
 			r.ui.say("\n  Plan ready. Nothing has started.")
-			r.ui.say("  Approve it:  taskwing approve %s", r.id)
-			r.ui.say("  %s", r.ui.dim(`Add a check of your own: taskwing approve `+r.id+` --check "<sentence>"`))
+			r.ui.say("  Approve it:  %s", approve)
+			r.ui.say("  %s", r.ui.dim(`Add a check of your own: `+approve+` --check "<sentence>"`))
 			res.Stopped = true
 			return res, nil
 		case o.Yes:
@@ -476,6 +477,13 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 		r.summary(res)
 		return res, nil
 	}
+	if res.Passed < res.Total && !o.Yes && o.Approve != "" && !r.ui.inTTY {
+		// approve is run by coding agents, whose shell cannot answer: asking
+		// would wait forever on an input that never ends.
+		r.ui.say("  Not opened: %d of %d checks failed. The joined work is on branch %s.", res.Total-res.Passed, res.Total, res.Branch)
+		r.summary(res)
+		return res, nil
+	}
 	if res.Passed < res.Total && !o.Yes {
 		yes, err := r.ui.ask(ctx, fmt.Sprintf("  %d of %d checks failed. Open the draft pull request anyway?", res.Total-res.Passed, res.Total))
 		if err != nil {
@@ -497,6 +505,23 @@ func (r *runner) run(ctx context.Context) (*Result, error) {
 	r.s.prOpened(url)
 	r.summary(res)
 	return res, nil
+}
+
+// approveFlags repeats the flags of this run that the saved plan does not
+// keep, so the printed approve command builds where the plan was made for
+// (without them approve falls back to boat and opens a pull request).
+func (r *runner) approveFlags() string {
+	f := " --provider " + r.o.Provider.Name()
+	if b, ok := r.o.Provider.(*box.Boat); ok && b.Base != "" {
+		f += " --boat-base " + shq(b.Base)
+	}
+	if r.o.NoPR {
+		f += " --no-pr"
+	}
+	if r.o.Keep {
+		f += " --keep"
+	}
+	return f
 }
 
 func plural(n int, one, many string) string {
