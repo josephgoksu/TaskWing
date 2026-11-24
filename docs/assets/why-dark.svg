@@ -29,8 +29,8 @@
 <rect x="542.4" y="26.0" width="58.0" height="58.0" rx="15" fill="#11301f"/>
 <g transform="translate(555.4 39)" fill="none" stroke="#2fb36b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><svg width="32" height="32" viewBox="0 0 24 24"><path d="M12 2.5 20 6v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></g>
 <text class="h" x="542.4" y="132">Hidden exam</text>
-<text class="s" x="542.4" y="168">Tests written first,</text>
-<text class="s" x="542.4" y="193">unseen by agents</text>
+<text class="s" x="542.4" y="168">Tests the lead and</text>
+<text class="s" x="542.4" y="193">workers never see</text>
 <rect x="542.4" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2fb36b" stroke="none" fill-opacity="1"/>
 <rect x="557.4" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2fb36b" stroke="none" fill-opacity="1"/>
 <rect x="572.4" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2fb36b" stroke="none" fill-opacity="1"/>
@@ -50,15 +50,15 @@
 <rect x="861.6" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#2b3240" fill-opacity="0"/>
 <rect x="876.6" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#2b3240" fill-opacity="0"/>
 <rect x="1037.8" y="1.0" width="241.2" height="260.0" rx="16" fill="#161b22" stroke="#30363d" filter="url(#sh)"/>
-<rect x="1060.8" y="26.0" width="58.0" height="58.0" rx="15" fill="#3a2b0e"/>
-<g transform="translate(1073.8 39)" fill="none" stroke="#e8a530" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><svg width="32" height="32" viewBox="0 0 24 24"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"/></svg></g>
+<rect x="1060.8" y="26.0" width="58.0" height="58.0" rx="15" fill="#16224a"/>
+<g transform="translate(1073.8 39)" fill="none" stroke="#4f7dff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><svg width="32" height="32" viewBox="0 0 24 24"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"/></svg></g>
 <text class="h" x="1060.8" y="132">Plugs in</text>
-<text class="s" x="1060.8" y="168">Bring your sandbox</text>
-<text class="s" x="1060.8" y="193">and agent CLIs</text>
-<rect x="1060.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#e8a530" stroke="none" fill-opacity="1"/>
-<rect x="1075.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#e8a530" stroke="none" fill-opacity="1"/>
-<rect x="1090.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#e8a530" stroke="none" fill-opacity="1"/>
-<rect x="1105.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#e8a530" stroke="none" fill-opacity="1"/>
+<text class="s" x="1060.8" y="168">boat sandboxes today,</text>
+<text class="s" x="1060.8" y="193">more providers next</text>
+<rect x="1060.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#4f7dff" stroke="none" fill-opacity="1"/>
+<rect x="1075.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#4f7dff" stroke="none" fill-opacity="1"/>
+<rect x="1090.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#4f7dff" stroke="none" fill-opacity="1"/>
+<rect x="1105.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#4f7dff" stroke="none" fill-opacity="1"/>
 <rect x="1120.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#2b3240" fill-opacity="0"/>
 <rect x="1135.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#2b3240" fill-opacity="0"/>
 </svg>

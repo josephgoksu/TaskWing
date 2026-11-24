@@ -38,7 +38,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/swarm-dark.svg">
-  <img src="docs/assets/swarm-light.svg" alt="A swarm of coding agents: the lead agent in the middle sends work out to hundreds of agents. Each square is one agent in its own sandbox: blue is working, grey is done, amber needs you." width="100%">
+  <img src="docs/assets/swarm-light.svg" alt="A swarm of coding agents: the lead agent in the middle splits your task into pieces, and TaskWing gives each piece to its own agent. Each filled square is one agent in its own sandbox: blue is working, grey is done." width="100%">
 </picture>
 
 Your task goes to your own coding agent, the lead. It splits the work into pieces that share no files, and TaskWing starts one agent session per piece, each in its own sandbox. A hidden exam checks the joined work, and you get one tested pull request. The agents are yours: Claude Code, or Codex and others in boat (`--agent`).
@@ -53,7 +53,7 @@ Your task goes to your own coding agent, the lead. It splits the work into piece
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/why-dark.svg">
-  <img src="docs/assets/why-light.svg" alt="Why TaskWing: one task in, one tested pull request out. A sandbox for each agent, with no GitHub login inside any box. A hidden exam: tests written first and never seen by the agents. Your own agent, logins and plans, with no API key of ours. Box and Agent adapters plug into what you use." width="100%">
+  <img src="docs/assets/why-light.svg" alt="Why TaskWing: one task in, one tested pull request out. A sandbox for each agent, with no GitHub login inside any box. A hidden exam: tests written first, which the lead and the workers never see. Your own agent, logins and plans, with no API key of ours. Plugs in: boat sandboxes today, more providers next." width="100%">
 </picture>
 
 Running many coding agents is easy. What runs out is work that doesn't conflict, and your time to review it. TaskWing counts success in verified merges.

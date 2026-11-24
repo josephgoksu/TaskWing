@@ -3,6 +3,7 @@ Run: python3 docs/assets/readme_visuals.py [out dir, default: this folder]"""
 import math
 import os
 import sys
+from xml.sax.saxutils import escape
 
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
 MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
@@ -46,19 +47,21 @@ def text_w(t, size):  # rough width of monospace text
 def swarm(t):
     W, H, gap, sq = 1280, 420, 22, 10
     cols, rows = W // gap, H // gap
+    cols -= 1 - cols % 2  # odd counts, so the lead sits on the centre cell
+    rows -= 1 - rows % 2
     ox, oy = (W - (cols - 1) * gap) / 2, (H - (rows - 1) * gap) / 2
     lead = (ox + (cols // 2) * gap, oy + (rows // 2) * gap)
     labels = [("api/codes.go", -7, -5), ("checkout/apply.ts", 7, -6), ("db/migrations", -9, 4),
               ("web/CouponField.tsx", 8, 4), ("tests/e2e", -2, -7), ("docs/discounts.md", 1, 7),
               ("auth/session.go", 15, -1), ("cart/total.go", -16, -1)]
     lab = {(round(lead[0] + dx * gap, 1), round(lead[1] + dy * gap, 1)): n for n, dx, dy in labels}
-    needs = (round(lead[0] + 12 * gap, 1), round(lead[1] + 6 * gap, 1))
+    # Amber "needs you" is planned (agents can't ask questions yet), so it is not drawn.
     R = Rand(11)
     o = []
     a = o.append
     counts = {"work": 0, "done": 0}
     cards = []
-    idle, filled = [], {"work": [], "done": [], "needs": []}
+    idle, filled = [], {"work": [], "done": []}
     for j in range(rows):
         for i in range(cols):
             x, y = round(ox + i * gap, 1), round(oy + j * gap, 1)
@@ -66,9 +69,6 @@ def swarm(t):
                 continue
             if (x, y) in lab:
                 cards.append((x, y, lab[(x, y)]))
-                continue
-            if (x, y) == needs:
-                filled["needs"].append((x, y))
                 continue
             d = math.hypot((x - lead[0]) / 1.35, y - lead[1]) / gap
             r = R()
@@ -80,10 +80,11 @@ def swarm(t):
             else:
                 filled[st].append((x, y))
                 counts[st] += 1
+    assert len(cards) == len(labels), "a label is off the grid, on the lead or on another label"
     counts["work"] += len(cards)
     a(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" '
-      f'aria-label="A swarm of coding agents: a lead agent in the middle sends work to hundreds of agents, each square is one agent in its own sandbox. '
-      f'{counts["work"]} working, {counts["done"]} done, 1 needs you.">')
+      f'aria-label="A swarm of coding agents: the lead agent in the middle splits the task into pieces and TaskWing gives each piece to its own agent; '
+      f'each filled square is one agent in its own sandbox. {counts["work"]} working, {counts["done"]} done.">')
     a(f'''<defs>
 <linearGradient id="fade" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".14" stop-color="#fff"/><stop offset=".86" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
 <linearGradient id="fadev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".12" stop-color="#fff"/><stop offset=".88" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
@@ -95,7 +96,7 @@ def swarm(t):
 </defs>''')
     a('<g mask="url(#m)"><g mask="url(#mv)">')
     a(f'<g fill="none" stroke="{t["idle"]}" stroke-width="1.1">' + "".join(rr(x - sq / 2 + .55, y - sq / 2 + .55, sq - 1.1, sq - 1.1, 2.5, "") for x, y in idle) + "</g>")
-    for st in ("done", "work", "needs"):
+    for st in ("done", "work"):
         col = t[st]
         a(f'<g fill="{col}">' + "".join(rr(x - sq / 2, y - sq / 2, sq, sq, 2.5, "") for x, y in filled[st]) + "</g>")
     a("</g></g>")
@@ -112,7 +113,7 @@ def swarm(t):
         w = text_w(n, 14) + 20
         lx = x + 16 if x + 16 + w < W - 20 else x - 16 - w
         a(rr(lx, y - 14, w, 28, 7, f'fill="{t["card"]}" stroke="{t["line"]}" filter="url(#sh)"'))
-        a(f'<text x="{lx + 10:.1f}" y="{y + 5:.1f}">{n}</text>')
+        a(f'<text x="{lx + 10:.1f}" y="{y + 5:.1f}">{escape(n)}</text>')
     # the lead
     lx, ly = lead
     a(f'<circle cx="{lx}" cy="{ly}" r="64" fill="url(#glow)"/>')
@@ -123,14 +124,14 @@ def swarm(t):
     a(rr(lx - lw / 2, ly + 32, lw, 28, 14, f'fill="{t["card"]}" stroke="{t["line"]}" filter="url(#sh)"'))
     a(f'<text x="{lx:.1f}" y="{ly + 51:.1f}" text-anchor="middle" style="font-weight:600">Lead agent</text>')
     # counts, like the site's hero
-    chips = [("work", f'{counts["work"]} working'), ("done", f'{counts["done"]} done'), ("needs", "1 needs you")]
+    chips = [("work", f'{counts["work"]} working'), ("done", f'{counts["done"]} done')]
     cx = W - 24
     for key, label in reversed(chips):
         w = text_w(label, 14) + 38
         cx -= w
         a(rr(cx, 14, w, 32, 16, f'fill="{t["card"]}" stroke="{t["line"]}"'))
         a(rr(cx + 13, 25.5, 10, 10, 2.5, f'fill="{t[key]}"'))
-        a(f'<text class="hud" x="{cx + 30:.1f}" y="35">{label}</text>')
+        a(f'<text class="hud" x="{cx + 30:.1f}" y="35">{escape(label)}</text>')
         cx -= 8
     a("</svg>")
     return "\n".join(o)
@@ -141,9 +142,9 @@ def why(t):
     cards = [
         ("pr", "pass_", "tint_green", "One task in", ["One tested pull", "request out"]),
         ("box", "work", "tint_blue", "A sandbox each", ["No GitHub login", "in any box"]),
-        ("shield", "pass_", "tint_green", "Hidden exam", ["Tests written first,", "unseen by agents"]),
+        ("shield", "pass_", "tint_green", "Hidden exam", ["Tests the lead and", "workers never see"]),
         ("terminal", "work", "tint_blue", "Your agent", ["Your logins, no", "API key of ours"]),
-        ("plug", "needs", "tint_amber", "Plugs in", ["Bring your sandbox", "and agent CLIs"]),
+        ("plug", "work", "tint_blue", "Plugs in", ["boat sandboxes today,", "more providers next"]),
     ]
     gap = 16
     cw = (W - gap * (len(cards) - 1)) / len(cards)
@@ -159,9 +160,9 @@ def why(t):
         a(rr(x + 24, 26, 58, 58, 15, f'fill="{t[tint]}"'))
         a(f'<g transform="translate({x + 37:.1f} 39)" fill="none" stroke="{t[col]}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
           f'<svg width="32" height="32" viewBox="0 0 24 24">{ICON[ic]}</svg></g>')
-        a(f'<text class="h" x="{x + 24:.1f}" y="132">{head}</text>')
+        a(f'<text class="h" x="{x + 24:.1f}" y="132">{escape(head)}</text>')
         for i, line in enumerate(sub):
-            a(f'<text class="s" x="{x + 24:.1f}" y="{168 + i * 25}">{line}</text>')
+            a(f'<text class="s" x="{x + 24:.1f}" y="{168 + i * 25}">{escape(line)}</text>')
         # a row of little agent squares as a footer motif
         for i in range(6):
             fill = t[col] if i < 4 else "none"
@@ -175,7 +176,7 @@ def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__file__))
     for name, fn in (("swarm", swarm), ("why", why)):
         for theme, t in THEMES.items():
-            with open(os.path.join(out, f"{name}-{theme}.svg"), "w") as f:
+            with open(os.path.join(out, f"{name}-{theme}.svg"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(fn(t) + "\n")
 
 
