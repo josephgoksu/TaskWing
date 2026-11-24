@@ -124,7 +124,7 @@ pie showData
 | C5 | Start from a Claude Code skill | ⬜ | Talk | Joseph's pick |
 | C6 | Two minutes from install to the first agent | ⬜ | Talk | Joseph's pick; depends on S8 and C5 |
 | C7 | ~~Desktop app~~ | — | — | Dropped 2026-11-22: TaskWing is terminal only. The app stays in git history (last on main at e6f117d); the board (R8) shows the run |
-| C8 | Install the CLI with Homebrew, Linux packages, archives or `go install` | 🟡 | M1 | GoReleaser on `vX.Y.Z` tags, built on the latest stable Go. No v2 release yet, so Homebrew still installs v1.23.2 |
+| C8 | Install the CLI with Homebrew, Linux packages, archives or `go install` | 🟡 | M1 | GoReleaser on `vX.Y.Z` tags, built on the latest stable Go. v2 ships as alphas (`v2.0.0-alpha.N`) on every channel, Homebrew included; no stable v2 yet |
 
 ## Project
 

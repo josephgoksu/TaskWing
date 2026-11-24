@@ -19,7 +19,7 @@ go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@latest    # needs Go 
 ~/go/bin/taskwing version     # an old v1 from Homebrew may come first on PATH
 ```
 
-Until the first v2 tag ships, `brew install josephgoksu/tap/taskwing` still installs v1.23.2, which has none of these commands.
+`brew install josephgoksu/tap/taskwing` installs the latest v2 release (an alpha for now). On a machine with v1 from Homebrew, `brew upgrade` replaces it with v2, which has none of the v1 commands; v1 stays at tag `v1.23.2`.
 
 `taskwing version` prints:
 
