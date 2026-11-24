@@ -68,7 +68,7 @@ brew install josephgoksu/tap/taskwing
 go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@latest
 ```
 
-> Until the first v2 tag ships, Homebrew still installs v1.23.2, which has none of these commands. Use `go install github.com/josephgoksu/TaskWing/v2/cmd/taskwing@latest` (needs Go 1.24+) for now.
+> Homebrew installs the latest v2 alpha. The v1 knowledge layer (v1.23.2 and earlier) is a different tool; see [License](#license).
 
 Linux packages (`.deb`, `.rpm`, `.apk`) and archives for macOS, Linux and Windows are on the [releases page](https://github.com/josephgoksu/TaskWing/releases).
 
