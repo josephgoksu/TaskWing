@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 270" width="1280" height="270" role="img" aria-label="Why TaskWing: one task in, one tested pull request out; every agent in its own sandbox; a hidden exam; your own agent and logins; plugs into your sandbox and agent tools.">
+<defs><filter id="sh" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#12151c" flood-opacity=".08"/></filter>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#12151c} .h{font-size:25px;font-weight:600;letter-spacing:-.015em} .s{font-size:18px;fill:#5a6170}</style></defs>
+<rect x="1.0" y="1.0" width="241.2" height="260.0" rx="16" fill="#ffffff" stroke="#e2e5ea" filter="url(#sh)"/>
+<rect x="24.0" y="26.0" width="58.0" height="58.0" rx="15" fill="#e6f4ec"/>
+<g transform="translate(37.0 39)" fill="none" stroke="#17924f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><svg width="32" height="32" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7M18 15.5V10a3 3 0 0 0-3-3h-4"/><path d="m13 4.5-2.5 2.5L13 9.5"/></svg></g>
+<text class="h" x="24.0" y="132">One task in</text>
+<text class="s" x="24.0" y="168">One tested pull</text>
+<text class="s" x="24.0" y="193">request out</text>
+<rect x="24.0" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#17924f" stroke="none" fill-opacity="1"/>
+<rect x="39.0" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#17924f" stroke="none" fill-opacity="1"/>
+<rect x="54.0" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#17924f" stroke="none" fill-opacity="1"/>
+<rect x="69.0" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#17924f" stroke="none" fill-opacity="1"/>
+<rect x="84.0" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+<rect x="99.0" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+<rect x="260.2" y="1.0" width="241.2" height="260.0" rx="16" fill="#ffffff" stroke="#e2e5ea" filter="url(#sh)"/>
+<rect x="283.2" y="26.0" width="58.0" height="58.0" rx="15" fill="#eaf0ff"/>
+<g transform="translate(296.2 39)" fill="none" stroke="#2f6bff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><svg width="32" height="32" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></g>
+<text class="h" x="283.2" y="132">A sandbox each</text>
+<text class="s" x="283.2" y="168">No GitHub login</text>
+<text class="s" x="283.2" y="193">in any box</text>
+<rect x="283.2" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2f6bff" stroke="none" fill-opacity="1"/>
+<rect x="298.2" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2f6bff" stroke="none" fill-opacity="1"/>
+<rect x="313.2" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2f6bff" stroke="none" fill-opacity="1"/>
+<rect x="328.2" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2f6bff" stroke="none" fill-opacity="1"/>
+<rect x="343.2" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+<rect x="358.2" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+<rect x="519.4" y="1.0" width="241.2" height="260.0" rx="16" fill="#ffffff" stroke="#e2e5ea" filter="url(#sh)"/>
+<rect x="542.4" y="26.0" width="58.0" height="58.0" rx="15" fill="#e6f4ec"/>
+<g transform="translate(555.4 39)" fill="none" stroke="#17924f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><svg width="32" height="32" viewBox="0 0 24 24"><path d="M12 2.5 20 6v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></g>
+<text class="h" x="542.4" y="132">Hidden exam</text>
+<text class="s" x="542.4" y="168">Tests written first,</text>
+<text class="s" x="542.4" y="193">unseen by agents</text>
+<rect x="542.4" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#17924f" stroke="none" fill-opacity="1"/>
+<rect x="557.4" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#17924f" stroke="none" fill-opacity="1"/>
+<rect x="572.4" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#17924f" stroke="none" fill-opacity="1"/>
+<rect x="587.4" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#17924f" stroke="none" fill-opacity="1"/>
+<rect x="602.4" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+<rect x="617.4" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+<rect x="778.6" y="1.0" width="241.2" height="260.0" rx="16" fill="#ffffff" stroke="#e2e5ea" filter="url(#sh)"/>
+<rect x="801.6" y="26.0" width="58.0" height="58.0" rx="15" fill="#eaf0ff"/>
+<g transform="translate(814.6 39)" fill="none" stroke="#2f6bff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><svg width="32" height="32" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="m7 9 3 3-3 3M12.5 15H17"/></svg></g>
+<text class="h" x="801.6" y="132">Your agent</text>
+<text class="s" x="801.6" y="168">Your logins, no</text>
+<text class="s" x="801.6" y="193">API key of ours</text>
+<rect x="801.6" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2f6bff" stroke="none" fill-opacity="1"/>
+<rect x="816.6" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2f6bff" stroke="none" fill-opacity="1"/>
+<rect x="831.6" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2f6bff" stroke="none" fill-opacity="1"/>
+<rect x="846.6" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#2f6bff" stroke="none" fill-opacity="1"/>
+<rect x="861.6" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+<rect x="876.6" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+<rect x="1037.8" y="1.0" width="241.2" height="260.0" rx="16" fill="#ffffff" stroke="#e2e5ea" filter="url(#sh)"/>
+<rect x="1060.8" y="26.0" width="58.0" height="58.0" rx="15" fill="#fcf1dc"/>
+<g transform="translate(1073.8 39)" fill="none" stroke="#e09a12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><svg width="32" height="32" viewBox="0 0 24 24"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"/></svg></g>
+<text class="h" x="1060.8" y="132">Plugs in</text>
+<text class="s" x="1060.8" y="168">Bring your sandbox</text>
+<text class="s" x="1060.8" y="193">and agent CLIs</text>
+<rect x="1060.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#e09a12" stroke="none" fill-opacity="1"/>
+<rect x="1075.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#e09a12" stroke="none" fill-opacity="1"/>
+<rect x="1090.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#e09a12" stroke="none" fill-opacity="1"/>
+<rect x="1105.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="#e09a12" stroke="none" fill-opacity="1"/>
+<rect x="1120.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+<rect x="1135.8" y="230.0" width="9.0" height="9.0" rx="2.2" fill="none" stroke="#cdd2da" fill-opacity="0"/>
+</svg>
