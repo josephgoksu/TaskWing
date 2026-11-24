@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/josephgoksu/TaskWing/v2/internal/box"
 	"github.com/josephgoksu/TaskWing/v2/internal/proc"
 )
 
@@ -182,14 +183,21 @@ var secretPatterns = []struct {
 
 const secretScanScript = `env 2>/dev/null; cat ~/.git-credentials ~/.config/gh/hosts.yml ~/.netrc 2>/dev/null; for k in ~/.ssh/id_*; do case "$k" in *.pub) ;; *) [ -f "$k" ] && echo "TW_SSH_KEY=$k";; esac; done; true`
 
-// scanBox splits a box's scan into leaks and the agent's own Claude login
-// (CLAUDE_CODE_OAUTH_TOKEN), which agents need to run and is expected.
-func scanBox(text string) (leaks []string, agentLogin bool) {
+// scanBox splits a box's scan into leaks and the agent's own login (for
+// Claude Code CLAUDE_CODE_OAUTH_TOKEN, for Codex OPENAI_API_KEY: box.AgentLogins),
+// which the agent needs to run and is expected.
+func scanBox(text, agent string) (leaks []string, agentLogin bool) {
+	if agent == "" {
+		agent = box.DefaultAgent
+	}
 	var rest []string
+next:
 	for _, line := range strings.Split(text, "\n") {
-		if strings.HasPrefix(line, "CLAUDE_CODE_OAUTH_TOKEN=") {
-			agentLogin = agentLogin || len(line) > len("CLAUDE_CODE_OAUTH_TOKEN=")
-			continue
+		for _, v := range box.AgentLogins[agent] {
+			if strings.HasPrefix(line, v+"=") {
+				agentLogin = agentLogin || len(line) > len(v)+1
+				continue next
+			}
 		}
 		rest = append(rest, line)
 	}

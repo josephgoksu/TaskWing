@@ -149,7 +149,7 @@ type runner struct {
 	boxesMu    sync.Mutex
 	boxes      []*box.Box
 	secrets    []string
-	agentLogin bool // a box held the agent's Claude login (expected)
+	agentLogin bool // a box held the agent's own login (expected)
 }
 
 // Run executes one task end to end.
@@ -531,7 +531,7 @@ func (r *runner) summary(res *Result) {
 		if len(res.Secrets) == 0 {
 			msg := "  Secret scan: nothing found in any sandbox"
 			if r.agentLogin {
-				msg += " (only the agents' own Claude login, as expected)"
+				msg += " (only the agents' own login, as expected)"
 			}
 			r.ui.say("%s", msg)
 		} else {

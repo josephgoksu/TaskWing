@@ -84,7 +84,7 @@ pie showData
 |---|---|---|---|---|
 | A1 | Claude Code as the agent runtime | ✅ | PoC | |
 | A2 | Model and effort per run (`--model`, `--effort`) | ✅ | PoC | boat only |
-| A3 | A second agent runtime (OpenCode or Codex CLI) | ⬜ | Talk | 🎤 |
+| A3 | A second agent runtime (OpenCode or Codex CLI) | 🟡 | Talk | 🎤 `--agent codex` (or `opencode`, `pi`, `prime`, `kimi`, `mistral`) runs that agent in every boat box through `boat prompt --provider`; the secret scan expects each agent's own login. Not yet proven in a live run |
 | A4 | A non-Claude model working in a live run, ideally open-weight | ⬜ | Talk | 🎤 "Any model" |
 | A5 | Model router: pick runtime and model per role and per card | ⬜ | Talk | 🎤 Frontier models plan, open-weight models do routine work. Routing, not "open beats closed" |
 | A6 | Lead and exam writer can use a different runtime than Claude | 🟡 | Talk | `TASKWING_LEAD_CMD` and `TASKWING_EXAM_CMD` take any command today |

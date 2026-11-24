@@ -10,10 +10,40 @@ import (
 )
 
 // Defaults for the agent in a boat box. The engine's flags show the same values.
+// They apply to Claude Code only: other agents use the model and effort chosen
+// for them on the boat dashboard unless a run names its own.
 const (
+	DefaultAgent  = "claude"
 	DefaultModel  = "opus-5-5"
 	DefaultEffort = "medium"
 )
+
+// Agents are the coding agents a boat box can run, by their boat --provider
+// name (docs.boat.dev, "Claude Code, Codex and other harnesses").
+var Agents = []string{"claude", "codex", "opencode", "pi", "prime", "kimi", "mistral"}
+
+// KnownAgent reports whether name is one of Agents.
+func KnownAgent(name string) bool {
+	for _, a := range Agents {
+		if a == name {
+			return true
+		}
+	}
+	return false
+}
+
+// AgentLogins are the environment variables that hold each agent's own login
+// in a box. The secret scan expects them: an agent cannot run without its
+// login. Any other credential in a box is a leak.
+var AgentLogins = map[string][]string{
+	"claude":   {"CLAUDE_CODE_OAUTH_TOKEN"},
+	"codex":    {"OPENAI_API_KEY", "CODEX_API_KEY"},
+	"opencode": {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
+	"pi":       {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
+	"prime":    {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
+	"kimi":     {"MOONSHOT_API_KEY", "KIMI_API_KEY"},
+	"mistral":  {"MISTRAL_API_KEY"},
+}
 
 // Box is one sandbox.
 type Box struct {

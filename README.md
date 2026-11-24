@@ -31,7 +31,7 @@
   <img src="docs/assets/board.svg" alt="A taskwing run in the terminal: the lead plans, you approve the exam, then one line per agent while they build in their own sandboxes" width="100%">
 </p>
 
-> **Early and moving fast.** The CLI runs real tasks today with Claude Code agents in [boat](https://boat.dev) sandboxes. More agent runtimes, models and sandbox providers are next. See [Status](#status) for exactly what works.
+> **Early and moving fast.** The CLI runs real tasks today with Claude Code agents in [boat](https://boat.dev) sandboxes. Codex and other agents run in boat with `--agent` and are not yet proven in a live run. More sandbox providers are next. See [Status](#status) for exactly what works.
 
 ## How it works
 
@@ -39,7 +39,7 @@
            ┌───────────────────────── TaskWing orchestrates ─────────────────────────┐
  your task │  your agent plans  →  N agent sessions, one per sandbox  →  hidden exam │ → one tested PR
            └─────────────────────────────────────────────────────────────────────────┘
-                      ↑ the agents are yours: Claude Code today, Codex or OpenCode next
+                      ↑ the agents are yours: Claude Code, or Codex and others in boat (--agent)
 ```
 
 | TaskWing | What that means for you |
@@ -149,7 +149,7 @@ Every concept and how they connect: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 | **Run** | ✅ `taskwing run`, plan check, parallel agents, join, draft PR · ✅ `taskwing hunt` | ⬜ lead resolves join conflicts · ⬜ resume after a crash |
 | **Exam** | ✅ fresh exam writer, hidden tests, clean exam sandbox · ✅ approve before dispatch · ✅ add your own check · ✅ new plan, exam now (CLI and JSON) | ⬜ rulings after a failure · ⬜ plain-words failure reports |
 | **Sandboxes** | ✅ boat · ✅ local (no isolation, for trying it) | ⬜ E2B · ⬜ AWS · ⬜ Docker |
-| **Agents and models** | ✅ Claude Code · 🟡 lead and exam writer on any command | ⬜ a second runtime (OpenCode or Codex) · ⬜ open-weight models · ⬜ per-step model routing |
+| **Agents and models** | ✅ Claude Code · 🟡 Codex, OpenCode, pi, Kimi, Mistral and more in boat boxes (`--agent codex`), not yet proven live · 🟡 lead and exam writer on any command | ⬜ open-weight models · ⬜ per-step model routing |
 | **Safety** | ✅ no GitHub login in any box · 🟡 refuse boxes with GitHub credentials · 🟡 secret scan before destroy (GitHub tokens, SSH keys) · ✅ host git runs with hooks off on agent commits | ⬜ key proxy |
 | **Clients** | ✅ CLI with one live line per agent · ✅ JSON lines for scripts and CI (`taskwing engine --json`) | ⬜ start from a Claude Code skill |
 

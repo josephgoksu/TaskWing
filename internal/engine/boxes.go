@@ -30,6 +30,14 @@ func (r *runner) untrack(b *box.Box) {
 	}
 }
 
+// agent is the coding agent the boxes run (boat --provider), claude by default.
+func (r *runner) agent() string {
+	if b, ok := r.o.Provider.(*box.Boat); ok && b.Agent != "" {
+		return b.Agent
+	}
+	return box.DefaultAgent
+}
+
 // scan reads what a box holds that could be a credential. A scan that cannot
 // run is an error, never "nothing found".
 func (r *runner) scan(ctx context.Context, b *box.Box) (leaks []string, agentLogin bool, err error) {
@@ -37,7 +45,7 @@ func (r *runner) scan(ctx context.Context, b *box.Box) (leaks []string, agentLog
 	if _, err := r.o.Provider.Exec(ctx, b, secretScanScript, nil, &sb); err != nil {
 		return nil, false, err
 	}
-	leaks, agentLogin = scanBox(sb.String())
+	leaks, agentLogin = scanBox(sb.String(), r.agent())
 	return leaks, agentLogin, nil
 }
 

@@ -104,8 +104,9 @@ During step 2, type `e` then Enter to run the exam now with what the agents have
 | `--provider` | `boat` (`$TASKWING_PROVIDER`) | `local` runs on your machine (trying it only) |
 | `--boat-base` | `$TASKWING_BOAT_BASE`, else `taskwing config` | box to fork |
 | `--boat-env` | `$TASKWING_BOAT_ENV` | boat environment to pin forks to |
-| `--model` | `opus-5-5` (`$TASKWING_MODEL`) | agent model in boat |
-| `--effort` | `medium` (`$TASKWING_EFFORT`) | agent effort in boat |
+| `--agent` | `claude` (`$TASKWING_AGENT`) | the coding agent in each boat box: `claude`, `codex`, `opencode`, `pi`, `prime`, `kimi` or `mistral` ([Other agents](#other-agents)) |
+| `--model` | `opus-5-5` for claude, else the boat dashboard's (`$TASKWING_MODEL`) | agent model in boat |
+| `--effort` | `medium` for claude, else the boat dashboard's (`$TASKWING_EFFORT`) | agent effort in boat |
 | `--max-cards` | 4 | most pieces the lead may make, or bugs a hunt keeps |
 | `--no-pr` | off | stop after the exam, keep the branch locally |
 | `--yes` | off | do not ask before starting or before a PR with failed checks |
@@ -118,14 +119,34 @@ During step 2, type `e` then Enter to run the exam now with what the agents have
 | `TASKWING_PROVIDER` | `boat` | same as `--provider` |
 | `TASKWING_BOAT_BASE` | `taskwing config` value | same as `--boat-base` |
 | `TASKWING_BOAT_ENV` | none | same as `--boat-env` |
-| `TASKWING_MODEL` | `opus-5-5` | same as `--model` |
-| `TASKWING_EFFORT` | `medium` | same as `--effort` |
+| `TASKWING_AGENT` | `claude` | same as `--agent` |
+| `TASKWING_MODEL` | `opus-5-5` for claude | same as `--model` |
+| `TASKWING_EFFORT` | `medium` for claude | same as `--effort` |
 | `TASKWING_LEAD_CMD` | `claude -p` with read-only tools | the lead; the prompt arrives on stdin |
 | `TASKWING_EXAM_CMD` | `claude -p` with write tools | the exam writer; the prompt arrives on stdin |
 | `TASKWING_HUNT_CMD` | the exam writer's command | the bug hunter |
 | `TASKWING_LOCAL_AGENT` | `claude -p --dangerously-skip-permissions` | the agents in `--provider local` |
 | `TASKWING_BOAT_BIN` | `boat` | path to the boat CLI |
 | `TASKWING_HOME` | `~/.taskwing` | where config, runs, repo cache and local boxes live |
+
+## Other agents
+
+boat runs seven coding agents in every box, and `--agent` picks the one that builds each piece:
+
+```bash
+taskwing run "add discount codes at checkout, with tests" --agent codex
+taskwing run "..." --agent codex --model gpt-6.1-sol --effort high     # a model of your own
+```
+
+| Rule | What breaks without it |
+|---|---|
+| Connect the agent's login in boat (Agents & Proxying) and let the base box's environment pass it | The first prompt fails with `provider_not_configured` and every piece ends stuck |
+| Without `--model` and `--effort`, an agent other than claude uses the model boat's dashboard picked for it | Each agent has its own model names and effort levels; Claude's defaults would be refused |
+| The secret scan expects each agent's own login (`CLAUDE_CODE_OAUTH_TOKEN` for claude, `OPENAI_API_KEY` for codex: `box.AgentLogins`) and reports any other credential | An agent cannot run without its login; anything else in a box is a leak |
+| One agent for every box in a run | Routing pieces to different agents is planned (FEATURES A5) |
+| The lead and the exam writer still run on this machine with `TASKWING_LEAD_CMD` and `TASKWING_EXAM_CMD` (Claude Code by default) | `--agent` changes the builders only; a Codex lead needs its own command |
+
+With `--provider local`, the agents are a command on this machine: set `TASKWING_LOCAL_AGENT` (the prompt arrives on stdin, the working directory is the repository).
 
 ## Bug hunt
 
