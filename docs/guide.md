@@ -110,6 +110,7 @@ During step 2, type `e` then Enter to run the exam now with what the agents have
 | `--max-cards` | 4 | most pieces the lead may make, or bugs a hunt keeps |
 | `--no-pr` | off | stop after the exam, keep the branch locally |
 | `--yes` | off | do not ask before starting or before a PR with failed checks |
+| `--plan-only` | off | stop after the plan and the exam; build later with `taskwing approve <run id>` ([From a coding agent](#from-a-coding-agent)) |
 | `--keep` | off | keep the sandboxes to look inside |
 
 ### Environment
@@ -129,6 +130,27 @@ During step 2, type `e` then Enter to run the exam now with what the agents have
 | `TASKWING_BOAT_BIN` | `boat` | path to the boat CLI |
 | `TASKWING_HOME` | `~/.taskwing` | where config, runs, repo cache and local boxes live |
 
+## From a coding agent
+
+An agent's shell cannot answer the question at the plan, so a run from an agent goes in two steps. The `taskwing` skill ([skills/taskwing/SKILL.md](../skills/taskwing/SKILL.md)) teaches an agent this flow.
+
+```bash
+taskwing run "<task>" --plan-only        # plan and exam, then stop; prints the run id
+taskwing approve <run id>                # after the user's yes: build that plan with that exam
+taskwing approve <run id> --check "codes are case-insensitive"     # with checks of the user's own
+```
+
+| Rule | What breaks without it |
+|---|---|
+| `approve` runs in the same repository, at the same commit as the plan | The exam's tests were written against that commit; on another one they test the wrong code. A moved repository is refused: plan again |
+| Each plan is approved once (`planned.json` becomes `planned.used.json`) | A second build would reuse the run folder and branch |
+| `approve` takes the same `--provider`, `--boat-base`, `--no-pr` and `--keep` as the plan (the plan prints its `taskwing approve` command with them) | The plan does not store them; without them `approve` uses the defaults: boat, and a pull request |
+| A plan that is not approved is deleted before the next plan (`rm -rf ~/.taskwing/runs/<run id>`) | Its exam stays on disk, where the next run's lead could read the hidden tests |
+| `taskwing hunt --plan-only` works the same way | A hunt from an agent could only start with `--yes`, so fixers would start on bugs nobody saw |
+| `approve` without a terminal does not ask before a pull request with failed checks; it leaves the work on the branch (`--yes` opens it anyway) | An agent's shell cannot answer, so the run would wait forever |
+
+A build outlives most agent tool timeouts. Start it with `nohup taskwing approve <id> > log 2>&1 &`: TaskWing keeps running under `nohup` (it stops on a hang-up only when it catches one).
+
 ## Other agents
 
 boat runs seven coding agents in every box, and `--agent` picks the one that builds each piece:
@@ -147,6 +169,7 @@ taskwing run "..." --agent codex --model gpt-6.1-sol --effort high     # a model
 | The lead and the exam writer still run on this machine with `TASKWING_LEAD_CMD` and `TASKWING_EXAM_CMD` (Claude Code by default) | `--agent` changes the builders only; a Codex lead needs its own command |
 
 With `--provider local`, the agents are a command on this machine: set `TASKWING_LOCAL_AGENT` (the prompt arrives on stdin, the working directory is the repository).
+
 
 ## Bug hunt
 
