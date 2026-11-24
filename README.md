@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/josephgoksu/TaskWing/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/josephgoksu/TaskWing/ci.yml?branch=main&style=flat-square&label=CI"></a>
+  <a href="https://github.com/josephgoksu/TaskWing/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush"><img alt="CI" src="https://github.com/josephgoksu/TaskWing/actions/workflows/ci.yml/badge.svg?branch=main&event=push"></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-2f6bff?style=flat-square"></a>
-  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/josephgoksu/TaskWing?style=flat-square"></a>
+  <a href="go.mod"><img alt="Go 1.24+" src="https://img.shields.io/badge/go-1.24%2B-4f74ec?style=flat-square"></a>
   <img alt="macOS, Linux, Windows" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-9ab7f9?style=flat-square">
   <img alt="Status: early" src="https://img.shields.io/badge/status-early-f59e0b?style=flat-square">
 </p>
